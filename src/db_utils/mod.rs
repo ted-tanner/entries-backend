@@ -63,7 +63,9 @@ pub fn validate_strong_password(user: &InputUser) -> PasswordValidity {
 
     let lowercase_password = user.password.to_lowercase();
 
-    if lowercase_password.contains(&env::APP_NAME.to_lowercase().replace(" ", "")) {
+    if lowercase_password.contains(&env::APP_NAME.to_lowercase().replace(" ", ""))
+        || lowercase_password.contains(&env::APP_NAME.to_lowercase())
+    {
         return PasswordValidity::INVALID("Password must not contain the name of the app.");
     }
 
@@ -232,7 +234,11 @@ mod test {
         user.password = String::from("Qo1aG@Qe!9z");
         assert!(!validate_strong_password(&user).is_valid());
 
-        // Contains app name
+        // Contains app name with space
+        user.password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME) + "&45D";
+        assert!(!validate_strong_password(&user).is_valid());
+
+        // Contains app name without space
         user.password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME).replace(" ", "") + "&45D";
         assert!(!validate_strong_password(&user).is_valid());
 
