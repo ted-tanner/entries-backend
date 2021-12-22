@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+
+  budgetapp-server:
+    build:
+      context: .
+    depends_on:
+      - db
+    env_file: docker.env
+    volumes:
+      - ./assets:/server/assets
+      - ./migrations:/server/migrations
+      - ./src:/server/src
+
+      - ./Cargo.toml:/server/Cargo.toml
+      - ./diesel.toml:/server/diesel.toml
+    ports:
+      - 9000:9000
+
+  db:
+    image: postgres
+    env_file: docker.env

@@ -1,0 +1,30 @@
+[package]
+name = "budgetapp-server"
+authors = ["Tanner Davies <tanner.e.davies@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "3.3"
+argonautica = { version = "0.2", features = ["serde", "simd"] } # Faster
+# argonautica = { version = "0.2", features = ["serde"] }  # More compatible
+chrono = { version = "0.4", features = ["serde"] }
+diesel = { version = "1.4", features = ["postgres", "uuidv07", "r2d2", "chrono"] }
+diesel_migrations = "1.4"
+env_logger = "0.9"
+futures = "0.3"
+jsonwebtoken = "7.2"
+lazy_static = "1.4"
+log = "0.4"
+ring = "0.16"
+serde = "1.0"
+uuid = { version = "0.8", features = ["serde", "v4"] }
+
+[dev-dependencies]
+actix-rt = "2.5"
+rand = "0.8"
+serde_json = "1.0"
+
+[profile.production]
+inherits = "release"
+lto = true
