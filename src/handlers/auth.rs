@@ -118,17 +118,160 @@ pub async fn logout(
     thread_pool: web::Data<ThreadPool>,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    Ok(match web::block(move || {
-        jwt::blacklist_token(
-            refresh_token.0 .0.as_str(),
-            &thread_pool.get().expect("Failed to access thread pool"),
-        )
-    })
-    .await {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(_) => {
-            error!("Failed to blacklist token");
-            HttpResponse::InternalServerError().body("Failed to blacklist token")
+    Ok(
+        match web::block(move || {
+            jwt::blacklist_token(
+                refresh_token.0 .0.as_str(),
+                &thread_pool.get().expect("Failed to access thread pool"),
+            )
+        })
+        .await
+        {
+            Ok(_) => HttpResponse::Ok().finish(),
+            Err(_) => {
+                error!("Failed to blacklist token");
+                HttpResponse::InternalServerError().body("Failed to blacklist token")
+            }
         },
-    })
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use actix_web::{http, test, App};
+    use chrono::NaiveDate;
+    use diesel::prelude::*;
+    use diesel::r2d2::{self, ConnectionManager};
+    use rand::prelude::*;
+    use std::thread;
+    use std::time::Duration;
+
+    use crate::db_utils;
+    use crate::env;
+    use crate::handlers::request_io::InputUser;
+    use crate::handlers::request_io::RefreshToken;
+    use crate::utils::jwt;
+
+    #[actix_rt::test]
+    async fn test_sign_in() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(thread_pool.clone())
+                .route("/api/auth/sign_in", web::post().to(sign_in)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let db_connection = thread_pool.get().unwrap();
+        let user_id = db_utils::user::create_user(&db_connection, &web::Json(new_user.clone()))
+            .unwrap()
+            .id;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        let token_pair: jwt::TokenPair = serde_json::from_str(res_body.as_str()).unwrap();
+
+        let access_token = token_pair.access_token.to_string();
+        let refresh_token = token_pair.refresh_token.to_string();
+
+        assert!(access_token.len() > 0);
+        assert!(refresh_token.len() > 0);
+
+        assert_eq!(jwt::validate_access_token(&access_token).unwrap(), user_id);
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection).unwrap(),
+            user_id
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_refresh_tokens() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(thread_pool.clone())
+                .route("/api/auth/refresh_tokens", web::post().to(refresh_tokens)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let db_connection = thread_pool.get().unwrap();
+        let user_id = db_utils::user::create_user(&db_connection, &web::Json(new_user.clone()))
+            .unwrap()
+            .id;
+
+        let refresh_token_payload =
+            RefreshToken(jwt::generate_refresh_token(user_id).unwrap().to_string());
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/refresh_tokens")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&refresh_token_payload).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        let token_pair: jwt::TokenPair = serde_json::from_str(res_body.as_str()).unwrap();
+
+        let access_token = token_pair.access_token.to_string();
+        let refresh_token = token_pair.refresh_token.to_string();
+
+        assert!(access_token.len() > 0);
+        assert!(refresh_token.len() > 0);
+
+        assert!(jwt::is_on_blacklist(&refresh_token_payload.0, &db_connection).unwrap());
+        assert_eq!(jwt::validate_access_token(&access_token).unwrap(), user_id);
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection).unwrap(),
+            user_id
+        );
+    }
 }
