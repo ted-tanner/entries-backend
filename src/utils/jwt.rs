@@ -1,6 +1,7 @@
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,7 +15,9 @@ use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 struct TokenClaims {
     exp: u64,        // Expiration in time since UNIX epoch
     uid: uuid::Uuid, // User ID
-    rfs: bool,       // Is refresh token?
+    rfs: bool,       // Is refresh token
+    slt: u16,        // Random salt (makes it so two tokens generated in the same
+                     //              second are different--useful for testing)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -130,11 +133,13 @@ fn generate_token(user_id: uuid::Uuid, is_refresh: bool) -> Result<String> {
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
+    let salt = rand::thread_rng().gen_range(1..u16::MAX);
 
     let claims = TokenClaims {
         exp: expiration,
         uid: user_id,
         rfs: is_refresh,
+        slt: salt,
     };
 
     let mut header = Header::default();
@@ -268,7 +273,6 @@ mod test {
     use super::*;
 
     use chrono::NaiveDate;
-    use rand::prelude::*;
 
     use crate::models::user::NewUser;
     use crate::schema::users::dsl::users;
