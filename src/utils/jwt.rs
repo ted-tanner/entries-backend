@@ -11,6 +11,11 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
+// TODO: Write test for read_claims
+
+// TODO: Pass structs instead of string slices to validation methods to take full 
+// advantage of static typing and OOP
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,        // Expiration in time since UNIX epoch
@@ -204,6 +209,13 @@ fn validate_token(token: &str, is_refresh: bool) -> Result<TokenClaims> {
         Err(Error::from(ErrorKind::WrongTokenType))
     } else {
         Ok(decoded_token.claims)
+    }
+}
+
+pub fn read_claims(token: &str) -> Result<TokenClaims> {
+    match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
+        Ok(c) => Ok(c.claims),
+        Err(e) => Err(Error::from(ErrorKind::DecodingError(e))),
     }
 }
 

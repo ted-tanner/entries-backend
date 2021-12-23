@@ -148,10 +148,10 @@ mod tests {
     use diesel::r2d2::{self, ConnectionManager};
     use rand::prelude::*;
 
-    use crate::db_utils;
     use crate::env;
     use crate::handlers::request_io::InputUser;
     use crate::handlers::request_io::RefreshToken;
+    use crate::handlers::user;
     use crate::utils::jwt;
 
     #[actix_rt::test]
@@ -162,6 +162,7 @@ mod tests {
         let mut app = test::init_service(
             App::new()
                 .data(thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/sign_in", web::post().to(sign_in)),
         )
         .await;
@@ -181,9 +182,16 @@ mod tests {
         };
 
         let db_connection = thread_pool.get().unwrap();
-        let user_id = db_utils::user::create_user(&db_connection, &web::Json(new_user.clone()))
-            .unwrap()
-            .id;
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -199,11 +207,12 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
-        let token_pair: jwt::TokenPair = serde_json::from_str(res_body.as_str()).unwrap();
-
+        let token_pair: jwt::TokenPair = actix_web::test::read_body_json(res).await;
+        
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
+        
+        let user_id = jwt::read_claims(&access_token).unwrap().uid;
 
         assert!(access_token.len() > 0);
         assert!(refresh_token.len() > 0);
@@ -228,6 +237,7 @@ mod tests {
         let mut app = test::init_service(
             App::new()
                 .data(thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/refresh_tokens", web::post().to(refresh_tokens)),
         )
         .await;
@@ -247,12 +257,22 @@ mod tests {
         };
 
         let db_connection = thread_pool.get().unwrap();
-        let user_id = db_utils::user::create_user(&db_connection, &web::Json(new_user.clone()))
-            .unwrap()
-            .id;
+
+        let create_user_res = test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+        let user_id = jwt::read_claims(&user_tokens.access_token.to_string()).unwrap().uid;
 
         let refresh_token_payload =
-            RefreshToken(jwt::generate_refresh_token(user_id).unwrap().to_string());
+            RefreshToken(user_tokens.refresh_token.to_string());
 
         let req = test::TestRequest::post()
             .uri("/api/auth/refresh_tokens")
@@ -263,8 +283,7 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
-        let token_pair: jwt::TokenPair = serde_json::from_str(res_body.as_str()).unwrap();
+        let token_pair: jwt::TokenPair = actix_web::test::read_body_json(res).await;
 
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
