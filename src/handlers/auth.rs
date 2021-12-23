@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use actix_web::{web, HttpResponse};
 use log::error;
-use serde::{Deserialize, Serialize};
 
 use crate::db_utils;
 use crate::definitions::ThreadPool;
 use crate::handlers::request_io::CredentialPair;
+use crate::handlers::request_io::RefreshToken;
 use crate::utils::jwt;
 use crate::utils::password_hasher;
 
@@ -63,27 +63,22 @@ pub async fn sign_in(
     })?)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct RefreshToken {
-    refresh_token: String,
-}
-
 pub async fn refresh_tokens(
     thread_pool: web::Data<ThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let refresh_token = token.refresh_token.clone();
+    let refresh_token = &token.0 .0.clone();
     let db_connection = &thread_pool.get().expect("Failed to access thread pool");
 
     Ok(web::block(move || {
         jwt::validate_refresh_token(
-            token.refresh_token.as_str(),
+            token.0 .0.as_str(),
             &thread_pool.get().expect("Failed to access thread pool"),
         )
     })
     .await
     .map(|user_id| {
-        match jwt::blacklist_token(refresh_token.as_str(), &db_connection) {
+        match jwt::blacklist_token(refresh_token.as_str(), db_connection) {
             Ok(_) => {}
             Err(e) => error!("Failed to blacklist token: {}", e),
         }
@@ -117,4 +112,23 @@ pub async fn refresh_tokens(
             HttpResponse::InternalServerError().body("Response canceled")
         }
     })?)
+}
+
+pub async fn logout(
+    thread_pool: web::Data<ThreadPool>,
+    refresh_token: web::Json<RefreshToken>,
+) -> Result<HttpResponse, actix_web::Error> {
+    Ok(match web::block(move || {
+        jwt::blacklist_token(
+            refresh_token.0 .0.as_str(),
+            &thread_pool.get().expect("Failed to access thread pool"),
+        )
+    })
+    .await {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(_) => {
+            error!("Failed to blacklist token");
+            HttpResponse::InternalServerError().body("Failed to blacklist token")
+        },
+    })
 }

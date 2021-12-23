@@ -39,3 +39,6 @@ impl InputUser {
         db_utils::validate_strong_password(self)
     }
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RefreshToken(pub String);
