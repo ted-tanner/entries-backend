@@ -77,7 +77,9 @@ pub async fn refresh_tokens(
         )
     })
     .await
-    .map(|user_id| {
+    .map(|claims| {
+        let user_id = claims.uid;
+
         match jwt::blacklist_token(refresh_token.as_str(), db_connection) {
             Ok(_) => {}
             Err(e) => error!("Failed to blacklist token: {}", e),
@@ -145,8 +147,6 @@ mod tests {
     use diesel::prelude::*;
     use diesel::r2d2::{self, ConnectionManager};
     use rand::prelude::*;
-    use std::thread;
-    use std::time::Duration;
 
     use crate::db_utils;
     use crate::env;
@@ -208,9 +208,14 @@ mod tests {
         assert!(access_token.len() > 0);
         assert!(refresh_token.len() > 0);
 
-        assert_eq!(jwt::validate_access_token(&access_token).unwrap(), user_id);
         assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection).unwrap(),
+            jwt::validate_access_token(&access_token).unwrap().uid,
+            user_id
+        );
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection)
+                .unwrap()
+                .uid,
             user_id
         );
     }
@@ -268,9 +273,14 @@ mod tests {
         assert!(refresh_token.len() > 0);
 
         assert!(jwt::is_on_blacklist(&refresh_token_payload.0, &db_connection).unwrap());
-        assert_eq!(jwt::validate_access_token(&access_token).unwrap(), user_id);
         assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection).unwrap(),
+            jwt::validate_access_token(&access_token).unwrap().uid,
+            user_id
+        );
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection)
+                .unwrap()
+                .uid,
             user_id
         );
     }

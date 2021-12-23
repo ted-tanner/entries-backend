@@ -42,7 +42,7 @@ impl FromRequest for AuthorizedUserId {
         };
 
         let user_id = match jwt::validate_access_token(token) {
-            Ok(id) => id,
+            Ok(claims) => claims.uid,
             _ => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 

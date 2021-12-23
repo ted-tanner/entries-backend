@@ -12,12 +12,12 @@ use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TokenClaims {
-    exp: u64,        // Expiration in time since UNIX epoch
-    uid: uuid::Uuid, // User ID
-    rfs: bool,       // Is refresh token
-    slt: u16,        // Random salt (makes it so two tokens generated in the same
-                     //              second are different--useful for testing)
+pub struct TokenClaims {
+    pub exp: u64,        // Expiration in time since UNIX epoch
+    pub uid: uuid::Uuid, // User ID
+    pub rfs: bool,       // Is refresh token
+    pub slt: u16,        // Random salt (makes it so two tokens generated in the same
+                         //              second are different--useful for testing)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -155,14 +155,14 @@ fn generate_token(user_id: uuid::Uuid, is_refresh: bool) -> Result<String> {
     }
 }
 
-pub fn validate_access_token(token: &str) -> Result<uuid::Uuid> {
+pub fn validate_access_token(token: &str) -> Result<TokenClaims> {
     validate_token(token, false)
 }
 
 pub fn validate_refresh_token(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<uuid::Uuid> {
+) -> Result<TokenClaims> {
     if is_on_blacklist(token, &db_connection)? {
         return Err(Error::from(ErrorKind::TokenBlacklisted));
     }
@@ -170,7 +170,7 @@ pub fn validate_refresh_token(
     validate_token(token, true)
 }
 
-fn validate_token(token: &str, is_refresh: bool) -> Result<uuid::Uuid> {
+fn validate_token(token: &str, is_refresh: bool) -> Result<TokenClaims> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
         &token,
         &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
@@ -203,7 +203,7 @@ fn validate_token(token: &str, is_refresh: bool) -> Result<uuid::Uuid> {
     if decoded_token.claims.rfs != is_refresh {
         Err(Error::from(ErrorKind::WrongTokenType))
     } else {
-        Ok(decoded_token.claims.uid)
+        Ok(decoded_token.claims)
     }
 }
 
@@ -422,7 +422,7 @@ mod test {
         let access_token = generate_access_token(user_id).unwrap();
         let refresh_token = generate_refresh_token(user_id).unwrap();
 
-        assert_eq!(validate_access_token(&access_token.0).unwrap(), (user_id));
+        assert_eq!(validate_access_token(&access_token.0).unwrap().uid, user_id);
         assert!(match validate_access_token(&refresh_token.0) {
             Ok(_) => false,
             Err(_) => true,
@@ -440,8 +440,10 @@ mod test {
         let refresh_token = generate_refresh_token(user_id).unwrap();
 
         assert_eq!(
-            validate_refresh_token(&refresh_token.0, &db_connection).unwrap(),
-            (user_id)
+            validate_refresh_token(&refresh_token.0, &db_connection)
+                .unwrap()
+                .uid,
+            user_id
         );
         assert!(
             match validate_refresh_token(&access_token.0, &db_connection) {
@@ -458,9 +460,8 @@ mod test {
         let access_token = generate_access_token(user_id).unwrap();
         let refresh_token = generate_refresh_token(user_id).unwrap();
 
-        assert_eq!(validate_token(&access_token.0, false).unwrap(), (user_id));
-
-        assert_eq!(validate_token(&refresh_token.0, true).unwrap(), (user_id));
+        assert_eq!(validate_token(&access_token.0, false).unwrap().uid, user_id);
+        assert_eq!(validate_token(&refresh_token.0, true).unwrap().uid, user_id);
 
         assert!(match validate_token(&access_token.0, true) {
             Ok(_) => false,
