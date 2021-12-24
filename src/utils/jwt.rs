@@ -11,9 +11,7 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
-// TODO: Write test for read_claims
-
-// TODO: Pass structs instead of string slices to validation methods to take full 
+// TODO: Pass structs instead of string slices to validation methods to take full
 // advantage of static typing and OOP
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -484,6 +482,30 @@ mod test {
             Ok(_) => false,
             Err(_) => true,
         });
+    }
+
+    #[test]
+    fn test_read_claims() {
+        let user_id = uuid::Uuid::new_v4();
+
+        let access_token = generate_access_token(user_id).unwrap();
+        let refresh_token = generate_refresh_token(user_id).unwrap();
+
+        let access_token_claims = read_claims(&access_token.to_string()).unwrap();
+        let refresh_token_claims = read_claims(&refresh_token.to_string()).unwrap();
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        assert_eq!(access_token_claims.uid, user_id);
+        assert_eq!(access_token_claims.rfs, false);
+        assert!(access_token_claims.exp > current_time);
+
+        assert_eq!(refresh_token_claims.uid, user_id);
+        assert_eq!(refresh_token_claims.rfs, true);
+        assert!(refresh_token_claims.exp > current_time);
     }
 
     #[test]

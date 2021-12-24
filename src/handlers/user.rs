@@ -188,7 +188,6 @@ mod test {
         assert_eq!(&new_user.currency, &created_user.currency);
     }
 
-    // TODO: Create user with create user endpoint for this integration test
     #[actix_rt::test]
     async fn test_get() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
