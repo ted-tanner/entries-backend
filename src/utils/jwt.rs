@@ -11,9 +11,6 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
-// TODO: Pass structs instead of string slices to validation methods to take full
-// advantage of static typing and OOP
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,        // Expiration in time since UNIX epoch
