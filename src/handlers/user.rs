@@ -130,7 +130,6 @@ mod test {
     use diesel::r2d2::{self, ConnectionManager};
     use rand::prelude::*;
 
-    use crate::db_utils;
     use crate::env;
     use crate::handlers::request_io::InputUser;
     use crate::handlers::request_io::OutputUserPrivate;
@@ -187,7 +186,6 @@ mod test {
         assert_eq!(&new_user.last_name, &created_user.last_name);
         assert_eq!(&new_user.date_of_birth, &created_user.date_of_birth);
         assert_eq!(&new_user.currency, &created_user.currency);
-        
     }
 
     // TODO: Create user with create user endpoint for this integration test
@@ -199,7 +197,8 @@ mod test {
         let mut app = test::init_service(
             App::new()
                 .data(thread_pool.clone())
-                .route("/api/user/get", web::get().to(get)),
+                .route("/api/user/get", web::get().to(get))
+                .route("/api/user/create", web::post().to(create)),
         )
         .await;
 
@@ -217,21 +216,26 @@ mod test {
             currency: String::from("USD"),
         };
 
-        let new_user_json = web::Json(new_user.clone());
+        let create_user_res = test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
 
-        let db_connection = thread_pool.get().unwrap();
-        let user_id = db_utils::user::create_user(&db_connection, &new_user_json)
-            .unwrap()
-            .id;
-
-        let user_token = jwt::generate_access_token(user_id)
-            .unwrap()
-            .to_string();
+        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+        let access_token = user_tokens.access_token.to_string();
 
         let req = test::TestRequest::get()
             .uri("/api/user/get")
             .header("content-type", "application/json")
-            .header("authorization", format!("bearer {}", &user_token).as_str())
+            .header(
+                "authorization",
+                format!("bearer {}", &access_token).as_str(),
+            )
             .to_request();
 
         let res = test::call_service(&mut app, req).await;
