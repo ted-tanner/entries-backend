@@ -303,4 +303,60 @@ mod tests {
             user_id
         );
     }
+
+    #[actix_rt::test]
+    async fn test_logout() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/logout", web::post().to(logout)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let db_connection = thread_pool.get().unwrap();
+
+        let create_user_res = test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+
+        let logout_payload =
+            RefreshToken(user_tokens.refresh_token.to_string());
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/logout")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&logout_payload).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        assert!(jwt::is_on_blacklist(&logout_payload.0, &db_connection).unwrap());
+    }
 }
