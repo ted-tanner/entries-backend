@@ -207,6 +207,7 @@ fn validate_token(token: &str, is_refresh: bool) -> Result<TokenClaims> {
     }
 }
 
+#[allow(dead_code)]
 pub fn read_claims(token: &str) -> Result<TokenClaims> {
     match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
         Ok(c) => Ok(c.claims),

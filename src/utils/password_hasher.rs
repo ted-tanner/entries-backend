@@ -5,7 +5,7 @@ use ring::rand::SecureRandom;
 use crate::env;
 
 pub fn hash_argon2id(password: &str) -> String {
-    let mut hasher: argonautica::Hasher = argonautica::Hasher::default();
+    let mut hasher = argonautica::Hasher::default();
     hasher
         .configure_variant(Variant::Argon2id)
         .configure_hash_len(*env::hashing::HASH_LENGTH)

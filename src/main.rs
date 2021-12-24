@@ -25,7 +25,7 @@ diesel_migrations::embed_migrations!();
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mut ip = String::from("127.0.0.1");
-    let mut port: u16 = 9000;
+    let mut port = 9000u16;
     let mut run_migrations = false;
 
     let mut args = std::env::args();

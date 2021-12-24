@@ -225,7 +225,7 @@ mod test {
         )
         .await;
 
-        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
         let access_token = user_tokens.access_token.to_string();
 
         let req = test::TestRequest::get()
@@ -241,7 +241,7 @@ mod test {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
-        let user_from_res: OutputUserPrivate = serde_json::from_str(res_body.as_str()).unwrap();
+        let user_from_res = serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap();
 
         assert_eq!(&new_user.email, &user_from_res.email);
         assert_eq!(&new_user.first_name, &user_from_res.first_name);

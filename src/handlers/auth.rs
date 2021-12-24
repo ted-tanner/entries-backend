@@ -14,7 +14,7 @@ pub async fn sign_in(
     thread_pool: web::Data<ThreadPool>,
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    const INVALID_CREDENTIALS_MSG: &str = "Incorrect email or password";
+    const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
 
     if !credentials.validate_email_address() {
         return Ok(HttpResponse::BadRequest().body("Invalid email address"));
@@ -207,7 +207,7 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let token_pair: jwt::TokenPair = actix_web::test::read_body_json(res).await;
+        let token_pair = actix_web::test::read_body_json::<jwt::TokenPair, _>(res).await;
         
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
@@ -268,7 +268,7 @@ mod tests {
         )
         .await;
 
-        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
         let user_id = jwt::read_claims(&user_tokens.access_token.to_string()).unwrap().uid;
 
         let refresh_token_payload =
@@ -283,7 +283,7 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let token_pair: jwt::TokenPair = actix_web::test::read_body_json(res).await;
+        let token_pair = actix_web::test::read_body_json::<jwt::TokenPair, _>(res).await;
 
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
@@ -343,7 +343,7 @@ mod tests {
         )
         .await;
 
-        let user_tokens: jwt::TokenPair = actix_web::test::read_body_json(create_user_res).await;
+        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
 
         let logout_payload =
             RefreshToken(user_tokens.refresh_token.to_string());

@@ -15,7 +15,7 @@ impl FromRequest for AuthorizedUserId {
         req: &actix_web::HttpRequest,
         _payload: &mut actix_web::dev::Payload,
     ) -> Self::Future {
-        const INVALID_TOKEN_MSG: &str = "Token is invalid";
+        const INVALID_TOKEN_MSG: &'static str = "Token is invalid";
 
         let auth_header = match req.headers().get("Authorization") {
             Some(header) => header,
