@@ -60,13 +60,12 @@ pub async fn create(
     thread_pool: web::Data<ThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    if !user_data.validate_email_address() {
+    if !&user_data.0.validate_email_address() {
         return Ok(HttpResponse::BadRequest().body("Invalid email address"));
     }
 
-    match user_data.validate_strong_password() {
-        db_utils::PasswordValidity::VALID => {}
-        db_utils::PasswordValidity::INVALID(msg) => return Ok(HttpResponse::BadRequest().body(msg)),
+    if let db_utils::PasswordValidity::INVALID(msg) = user_data.0.validate_strong_password() {
+        return Ok(HttpResponse::BadRequest().body(msg));
     }
 
     let db_connection = thread_pool.get().expect("Failed to access thread pool");
@@ -225,7 +224,8 @@ mod test {
         )
         .await;
 
-        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
+        let user_tokens =
+            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
         let access_token = user_tokens.access_token.to_string();
 
         let req = test::TestRequest::get()
