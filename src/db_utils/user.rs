@@ -53,12 +53,28 @@ pub fn create_user(
         .get_result::<User>(db_connection)
 }
 
+pub fn change_password(
+    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    user_id: &Uuid,
+    new_password: &str,
+) -> Result<(), diesel::result::Error> {
+    let hashed_password = password_hasher::hash_argon2id(new_password);
+
+    match dsl::update(users.filter(user_fields::id.eq(user_id)))
+        .set(user_fields::password_hash.eq(hashed_password))
+        .execute(db_connection)
+    {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     use chrono::NaiveDate;
-    use diesel::{QueryDsl, RunQueryDsl};
+    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::prelude::*;
 
     use crate::env;
@@ -66,6 +82,7 @@ mod test {
     use crate::models::user::User;
     use crate::schema::users as user_fields;
     use crate::schema::users::dsl::users;
+    use crate::utils::password_hasher;
 
     #[test]
     fn test_create_user() {
@@ -147,9 +164,8 @@ mod test {
         const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
-        let user_email = format!("test_user{}@test.com", &user_number);
         let new_user = InputUser {
-            email: user_email.clone(),
+            email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
@@ -162,9 +178,8 @@ mod test {
         };
 
         let new_user_json = web::Json(new_user.clone());
-        create_user(&db_connection, &new_user_json).unwrap();
+        let user_id = create_user(&db_connection, &new_user_json).unwrap().id;
 
-        let user_id = get_user_by_email(&db_connection, &user_email).unwrap().id;
         let created_user = get_user_by_id(&db_connection, &user_id).unwrap();
 
         assert_eq!(&new_user.email, &created_user.email);
@@ -173,5 +188,56 @@ mod test {
         assert_eq!(&new_user.last_name, &created_user.last_name);
         assert_eq!(&new_user.date_of_birth, &created_user.date_of_birth);
         assert_eq!(&new_user.currency, &created_user.currency);
+    }
+
+    #[test]
+    fn test_change_password() {
+        let thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = thread_pool.get().unwrap();
+
+        const ORIGINAL_PASSWORD: &'static str = "Eq&6T@Vyz54O%DoX$";
+        const UPDATED_PASSWORD: &'static str = "P*%OaTMaMl^Uzft^$82Qn";
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: ORIGINAL_PASSWORD.to_string(),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user.clone());
+        let user_id = create_user(&db_connection, &new_user_json).unwrap().id;
+
+        let original_password_saved_hash = users
+            .find(&user_id)
+            .select(user_fields::password_hash)
+            .get_result::<String>(&db_connection)
+            .unwrap();
+
+        assert!(password_hasher::verify_hash(
+            ORIGINAL_PASSWORD,
+            &original_password_saved_hash
+        ));
+
+        change_password(&db_connection, &user_id, UPDATED_PASSWORD).unwrap();
+
+        let updated_password_saved_hash = users
+            .find(&user_id)
+            .select(user_fields::password_hash)
+            .get_result::<String>(&db_connection)
+            .unwrap();
+
+        assert_ne!(original_password_saved_hash, updated_password_saved_hash);
+        assert!(password_hasher::verify_hash(
+            UPDATED_PASSWORD,
+            &updated_password_saved_hash
+        ));
     }
 }

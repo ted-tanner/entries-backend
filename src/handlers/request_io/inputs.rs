@@ -42,3 +42,9 @@ impl InputUser {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RefreshToken(pub String);
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OldPassword(pub String);
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NewPassword(pub String);
