@@ -1,5 +1,6 @@
 # TODO
 
+* All password hashing and validation (e.g. email validation) work should be done on a separate thread using `actix::web::block()`
 * Verify SQL injection is not possible with any endpoint
 * `CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;`
 * `CREATE DATABASE budgetapp_test OWNER budgetappdbuser ENCODING UTF8;`
