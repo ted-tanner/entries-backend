@@ -5,6 +5,7 @@ use log::error;
 
 use crate::db_utils;
 use crate::definitions::ThreadPool;
+use crate::handlers::error::ServerError;
 use crate::handlers::request_io::CredentialPair;
 use crate::handlers::request_io::RefreshToken;
 use crate::utils::jwt;
@@ -13,16 +14,16 @@ use crate::utils::password_hasher;
 pub async fn sign_in(
     thread_pool: web::Data<ThreadPool>,
     credentials: web::Json<CredentialPair>,
-) -> Result<HttpResponse, actix_web::Error> {
+) -> Result<HttpResponse, ServerError> {
     const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
 
     if !credentials.validate_email_address() {
-        return Ok(HttpResponse::BadRequest().body("Invalid email address"));
+        return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 
     let password = credentials.password.clone();
 
-    Ok(web::block(move || {
+    web::block(move || {
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
         db_utils::user::get_user_by_email(&db_connection, &credentials.email)
     })
@@ -34,16 +35,16 @@ pub async fn sign_in(
 
                 let token_pair = match token_pair {
                     Ok(token_pair) => token_pair,
-                    Err(e) => {
-                        error!("{}", e);
-                        return HttpResponse::InternalServerError()
-                            .body("Failed to generate tokens for new user. User has been created");
+                    Err(_) => {
+                        return Err(ServerError::InternalServerError(Some(
+                            "Failed to generate tokens for new user. User has been created.",
+                        )));
                     }
                 };
 
-                HttpResponse::Ok().json(token_pair)
+                Ok(HttpResponse::Ok().json(token_pair))
             }
-            false => return HttpResponse::Unauthorized().body(INVALID_CREDENTIALS_MSG),
+            false => return Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))),
         },
     )
     .map_err(|_| {
@@ -59,18 +60,18 @@ pub async fn sign_in(
         )
         .unwrap_or(jwt::TokenPair::empty());
 
-        HttpResponse::Unauthorized().body(INVALID_CREDENTIALS_MSG)
-    })?)
+        Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG)))
+    })?
 }
 
 pub async fn refresh_tokens(
     thread_pool: web::Data<ThreadPool>,
     token: web::Json<RefreshToken>,
-) -> Result<HttpResponse, actix_web::Error> {
+) -> Result<HttpResponse, ServerError> {
     let refresh_token = &token.0 .0.clone();
     let db_connection = &thread_pool.get().expect("Failed to access thread pool");
 
-    Ok(web::block(move || {
+    web::block(move || {
         jwt::validate_refresh_token(
             token.0 .0.as_str(),
             &thread_pool.get().expect("Failed to access thread pool"),
@@ -82,7 +83,13 @@ pub async fn refresh_tokens(
 
         match jwt::blacklist_token(refresh_token.as_str(), db_connection) {
             Ok(_) => {}
-            Err(e) => error!("Failed to blacklist token: {}", e),
+            Err(e) => {
+                error!("{}", e);
+
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to blacklist token",
+                )));
+            }
         }
 
         let token_pair = jwt::generate_token_pair(user_id);
@@ -90,52 +97,57 @@ pub async fn refresh_tokens(
         let token_pair = match token_pair {
             Ok(token_pair) => token_pair,
             Err(e) => {
-                error!("Failed to generate tokens for new user: {}", e);
-                return HttpResponse::InternalServerError()
-                    .body("Failed to generate tokens for new user");
+                error!("{}", e);
+
+                return Err(ServerError::InternalServerError(Some(
+                    "Failed to generate tokens for new user",
+                )));
             }
         };
 
-        HttpResponse::Ok().json(token_pair)
+        Ok(HttpResponse::Ok().json(token_pair))
     })
-    .map_err(|e| match e {
-        actix_web::error::BlockingError::Error(err) => match err.kind() {
-            jwt::ErrorKind::TokenInvalid => HttpResponse::Unauthorized().body("Token is invalid"),
-            jwt::ErrorKind::TokenBlacklisted => {
-                HttpResponse::Unauthorized().body("Token has been blacklisted")
+    .map_err(|e| {
+        Err(match e {
+            actix_web::error::BlockingError::Error(err) => match err.kind() {
+                jwt::ErrorKind::TokenInvalid => {
+                    ServerError::UserUnauthorized(Some("Token is invalid"))
+                }
+                jwt::ErrorKind::TokenBlacklisted => {
+                    ServerError::UserUnauthorized(Some("Token has been blacklisted"))
+                }
+                jwt::ErrorKind::TokenExpired => {
+                    ServerError::UserUnauthorized(Some("Token has expired"))
+                }
+                jwt::ErrorKind::WrongTokenType => {
+                    ServerError::UserUnauthorized(Some("Incorrect token type"))
+                }
+                _ => ServerError::InternalServerError(Some("Error generating new tokens")),
+            },
+            actix_web::error::BlockingError::Canceled => {
+                ServerError::InternalServerError(Some("Response canceled"))
             }
-            jwt::ErrorKind::TokenExpired => HttpResponse::Unauthorized().body("Token has expired"),
-            jwt::ErrorKind::WrongTokenType => {
-                HttpResponse::Unauthorized().body("Incorrect token type")
-            }
-            _ => HttpResponse::InternalServerError().body("Error generating new tokens"),
-        },
-        actix_web::error::BlockingError::Canceled => {
-            HttpResponse::InternalServerError().body("Response canceled")
-        }
-    })?)
+        })
+    })?
 }
 
 pub async fn logout(
     thread_pool: web::Data<ThreadPool>,
     refresh_token: web::Json<RefreshToken>,
-) -> Result<HttpResponse, actix_web::Error> {
-    Ok(
-        match web::block(move || {
-            jwt::blacklist_token(
-                refresh_token.0 .0.as_str(),
-                &thread_pool.get().expect("Failed to access thread pool"),
-            )
-        })
-        .await
-        {
-            Ok(_) => HttpResponse::Ok().finish(),
-            Err(_) => {
-                error!("Failed to blacklist token");
-                HttpResponse::InternalServerError().body("Failed to blacklist token")
-            }
-        },
-    )
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        jwt::blacklist_token(
+            refresh_token.0 .0.as_str(),
+            &thread_pool.get().expect("Failed to access thread pool"),
+        )
+    })
+    .await
+    {
+        Ok(_) => Ok(HttpResponse::Ok().finish()),
+        Err(_) => Err(ServerError::InternalServerError(Some(
+            "Failed to blacklist token",
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -208,10 +220,10 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let token_pair = actix_web::test::read_body_json::<jwt::TokenPair, _>(res).await;
-        
+
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
-        
+
         let user_id = jwt::read_claims(&access_token).unwrap().uid;
 
         assert!(access_token.len() > 0);
@@ -268,11 +280,13 @@ mod tests {
         )
         .await;
 
-        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&user_tokens.access_token.to_string()).unwrap().uid;
+        let user_tokens =
+            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&user_tokens.access_token.to_string())
+            .unwrap()
+            .uid;
 
-        let refresh_token_payload =
-            RefreshToken(user_tokens.refresh_token.to_string());
+        let refresh_token_payload = RefreshToken(user_tokens.refresh_token.to_string());
 
         let req = test::TestRequest::post()
             .uri("/api/auth/refresh_tokens")
@@ -343,10 +357,10 @@ mod tests {
         )
         .await;
 
-        let user_tokens = actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
+        let user_tokens =
+            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
 
-        let logout_payload =
-            RefreshToken(user_tokens.refresh_token.to_string());
+        let logout_payload = RefreshToken(user_tokens.refresh_token.to_string());
 
         let req = test::TestRequest::post()
             .uri("/api/auth/logout")
