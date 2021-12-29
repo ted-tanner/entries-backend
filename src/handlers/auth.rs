@@ -206,6 +206,20 @@ mod tests {
         .await;
 
         let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            password: new_user.password.clone() + " ",
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+
+        let credentials = CredentialPair {
             email: new_user.email,
             password: new_user.password,
         };
@@ -285,6 +299,17 @@ mod tests {
         let user_id = jwt::read_claims(&user_tokens.access_token.to_string())
             .unwrap()
             .uid;
+
+        let refresh_token_payload = RefreshToken(user_tokens.refresh_token.to_string() + "e");
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/refresh_tokens")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&refresh_token_payload).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
         let refresh_token_payload = RefreshToken(user_tokens.refresh_token.to_string());
 
