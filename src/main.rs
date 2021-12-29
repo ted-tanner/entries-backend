@@ -63,12 +63,7 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    let base_addr = {
-        let mut addr = ip.clone();
-        addr.push(':');
-
-        addr + &port.to_string()
-    };
+    let base_addr = format!("{}:{}", &ip, &port);
 
     env::validate();
 
