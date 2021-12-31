@@ -88,7 +88,7 @@ pub async fn create(
                 error!("{}", e);
 
                 return Err(ServerError::InternalServerError(Some(
-                    "User has been created, but token generation failed. Sign in again.",
+                    "User has been created, but token generation failed. Try signing in.",
                 )));
             }
         };
