@@ -102,15 +102,15 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-pub fn generate_access_token(user_id: uuid::Uuid) -> Result<AccessToken> {
+pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<AccessToken> {
     Ok(AccessToken(generate_token(user_id, false)?))
 }
 
-pub fn generate_refresh_token(user_id: uuid::Uuid) -> Result<RefreshToken> {
+pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<RefreshToken> {
     Ok(RefreshToken(generate_token(user_id, true)?))
 }
 
-pub fn generate_token_pair(user_id: uuid::Uuid) -> Result<TokenPair> {
+pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair> {
     let access_token = generate_access_token(user_id)?;
     let refresh_token = generate_refresh_token(user_id)?;
 
@@ -120,7 +120,7 @@ pub fn generate_token_pair(user_id: uuid::Uuid) -> Result<TokenPair> {
     })
 }
 
-fn generate_token(user_id: uuid::Uuid, is_refresh: bool) -> Result<String> {
+fn generate_token(user_id: &uuid::Uuid, is_refresh: bool) -> Result<String> {
     let lifetime_sec = if is_refresh {
         *env::jwt::REFRESH_LIFETIME_DAYS
     } else {
@@ -137,7 +137,7 @@ fn generate_token(user_id: uuid::Uuid, is_refresh: bool) -> Result<String> {
 
     let claims = TokenClaims {
         exp: expiration,
-        uid: user_id,
+        uid: *user_id,
         rfs: is_refresh,
         slt: salt,
     };
@@ -289,7 +289,7 @@ mod test {
     fn test_generate_access_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let token = generate_access_token(user_id).unwrap();
+        let token = generate_access_token(&user_id).unwrap();
 
         assert!(!token.0.contains(&user_id.to_string()));
 
@@ -315,7 +315,7 @@ mod test {
     fn test_generate_refresh_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let token = generate_refresh_token(user_id).unwrap();
+        let token = generate_refresh_token(&user_id).unwrap();
 
         assert!(!token.0.contains(&user_id.to_string()));
 
@@ -341,7 +341,7 @@ mod test {
     fn test_generate_token_pair() {
         let user_id = uuid::Uuid::new_v4();
 
-        let token = generate_token_pair(user_id).unwrap();
+        let token = generate_token_pair(&user_id).unwrap();
 
         assert!(!token.access_token.0.contains(&user_id.to_string()));
         assert!(!token.refresh_token.0.contains(&user_id.to_string()));
@@ -385,8 +385,8 @@ mod test {
     fn test_generate_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_token(user_id, false).unwrap();
-        let refresh_token = generate_token(user_id, true).unwrap();
+        let access_token = generate_token(&user_id, false).unwrap();
+        let refresh_token = generate_token(&user_id, true).unwrap();
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &access_token,
@@ -427,8 +427,8 @@ mod test {
     fn test_validate_access_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_access_token(user_id).unwrap();
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert_eq!(validate_access_token(&access_token.0).unwrap().uid, user_id);
         assert!(match validate_access_token(&refresh_token.0) {
@@ -444,8 +444,8 @@ mod test {
 
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_access_token(user_id).unwrap();
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert_eq!(
             validate_refresh_token(&refresh_token.0, &db_connection)
@@ -465,8 +465,8 @@ mod test {
     fn test_validate_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_access_token(user_id).unwrap();
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert_eq!(validate_token(&access_token.0, false).unwrap().uid, user_id);
         assert_eq!(validate_token(&refresh_token.0, true).unwrap().uid, user_id);
@@ -486,8 +486,8 @@ mod test {
     fn test_read_claims() {
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_access_token(user_id).unwrap();
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         let access_token_claims = read_claims(&access_token.to_string()).unwrap();
         let refresh_token_claims = read_claims(&refresh_token.to_string()).unwrap();
@@ -535,7 +535,7 @@ mod test {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         let blacklist_token = blacklist_token(&refresh_token.0, &db_connection).unwrap();
 
@@ -587,7 +587,7 @@ mod test {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert!(!is_on_blacklist(&refresh_token.0, &db_connection).unwrap());
 

@@ -31,7 +31,7 @@ pub async fn sign_in(
     .map(
         |user| match password_hasher::verify_hash(&password, &user.password_hash) {
             true => {
-                let token_pair = jwt::generate_token_pair(user.id);
+                let token_pair = jwt::generate_token_pair(&user.id);
 
                 let token_pair = match token_pair {
                     Ok(token_pair) => token_pair,
@@ -55,7 +55,7 @@ pub async fn sign_in(
 
         password_hasher::hash_argon2id(password);
         jwt::generate_token_pair(
-            uuid::Uuid::from_str("00000000-0000-0000-0000-000000000000")
+            &uuid::Uuid::from_str("00000000-0000-0000-0000-000000000000")
                 .expect("Failed to parse an all-zero UUID"),
         )
         .unwrap_or(jwt::TokenPair::empty());
@@ -92,7 +92,7 @@ pub async fn refresh_tokens(
             }
         }
 
-        let token_pair = jwt::generate_token_pair(user_id);
+        let token_pair = jwt::generate_token_pair(&user_id);
 
         let token_pair = match token_pair {
             Ok(token_pair) => token_pair,
