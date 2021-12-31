@@ -4,8 +4,6 @@ pub mod user;
 
 pub mod request_io;
 
-// TODO: Move all expensive operations inside actix_web::web::block closures
-
 pub mod error {
     use actix_web::dev::HttpResponseBuilder;
     use actix_web::http::{header, StatusCode};

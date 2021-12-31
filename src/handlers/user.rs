@@ -11,11 +11,11 @@ use crate::utils::jwt;
 
 pub async fn get(
     thread_pool: web::Data<ThreadPool>,
-    auth_user: middleware::auth::AuthorizedUserId,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
-        db_utils::user::get_user_by_id(&db_connection, &auth_user.0)
+        db_utils::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
     })
     .await
     .map(|user| {

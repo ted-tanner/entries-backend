@@ -4,9 +4,9 @@ use futures::future;
 use crate::utils::jwt;
 
 #[derive(Debug)]
-pub struct AuthorizedUserId(pub uuid::Uuid);
+pub struct AuthorizedUserClaims(pub jwt::TokenClaims);
 
-impl FromRequest for AuthorizedUserId {
+impl FromRequest for AuthorizedUserClaims {
     type Error = actix_web::Error;
     type Future = future::Ready<Result<Self, Self::Error>>;
     type Config = ();
@@ -42,11 +42,11 @@ impl FromRequest for AuthorizedUserId {
             None => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        let user_id = match jwt::validate_access_token(token) {
-            Ok(claims) => claims.uid,
-            _ => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
+        let claims = match jwt::validate_access_token(token) {
+            Ok(c) => c,
+            Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        future::ok(AuthorizedUserId(user_id))
+        future::ok(AuthorizedUserClaims(claims))
     }
 }
