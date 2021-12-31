@@ -13,52 +13,53 @@ pub async fn get(
     thread_pool: web::Data<ThreadPool>,
     auth_user: middleware::auth::AuthorizedUserId,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = thread_pool.get().expect("Failed to access thread pool");
+    web::block(move || {
+        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        db_utils::user::get_user_by_id(&db_connection, &auth_user.0)
+    })
+    .await
+    .map(|user| {
+        let output_user = OutputUserPrivate {
+            id: user.id,
+            is_active: user.is_active,
+            is_premium: user.is_premium,
+            premium_expiration: user.premium_expiration,
+            email: user.email,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            date_of_birth: user.date_of_birth,
+            currency: user.currency,
+            modified_timestamp: user.modified_timestamp,
+            created_timestamp: user.created_timestamp,
+        };
 
-    web::block(move || db_utils::user::get_user_by_id(&db_connection, &auth_user.0))
-        .await
-        .map(|user| {
-            let output_user = OutputUserPrivate {
-                id: user.id,
-                is_active: user.is_active,
-                is_premium: user.is_premium,
-                premium_expiration: user.premium_expiration,
-                email: user.email,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                date_of_birth: user.date_of_birth,
-                currency: user.currency,
-                modified_timestamp: user.modified_timestamp,
-                created_timestamp: user.created_timestamp,
-            };
-
-            Ok(HttpResponse::Ok().json(output_user))
-        })
-        .map_err(|ref e| match e {
-            actix_web::error::BlockingError::Error(err) => match err {
-                diesel::result::Error::InvalidCString(_)
-                | diesel::result::Error::DeserializationError(_) => {
-                    Err(ServerError::InvalidFormat(None))
-                }
-                diesel::result::Error::NotFound => {
-                    Err(ServerError::AccessForbidden(Some("No user with ID")))
-                }
-                _ => {
-                    error!("{}", e);
-
-                    Err(ServerError::DatabaseTransactionError(Some(
-                        "Failed to get user data",
-                    )))
-                }
-            },
-            actix_web::error::BlockingError::Canceled => {
+        Ok(HttpResponse::Ok().json(output_user))
+    })
+    .map_err(|ref e| match e {
+        actix_web::error::BlockingError::Error(err) => match err {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                Err(ServerError::InvalidFormat(None))
+            }
+            diesel::result::Error::NotFound => {
+                Err(ServerError::AccessForbidden(Some("No user with ID")))
+            }
+            _ => {
                 error!("{}", e);
 
                 Err(ServerError::DatabaseTransactionError(Some(
-                    "Database transaction canceled",
+                    "Failed to get user data",
                 )))
             }
-        })?
+        },
+        actix_web::error::BlockingError::Canceled => {
+            error!("{}", e);
+
+            Err(ServerError::DatabaseTransactionError(Some(
+                "Database transaction canceled",
+            )))
+        }
+    })?
 }
 
 pub async fn create(
@@ -73,52 +74,53 @@ pub async fn create(
         return Err(ServerError::InputRejected(Some(msg)));
     }
 
-    let db_connection = thread_pool.get().expect("Failed to access thread pool");
+    web::block(move || {
+        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        db_utils::user::create_user(&db_connection, &user_data)
+    })
+    .await
+    .map(|user| {
+        let token_pair = jwt::generate_token_pair(user.id);
 
-    web::block(move || db_utils::user::create_user(&db_connection, &user_data))
-        .await
-        .map(|user| {
-            let token_pair = jwt::generate_token_pair(user.id);
+        let token_pair = match token_pair {
+            Ok(token_pair) => token_pair,
+            Err(e) => {
+                error!("{}", e);
 
-            let token_pair = match token_pair {
-                Ok(token_pair) => token_pair,
-                Err(e) => {
-                    error!("{}", e);
+                return Err(ServerError::InternalServerError(Some("Failed to generate tokens for new user. User has been created. Try signing in.")));
+            }
+        };
 
-                    return Err(ServerError::InternalServerError(Some("Failed to generate tokens for new user. User has been created. Try signing in.")));
+        Ok(HttpResponse::Created().json(token_pair))
+    })
+    .map_err(|ref e| match e {
+        actix_web::error::BlockingError::Error(err) => match err {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                Err(ServerError::InvalidFormat(None))
+            }
+            diesel::result::Error::NotFound => {
+                Err(ServerError::AccessForbidden(Some("No user with ID")))
+            }
+            diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
+                diesel::result::DatabaseErrorKind::UniqueViolation => {
+                    Err(ServerError::AlreadyExists(Some("A user with the given email already exists")))
                 }
-            };
-
-            Ok(HttpResponse::Created().json(token_pair))
-        })
-        .map_err(|ref e| match e {
-            actix_web::error::BlockingError::Error(err) => match err {
-                diesel::result::Error::InvalidCString(_)
-                | diesel::result::Error::DeserializationError(_) => {
-                    Err(ServerError::InvalidFormat(None))
-                }
-                diesel::result::Error::NotFound => {
-                    Err(ServerError::AccessForbidden(Some("No user with ID")))
-                }
-                diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
-                    diesel::result::DatabaseErrorKind::UniqueViolation => {
-                        Err(ServerError::AlreadyExists(Some("A user with the given email already exists")))
-                    }
-                    _ => {
-                        error!("{}", e);
-                        Err(ServerError::InternalServerError(Some("Failed to create user")))
-                    }
-                },
                 _ => {
                     error!("{}", e);
                     Err(ServerError::InternalServerError(Some("Failed to create user")))
                 }
             },
-            actix_web::error::BlockingError::Canceled => {
+            _ => {
                 error!("{}", e);
-                Err(ServerError::InternalServerError(Some("Database transaction canceled")))
+                Err(ServerError::InternalServerError(Some("Failed to create user")))
             }
-        })?
+        },
+        actix_web::error::BlockingError::Canceled => {
+            error!("{}", e);
+            Err(ServerError::InternalServerError(Some("Database transaction canceled")))
+        }
+    })?
 }
 
 #[cfg(test)]
