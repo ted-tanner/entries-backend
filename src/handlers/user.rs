@@ -152,6 +152,51 @@ mod test {
         .await;
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+
+        let new_user = InputUser {
+            email: format!("test_user{}test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/create")
+            .header("content-type", "application/json")
+            .set_json(&new_user)
+            .to_request();
+
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("Password1234"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/create")
+            .header("content-type", "application/json")
+            .set_json(&new_user)
+            .to_request();
+
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
