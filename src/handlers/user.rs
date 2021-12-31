@@ -87,7 +87,9 @@ pub async fn create(
             Err(e) => {
                 error!("{}", e);
 
-                return Err(ServerError::InternalServerError(Some("Failed to generate tokens for new user. User has been created. Try signing in.")));
+                return Err(ServerError::InternalServerError(Some(
+                    "User has been created, but token generation failed. Sign in again.",
+                )));
             }
         };
 
@@ -103,22 +105,28 @@ pub async fn create(
                 Err(ServerError::AccessForbidden(Some("No user with ID")))
             }
             diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
-                diesel::result::DatabaseErrorKind::UniqueViolation => {
-                    Err(ServerError::AlreadyExists(Some("A user with the given email already exists")))
-                }
+                diesel::result::DatabaseErrorKind::UniqueViolation => Err(
+                    ServerError::AlreadyExists(Some("A user with the given email already exists")),
+                ),
                 _ => {
                     error!("{}", e);
-                    Err(ServerError::InternalServerError(Some("Failed to create user")))
+                    Err(ServerError::InternalServerError(Some(
+                        "Failed to create user",
+                    )))
                 }
             },
             _ => {
                 error!("{}", e);
-                Err(ServerError::InternalServerError(Some("Failed to create user")))
+                Err(ServerError::InternalServerError(Some(
+                    "Failed to create user",
+                )))
             }
         },
         actix_web::error::BlockingError::Canceled => {
             error!("{}", e);
-            Err(ServerError::InternalServerError(Some("Database transaction canceled")))
+            Err(ServerError::InternalServerError(Some(
+                "Database transaction canceled",
+            )))
         }
     })?
 }
