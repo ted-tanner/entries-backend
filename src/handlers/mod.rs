@@ -55,9 +55,9 @@ pub mod error {
 
         fn status_code(&self) -> StatusCode {
             match *self {
-                ServerError::InvalidFormat(_) |
-                ServerError::InputRejected(_) |
-                ServerError::AlreadyExists(_) => StatusCode::BAD_REQUEST,
+                ServerError::InvalidFormat(_)
+                | ServerError::InputRejected(_)
+                | ServerError::AlreadyExists(_) => StatusCode::BAD_REQUEST,
                 ServerError::UserUnauthorized(_) => StatusCode::UNAUTHORIZED,
                 ServerError::AccessForbidden(_) => StatusCode::FORBIDDEN,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,

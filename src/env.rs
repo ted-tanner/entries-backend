@@ -105,7 +105,11 @@ pub mod testing {
     use diesel::r2d2::{self, ConnectionManager};
 
     lazy_static! {
-        pub static ref THREAD_POOL: ThreadPool = r2d2::Pool::builder().build(ConnectionManager::<PgConnection>::new(crate::env::db::DATABASE_URL.as_str())).unwrap();
+        pub static ref THREAD_POOL: ThreadPool = r2d2::Pool::builder()
+            .build(ConnectionManager::<PgConnection>::new(
+                crate::env::db::DATABASE_URL.as_str()
+            ))
+            .unwrap();
     }
 }
 

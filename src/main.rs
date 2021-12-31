@@ -10,9 +10,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use env_logger::Env;
 
+mod db_utils;
 mod definitions;
 mod env;
-mod db_utils;
 mod handlers;
 mod middleware;
 mod models;
@@ -29,7 +29,7 @@ async fn main() -> std::io::Result<()> {
     let mut run_migrations = false;
 
     let mut args = std::env::args();
-    
+
     // Eat the first argument, which is the relative path to the executable
     args.next();
 
@@ -56,7 +56,7 @@ async fn main() -> std::io::Result<()> {
             }
             "--run-migrations" => {
                 run_migrations = true;
-            
+
                 continue;
             }
             a => panic!("Invalid argument: {}", &a),
