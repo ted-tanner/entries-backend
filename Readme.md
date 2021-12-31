@@ -1,9 +1,9 @@
 # TODO
 
-* All password hashing and validation (e.g. email validation) work should be done on a separate thread using `actix::web::block()`
 * Verify SQL injection is not possible with any endpoint
-* `CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;`
-* `CREATE DATABASE budgetapp_test OWNER budgetappdbuser ENCODING UTF8;`
+* Documentation:
+  * `CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;`
+  * `CREATE DATABASE budgetapp_test OWNER budgetappdbuser ENCODING UTF8;`
 * Make more checks before creating data (e.g. in handler, check if user in classroom before calling db util to create it)
 * Should students have a school ID associated with them?
 * Create a method of encrypting data in the database

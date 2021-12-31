@@ -22,10 +22,11 @@ impl FromRequest for AuthorizedUserId {
             None => return future::err(error::ErrorUnauthorized("No token provided")),
         };
 
-        let mut header_parts_iter = auth_header
-            .to_str()
-            .expect("Failed to convert Authorization header to &str from String")
-            .split_ascii_whitespace();
+        let mut header_parts_iter = match auth_header.to_str() {
+            Ok(h) => h,
+            Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
+        }
+        .split_ascii_whitespace();
 
         match header_parts_iter.next() {
             Some(str) => {
