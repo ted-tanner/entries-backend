@@ -17,7 +17,7 @@ pub async fn sign_in(
 ) -> Result<HttpResponse, ServerError> {
     const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
 
-    if !credentials.validate_email_address() {
+    if !credentials.validate_email_address().is_valid() {
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 

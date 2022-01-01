@@ -4,10 +4,10 @@ use log::error;
 use crate::db_utils;
 use crate::definitions::ThreadPool;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::InputUser;
-use crate::handlers::request_io::OutputUserPrivate;
+use crate::handlers::request_io::{InputUser, NewPassword, OldPassword, OutputUserPrivate};
 use crate::middleware;
 use crate::utils::jwt;
+use crate::utils::validators::Validity;
 
 pub async fn get(
     thread_pool: web::Data<ThreadPool>,
@@ -66,11 +66,11 @@ pub async fn create(
     thread_pool: web::Data<ThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
-    if !&user_data.0.validate_email_address() {
+    if !&user_data.0.validate_email_address().is_valid() {
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 
-    if let db_utils::PasswordValidity::INVALID(msg) = user_data.0.validate_strong_password() {
+    if let Validity::INVALID(msg) = user_data.0.validate_strong_password() {
         return Err(ServerError::InputRejected(Some(msg)));
     }
 

@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
-use crate::db_utils;
+use crate::utils::validators;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CredentialPair {
@@ -10,8 +10,8 @@ pub struct CredentialPair {
 }
 
 impl CredentialPair {
-    pub fn validate_email_address(&self) -> bool {
-        return db_utils::validate_email_address(&self.email);
+    pub fn validate_email_address(&self) -> validators::Validity {
+        return validators::validate_email_address(&self.email);
     }
 }
 
@@ -31,12 +31,18 @@ pub struct InputUser {
 }
 
 impl InputUser {
-    pub fn validate_email_address(&self) -> bool {
-        db_utils::validate_email_address(&self.email)
+    pub fn validate_email_address(&self) -> validators::Validity {
+        validators::validate_email_address(&self.email)
     }
 
-    pub fn validate_strong_password(&self) -> db_utils::PasswordValidity {
-        db_utils::validate_strong_password(self)
+    pub fn validate_strong_password(&self) -> validators::Validity {
+        validators::validate_strong_password(
+            &self.password,
+            &self.email,
+            &self.first_name,
+            &self.last_name,
+            &self.date_of_birth,
+        )
     }
 }
 
