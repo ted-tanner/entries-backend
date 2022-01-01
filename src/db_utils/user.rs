@@ -1,14 +1,14 @@
 use actix_web::web;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
+pub(crate) use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
-use crate::handlers::request_io::InputUser;
+pub(crate) use crate::handlers::request_io::InputUser;
 use crate::models::user::NewUser;
-use crate::models::user::User;
-use crate::schema::users as user_fields;
-use crate::schema::users::dsl::users;
-use crate::utils::password_hasher;
+pub(crate) use crate::models::user::User;
+pub(crate) use crate::schema::users as user_fields;
+pub(crate) use crate::schema::users::dsl::users;
+pub(crate) use crate::utils::password_hasher;
 
 pub fn get_user_by_id(
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
@@ -74,15 +74,9 @@ mod test {
     use super::*;
 
     use chrono::NaiveDate;
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::InputUser;
-    use crate::models::user::User;
-    use crate::schema::users as user_fields;
-    use crate::schema::users::dsl::users;
-    use crate::utils::password_hasher;
 
     #[test]
     fn test_create_user() {

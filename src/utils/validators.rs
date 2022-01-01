@@ -1,6 +1,6 @@
 use chrono::Datelike;
 
-use crate::env;
+pub(crate) use crate::env;
 use crate::env::password::COMMON_PASSWORDS_TREE;
 
 #[derive(Debug)]
@@ -166,8 +166,6 @@ mod test {
 
     use chrono::NaiveDate;
     use rand::prelude::*;
-
-    use crate::env;
 
     #[test]
     fn test_validate_email_address() {

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{self, BufRead};
+pub(crate) use std::io::{self, BufRead};
 
 use crate::env;
 
@@ -46,7 +46,6 @@ mod test {
     use super::*;
 
     use rand::prelude::*;
-    use std::io::{self, BufRead};
 
     #[test]
     fn test_common_password_tree() {

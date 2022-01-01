@@ -1,15 +1,12 @@
-use std::str::FromStr;
-
 use actix_web::{web, HttpResponse};
 use log::error;
+use std::str::FromStr;
 
 use crate::db_utils;
 use crate::definitions::ThreadPool;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::CredentialPair;
-use crate::handlers::request_io::RefreshToken;
-use crate::utils::jwt;
-use crate::utils::password_hasher;
+use crate::handlers::request_io::{CredentialPair, RefreshToken};
+pub(crate) use crate::utils::{jwt, password_hasher};
 
 pub async fn sign_in(
     thread_pool: web::Data<ThreadPool>,
@@ -161,10 +158,8 @@ mod tests {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::InputUser;
-    use crate::handlers::request_io::RefreshToken;
+    use crate::handlers::request_io::{InputUser, RefreshToken};
     use crate::handlers::user;
-    use crate::utils::jwt;
 
     #[actix_rt::test]
     async fn test_sign_in() {

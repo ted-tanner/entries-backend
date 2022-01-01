@@ -4,9 +4,11 @@ use log::error;
 use crate::db_utils;
 use crate::definitions::ThreadPool;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{CurrentAndNewPasswordPair, InputUser, OutputUserPrivate};
+pub(crate) use crate::handlers::request_io::{
+    CurrentAndNewPasswordPair, InputUser, OutputUserPrivate,
+};
 use crate::middleware;
-use crate::utils::{jwt, password_hasher, validators};
+pub(crate) use crate::utils::{jwt, password_hasher, validators};
 
 pub async fn get(
     thread_pool: web::Data<ThreadPool>,
@@ -189,13 +191,9 @@ mod test {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::InputUser;
-    use crate::handlers::request_io::OutputUserPrivate;
     use crate::models::user::User;
     use crate::schema::users as user_fields;
     use crate::schema::users::dsl::users;
-    use crate::utils::jwt;
-    use crate::utils::password_hasher::verify_hash;
 
     #[actix_rt::test]
     async fn test_create() {
@@ -416,10 +414,18 @@ mod test {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id).unwrap().password_hash;
+        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+            .unwrap()
+            .password_hash;
 
-        assert!(!verify_hash(&new_user.password, &db_password_hash));
-        assert!(verify_hash(&password_pair.new_password, &db_password_hash));
+        assert!(!password_hasher::verify_hash(
+            &new_user.password,
+            &db_password_hash
+        ));
+        assert!(password_hasher::verify_hash(
+            &password_pair.new_password,
+            &db_password_hash
+        ));
     }
 
     #[actix_rt::test]
@@ -484,10 +490,18 @@ mod test {
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id).unwrap().password_hash;
+        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+            .unwrap()
+            .password_hash;
 
-        assert!(verify_hash(&new_user.password, &db_password_hash));
-        assert!(!verify_hash(&password_pair.new_password, &db_password_hash));
+        assert!(password_hasher::verify_hash(
+            &new_user.password,
+            &db_password_hash
+        ));
+        assert!(!password_hasher::verify_hash(
+            &password_pair.new_password,
+            &db_password_hash
+        ));
     }
 
     #[actix_rt::test]
@@ -552,9 +566,17 @@ mod test {
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id).unwrap().password_hash;
+        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+            .unwrap()
+            .password_hash;
 
-        assert!(verify_hash(&new_user.password, &db_password_hash));
-        assert!(!verify_hash(&password_pair.new_password, &db_password_hash));
+        assert!(password_hasher::verify_hash(
+            &new_user.password,
+            &db_password_hash
+        ));
+        assert!(!password_hasher::verify_hash(
+            &password_pair.new_password,
+            &db_password_hash
+        ));
     }
 }

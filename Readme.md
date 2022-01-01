@@ -1,6 +1,5 @@
 # TODO
 
-* `pub(crate) use` for modules that get used in tests
 * `web::block` on password-hashing functions
 * Go through integration tests and split out edgecases into their own tests
 * Verify SQL injection is not possible with any endpoint
