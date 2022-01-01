@@ -50,15 +50,6 @@ pub struct TokenPair {
     pub refresh_token: RefreshToken,
 }
 
-impl TokenPair {
-    pub fn empty() -> TokenPair {
-        TokenPair {
-            access_token: AccessToken(String::new()),
-            refresh_token: RefreshToken(String::new()),
-        }
-    }
-}
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]

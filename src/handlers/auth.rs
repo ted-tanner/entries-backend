@@ -1,6 +1,5 @@
 use actix_web::{web, HttpResponse};
 use log::error;
-use std::str::FromStr;
 
 use crate::db_utils;
 use crate::definitions::ThreadPool;
@@ -44,21 +43,7 @@ pub async fn sign_in(
             false => return Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))),
         },
     )
-    .map_err(|_| {
-        // Hash the provided password and generate a token pair unnecessarily so attackers
-        // can't tell the difference between an incorrect password and a non-existent email
-
-        let password = if password.len() == 0 { " " } else { &password };
-
-        password_hasher::hash_argon2id(password);
-        jwt::generate_token_pair(
-            &uuid::Uuid::from_str("00000000-0000-0000-0000-000000000000")
-                .expect("Failed to parse an all-zero UUID"),
-        )
-        .unwrap_or(jwt::TokenPair::empty());
-
-        Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG)))
-    })?
+    .map_err(|_| Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))))?
 }
 
 pub async fn refresh_tokens(
