@@ -50,7 +50,7 @@ impl InputUser {
 pub struct RefreshToken(pub String);
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct OldPassword(pub String);
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct NewPassword(pub String);
+pub struct CurrentAndNewPasswordPair {
+    pub current_password: String,
+    pub new_password: String,
+}
