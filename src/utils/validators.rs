@@ -168,7 +168,6 @@ mod test {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::InputUser;
 
     #[test]
     fn test_validate_email_address() {
