@@ -19,31 +19,36 @@ pub async fn sign_in(
 
     let password = credentials.password.clone();
 
-    web::block(move || {
+    let user = web::block(move || {
         let db_connection = thread_pool.get().expect("Failed to access thread pool");
         db_utils::user::get_user_by_email(&db_connection, &credentials.email)
     })
     .await
-    .map(
-        |user| match password_hasher::verify_hash(&password, &user.password_hash) {
-            true => {
-                let token_pair = jwt::generate_token_pair(&user.id);
+    .map_err(|_| Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))))?;
 
-                let token_pair = match token_pair {
-                    Ok(token_pair) => token_pair,
-                    Err(_) => {
-                        return Err(ServerError::InternalServerError(Some(
-                            "Failed to generate tokens for new user. User has been created.",
-                        )));
-                    }
-                };
+    let does_password_match_hash = web::block(move || {
+        Ok(password_hasher::verify_hash(&password, &user.password_hash))
+            .map_err(|_: ServerError| ServerError::InternalServerError(None))
+    })
+    .await
+    .expect("Failed to block on password verification");
 
-                Ok(HttpResponse::Ok().json(token_pair))
+    if does_password_match_hash {
+        let token_pair = jwt::generate_token_pair(&user.id);
+
+        let token_pair = match token_pair {
+            Ok(token_pair) => token_pair,
+            Err(_) => {
+                return Err(ServerError::InternalServerError(Some(
+                    "Failed to generate tokens for new user. User has been created.",
+                )));
             }
-            false => return Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))),
-        },
-    )
-    .map_err(|_| Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))))?
+        };
+
+        Ok(HttpResponse::Ok().json(token_pair))
+    } else {
+        Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG)))
+    }
 }
 
 pub async fn refresh_tokens(

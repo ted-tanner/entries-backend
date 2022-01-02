@@ -148,7 +148,19 @@ pub async fn change_password(
             .await
             .map_err(|_| ServerError::InputRejected(Some("User not found")))?;
 
-    if !password_hasher::verify_hash(&password_pair.current_password, &user.password_hash) {
+    let current_password = password_pair.current_password.clone();
+
+    let does_password_match_hash = web::block(move || {
+        Ok(password_hasher::verify_hash(
+            &current_password,
+            &user.password_hash,
+        ))
+        .map_err(|_: ServerError| ServerError::InternalServerError(None))
+    })
+    .await
+    .expect("Failed to block on password verification");
+
+    if !does_password_match_hash {
         return Err(ServerError::UserUnauthorized(Some(
             "Current password was incorrect",
         )));
