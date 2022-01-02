@@ -222,50 +222,6 @@ mod test {
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
 
         let new_user = InputUser {
-            email: format!("test_user{}test.com", &user_number),
-            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
-            first_name: format!("Test-{}", &user_number),
-            last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let req = test::TestRequest::post()
-            .uri("/api/user/create")
-            .header("content-type", "application/json")
-            .set_json(&new_user)
-            .to_request();
-
-        let resp = test::call_service(&mut app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
-
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", &user_number),
-            password: String::from("Password1234"),
-            first_name: format!("Test-{}", &user_number),
-            last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let req = test::TestRequest::post()
-            .uri("/api/user/create")
-            .header("content-type", "application/json")
-            .set_json(&new_user)
-            .to_request();
-
-        let resp = test::call_service(&mut app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
-
-        let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
@@ -300,6 +256,80 @@ mod test {
         assert_eq!(&new_user.last_name, &created_user.last_name);
         assert_eq!(&new_user.date_of_birth, &created_user.date_of_birth);
         assert_eq!(&new_user.currency, &created_user.currency);
+    }
+
+    #[actix_rt::test]
+    async fn test_create_fails_with_invalid_email() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(thread_pool.clone())
+                .route("/api/user/create", web::post().to(create)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+
+        let new_user = InputUser {
+            email: format!("test_user{}test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/create")
+            .header("content-type", "application/json")
+            .set_json(&new_user)
+            .to_request();
+
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_rt::test]
+    async fn test_create_fails_with_invalid_password() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(thread_pool.clone())
+                .route("/api/user/create", web::post().to(create)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("Password1234"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/create")
+            .header("content-type", "application/json")
+            .set_json(&new_user)
+            .to_request();
+
+        let resp = test::call_service(&mut app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
     #[actix_rt::test]

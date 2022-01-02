@@ -1,6 +1,5 @@
 # TODO
 
-* Go through integration tests and split out edgecases into their own tests
 * Verify SQL injection is not possible with any endpoint
 * Documentation:
   * `CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;`
