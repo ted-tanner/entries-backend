@@ -13,12 +13,12 @@ pub fn hash_argon2id(password: &str) -> String {
         .configure_memory_size(*env::hashing::HASH_MEM_SIZE_KIB);
 
     let mut salt = vec![0u8; *env::hashing::SALT_LENGTH_BYTES];
-    env::hashing::SECURE_RANDOM_GENERATOR
+    env::rand::SECURE_RANDOM_GENERATOR
         .fill(&mut salt)
         .expect("Failed to generate secure random numbers for hashing salt");
 
     hasher
-        .with_secret_key(env::hashing::HASHING_SECRET_KEY.as_str())
+        .with_secret_key(&*env::hashing::HASHING_SECRET_KEY)
         .with_salt(Salt::from(&salt))
         .with_password(password)
         .hash()
@@ -29,7 +29,7 @@ pub fn verify_hash(password: &str, hash: &str) -> bool {
     argonautica::Verifier::default()
         .with_hash(hash)
         .with_password(password)
-        .with_secret_key(env::hashing::HASHING_SECRET_KEY.as_str())
+        .with_secret_key(&*env::hashing::HASHING_SECRET_KEY)
         .verify()
         .expect("Failed to verify password hash")
 }

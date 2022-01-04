@@ -96,17 +96,17 @@ pub async fn refresh_tokens(
     })
     .map_err(|e| {
         Err(match e {
-            actix_web::error::BlockingError::Error(err) => match err.kind() {
-                jwt::ErrorKind::TokenInvalid => {
+            actix_web::error::BlockingError::Error(err) => match err {
+                jwt::Error::TokenInvalid => {
                     ServerError::UserUnauthorized(Some("Token is invalid"))
                 }
-                jwt::ErrorKind::TokenBlacklisted => {
+                jwt::Error::TokenBlacklisted => {
                     ServerError::UserUnauthorized(Some("Token has been blacklisted"))
                 }
-                jwt::ErrorKind::TokenExpired => {
+                jwt::Error::TokenExpired => {
                     ServerError::UserUnauthorized(Some("Token has expired"))
                 }
-                jwt::ErrorKind::WrongTokenType => {
+                jwt::Error::WrongTokenType => {
                     ServerError::UserUnauthorized(Some("Incorrect token type"))
                 }
                 _ => ServerError::InternalServerError(Some("Error generating new tokens")),

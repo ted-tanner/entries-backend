@@ -14,16 +14,15 @@ pub mod db {
 }
 
 pub mod hashing {
-    use ring::rand::SystemRandom;
-
     const DEFAULT_HASH_LENGTH: u32 = 64;
     const DEFAULT_HASH_ITERATIONS: u32 = 16;
     const DEFAULT_HASH_MEM_SIZE_KIB: u32 = 262144;
     const DEFAULT_SALT_LENGTH_BYTES: usize = 32;
 
     lazy_static! {
-        pub static ref HASHING_SECRET_KEY: String = std::env::var("HASHING_SECRET_KEY")
-            .expect("HASHING_SECRET_KEY environment variable must be set");
+        pub static ref HASHING_SECRET_KEY: Vec<u8> = std::env::var("HASHING_SECRET_KEY")
+            .expect("HASHING_SECRET_KEY environment variable must be set")
+            .as_bytes().to_owned();
         pub static ref HASH_LENGTH: u32 = std::env::var("HASH_LENGTH")
             .unwrap_or(DEFAULT_HASH_LENGTH.to_string())
             .parse::<u32>()
@@ -40,7 +39,6 @@ pub mod hashing {
             .unwrap_or(DEFAULT_SALT_LENGTH_BYTES.to_string())
             .parse::<usize>()
             .expect("SALT_LENGTH_BYTES environment variable must be an unsigned integer matching the processor's instructon bit lenth");
-        pub static ref SECURE_RANDOM_GENERATOR: SystemRandom = SystemRandom::new();
     }
 
     pub fn validate() {
@@ -61,14 +59,15 @@ pub mod jwt {
     const DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS: u64 = 28;
 
     lazy_static! {
-        pub static ref SIGNING_SECRET_KEY: String = std::env::var("SIGNING_SECRET_KEY")
-            .expect("SIGNING_SECRET_KEY environment variable must be set");
-        pub static ref ACCESS_LIFETIME_SEC: u64 = std::env::var("ACCESS_TOKEN_LIFETIME_MINS")
+        pub static ref SIGNING_SECRET_KEY: Vec<u8> = std::env::var("SIGNING_SECRET_KEY")
+            .expect("SIGNING_SECRET_KEY environment variable must be set")
+            .as_bytes().to_owned();
+        pub static ref ACCESS_LIFETIME_SECS: u64 = std::env::var("ACCESS_TOKEN_LIFETIME_MINS")
             .unwrap_or(DEFAULT_ACCESS_TOKEN_LIFETIME_MINS.to_string())
             .parse::<u64>()
             .expect("ACCESS_TOKEN_LIFETIME_MINS environment variable must be an unsigned 64-bit integer")
             * 60;
-        pub static ref REFRESH_LIFETIME_DAYS: u64 = std::env::var("REFRESH_TOKEN_LIFETIME_DAYS")
+        pub static ref REFRESH_LIFETIME_SECS: u64 = std::env::var("REFRESH_TOKEN_LIFETIME_DAYS")
             .unwrap_or(DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS.to_string())
             .parse::<u64>()
             .expect("REFRESH_TOKEN_LIFETIME_DAYS environment variable must be an unsigned 64-bit integer")
@@ -79,8 +78,23 @@ pub mod jwt {
 
     pub fn validate() {
         let _ = *SIGNING_SECRET_KEY;
-        let _ = *ACCESS_LIFETIME_SEC;
-        let _ = *REFRESH_LIFETIME_DAYS;
+        let _ = *ACCESS_LIFETIME_SECS;
+        let _ = *REFRESH_LIFETIME_SECS;
+    }
+}
+
+pub mod otp {
+    const DEFAULT_OTP_LIFETIME_MINS: u64 = 8;
+
+    lazy_static! {
+        pub static ref OTP_SECRET_KEY: Vec<u8> = std::env::var("OTP_SECRET_KEY")
+            .expect("OTP_SECRET_KEY environment variable must be set")
+            .as_bytes().to_owned();
+        pub static ref OTP_LIFETIME_SECS: u64 = std::env::var("OTP_LIFETIME_MINS")
+            .unwrap_or(DEFAULT_OTP_LIFETIME_MINS.to_string())
+            .parse::<u64>()
+            .expect("OTP_LIFETIME_MINS environment variable must be an unsigned 64-bit integer")
+            * 60;
     }
 }
 
@@ -95,6 +109,18 @@ pub mod password {
     pub fn validate() {
         let _ = *COMMON_PASSWORDS_FILE_PATH;
         let _ = *COMMON_PASSWORDS_TREE;
+    }
+}
+
+pub mod rand {
+    use ring::rand::SystemRandom;
+
+    lazy_static! {
+        pub static ref SECURE_RANDOM_GENERATOR: SystemRandom = SystemRandom::new();
+    }
+
+    pub fn validate() {
+        let _ = *SECURE_RANDOM_GENERATOR;
     }
 }
 
@@ -119,4 +145,5 @@ pub fn validate() {
     hashing::validate();
     jwt::validate();
     password::validate();
+    rand::validate();
 }

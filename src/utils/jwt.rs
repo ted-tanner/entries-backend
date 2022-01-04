@@ -11,11 +11,84 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
+#[derive(Debug)]
+pub enum Error {
+    DatabaseError(diesel::result::Error),
+    DecodingError(jsonwebtoken::errors::Error),
+    EncodingError(jsonwebtoken::errors::Error),
+    InvalidTokenType(TokenTypeError),
+    TokenInvalid,
+    TokenBlacklisted,
+    TokenExpired,
+    SystemResourceAccessFailure,
+    WrongTokenType,
+
+    #[doc(hidden)]
+    __Nonexhaustive,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
+            Error::DecodingError(e) => write!(f, "DecodingError: {}", e),
+            Error::EncodingError(e) => write!(f, "EncodingError: {}", e),
+            Error::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
+            _ => write!(f, "Error: {}", self.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum TokenType {
+    Access,
+    Refresh,
+    SignIn,
+}
+
+#[derive(Debug)]
+pub enum TokenTypeError {
+    NoMatchForValue(u8),
+}
+
+impl std::error::Error for TokenTypeError {}
+
+impl std::fmt::Display for TokenTypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenTypeError::NoMatchForValue(v) => write!(f, "NoMatchForValue: {}", v),
+        }
+    }
+}
+
+impl std::convert::TryFrom<u8> for TokenType {
+    type Error = TokenTypeError;
+
+    fn try_from(value: u8) -> Result<Self, TokenTypeError> {
+        match value {
+            0 => Ok(TokenType::Access),
+            1 => Ok(TokenType::Refresh),
+            2 => Ok(TokenType::SignIn),
+            v => Err(TokenTypeError::NoMatchForValue(v)),
+        }
+    }
+}
+
+impl std::convert::From<TokenType> for u8 {
+    fn from(token_type: TokenType) -> Self {
+        match token_type {
+            TokenType::Access => 0,
+            TokenType::Refresh => 1,
+            TokenType::SignIn => 2,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,        // Expiration in time since UNIX epoch
     pub uid: uuid::Uuid, // User ID
-    pub rfs: bool,       // Is refresh token
+    pub typ: u8,         // Token type (Access=0, Refresh=1, SignIn=2)
     pub slt: u16,        // Random salt (makes it so two tokens generated in the same
                          //              second are different--useful for testing)
 }
@@ -27,81 +100,62 @@ pub struct InputBlacklistedRefreshToken {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AccessToken(String);
+pub struct Token {
+    token: String,
+    token_type: TokenType,
+}
 
-impl ToString for AccessToken {
-    fn to_string(&self) -> String {
-        return self.0.clone();
+impl Token {
+    fn is_access_token(&self) -> bool {
+        if let TokenType::Access = self.token_type {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_refresh_token(&self) -> bool {
+        if let TokenType::Refresh = self.token_type {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_signin_token(&self) -> bool {
+        if let TokenType::SignIn = self.token_type {
+            true
+        } else {
+            false
+        }
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct RefreshToken(String);
-
-impl ToString for RefreshToken {
+impl ToString for Token {
     fn to_string(&self) -> String {
-        return self.0.clone();
+        return self.token.clone();
     }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TokenPair {
-    pub access_token: AccessToken,
-    pub refresh_token: RefreshToken,
+    pub access_token: Token,
+    pub refresh_token: Token,
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug)]
-pub struct Error(ErrorKind);
-
-impl Error {
-    pub fn from(kind: ErrorKind) -> Error {
-        Error(kind)
-    }
-
-    #[allow(dead_code)]
-    pub fn kind(&self) -> &ErrorKind {
-        return &self.0;
-    }
+pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+    Ok(generate_token(user_id, TokenType::Access)?)
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ErrorKind: {}", self.0)
-    }
+pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+    Ok(generate_token(user_id, TokenType::Refresh)?)
 }
 
-#[derive(Debug)]
-pub enum ErrorKind {
-    DatabaseError(diesel::result::Error),
-    DecodingError(jsonwebtoken::errors::Error),
-    EncodingError(jsonwebtoken::errors::Error),
-    TokenInvalid,
-    TokenBlacklisted,
-    TokenExpired,
-    SystemResourceAccessFailure,
-    WrongTokenType,
-
-    #[doc(hidden)]
-    __Nonexhaustive,
+pub fn generate_signin_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+    Ok(generate_token(user_id, TokenType::SignIn)?)
 }
 
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ErrorKind: {}", self.to_string())
-    }
-}
-
-pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<AccessToken> {
-    Ok(AccessToken(generate_token(user_id, false)?))
-}
-
-pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<RefreshToken> {
-    Ok(RefreshToken(generate_token(user_id, true)?))
-}
-
-pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair> {
+pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, Error> {
     let access_token = generate_access_token(user_id)?;
     let refresh_token = generate_refresh_token(user_id)?;
 
@@ -111,16 +165,16 @@ pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair> {
     })
 }
 
-fn generate_token(user_id: &uuid::Uuid, is_refresh: bool) -> Result<String> {
-    let lifetime_sec = if is_refresh {
-        *env::jwt::REFRESH_LIFETIME_DAYS
-    } else {
-        *env::jwt::ACCESS_LIFETIME_SEC
+fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, Error> {
+    let lifetime_sec = match token_type {
+        TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
+        TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
+        TokenType::SignIn => *env::jwt::ACCESS_LIFETIME_SECS, // TODO: This shouldn't be the same as the access token lifetime
     };
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
-        Err(_) => return Err(Error::from(ErrorKind::SystemResourceAccessFailure)),
+        Err(_) => return Err(Error::from(Error::SystemResourceAccessFailure)),
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
@@ -129,49 +183,58 @@ fn generate_token(user_id: &uuid::Uuid, is_refresh: bool) -> Result<String> {
     let claims = TokenClaims {
         exp: expiration,
         uid: *user_id,
-        rfs: is_refresh,
+        typ: token_type.clone().into(),
         slt: salt,
     };
 
     let mut header = Header::default();
     header.alg = Algorithm::HS256;
 
-    match jsonwebtoken::encode(
+    let token = match jsonwebtoken::encode(
         &header,
         &claims,
-        &EncodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+        &EncodingKey::from_secret(&env::jwt::SIGNING_SECRET_KEY),
     ) {
         Ok(t) => Ok(t),
-        Err(e) => Err(Error::from(ErrorKind::EncodingError(e))),
-    }
+        Err(e) => Err(Error::from(Error::EncodingError(e))),
+    };
+
+    Ok(Token {
+        token: token?,
+        token_type,
+    })
 }
 
-pub fn validate_access_token(token: &str) -> Result<TokenClaims> {
-    validate_token(token, false)
+pub fn validate_access_token(token: &str) -> Result<TokenClaims, Error> {
+    validate_token(token, TokenType::Access)
 }
 
 pub fn validate_refresh_token(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<TokenClaims> {
+) -> Result<TokenClaims, Error> {
     if is_on_blacklist(token, &db_connection)? {
-        return Err(Error::from(ErrorKind::TokenBlacklisted));
+        return Err(Error::from(Error::TokenBlacklisted));
     }
 
-    validate_token(token, true)
+    validate_token(token, TokenType::Refresh)
 }
 
-fn validate_token(token: &str, is_refresh: bool) -> Result<TokenClaims> {
+pub fn validate_signin_token(token: &str) -> Result<TokenClaims, Error> {
+    validate_token(token, TokenType::SignIn)
+}
+
+fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Error> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
         &token,
-        &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+        &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
         &Validation::new(Algorithm::HS256),
     ) {
         Ok(t) => t,
         Err(e) => {
             return match e.kind() {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    Err(Error::from(ErrorKind::TokenExpired))
+                    Err(Error::from(Error::TokenExpired))
                 }
                 jsonwebtoken::errors::ErrorKind::InvalidToken
                 | jsonwebtoken::errors::ErrorKind::InvalidSignature
@@ -184,32 +247,37 @@ fn validate_token(token: &str, is_refresh: bool) -> Result<TokenClaims> {
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
                 | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(Error::from(ErrorKind::TokenInvalid))
+                    Err(Error::from(Error::TokenInvalid))
                 }
-                _ => Err(Error::from(ErrorKind::DecodingError(e))),
+                _ => Err(Error::from(Error::DecodingError(e))),
             }
         }
     };
 
-    if decoded_token.claims.rfs != is_refresh {
-        Err(Error::from(ErrorKind::WrongTokenType))
+    let token_type_claim = match TokenType::try_from(decoded_token.claims.typ) {
+        Ok(t) => t,
+        Err(e) => return Err(Error::from(Error::InvalidTokenType(e))),
+    };
+
+    if std::mem::discriminant(&token_type_claim) != std::mem::discriminant(&token_type) {
+        Err(Error::from(Error::WrongTokenType))
     } else {
         Ok(decoded_token.claims)
     }
 }
 
 #[allow(dead_code)]
-pub fn read_claims(token: &str) -> Result<TokenClaims> {
+pub fn read_claims(token: &str) -> Result<TokenClaims, Error> {
     match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
         Ok(c) => Ok(c.claims),
-        Err(e) => Err(Error::from(ErrorKind::DecodingError(e))),
+        Err(e) => Err(Error::from(Error::DecodingError(e))),
     }
 }
 
 pub fn blacklist_token(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<BlacklistedToken> {
+) -> Result<BlacklistedToken, Error> {
     let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(&token) {
         Ok(t) => t,
         Err(e) => {
@@ -225,9 +293,9 @@ pub fn blacklist_token(
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
                 | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(Error::from(ErrorKind::TokenInvalid))
+                    Err(Error::from(Error::TokenInvalid))
                 }
-                _ => Err(Error::from(ErrorKind::DecodingError(e))),
+                _ => Err(Error::from(Error::DecodingError(e))),
             }
         }
     };
@@ -240,7 +308,7 @@ pub fn blacklist_token(
         user_id: user_id,
         token_expiration_epoch: match i64::try_from(expiration) {
             Ok(exp) => exp,
-            Err(_) => return Err(Error::from(ErrorKind::TokenInvalid)),
+            Err(_) => return Err(Error::from(Error::TokenInvalid)),
         },
     };
 
@@ -249,14 +317,14 @@ pub fn blacklist_token(
         .get_result::<BlacklistedToken>(db_connection)
     {
         Ok(t) => Ok(t),
-        Err(e) => Err(Error::from(ErrorKind::DatabaseError(e))),
+        Err(e) => Err(Error::from(Error::DatabaseError(e))),
     }
 }
 
 pub fn is_on_blacklist(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<bool> {
+) -> Result<bool, Error> {
     match blacklisted_tokens
         .filter(blacklisted_token_fields::token.eq(token))
         .limit(1)
@@ -282,16 +350,16 @@ mod test {
 
         let token = generate_access_token(&user_id).unwrap();
 
-        assert!(!token.0.contains(&user_id.to_string()));
+        assert!(!token.token.contains(&user_id.to_string()));
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
-            &token.0,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
-        assert!(!decoded_token.claims.rfs);
+        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_token.claims.uid, user_id);
         assert!(
             decoded_token.claims.exp
@@ -308,16 +376,16 @@ mod test {
 
         let token = generate_refresh_token(&user_id).unwrap();
 
-        assert!(!token.0.contains(&user_id.to_string()));
+        assert!(!token.token.contains(&user_id.to_string()));
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
-            &token.0,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
-        assert!(decoded_token.claims.rfs);
+        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Refresh));
         assert_eq!(decoded_token.claims.uid, user_id);
         assert!(
             decoded_token.claims.exp
@@ -334,17 +402,17 @@ mod test {
 
         let token = generate_token_pair(&user_id).unwrap();
 
-        assert!(!token.access_token.0.contains(&user_id.to_string()));
-        assert!(!token.refresh_token.0.contains(&user_id.to_string()));
+        assert!(!token.access_token.token.contains(&user_id.to_string()));
+        assert!(!token.refresh_token.token.contains(&user_id.to_string()));
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
-            &token.access_token.0,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &token.access_token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
-        assert!(!decoded_access_token.claims.rfs);
+        assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_access_token.claims.uid, user_id);
         assert!(
             decoded_access_token.claims.exp
@@ -355,13 +423,16 @@ mod test {
         );
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
-            &token.refresh_token.0,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &token.refresh_token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
-        assert!(decoded_refresh_token.claims.rfs);
+        assert_eq!(
+            decoded_refresh_token.claims.typ,
+            u8::from(TokenType::Refresh)
+        );
         assert_eq!(decoded_refresh_token.claims.uid, user_id);
         assert!(
             decoded_refresh_token.claims.exp
@@ -376,24 +447,24 @@ mod test {
     fn test_generate_token() {
         let user_id = uuid::Uuid::new_v4();
 
-        let access_token = generate_token(&user_id, false).unwrap();
-        let refresh_token = generate_token(&user_id, true).unwrap();
+        let access_token = generate_token(&user_id, TokenType::Access).unwrap();
+        let refresh_token = generate_token(&user_id, TokenType::Refresh).unwrap();
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
-            &access_token,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &access_token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
-            &refresh_token,
-            &DecodingKey::from_secret(env::jwt::SIGNING_SECRET_KEY.as_bytes()),
+            &refresh_token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
-        assert!(!decoded_access_token.claims.rfs);
+        assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_access_token.claims.uid, user_id);
         assert!(
             decoded_access_token.claims.exp
@@ -403,7 +474,10 @@ mod test {
                     .as_secs()
         );
 
-        assert!(decoded_refresh_token.claims.rfs);
+        assert_eq!(
+            decoded_refresh_token.claims.typ,
+            u8::from(TokenType::Refresh)
+        );
         assert_eq!(decoded_refresh_token.claims.uid, user_id);
         assert!(
             decoded_refresh_token.claims.exp
@@ -421,8 +495,11 @@ mod test {
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
 
-        assert_eq!(validate_access_token(&access_token.0).unwrap().uid, user_id);
-        assert!(match validate_access_token(&refresh_token.0) {
+        assert_eq!(
+            validate_access_token(&access_token.token).unwrap().uid,
+            user_id
+        );
+        assert!(match validate_access_token(&refresh_token.token) {
             Ok(_) => false,
             Err(_) => true,
         });
@@ -439,13 +516,13 @@ mod test {
         let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert_eq!(
-            validate_refresh_token(&refresh_token.0, &db_connection)
+            validate_refresh_token(&refresh_token.token, &db_connection)
                 .unwrap()
                 .uid,
             user_id
         );
         assert!(
-            match validate_refresh_token(&access_token.0, &db_connection) {
+            match validate_refresh_token(&access_token.token, &db_connection) {
                 Ok(_) => false,
                 Err(_) => true,
             }
@@ -459,18 +536,32 @@ mod test {
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
 
-        assert_eq!(validate_token(&access_token.0, false).unwrap().uid, user_id);
-        assert_eq!(validate_token(&refresh_token.0, true).unwrap().uid, user_id);
+        assert_eq!(
+            validate_token(&access_token.token, TokenType::Access)
+                .unwrap()
+                .uid,
+            user_id
+        );
+        assert_eq!(
+            validate_token(&refresh_token.token, TokenType::Refresh)
+                .unwrap()
+                .uid,
+            user_id
+        );
 
-        assert!(match validate_token(&access_token.0, true) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
+        assert!(
+            match validate_token(&access_token.token, TokenType::Refresh) {
+                Ok(_) => false,
+                Err(_) => true,
+            }
+        );
 
-        assert!(match validate_token(&refresh_token.0, false) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
+        assert!(
+            match validate_token(&refresh_token.token, TokenType::Access) {
+                Ok(_) => false,
+                Err(_) => true,
+            }
+        );
     }
 
     #[test]
@@ -489,11 +580,11 @@ mod test {
             .as_secs();
 
         assert_eq!(access_token_claims.uid, user_id);
-        assert_eq!(access_token_claims.rfs, false);
+        assert_eq!(access_token_claims.typ, u8::from(TokenType::Access));
         assert!(access_token_claims.exp > current_time);
 
         assert_eq!(refresh_token_claims.uid, user_id);
-        assert_eq!(refresh_token_claims.rfs, true);
+        assert_eq!(refresh_token_claims.typ, u8::from(TokenType::Refresh));
         assert!(refresh_token_claims.exp > current_time);
     }
 
@@ -528,9 +619,9 @@ mod test {
 
         let refresh_token = generate_refresh_token(&user_id).unwrap();
 
-        let blacklist_token = blacklist_token(&refresh_token.0, &db_connection).unwrap();
+        let blacklist_token = blacklist_token(&refresh_token.token, &db_connection).unwrap();
 
-        assert_eq!(&blacklist_token.token, &refresh_token.0);
+        assert_eq!(&blacklist_token.token, &refresh_token.token);
         assert!(
             blacklist_token.token_expiration_epoch
                 > SystemTime::now()
@@ -540,7 +631,7 @@ mod test {
         );
 
         blacklisted_tokens
-            .filter(blacklisted_token_fields::token.eq(&refresh_token.0))
+            .filter(blacklisted_token_fields::token.eq(&refresh_token.token))
             .get_result::<BlacklistedToken>(&db_connection)
             .unwrap();
     }
@@ -580,10 +671,10 @@ mod test {
 
         let refresh_token = generate_refresh_token(&user_id).unwrap();
 
-        assert!(!is_on_blacklist(&refresh_token.0, &db_connection).unwrap());
+        assert!(!is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
 
-        blacklist_token(&refresh_token.0, &db_connection).unwrap();
+        blacklist_token(&refresh_token.token, &db_connection).unwrap();
 
-        assert!(is_on_blacklist(&refresh_token.0, &db_connection).unwrap());
+        assert!(is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
     }
 }
