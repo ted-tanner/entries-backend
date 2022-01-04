@@ -548,6 +548,14 @@ mod test {
                 .uid,
             user_id
         );
+    }
+
+    #[test]
+    fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
+        let user_id = uuid::Uuid::new_v4();
+
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
 
         assert!(
             match validate_token(&access_token.token, TokenType::Refresh) {
