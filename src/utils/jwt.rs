@@ -27,6 +27,8 @@ pub enum JwtError {
     __Nonexhaustive,
 }
 
+impl std::error::Error for JwtError {}
+
 impl fmt::Display for JwtError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
