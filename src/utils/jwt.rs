@@ -12,7 +12,7 @@ use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
 #[derive(Debug)]
-pub enum Error {
+pub enum JwtError {
     DatabaseError(diesel::result::Error),
     DecodingError(jsonwebtoken::errors::Error),
     EncodingError(jsonwebtoken::errors::Error),
@@ -27,13 +27,13 @@ pub enum Error {
     __Nonexhaustive,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for JwtError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
-            Error::DecodingError(e) => write!(f, "DecodingError: {}", e),
-            Error::EncodingError(e) => write!(f, "EncodingError: {}", e),
-            Error::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
+            JwtError::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
+            JwtError::DecodingError(e) => write!(f, "DecodingError: {}", e),
+            JwtError::EncodingError(e) => write!(f, "EncodingError: {}", e),
+            JwtError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
             _ => write!(f, "Error: {}", self.to_string()),
         }
     }
@@ -143,19 +143,19 @@ pub struct TokenPair {
     pub refresh_token: Token,
 }
 
-pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
     Ok(generate_token(user_id, TokenType::Access)?)
 }
 
-pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
     Ok(generate_token(user_id, TokenType::Refresh)?)
 }
 
-pub fn generate_signin_token(user_id: &uuid::Uuid) -> Result<Token, Error> {
+pub fn generate_signin_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
     Ok(generate_token(user_id, TokenType::SignIn)?)
 }
 
-pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, Error> {
+pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, JwtError> {
     let access_token = generate_access_token(user_id)?;
     let refresh_token = generate_refresh_token(user_id)?;
 
@@ -165,7 +165,7 @@ pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, Error> {
     })
 }
 
-fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, Error> {
+fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, JwtError> {
     let lifetime_sec = match token_type {
         TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
         TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
@@ -174,7 +174,7 @@ fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, 
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
-        Err(_) => return Err(Error::from(Error::SystemResourceAccessFailure)),
+        Err(_) => return Err(JwtError::from(JwtError::SystemResourceAccessFailure)),
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
@@ -196,7 +196,7 @@ fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, 
         &EncodingKey::from_secret(&env::jwt::SIGNING_SECRET_KEY),
     ) {
         Ok(t) => Ok(t),
-        Err(e) => Err(Error::from(Error::EncodingError(e))),
+        Err(e) => Err(JwtError::from(JwtError::EncodingError(e))),
     };
 
     Ok(Token {
@@ -205,26 +205,26 @@ fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, 
     })
 }
 
-pub fn validate_access_token(token: &str) -> Result<TokenClaims, Error> {
+pub fn validate_access_token(token: &str) -> Result<TokenClaims, JwtError> {
     validate_token(token, TokenType::Access)
 }
 
 pub fn validate_refresh_token(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<TokenClaims, Error> {
+) -> Result<TokenClaims, JwtError> {
     if is_on_blacklist(token, &db_connection)? {
-        return Err(Error::from(Error::TokenBlacklisted));
+        return Err(JwtError::from(JwtError::TokenBlacklisted));
     }
 
     validate_token(token, TokenType::Refresh)
 }
 
-pub fn validate_signin_token(token: &str) -> Result<TokenClaims, Error> {
+pub fn validate_signin_token(token: &str) -> Result<TokenClaims, JwtError> {
     validate_token(token, TokenType::SignIn)
 }
 
-fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Error> {
+fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, JwtError> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
         &token,
         &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
@@ -234,7 +234,7 @@ fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Err
         Err(e) => {
             return match e.kind() {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    Err(Error::from(Error::TokenExpired))
+                    Err(JwtError::from(JwtError::TokenExpired))
                 }
                 jsonwebtoken::errors::ErrorKind::InvalidToken
                 | jsonwebtoken::errors::ErrorKind::InvalidSignature
@@ -247,37 +247,37 @@ fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Err
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
                 | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(Error::from(Error::TokenInvalid))
+                    Err(JwtError::from(JwtError::TokenInvalid))
                 }
-                _ => Err(Error::from(Error::DecodingError(e))),
+                _ => Err(JwtError::from(JwtError::DecodingError(e))),
             }
         }
     };
 
     let token_type_claim = match TokenType::try_from(decoded_token.claims.typ) {
         Ok(t) => t,
-        Err(e) => return Err(Error::from(Error::InvalidTokenType(e))),
+        Err(e) => return Err(JwtError::from(JwtError::InvalidTokenType(e))),
     };
 
     if std::mem::discriminant(&token_type_claim) != std::mem::discriminant(&token_type) {
-        Err(Error::from(Error::WrongTokenType))
+        Err(JwtError::from(JwtError::WrongTokenType))
     } else {
         Ok(decoded_token.claims)
     }
 }
 
 #[allow(dead_code)]
-pub fn read_claims(token: &str) -> Result<TokenClaims, Error> {
+pub fn read_claims(token: &str) -> Result<TokenClaims, JwtError> {
     match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
         Ok(c) => Ok(c.claims),
-        Err(e) => Err(Error::from(Error::DecodingError(e))),
+        Err(e) => Err(JwtError::from(JwtError::DecodingError(e))),
     }
 }
 
 pub fn blacklist_token(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<BlacklistedToken, Error> {
+) -> Result<BlacklistedToken, JwtError> {
     let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(&token) {
         Ok(t) => t,
         Err(e) => {
@@ -293,9 +293,9 @@ pub fn blacklist_token(
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
                 | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(Error::from(Error::TokenInvalid))
+                    Err(JwtError::from(JwtError::TokenInvalid))
                 }
-                _ => Err(Error::from(Error::DecodingError(e))),
+                _ => Err(JwtError::from(JwtError::DecodingError(e))),
             }
         }
     };
@@ -308,7 +308,7 @@ pub fn blacklist_token(
         user_id: user_id,
         token_expiration_epoch: match i64::try_from(expiration) {
             Ok(exp) => exp,
-            Err(_) => return Err(Error::from(Error::TokenInvalid)),
+            Err(_) => return Err(JwtError::from(JwtError::TokenInvalid)),
         },
     };
 
@@ -317,14 +317,14 @@ pub fn blacklist_token(
         .get_result::<BlacklistedToken>(db_connection)
     {
         Ok(t) => Ok(t),
-        Err(e) => Err(Error::from(Error::DatabaseError(e))),
+        Err(e) => Err(JwtError::from(JwtError::DatabaseError(e))),
     }
 }
 
 pub fn is_on_blacklist(
     token: &str,
     db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<bool, Error> {
+) -> Result<bool, JwtError> {
     match blacklisted_tokens
         .filter(blacklisted_token_fields::token.eq(token))
         .limit(1)
