@@ -169,7 +169,7 @@ fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, 
     let lifetime_sec = match token_type {
         TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
         TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
-        TokenType::SignIn => *env::jwt::ACCESS_LIFETIME_SECS, // TODO: This shouldn't be the same as the access token lifetime
+        TokenType::SignIn => *env::otp::OTP_LIFETIME_SECS,
     };
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -397,6 +397,32 @@ mod test {
     }
 
     #[test]
+    fn test_generate_signin_token() {
+        let user_id = uuid::Uuid::new_v4();
+
+        let token = generate_signin_token(&user_id).unwrap();
+
+        assert!(!token.token.contains(&user_id.to_string()));
+
+        let decoded_token = jsonwebtoken::decode::<TokenClaims>(
+            &token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &Validation::new(Algorithm::HS256),
+        )
+        .unwrap();
+
+        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::SignIn));
+        assert_eq!(decoded_token.claims.uid, user_id);
+        assert!(
+            decoded_token.claims.exp
+                > SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+        );
+    }
+
+    #[test]
     fn test_generate_token_pair() {
         let user_id = uuid::Uuid::new_v4();
 
@@ -449,6 +475,7 @@ mod test {
 
         let access_token = generate_token(&user_id, TokenType::Access).unwrap();
         let refresh_token = generate_token(&user_id, TokenType::Refresh).unwrap();
+        let signin_token = generate_token(&user_id, TokenType::SignIn).unwrap();
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &access_token.token,
@@ -459,6 +486,13 @@ mod test {
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
             &refresh_token.token,
+            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &Validation::new(Algorithm::HS256),
+        )
+        .unwrap();
+
+        let decoded_signin_token = jsonwebtoken::decode::<TokenClaims>(
+            &signin_token.token,
             &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
             &Validation::new(Algorithm::HS256),
         )
@@ -486,6 +520,16 @@ mod test {
                     .unwrap()
                     .as_secs()
         );
+
+        assert_eq!(decoded_signin_token.claims.typ, u8::from(TokenType::SignIn));
+        assert_eq!(decoded_signin_token.claims.uid, user_id);
+        assert!(
+            decoded_signin_token.claims.exp
+                > SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+        );
     }
 
     #[test]
@@ -494,12 +538,17 @@ mod test {
 
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
 
         assert_eq!(
             validate_access_token(&access_token.token).unwrap().uid,
             user_id
         );
         assert!(match validate_access_token(&refresh_token.token) {
+            Ok(_) => false,
+            Err(_) => true,
+        });
+        assert!(match validate_access_token(&signin_token.token) {
             Ok(_) => false,
             Err(_) => true,
         });
@@ -514,6 +563,7 @@ mod test {
 
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
 
         assert_eq!(
             validate_refresh_token(&refresh_token.token, &db_connection)
@@ -527,6 +577,34 @@ mod test {
                 Err(_) => true,
             }
         );
+        assert!(
+            match validate_refresh_token(&signin_token.token, &db_connection) {
+                Ok(_) => false,
+                Err(_) => true,
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_signin_token() {
+        let user_id = uuid::Uuid::new_v4();
+
+        let access_token = generate_access_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
+
+        assert_eq!(
+            validate_signin_token(&signin_token.token).unwrap().uid,
+            user_id
+        );
+        assert!(match validate_signin_token(&access_token.token) {
+            Ok(_) => false,
+            Err(_) => true,
+        });
+        assert!(match validate_signin_token(&refresh_token.token) {
+            Ok(_) => false,
+            Err(_) => true,
+        });
     }
 
     #[test]
@@ -535,6 +613,7 @@ mod test {
 
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
 
         assert_eq!(
             validate_token(&access_token.token, TokenType::Access)
@@ -548,6 +627,12 @@ mod test {
                 .uid,
             user_id
         );
+        assert_eq!(
+            validate_token(&signin_token.token, TokenType::SignIn)
+                .unwrap()
+                .uid,
+            user_id
+        );
     }
 
     #[test]
@@ -556,9 +641,10 @@ mod test {
 
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
 
         assert!(
-            match validate_token(&access_token.token, TokenType::Refresh) {
+            match validate_token(&access_token.token, TokenType::SignIn) {
                 Ok(_) => false,
                 Err(_) => true,
             }
@@ -566,6 +652,13 @@ mod test {
 
         assert!(
             match validate_token(&refresh_token.token, TokenType::Access) {
+                Ok(_) => false,
+                Err(_) => true,
+            }
+        );
+
+        assert!(
+            match validate_token(&signin_token.token, TokenType::Refresh) {
                 Ok(_) => false,
                 Err(_) => true,
             }
@@ -578,9 +671,11 @@ mod test {
 
         let access_token = generate_access_token(&user_id).unwrap();
         let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let signin_token = generate_signin_token(&user_id).unwrap();
 
         let access_token_claims = read_claims(&access_token.to_string()).unwrap();
         let refresh_token_claims = read_claims(&refresh_token.to_string()).unwrap();
+        let signin_token_claims = read_claims(&signin_token.to_string()).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -594,6 +689,10 @@ mod test {
         assert_eq!(refresh_token_claims.uid, user_id);
         assert_eq!(refresh_token_claims.typ, u8::from(TokenType::Refresh));
         assert!(refresh_token_claims.exp > current_time);
+
+        assert_eq!(signin_token_claims.uid, user_id);
+        assert_eq!(signin_token_claims.typ, u8::from(TokenType::SignIn));
+        assert!(signin_token_claims.exp > current_time);
     }
 
     #[test]
