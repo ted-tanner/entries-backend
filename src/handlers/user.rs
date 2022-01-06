@@ -81,7 +81,11 @@ pub async fn create(
     })
     .await
     .map(|user| {
-        let token_pair = jwt::generate_token_pair(&user.id);
+        let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+            user_id: &user.id,
+            user_email: &user.email,
+            user_currency: &user.currency,
+        });
 
         let token_pair = match token_pair {
             Ok(token_pair) => token_pair,

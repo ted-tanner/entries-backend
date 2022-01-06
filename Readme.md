@@ -1,5 +1,7 @@
 # TODO
 
+* In models, can lifetime reference be used for things like Uuid in New_ structs?
+* Add email address to JWT, find endpoints (and tests!) that can use that email address rather than making a database fetch
 * Verify SQL injection is not possible with any endpoint
 * Documentation:
   * `CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;`

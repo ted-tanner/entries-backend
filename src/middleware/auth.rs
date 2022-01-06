@@ -55,13 +55,42 @@ mod test {
 
     use actix_web::http::header;
     use actix_web::test;
+    use chrono::NaiveDate;
+    use rand::prelude::*;
     use uuid::Uuid;
+
+    use crate::models::user::NewUser;
 
     #[test]
     fn test_jwt_user_auth_middleware() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = jwt::generate_access_token(&user_id).unwrap();
+        let token = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let req = test::TestRequest::with_header(
             "authorization",
@@ -93,8 +122,33 @@ mod test {
     #[test]
     fn test_auth_middleware_rejects_request_without_auth_header() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = jwt::generate_access_token(&user_id).unwrap();
+        let token = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let req = test::TestRequest::with_header(
             header::CONTENT_TYPE,
@@ -110,8 +164,33 @@ mod test {
     #[test]
     fn test_auth_middleware_rejects_header_without_bearer_keyword() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = jwt::generate_access_token(&user_id).unwrap();
+        let token = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let req = test::TestRequest::with_header(
             header::AUTHORIZATION,
@@ -127,8 +206,33 @@ mod test {
     #[test]
     fn test_auth_middleware_rejects_header_without_token() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let _ = jwt::generate_access_token(&user_id).unwrap();
+        let _ = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let req = test::TestRequest::with_header(header::AUTHORIZATION, "bearer").to_http_request();
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
@@ -139,8 +243,34 @@ mod test {
     #[test]
     fn test_auth_middleware_rejects_invalid_token() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = jwt::generate_access_token(&user_id).unwrap().to_string();
+        let token = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap()
+        .to_string();
 
         // Remove the last char of the token
         let broken_token = &token[0..token.len() - 1];
@@ -159,8 +289,33 @@ mod test {
     #[test]
     fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
         let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = jwt::generate_refresh_token(&user_id).unwrap();
+        let token = jwt::generate_refresh_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let req = test::TestRequest::with_header(
             header::AUTHORIZATION,

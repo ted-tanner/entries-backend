@@ -54,7 +54,7 @@ table! {
         user_id -> Uuid,
         is_deleted -> Bool,
         date -> Date,
-        amount -> Numeric,
+        amount -> Money,
         category -> Int2,
         note -> Text,
         modified_timestamp -> Timestamp,

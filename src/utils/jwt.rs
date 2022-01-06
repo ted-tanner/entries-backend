@@ -5,6 +5,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
+pub(crate) use uuid::Uuid;
 
 use crate::env;
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
@@ -86,13 +87,22 @@ impl std::convert::From<TokenType> for u8 {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct JwtParams<'a> {
+    pub user_id: &'a Uuid,
+    pub user_email: &'a str,
+    pub user_currency: &'a str,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
-    pub exp: u64,        // Expiration in time since UNIX epoch
-    pub uid: uuid::Uuid, // User ID
-    pub typ: u8,         // Token type (Access=0, Refresh=1, SignIn=2)
-    pub slt: u16,        // Random salt (makes it so two tokens generated in the same
-                         //              second are different--useful for testing)
+    pub exp: u64,    // Expiration in time since UNIX epoch
+    pub uid: Uuid,   // User ID
+    pub eml: String, // User email address
+    pub cur: String, // User currency
+    pub typ: u8,     // Token type (Access=0, Refresh=1, SignIn=2)
+    pub slt: u32,    // Random salt (makes it so two tokens generated in the same
+                     //              second are different--useful for testing)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -145,21 +155,21 @@ pub struct TokenPair {
     pub refresh_token: Token,
 }
 
-pub fn generate_access_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
-    Ok(generate_token(user_id, TokenType::Access)?)
+pub fn generate_access_token(params: JwtParams) -> Result<Token, JwtError> {
+    Ok(generate_token(params, TokenType::Access)?)
 }
 
-pub fn generate_refresh_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
-    Ok(generate_token(user_id, TokenType::Refresh)?)
+pub fn generate_refresh_token(params: JwtParams) -> Result<Token, JwtError> {
+    Ok(generate_token(params, TokenType::Refresh)?)
 }
 
-pub fn generate_signin_token(user_id: &uuid::Uuid) -> Result<Token, JwtError> {
-    Ok(generate_token(user_id, TokenType::SignIn)?)
+pub fn generate_signin_token(params: JwtParams) -> Result<Token, JwtError> {
+    Ok(generate_token(params, TokenType::SignIn)?)
 }
 
-pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, JwtError> {
-    let access_token = generate_access_token(user_id)?;
-    let refresh_token = generate_refresh_token(user_id)?;
+pub fn generate_token_pair(params: JwtParams) -> Result<TokenPair, JwtError> {
+    let access_token = generate_access_token(params.clone())?;
+    let refresh_token = generate_refresh_token(params)?;
 
     Ok(TokenPair {
         access_token,
@@ -167,7 +177,7 @@ pub fn generate_token_pair(user_id: &uuid::Uuid) -> Result<TokenPair, JwtError> 
     })
 }
 
-fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, JwtError> {
+fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, JwtError> {
     let lifetime_sec = match token_type {
         TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
         TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
@@ -180,11 +190,13 @@ fn generate_token(user_id: &uuid::Uuid, token_type: TokenType) -> Result<Token, 
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
-    let salt = rand::thread_rng().gen_range(1..u16::MAX);
+    let salt = rand::thread_rng().gen_range(1..u32::MAX);
 
     let claims = TokenClaims {
         exp: expiration,
-        uid: *user_id,
+        uid: *params.user_id,
+        eml: params.user_email.to_string(),
+        cur: params.user_currency.to_string(),
         typ: token_type.clone().into(),
         slt: salt,
     };
@@ -348,9 +360,34 @@ mod test {
 
     #[test]
     fn test_generate_access_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = generate_access_token(&user_id).unwrap();
+        let token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
 
@@ -374,9 +411,34 @@ mod test {
 
     #[test]
     fn test_generate_refresh_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = generate_refresh_token(&user_id).unwrap();
+        let token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
 
@@ -400,9 +462,54 @@ mod test {
 
     #[test]
     fn test_generate_signin_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = generate_signin_token(&user_id).unwrap();
+        let token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
 
@@ -426,9 +533,34 @@ mod test {
 
     #[test]
     fn test_generate_token_pair() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let token = generate_token_pair(&user_id).unwrap();
+        let token = generate_token_pair(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(!token.access_token.token.contains(&user_id.to_string()));
         assert!(!token.refresh_token.token.contains(&user_id.to_string()));
@@ -473,11 +605,55 @@ mod test {
 
     #[test]
     fn test_generate_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_token(&user_id, TokenType::Access).unwrap();
-        let refresh_token = generate_token(&user_id, TokenType::Refresh).unwrap();
-        let signin_token = generate_token(&user_id, TokenType::SignIn).unwrap();
+        let access_token = generate_token(
+            JwtParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            TokenType::Access,
+        )
+        .unwrap();
+        let refresh_token = generate_token(
+            JwtParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            TokenType::Refresh,
+        )
+        .unwrap();
+        let signin_token = generate_token(
+            JwtParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            TokenType::SignIn,
+        )
+        .unwrap();
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &access_token.token,
@@ -536,11 +712,46 @@ mod test {
 
     #[test]
     fn test_validate_access_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert_eq!(
             validate_access_token(&access_token.token).unwrap().uid,
@@ -561,11 +772,46 @@ mod test {
         let thread_pool = &env::testing::THREAD_POOL;
         let db_connection = thread_pool.get().unwrap();
 
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert_eq!(
             validate_refresh_token(&refresh_token.token, &db_connection)
@@ -589,11 +835,46 @@ mod test {
 
     #[test]
     fn test_validate_signin_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert_eq!(
             validate_signin_token(&signin_token.token).unwrap().uid,
@@ -611,11 +892,46 @@ mod test {
 
     #[test]
     fn test_validate_token() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert_eq!(
             validate_token(&access_token.token, TokenType::Access)
@@ -639,11 +955,46 @@ mod test {
 
     #[test]
     fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(
             match validate_token(&access_token.token, TokenType::SignIn) {
@@ -669,11 +1020,46 @@ mod test {
 
     #[test]
     fn test_read_claims() {
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
-        let access_token = generate_access_token(&user_id).unwrap();
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
-        let signin_token = generate_signin_token(&user_id).unwrap();
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let access_token_claims = read_claims(&access_token.to_string()).unwrap();
         let refresh_token_claims = read_claims(&refresh_token.to_string()).unwrap();
@@ -702,7 +1088,27 @@ mod test {
         let thread_pool = &env::testing::THREAD_POOL;
         let db_connection = thread_pool.get().unwrap();
 
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -726,7 +1132,12 @@ mod test {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         let blacklist_token = blacklist_token(&refresh_token.token, &db_connection).unwrap();
 
@@ -750,7 +1161,27 @@ mod test {
         let thread_pool = &env::testing::THREAD_POOL;
         let db_connection = thread_pool.get().unwrap();
 
-        let user_id = uuid::Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -778,7 +1209,12 @@ mod test {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(&user_id).unwrap();
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
 
         assert!(!is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
 

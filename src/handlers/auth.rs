@@ -34,7 +34,11 @@ pub async fn sign_in(
     .expect("Failed to block on password verification");
 
     if does_password_match_hash {
-        let token_pair = jwt::generate_token_pair(&user.id);
+        let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+            user_id: &user.id,
+            user_email: &user.email,
+            user_currency: &user.currency,
+        });
 
         let token_pair = match token_pair {
             Ok(token_pair) => token_pair,
@@ -66,8 +70,6 @@ pub async fn refresh_tokens(
     })
     .await
     .map(|claims| {
-        let user_id = claims.uid;
-
         match jwt::blacklist_token(refresh_token.as_str(), db_connection) {
             Ok(_) => {}
             Err(e) => {
@@ -79,7 +81,11 @@ pub async fn refresh_tokens(
             }
         }
 
-        let token_pair = jwt::generate_token_pair(&user_id);
+        let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+            user_id: &claims.uid,
+            user_email: &claims.eml,
+            user_currency: &claims.cur,
+        });
 
         let token_pair = match token_pair {
             Ok(token_pair) => token_pair,
@@ -97,16 +103,16 @@ pub async fn refresh_tokens(
     .map_err(|e| {
         Err(match e {
             actix_web::error::BlockingError::Error(err) => match err {
-                jwt::Error::TokenInvalid => {
+                jwt::JwtError::TokenInvalid => {
                     ServerError::UserUnauthorized(Some("Token is invalid"))
                 }
-                jwt::Error::TokenBlacklisted => {
+                jwt::JwtError::TokenBlacklisted => {
                     ServerError::UserUnauthorized(Some("Token has been blacklisted"))
                 }
-                jwt::Error::TokenExpired => {
+                jwt::JwtError::TokenExpired => {
                     ServerError::UserUnauthorized(Some("Token has expired"))
                 }
-                jwt::Error::WrongTokenType => {
+                jwt::JwtError::WrongTokenType => {
                     ServerError::UserUnauthorized(Some("Incorrect token type"))
                 }
                 _ => ServerError::InternalServerError(Some("Error generating new tokens")),
@@ -382,7 +388,7 @@ mod tests {
             currency: String::from("USD"),
         };
 
-         let create_user_res = test::call_service(
+        let create_user_res = test::call_service(
             &mut app,
             test::TestRequest::post()
                 .uri("/api/user/create")

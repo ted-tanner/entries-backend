@@ -89,7 +89,8 @@ pub mod otp {
     lazy_static! {
         pub static ref OTP_SECRET_KEY: Vec<u8> = std::env::var("OTP_SECRET_KEY")
             .expect("OTP_SECRET_KEY environment variable must be set")
-            .as_bytes().to_owned();
+            .as_bytes()
+            .to_owned();
         pub static ref OTP_LIFETIME_SECS: u64 = std::env::var("OTP_LIFETIME_MINS")
             .unwrap_or(DEFAULT_OTP_LIFETIME_MINS.to_string())
             .parse::<u64>()

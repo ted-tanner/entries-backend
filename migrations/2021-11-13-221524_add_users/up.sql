@@ -2,7 +2,7 @@
 
 CREATE TABLE blacklisted_tokens (
     id SERIAL PRIMARY KEY,
-    token VARCHAR(255) UNIQUE NOT NULL,
+    token VARCHAR(800) UNIQUE NOT NULL,
     user_id UUID NOT NULL,
     token_expiration_epoch BIGINT NOT NULL
 );
@@ -57,7 +57,7 @@ CREATE TABLE entries (
     is_deleted BOOLEAN NOT NULL,
 
     date DATE NOT NULL,
-    amount DECIMAL NOT NULL,
+    amount MONEY NOT NULL,
     category SMALLINT NOT NULL,
     note TEXT NOT NULL,
 
@@ -117,8 +117,8 @@ CREATE TABLE user_notifications (
     is_deleted BOOLEAN NOT NULL,
 
     notification_type SMALLINT NOT NULL,
-    alt_title VARCHAR(255) NOT NULL,
-    alt_message VARCHAR(255) NOT NULL,
+    alt_title VARCHAR(500) NOT NULL,
+    alt_message VARCHAR(500) NOT NULL,
 
     -- Can hold things like associated user, budget, or comment IDs
     associated_data TEXT,
