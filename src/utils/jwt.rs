@@ -400,6 +400,8 @@ mod test {
 
         assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_token.claims.uid, user_id);
+        assert_eq!(decoded_token.claims.eml, new_user.email);
+        assert_eq!(decoded_token.claims.cur, new_user.currency);
         assert!(
             decoded_token.claims.exp
                 > SystemTime::now()
@@ -451,6 +453,8 @@ mod test {
 
         assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Refresh));
         assert_eq!(decoded_token.claims.uid, user_id);
+        assert_eq!(decoded_token.claims.eml, new_user.email);
+        assert_eq!(decoded_token.claims.cur, new_user.currency);
         assert!(
             decoded_token.claims.exp
                 > SystemTime::now()
@@ -463,26 +467,6 @@ mod test {
     #[test]
     fn test_generate_signin_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
-        let timestamp = chrono::Utc::now().naive_utc();
-        let new_user = NewUser {
-            id: user_id,
-            is_active: true,
-            is_premium: false,
-            premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: "USD",
-            modified_timestamp: timestamp,
-            created_timestamp: timestamp,
-        };
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
@@ -522,6 +506,8 @@ mod test {
 
         assert_eq!(decoded_token.claims.typ, u8::from(TokenType::SignIn));
         assert_eq!(decoded_token.claims.uid, user_id);
+        assert_eq!(decoded_token.claims.eml, new_user.email);
+        assert_eq!(decoded_token.claims.cur, new_user.currency);
         assert!(
             decoded_token.claims.exp
                 > SystemTime::now()
@@ -574,6 +560,8 @@ mod test {
 
         assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_access_token.claims.uid, user_id);
+        assert_eq!(decoded_access_token.claims.eml, new_user.email);
+        assert_eq!(decoded_access_token.claims.cur, new_user.currency);
         assert!(
             decoded_access_token.claims.exp
                 > SystemTime::now()
@@ -594,6 +582,8 @@ mod test {
             u8::from(TokenType::Refresh)
         );
         assert_eq!(decoded_refresh_token.claims.uid, user_id);
+        assert_eq!(decoded_refresh_token.claims.eml, new_user.email);
+        assert_eq!(decoded_refresh_token.claims.cur, new_user.currency);
         assert!(
             decoded_refresh_token.claims.exp
                 > SystemTime::now()
@@ -678,6 +668,8 @@ mod test {
 
         assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_access_token.claims.uid, user_id);
+        assert_eq!(decoded_access_token.claims.eml, new_user.email);
+        assert_eq!(decoded_access_token.claims.cur, new_user.currency);
         assert!(
             decoded_access_token.claims.exp
                 > SystemTime::now()
@@ -691,6 +683,8 @@ mod test {
             u8::from(TokenType::Refresh)
         );
         assert_eq!(decoded_refresh_token.claims.uid, user_id);
+        assert_eq!(decoded_refresh_token.claims.eml, new_user.email);
+        assert_eq!(decoded_refresh_token.claims.cur, new_user.currency);
         assert!(
             decoded_refresh_token.claims.exp
                 > SystemTime::now()
@@ -701,6 +695,8 @@ mod test {
 
         assert_eq!(decoded_signin_token.claims.typ, u8::from(TokenType::SignIn));
         assert_eq!(decoded_signin_token.claims.uid, user_id);
+        assert_eq!(decoded_signin_token.claims.eml, new_user.email);
+        assert_eq!(decoded_signin_token.claims.cur, new_user.currency);
         assert!(
             decoded_signin_token.claims.exp
                 > SystemTime::now()
@@ -1110,23 +1106,6 @@ mod test {
             created_timestamp: timestamp,
         };
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
-        let timestamp = chrono::Utc::now().naive_utc();
-        let new_user = NewUser {
-            id: user_id,
-            is_active: true,
-            is_premium: false,
-            premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
-            date_of_birth: NaiveDate::from_ymd(2015, 03, 14),
-            currency: "USD",
-            modified_timestamp: timestamp,
-            created_timestamp: timestamp,
-        };
-
         dsl::insert_into(users)
             .values(&new_user)
             .execute(&db_connection)
@@ -1162,27 +1141,6 @@ mod test {
         let db_connection = thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
-        let timestamp = chrono::Utc::now().naive_utc();
-        let new_user = NewUser {
-            id: user_id,
-            is_active: true,
-            is_premium: false,
-            premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: "USD",
-            modified_timestamp: timestamp,
-            created_timestamp: timestamp,
-        };
-
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
