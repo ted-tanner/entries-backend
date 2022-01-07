@@ -161,7 +161,7 @@ pub fn validate_strong_password(
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use chrono::NaiveDate;

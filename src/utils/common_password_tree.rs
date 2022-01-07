@@ -42,7 +42,7 @@ fn read_lines_from_file(file: File) -> io::Result<io::Lines<io::BufReader<File>>
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use rand::prelude::*;

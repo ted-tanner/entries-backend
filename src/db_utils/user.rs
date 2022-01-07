@@ -70,7 +70,7 @@ pub fn change_password(
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use chrono::NaiveDate;

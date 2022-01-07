@@ -35,7 +35,7 @@ pub fn verify_hash(password: &str, hash: &str) -> bool {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     #[test]

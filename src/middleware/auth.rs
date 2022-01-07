@@ -50,7 +50,7 @@ impl FromRequest for AuthorizedUserClaims {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use actix_web::http::header;

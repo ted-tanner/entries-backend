@@ -197,7 +197,7 @@ pub async fn change_password(
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use actix_web::{http, test, App};

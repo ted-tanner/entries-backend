@@ -350,7 +350,7 @@ pub fn is_on_blacklist(
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use chrono::NaiveDate;
