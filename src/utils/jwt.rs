@@ -56,7 +56,7 @@ pub enum TokenTypeError {
 
 impl std::error::Error for TokenTypeError {}
 
-impl std::fmt::Display for TokenTypeError {
+impl fmt::Display for TokenTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenTypeError::NoMatchForValue(v) => write!(f, "NoMatchForValue: {}", v),
@@ -143,9 +143,9 @@ impl Token {
     }
 }
 
-impl ToString for Token {
-    fn to_string(&self) -> String {
-        return self.token.clone();
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.token)
     }
 }
 

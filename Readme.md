@@ -1,5 +1,7 @@
 # TODO
 
+* Pass in Unix Epoch time to OTP and JWT functions, then write tests verifying expiration is enforced
+* Use Redis to count how many times a person has attempted an OTP in the past few minutes. Clear the Redis cache every few minutes (based on floor(Unix Epoch / time increment))
 * In models, can lifetime reference be used for things like Uuid in New_ structs?
 * Add email address to JWT, find endpoints (and tests!) that can use that email address rather than making a database fetch
 * Verify SQL injection is not possible with any endpoint
