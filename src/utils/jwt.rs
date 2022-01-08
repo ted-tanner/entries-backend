@@ -1180,4 +1180,112 @@ mod tests {
 
         assert!(is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
     }
+
+    #[test]
+    fn test_is_access_token() {
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
+
+        let access_token = generate_access_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+
+        assert!(access_token.is_access_token());
+        assert!(!access_token.is_refresh_token());
+        assert!(!access_token.is_signin_token());
+    }
+
+    #[test]
+    fn test_is_refresh_token() {
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
+
+        let refresh_token = generate_refresh_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+
+        assert!(refresh_token.is_refresh_token());
+        assert!(!refresh_token.is_access_token());
+        assert!(!refresh_token.is_signin_token());
+    }
+
+    #[test]
+    fn test_is_signin_token() {
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
+
+        let signin_token = generate_signin_token(JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+
+        assert!(signin_token.is_signin_token());
+        assert!(!signin_token.is_access_token());
+        assert!(!signin_token.is_refresh_token());
+    }
 }
