@@ -6,6 +6,7 @@ services:
       context: .
     depends_on:
       - db
+      - cache
     env_file: docker.env
     volumes:
       - ./assets:/server/assets
@@ -19,4 +20,8 @@ services:
 
   db:
     image: postgres
+    env_file: docker.env
+
+  cache:
+    image: redis
     env_file: docker.env
