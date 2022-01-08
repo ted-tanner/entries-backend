@@ -56,10 +56,11 @@ CREATE TABLE entries (
     
     is_deleted BOOLEAN NOT NULL,
 
-    date DATE NOT NULL,
     amount MONEY NOT NULL,
-    category SMALLINT NOT NULL,
-    note TEXT NOT NULL,
+    date DATE NOT NULL,
+    name VARCHAR(25),
+    category SMALLINT,
+    note TEXT,
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
