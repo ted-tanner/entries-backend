@@ -42,7 +42,7 @@ impl fmt::Display for JwtError {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum TokenType {
     Access,
     Refresh,
@@ -320,7 +320,7 @@ pub fn blacklist_token(
     let blacklisted_token = NewBlacklistedToken {
         token: token,
         user_id: user_id,
-        token_expiration_epoch: match i64::try_from(expiration) {
+        token_expiration_time: match i64::try_from(expiration) {
             Ok(exp) => exp,
             Err(_) => return Err(JwtError::from(JwtError::TokenInvalid)),
         },
@@ -1122,7 +1122,7 @@ mod tests {
 
         assert_eq!(&blacklist_token.token, &refresh_token.token);
         assert!(
-            blacklist_token.token_expiration_epoch
+            blacklist_token.token_expiration_time
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
