@@ -10,7 +10,7 @@ pub struct BlacklistedToken {
     pub id: i32,
     pub token: String,
     pub user_id: uuid::Uuid,
-    pub token_expiration_epoch: i64,
+    pub token_expiration_time: i64,
 }
 
 #[derive(Debug, Insertable)]
@@ -18,5 +18,5 @@ pub struct BlacklistedToken {
 pub struct NewBlacklistedToken<'a> {
     pub token: &'a str,
     pub user_id: uuid::Uuid,
-    pub token_expiration_epoch: i64,
+    pub token_expiration_time: i64,
 }

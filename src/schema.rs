@@ -3,7 +3,7 @@ table! {
         id -> Int4,
         token -> Varchar,
         user_id -> Uuid,
-        token_expiration_epoch -> Int8,
+        token_expiration_time -> Int8,
     }
 }
 

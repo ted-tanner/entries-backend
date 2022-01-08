@@ -4,7 +4,7 @@ CREATE TABLE blacklisted_tokens (
     id SERIAL PRIMARY KEY,
     token VARCHAR(800) UNIQUE NOT NULL,
     user_id UUID NOT NULL,
-    token_expiration_epoch BIGINT NOT NULL
+    token_expiration_time BIGINT NOT NULL
 );
 
 CREATE TABLE budgets (
