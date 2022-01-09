@@ -1,5 +1,6 @@
 ## TODO
 
+* Get Redis and email delivery set up
 * Time limit the following endpoints: signin, otp, change_password, create user (clear create user cache daily)
 * OTP endpoint needs to use a unix epoch that is `OTP_LIFETIME_SECS / 2` in the future so the code doesn't expire immediately. The endpoint should check `OTP_LIFETIME_SECS / 2` into the future and then the current time. The Redis cache should last for `2 * OTP_LIFETIME_SECS` to account for that.
 * Pass in Unix Epoch time to OTP and JWT functions, then write tests verifying expiration is enforced

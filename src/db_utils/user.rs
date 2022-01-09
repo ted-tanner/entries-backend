@@ -80,8 +80,8 @@ mod tests {
 
     #[test]
     fn test_create_user() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "X$KC3%s&L91m!bVA*@Iu";
 
@@ -117,8 +117,8 @@ mod tests {
 
     #[test]
     fn test_get_user_by_email() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
 
@@ -152,8 +152,8 @@ mod tests {
 
     #[test]
     fn test_get_user_by_id() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
 
@@ -186,8 +186,8 @@ mod tests {
 
     #[test]
     fn test_change_password() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         const ORIGINAL_PASSWORD: &'static str = "Eq&6T@Vyz54O%DoX$";
         const UPDATED_PASSWORD: &'static str = "P*%OaTMaMl^Uzft^$82Qn";

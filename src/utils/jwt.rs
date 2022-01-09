@@ -765,8 +765,8 @@ mod tests {
 
     #[test]
     fn test_validate_refresh_token() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -1081,8 +1081,8 @@ mod tests {
 
     #[test]
     fn test_blacklist_token() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -1137,8 +1137,8 @@ mod tests {
 
     #[test]
     fn test_is_token_on_blacklist() {
-        let thread_pool = &env::testing::THREAD_POOL;
-        let db_connection = thread_pool.get().unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);

@@ -2,13 +2,24 @@ lazy_static! {
     pub static ref APP_NAME: &'static str = "Budget App";
 }
 
+pub mod cache {
+    lazy_static! {
+        pub static ref REDIS_URL: String =
+            std::env::var("REDIS_URL").expect("REDIS_URL environment variable must be set");
+    }
+
+    pub fn initialize() {
+        let _ = *REDIS_URL;
+    }
+}
+
 pub mod db {
     lazy_static! {
         pub static ref DATABASE_URL: String =
             std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set");
     }
 
-    pub fn validate() {
+    pub fn initialize() {
         let _ = *DATABASE_URL;
     }
 }
@@ -41,7 +52,7 @@ pub mod hashing {
             .expect("SALT_LENGTH_BYTES environment variable must be an unsigned integer matching the processor's instructon bit lenth");
     }
 
-    pub fn validate() {
+    pub fn initialize() {
         let _ = *HASHING_SECRET_KEY;
         let _ = *HASH_LENGTH;
         let _ = *HASH_ITERATIONS;
@@ -76,7 +87,7 @@ pub mod jwt {
             * 60;
     }
 
-    pub fn validate() {
+    pub fn initialize() {
         let _ = *SIGNING_SECRET_KEY;
         let _ = *ACCESS_LIFETIME_SECS;
         let _ = *REFRESH_LIFETIME_SECS;
@@ -107,7 +118,7 @@ pub mod password {
         pub static ref COMMON_PASSWORDS_TREE: CommonPasswordTree = CommonPasswordTree::generate();
     }
 
-    pub fn validate() {
+    pub fn initialize() {
         let _ = *COMMON_PASSWORDS_FILE_PATH;
         let _ = *COMMON_PASSWORDS_TREE;
     }
@@ -120,7 +131,7 @@ pub mod rand {
         pub static ref SECURE_RANDOM_GENERATOR: SystemRandom = SystemRandom::new();
     }
 
-    pub fn validate() {
+    pub fn initialize() {
         let _ = *SECURE_RANDOM_GENERATOR;
     }
 }
@@ -140,11 +151,12 @@ pub mod testing {
     }
 }
 
-pub fn validate() {
+pub fn initialize() {
     // Forego lazy initialization in order to validate environment variables
-    db::validate();
-    hashing::validate();
-    jwt::validate();
-    password::validate();
-    rand::validate();
+    cache::initialize();
+    db::initialize();
+    hashing::initialize();
+    jwt::initialize();
+    password::initialize();
+    rand::initialize();
 }

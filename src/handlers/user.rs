@@ -11,11 +11,11 @@ use crate::middleware;
 pub(crate) use crate::utils::{jwt, password_hasher, validators};
 
 pub async fn get(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         db_utils::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
     })
     .await
@@ -64,7 +64,7 @@ pub async fn get(
 }
 
 pub async fn create(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
     if !&user_data.0.validate_email_address().is_valid() {
@@ -76,7 +76,7 @@ pub async fn create(
     }
 
     web::block(move || {
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         db_utils::user::create_user(&db_connection, &user_data)
     })
     .await
@@ -141,11 +141,11 @@ pub async fn create(
 ///     * new_password invalid
 ///     * normal case
 pub async fn change_password(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
 
     let user =
         web::block(move || db_utils::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
@@ -182,7 +182,7 @@ pub async fn change_password(
         return Err(ServerError::InputRejected(Some(msg)));
     };
 
-    let db_connection = thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
 
     web::block(move || {
         db_utils::user::change_password(
@@ -214,11 +214,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_create() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(create)),
         )
         .await;
@@ -247,7 +247,7 @@ mod tests {
         let resp = test::call_service(&mut app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
-        let db_connection = thread_pool.get().unwrap();
+        let db_connection = db_thread_pool.get().unwrap();
 
         let created_user = users
             .filter(user_fields::email.eq(&new_user.email.to_lowercase()))
@@ -265,11 +265,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(create)),
         )
         .await;
@@ -302,11 +302,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(create)),
         )
         .await;
@@ -339,11 +339,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_get() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/get", web::get().to(get))
                 .route("/api/user/create", web::post().to(create)),
         )
@@ -401,11 +401,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/change_password", web::post().to(change_password))
                 .route("/api/user/create", web::post().to(create)),
         )
@@ -459,7 +459,7 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;
@@ -477,11 +477,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/change_password", web::post().to(change_password))
                 .route("/api/user/create", web::post().to(create)),
         )
@@ -535,7 +535,7 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;
@@ -553,11 +553,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/change_password", web::post().to(change_password))
                 .route("/api/user/create", web::post().to(create)),
         )
@@ -611,7 +611,7 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;

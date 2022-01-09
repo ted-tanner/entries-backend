@@ -65,23 +65,29 @@ async fn main() -> std::io::Result<()> {
 
     let base_addr = format!("{}:{}", &ip, &port);
 
-    env::validate();
+    env::initialize();
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     log::info!("Connecting to database...");
 
-    let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-    let thread_pool = r2d2::Pool::builder()
-        .build(manager)
+    let db_connection_manager =
+        ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+    let db_thread_pool = r2d2::Pool::builder()
+        .build(db_connection_manager)
         .expect("Failed to create database thread pool");
 
     log::info!("Successfully connected to database");
 
+    let redis_conf = deadpool_redis::Config::from_url(&*env::cache::REDIS_URL);
+    let redis_thread_pool = redis_conf
+        .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+        .expect("Failed to create Redis cache thread pool");
+
     if run_migrations {
         log::info!("Running migrations...");
 
-        let db_connection = &thread_pool
+        let db_connection = &db_thread_pool
             .get()
             .expect("Failed to get thread for connecting to db");
         match embedded_migrations::run_with_output(db_connection, &mut std::io::stdout()) {
@@ -92,7 +98,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .data(thread_pool.clone())
+            .data(db_thread_pool.clone())
+            .data(redis_thread_pool.clone())
             .configure(services::api::configure)
             .configure(services::index::configure)
             .wrap(Logger::default())

@@ -8,7 +8,7 @@ use crate::handlers::request_io::{CredentialPair, RefreshToken};
 pub(crate) use crate::utils::{jwt, password_hasher};
 
 pub async fn sign_in(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, ServerError> {
     const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
@@ -20,7 +20,7 @@ pub async fn sign_in(
     let password = credentials.password.clone();
 
     let user = web::block(move || {
-        let db_connection = thread_pool.get().expect("Failed to access thread pool");
+        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
         db_utils::user::get_user_by_email(&db_connection, &credentials.email)
     })
     .await
@@ -56,16 +56,16 @@ pub async fn sign_in(
 }
 
 pub async fn refresh_tokens(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = &token.0 .0.clone();
-    let db_connection = &thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = &db_thread_pool.get().expect("Failed to access thread pool");
 
     web::block(move || {
         jwt::validate_refresh_token(
             token.0 .0.as_str(),
-            &thread_pool.get().expect("Failed to access thread pool"),
+            &db_thread_pool.get().expect("Failed to access thread pool"),
         )
     })
     .await
@@ -125,13 +125,13 @@ pub async fn refresh_tokens(
 }
 
 pub async fn logout(
-    thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<ThreadPool>,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         jwt::blacklist_token(
             refresh_token.0 .0.as_str(),
-            &thread_pool.get().expect("Failed to access thread pool"),
+            &db_thread_pool.get().expect("Failed to access thread pool"),
         )
     })
     .await
@@ -160,11 +160,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/sign_in", web::post().to(sign_in)),
         )
@@ -184,7 +184,7 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let db_connection = thread_pool.get().unwrap();
+        let db_connection = db_thread_pool.get().unwrap();
 
         test::call_service(
             &mut app,
@@ -235,11 +235,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/sign_in", web::post().to(sign_in)),
         )
@@ -287,11 +287,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/refresh_tokens", web::post().to(refresh_tokens)),
         )
@@ -311,7 +311,7 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let db_connection = thread_pool.get().unwrap();
+        let db_connection = db_thread_pool.get().unwrap();
 
         let create_user_res = test::call_service(
             &mut app,
@@ -364,11 +364,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/refresh_tokens", web::post().to(refresh_tokens)),
         )
@@ -416,11 +416,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_acces_token() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/refresh_tokens", web::post().to(refresh_tokens)),
         )
@@ -468,11 +468,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_logout() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
 
         let mut app = test::init_service(
             App::new()
-                .data(thread_pool.clone())
+                .data(db_thread_pool.clone())
                 .route("/api/user/create", web::post().to(user::create))
                 .route("/api/auth/logout", web::post().to(logout)),
         )
@@ -492,7 +492,7 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let db_connection = thread_pool.get().unwrap();
+        let db_connection = db_thread_pool.get().unwrap();
 
         let create_user_res = test::call_service(
             &mut app,
