@@ -20,7 +20,7 @@ pub struct InputUserId {
     pub user_id: uuid::Uuid,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputUser {
     pub email: String,
     pub password: String,
@@ -47,7 +47,15 @@ impl InputUser {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct RefreshToken(pub String);
+pub struct RefreshToken {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OtpSigninTokenPair {
+    pub signin_token: String,
+    pub otp: String,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CurrentAndNewPasswordPair {

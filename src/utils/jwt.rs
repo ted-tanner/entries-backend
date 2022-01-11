@@ -5,7 +5,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
-pub(crate) use uuid::Uuid;
+use uuid::Uuid;
 
 use crate::env;
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
@@ -118,6 +118,7 @@ pub struct Token {
 }
 
 impl Token {
+    #[allow(dead_code)]
     fn is_access_token(&self) -> bool {
         if let TokenType::Access = self.token_type {
             true
@@ -126,6 +127,7 @@ impl Token {
         }
     }
 
+    #[allow(dead_code)]
     fn is_refresh_token(&self) -> bool {
         if let TokenType::Refresh = self.token_type {
             true
@@ -134,6 +136,7 @@ impl Token {
         }
     }
 
+    #[allow(dead_code)]
     fn is_signin_token(&self) -> bool {
         if let TokenType::SignIn = self.token_type {
             true
@@ -181,7 +184,10 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
     let lifetime_sec = match token_type {
         TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
         TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
-        TokenType::SignIn => *env::otp::OTP_LIFETIME_SECS,
+        // Because of how the one-time passcodes expire, a future passcode is sent to the user.
+        // The verification endpoint checks the current code and the next (future) code, meaning
+        // a user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
+        TokenType::SignIn => *env::otp::OTP_LIFETIME_SECS * 2,
     };
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {

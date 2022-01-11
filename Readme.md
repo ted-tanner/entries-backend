@@ -1,9 +1,12 @@
 ## TODO
 
+* Test signin and OTP verification endpoints!
 * Get Redis and email delivery set up
+* Logout endpoint: VALIDATE THE TOKEN FOR THE USER FIRST!!! Currently, anyone could add anything to the blacklist
 * Time limit the following endpoints: signin, otp, change_password, create user (clear create user cache daily)
 * OTP endpoint needs to use a unix epoch that is `OTP_LIFETIME_SECS / 2` in the future so the code doesn't expire immediately. The endpoint should check `OTP_LIFETIME_SECS / 2` into the future and then the current time. The Redis cache should last for `2 * OTP_LIFETIME_SECS` to account for that.
 * Pass in Unix Epoch time to OTP and JWT functions, then write tests verifying expiration is enforced
+* Create integer error codes in an enum (EXPIRED, INVALID, INCORRECT_FORMAT, etc.)
 * Use Redis to count how many times a person has attempted an OTP in the past few minutes. Clear the Redis cache every few minutes (based on floor(Unix Epoch / time increment))
 * In models, can lifetime reference be used for things like Uuid in New_ structs?
 * Add email address to JWT, find endpoints (and tests!) that can use that email address rather than making a database fetch

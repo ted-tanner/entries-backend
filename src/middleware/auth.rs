@@ -1,8 +1,8 @@
-pub(crate) use actix_web::dev::Payload;
-pub(crate) use actix_web::{error, FromRequest, HttpRequest};
+use actix_web::dev::Payload;
+use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
 
-pub(crate) use crate::utils::jwt;
+use crate::utils::jwt;
 
 #[derive(Debug)]
 pub struct AuthorizedUserClaims(pub jwt::TokenClaims);

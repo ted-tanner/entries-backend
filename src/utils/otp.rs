@@ -3,9 +3,9 @@
 use ring::hmac;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-pub(crate) use uuid::Uuid;
+use uuid::Uuid;
 
-pub(crate) use crate::env;
+use crate::env;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum OtpError {

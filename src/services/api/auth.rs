@@ -7,6 +7,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/auth")
             .route("/sign_in", web::post().to(handlers::auth::sign_in))
             .route(
+                "/verify_otp_for_signin",
+                web::post().to(handlers::auth::verify_otp_for_signin),
+            )
+            .route(
                 "/refresh_tokens",
                 web::post().to(handlers::auth::refresh_tokens),
             )

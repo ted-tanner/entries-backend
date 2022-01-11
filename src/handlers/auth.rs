@@ -1,11 +1,13 @@
 use actix_web::{web, HttpResponse};
 use log::error;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::db_utils;
 use crate::definitions::ThreadPool;
+use crate::env;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{CredentialPair, RefreshToken};
-pub(crate) use crate::utils::{jwt, password_hasher};
+use crate::handlers::request_io::{CredentialPair, OtpSigninTokenPair, RefreshToken};
+use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
     db_thread_pool: web::Data<ThreadPool>,
@@ -34,37 +36,135 @@ pub async fn sign_in(
     .expect("Failed to block on password verification");
 
     if does_password_match_hash {
-        let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+        let signin_token = jwt::generate_signin_token(jwt::JwtParams {
             user_id: &user.id,
             user_email: &user.email,
             user_currency: &user.currency,
         });
 
-        let token_pair = match token_pair {
-            Ok(token_pair) => token_pair,
+        let signin_token = match signin_token {
+            Ok(signin_token) => signin_token,
             Err(_) => {
                 return Err(ServerError::InternalServerError(Some(
-                    "Failed to generate tokens for new user. User has been created.",
+                    "Failed to generate sign-in token for user",
                 )));
             }
         };
 
-        Ok(HttpResponse::Ok().json(token_pair))
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
+        // it is sent. The verification endpoint will check the code for the current time as well as a future
+        // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
+        // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
+        let otp = match otp::generate_otp(&user.id, &current_time + *env::otp::OTP_LIFETIME_SECS) {
+            Ok(p) => p,
+            Err(_) => {
+                return Err(ServerError::InternalServerError(Some(
+                    "Failed to generate OTP",
+                )))
+            }
+        };
+
+        // TODO: Don't log this, email it!
+        println!("\n\nOTP: {}\n\n", &otp);
+
+        Ok(HttpResponse::Ok().json(signin_token))
     } else {
         Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG)))
     }
+}
+
+pub async fn verify_otp_for_signin(
+    otp_and_token: web::Json<OtpSigninTokenPair>,
+) -> Result<HttpResponse, ServerError> {
+    let token_claims =
+        web::block(move || jwt::validate_signin_token(&otp_and_token.0.signin_token))
+            .await
+            .map_err(|e| match e {
+                actix_web::error::BlockingError::Error(err) => match err {
+                    jwt::JwtError::TokenInvalid => {
+                        return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+                    }
+                    jwt::JwtError::TokenExpired => {
+                        return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+                    }
+                    jwt::JwtError::WrongTokenType => {
+                        return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+                    }
+                    _ => {
+                        return Err(ServerError::InternalServerError(Some(
+                            "Error verifying token",
+                        )))
+                    }
+                },
+                actix_web::error::BlockingError::Canceled => {
+                    return Err(ServerError::InternalServerError(Some("Response canceled")))
+                }
+            })?;
+
+    web::block(move || {
+        // TODO: If this fails, check with system time + OTP_LIFETIME_SECS
+        let otp = otp::OneTimePasscode::try_from(otp_and_token.0.otp)?;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_secs();
+
+        let mut is_valid = otp::verify_otp(otp, &token_claims.uid, current_time)?;
+
+        // A future code gets sent to the user, so check a current and future code
+        if !is_valid {
+            is_valid = otp::verify_otp(
+                otp,
+                &token_claims.uid,
+                current_time + *env::otp::OTP_LIFETIME_SECS,
+            )?;
+        }
+
+        Ok(is_valid)
+    })
+    .await
+    .map(|is_valid| {
+        if is_valid {
+            // TODO: Generate JWTs
+            Ok(HttpResponse::Ok().finish())
+        } else {
+            Err(ServerError::UserUnauthorized(Some("Incorrect passcode")))
+        }
+    })
+    .map_err(|e| match e {
+        actix_web::error::BlockingError::Error(err) => match err {
+            otp::OtpError::Unauthorized => {
+                Err(ServerError::UserUnauthorized(Some("Incorrect passcode")))
+            }
+            otp::OtpError::ImproperlyFormatted => {
+                Err(ServerError::InputRejected(Some("Invalid passcode")))
+            }
+            otp::OtpError::Error(_) => Err(ServerError::InternalServerError(Some(
+                "Validating passcode failed",
+            ))),
+        },
+        actix_web::error::BlockingError::Canceled => {
+            return Err(ServerError::InternalServerError(Some("Response canceled")))
+        }
+    })?
 }
 
 pub async fn refresh_tokens(
     db_thread_pool: web::Data<ThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let refresh_token = &token.0 .0.clone();
+    let refresh_token = &token.0.token.clone();
     let db_connection = &db_thread_pool.get().expect("Failed to access thread pool");
 
     web::block(move || {
         jwt::validate_refresh_token(
-            token.0 .0.as_str(),
+            token.0.token.as_str(),
             &db_thread_pool.get().expect("Failed to access thread pool"),
         )
     })
@@ -115,7 +215,7 @@ pub async fn refresh_tokens(
                 jwt::JwtError::WrongTokenType => {
                     ServerError::UserUnauthorized(Some("Incorrect token type"))
                 }
-                _ => ServerError::InternalServerError(Some("Error generating new tokens")),
+                _ => ServerError::InternalServerError(Some("Error verifying token")),
             },
             actix_web::error::BlockingError::Canceled => {
                 ServerError::InternalServerError(Some("Response canceled"))
@@ -129,8 +229,9 @@ pub async fn logout(
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
+        // TODO: VALIDATE THE TOKEN FOR THE USER FIRST!!!
         jwt::blacklist_token(
-            refresh_token.0 .0.as_str(),
+            refresh_token.0.token.as_str(),
             &db_thread_pool.get().expect("Failed to access thread pool"),
         )
     })

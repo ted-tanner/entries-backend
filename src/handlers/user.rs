@@ -4,11 +4,11 @@ use log::error;
 use crate::db_utils;
 use crate::definitions::ThreadPool;
 use crate::handlers::error::ServerError;
-pub(crate) use crate::handlers::request_io::{
+use crate::handlers::request_io::{
     CurrentAndNewPasswordPair, InputUser, OutputUserPrivate,
 };
 use crate::middleware;
-pub(crate) use crate::utils::{jwt, password_hasher, validators};
+use crate::utils::{jwt, password_hasher, validators};
 
 pub async fn get(
     db_thread_pool: web::Data<ThreadPool>,
