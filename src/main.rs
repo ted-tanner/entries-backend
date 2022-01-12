@@ -36,21 +36,44 @@ async fn main() -> std::io::Result<()> {
     while let Some(arg) = args.next() {
         match arg.to_lowercase().as_str() {
             "--port" => {
-                let port_str = args
-                    .next()
-                    .expect("--port option specified but no port was given");
+                let port_str = {
+                    let next_arg = args.next();
 
-                port = port_str
-                    .parse()
-                    .expect("Wrong format for port. Integer expected");
+                    match next_arg {
+                        Some(s) => s.to_string(),
+                        None => {
+                            eprintln!("--port option specified but no port was given");
+                            std::process::exit(1);
+                        }
+                    }
+                };
+
+                port = {
+                    let port_result = port_str.parse::<u16>();
+
+                    match port_result {
+                        Ok(p) => p,
+                        Err(_) => {
+                            eprintln!("Incorrect format for port. Integer expected");
+                            std::process::exit(1);
+                        }
+                    }
+                };
 
                 continue;
             }
             "--ip" => {
-                ip = args
-                    .next()
-                    .expect("--ip option specified but no IP was given")
-                    .to_string();
+                ip = {
+                    let next_arg = args.next();
+
+                    match next_arg {
+                        Some(s) => s.to_string(),
+                        None => {
+                            eprintln!("--ip option specified but no IP was given");
+                            std::process::exit(1);
+                        }
+                    }
+                };
 
                 continue;
             }
@@ -59,7 +82,10 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
-            a => panic!("Invalid argument: {}", &a),
+            a => {
+                eprintln!("Invalid argument: {}", &a);
+                std::process::exit(1);
+            }
         }
     }
 

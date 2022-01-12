@@ -4,8 +4,10 @@ lazy_static! {
 
 pub mod cache {
     lazy_static! {
-        pub static ref REDIS_URL: String =
-            std::env::var("REDIS_URL").expect("REDIS_URL environment variable must be set");
+        pub static ref REDIS_URL: String = std::env::var("REDIS_URL").unwrap_or_else(|_| {
+            eprintln!("REDIS_URL environment variable must be set");
+            std::process::exit(1);
+        });
     }
 
     pub fn initialize() {
@@ -15,8 +17,10 @@ pub mod cache {
 
 pub mod db {
     lazy_static! {
-        pub static ref DATABASE_URL: String =
-            std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set");
+        pub static ref DATABASE_URL: String = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            eprintln!("DATABASE_URL environment variable must be set");
+            std::process::exit(1);
+        });
     }
 
     pub fn initialize() {
@@ -32,24 +36,39 @@ pub mod hashing {
 
     lazy_static! {
         pub static ref HASHING_SECRET_KEY: Vec<u8> = std::env::var("HASHING_SECRET_KEY")
-            .expect("HASHING_SECRET_KEY environment variable must be set")
+        .unwrap_or_else(|_| {
+            eprintln!("HASHING_SECRET_KEY environment variable must be set");
+            std::process::exit(1);
+        })
             .as_bytes().to_owned();
         pub static ref HASH_LENGTH: u32 = std::env::var("HASH_LENGTH")
             .unwrap_or(DEFAULT_HASH_LENGTH.to_string())
             .parse::<u32>()
-            .expect("HASH_LENGTH environment variable must be an unsigned 32-bit integer");
+            .unwrap_or_else(|_| {
+                eprintln!("HASH_LENGTH environment variable must be an unsigned 32-bit integer");
+                std::process::exit(1);
+            });
         pub static ref HASH_ITERATIONS: u32 = std::env::var("HASH_ITERATIONS")
             .unwrap_or(DEFAULT_HASH_ITERATIONS.to_string())
             .parse::<u32>()
-            .expect("HASH_ITERATIONS environment variable must be an unsigned 32-bit integer");
+            .unwrap_or_else(|_| {
+                eprintln!("HASH_ITERATIONS environment variable must be an unsigned 32-bit integer");
+                std::process::exit(1);
+            });
         pub static ref HASH_MEM_SIZE_KIB: u32 = std::env::var("HASH_MEM_SIZE_KIB")
             .unwrap_or(DEFAULT_HASH_MEM_SIZE_KIB.to_string())
             .parse::<u32>()
-            .expect("HASH_MEM_SIZE_KIB environment variable must be an unsigned 32-bit integer");
+            .unwrap_or_else(|_| {
+                eprintln!("HASH_MEM_SIZE_KIB environment variable must be an unsigned 32-bit integer");
+                std::process::exit(1);
+            });
         pub static ref SALT_LENGTH_BYTES: usize = std::env::var("SALT_LENGTH_BYTES")
             .unwrap_or(DEFAULT_SALT_LENGTH_BYTES.to_string())
             .parse::<usize>()
-            .expect("SALT_LENGTH_BYTES environment variable must be an unsigned integer matching the processor's instructon bit lenth");
+            .unwrap_or_else(|_| {
+                eprintln!("SALT_LENGTH_BYTES environment variable must be an unsigned integer matching the processor's instructon bit length");
+                std::process::exit(1);
+            });
     }
 
     pub fn initialize() {
@@ -60,7 +79,8 @@ pub mod hashing {
         let _ = *SALT_LENGTH_BYTES;
 
         if !HASH_MEM_SIZE_KIB.is_power_of_two() {
-            panic!("HASH_MEM_SIZE_KIB environment variable must be a power of two");
+            eprintln!("HASH_MEM_SIZE_KIB environment variable must be a power of two");
+            std::process::exit(1);
         }
     }
 }
@@ -71,17 +91,26 @@ pub mod jwt {
 
     lazy_static! {
         pub static ref SIGNING_SECRET_KEY: Vec<u8> = std::env::var("SIGNING_SECRET_KEY")
-            .expect("SIGNING_SECRET_KEY environment variable must be set")
+        .unwrap_or_else(|_| {
+            eprintln!("SIGNING_SECRET_KEY environment variable must be set");
+            std::process::exit(1);
+        })
             .as_bytes().to_owned();
         pub static ref ACCESS_LIFETIME_SECS: u64 = std::env::var("ACCESS_TOKEN_LIFETIME_MINS")
             .unwrap_or(DEFAULT_ACCESS_TOKEN_LIFETIME_MINS.to_string())
             .parse::<u64>()
-            .expect("ACCESS_TOKEN_LIFETIME_MINS environment variable must be an unsigned 64-bit integer")
+            .unwrap_or_else(|_| {
+                eprintln!("ACCESS_TOKEN_LIFETIME_MINS environment variable must be an unsigned 64-bit integer");
+                std::process::exit(1);
+            })
             * 60;
         pub static ref REFRESH_LIFETIME_SECS: u64 = std::env::var("REFRESH_TOKEN_LIFETIME_DAYS")
             .unwrap_or(DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS.to_string())
             .parse::<u64>()
-            .expect("REFRESH_TOKEN_LIFETIME_DAYS environment variable must be an unsigned 64-bit integer")
+            .unwrap_or_else(|_| {
+                eprintln!("REFRESH_TOKEN_LIFETIME_DAYS environment variable must be an unsigned 64-bit integer");
+                std::process::exit(1);
+            })
             * 24
             * 60
             * 60;
@@ -99,13 +128,21 @@ pub mod otp {
 
     lazy_static! {
         pub static ref OTP_SECRET_KEY: Vec<u8> = std::env::var("OTP_SECRET_KEY")
-            .expect("OTP_SECRET_KEY environment variable must be set")
+            .unwrap_or_else(|_| {
+                eprintln!("OTP_SECRET_KEY environment variable must be set");
+                std::process::exit(1);
+            })
             .as_bytes()
             .to_owned();
         pub static ref OTP_LIFETIME_SECS: u64 = std::env::var("OTP_LIFETIME_MINS")
             .unwrap_or(DEFAULT_OTP_LIFETIME_MINS.to_string())
             .parse::<u64>()
-            .expect("OTP_LIFETIME_MINS environment variable must be an unsigned 64-bit integer")
+            .unwrap_or_else(|_| {
+                eprintln!(
+                    "OTP_LIFETIME_SECS environment variable must be an unsigned 64-bit integer"
+                );
+                std::process::exit(1);
+            })
             * 60;
     }
 }
@@ -137,13 +174,13 @@ pub mod rand {
 }
 
 pub mod testing {
-    use crate::definitions::ThreadPool;
+    use crate::definitions::DbThreadPool;
 
     use diesel::prelude::*;
     use diesel::r2d2::{self, ConnectionManager};
 
     lazy_static! {
-        pub static ref THREAD_POOL: ThreadPool = r2d2::Pool::builder()
+        pub static ref THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
             .build(ConnectionManager::<PgConnection>::new(
                 crate::env::db::DATABASE_URL.as_str()
             ))

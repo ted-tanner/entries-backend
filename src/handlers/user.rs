@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse};
 use log::error;
 
 use crate::db_utils;
-use crate::definitions::ThreadPool;
+use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
     CurrentAndNewPasswordPair, InputUser, OutputUserPrivate,
@@ -11,7 +11,7 @@ use crate::middleware;
 use crate::utils::{jwt, password_hasher, validators};
 
 pub async fn get(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
@@ -64,7 +64,7 @@ pub async fn get(
 }
 
 pub async fn create(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
     if !&user_data.0.validate_email_address().is_valid() {
@@ -141,7 +141,7 @@ pub async fn create(
 ///     * new_password invalid
 ///     * normal case
 pub async fn change_password(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {

@@ -3,14 +3,14 @@ use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::db_utils;
-use crate::definitions::ThreadPool;
+use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{CredentialPair, OtpSigninTokenPair, RefreshToken};
 use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, ServerError> {
     const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
@@ -156,7 +156,7 @@ pub async fn verify_otp_for_signin(
 }
 
 pub async fn refresh_tokens(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = &token.0.token.clone();
@@ -225,7 +225,7 @@ pub async fn refresh_tokens(
 }
 
 pub async fn logout(
-    db_thread_pool: web::Data<ThreadPool>,
+    db_thread_pool: web::Data<DbThreadPool>,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
