@@ -6,7 +6,9 @@ use crate::db_utils;
 use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{CredentialPair, OtpSigninTokenPair, RefreshToken};
+use crate::handlers::request_io::{
+    CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
+};
 use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
@@ -51,9 +53,13 @@ pub async fn sign_in(
             }
         };
 
+        let signin_token = SigninToken {
+            signin_token: signin_token.to_string(),
+        };
+
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("Failed to fetch system time")
             .as_secs();
 
         // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
@@ -79,7 +85,7 @@ pub async fn sign_in(
 }
 
 pub async fn verify_otp_for_signin(
-    otp_and_token: web::Json<OtpSigninTokenPair>,
+    otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
     let token_claims =
         web::block(move || jwt::validate_signin_token(&otp_and_token.0.signin_token))
@@ -131,8 +137,29 @@ pub async fn verify_otp_for_signin(
     .await
     .map(|is_valid| {
         if is_valid {
-            // TODO: Generate JWTs
-            Ok(HttpResponse::Ok().finish())
+            let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+                user_id: &token_claims.uid,
+                user_email: &token_claims.eml,
+                user_currency: &token_claims.cur,
+            });
+
+            let token_pair = match token_pair {
+                Ok(token_pair) => token_pair,
+                Err(e) => {
+                    error!("{}", e);
+
+                    return Err(ServerError::InternalServerError(Some(
+                        "Failed to generate tokens for new user",
+                    )));
+                }
+            };
+
+            let token_pair = TokenPair {
+                access_token: token_pair.access_token.to_string(),
+                refresh_token: token_pair.refresh_token.to_string(),
+            };
+
+            Ok(HttpResponse::Ok().json(token_pair))
         } else {
             Err(ServerError::UserUnauthorized(Some("Incorrect passcode")))
         }
@@ -198,6 +225,11 @@ pub async fn refresh_tokens(
             }
         };
 
+        let token_pair = TokenPair {
+            access_token: token_pair.access_token.to_string(),
+            refresh_token: token_pair.refresh_token.to_string(),
+        };
+
         Ok(HttpResponse::Ok().json(token_pair))
     })
     .map_err(|e| {
@@ -255,8 +287,9 @@ mod tests {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::{InputUser, RefreshToken};
+    use crate::handlers::request_io::{InputUser, RefreshToken, SigninToken, SigninTokenOtpPair};
     use crate::handlers::user;
+    use crate::utils::otp;
 
     #[actix_rt::test]
     async fn test_sign_in() {
@@ -285,8 +318,6 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let db_connection = db_thread_pool.get().unwrap();
-
         test::call_service(
             &mut app,
             test::TestRequest::post()
@@ -311,22 +342,13 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let token_pair = actix_web::test::read_body_json::<jwt::TokenPair, _>(res).await;
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
 
-        let access_token = token_pair.access_token.to_string();
-        let refresh_token = token_pair.refresh_token.to_string();
-
-        let user_id = jwt::read_claims(&access_token).unwrap().uid;
-
-        assert!(access_token.len() > 0);
-        assert!(refresh_token.len() > 0);
+        assert!(signin_token.signin_token.len() > 0);
 
         assert_eq!(
-            jwt::validate_access_token(&access_token).unwrap().uid,
-            user_id
-        );
-        assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection)
+            jwt::validate_signin_token(&signin_token.signin_token)
                 .unwrap()
                 .uid,
             user_id
@@ -386,6 +408,523 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn test_verify_otp_with_current_code() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+
+        let access_token = token_pair.access_token.to_string();
+        let refresh_token = token_pair.refresh_token.to_string();
+
+        assert!(access_token.len() > 0);
+        assert!(refresh_token.len() > 0);
+
+        let db_connection = db_thread_pool.get().unwrap();
+
+        assert_eq!(
+            jwt::validate_access_token(&access_token).unwrap().uid,
+            user_id
+        );
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection)
+                .unwrap()
+                .uid,
+            user_id
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_otp_with_next_code() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let future_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + *env::otp::OTP_LIFETIME_SECS;
+
+        let otp = otp::generate_otp(&user_id, future_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+
+        let access_token = token_pair.access_token.to_string();
+        let refresh_token = token_pair.refresh_token.to_string();
+
+        assert!(access_token.len() > 0);
+        assert!(refresh_token.len() > 0);
+
+        let db_connection = db_thread_pool.get().unwrap();
+
+        assert_eq!(
+            jwt::validate_access_token(&access_token).unwrap().uid,
+            user_id
+        );
+        assert_eq!(
+            jwt::validate_refresh_token(&refresh_token, &db_connection)
+                .unwrap()
+                .uid,
+            user_id
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_otp_fails_with_wrong_code() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: String::from("1234 5678"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_otp_fails_with_expired_code() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let past_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - *env::otp::OTP_LIFETIME_SECS;
+
+        let otp = otp::generate_otp(&user_id, past_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_otp_fails_with_future_not_next_code() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let far_future_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + (2 * *env::otp::OTP_LIFETIME_SECS);
+
+        let otp = otp::generate_otp(&user_id, far_future_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_otp_fails_with_wrong_token() {
+        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .route("/api/user/create", web::post().to(user::create))
+                .route("/api/auth/sign_in", web::post().to(sign_in))
+                .route(
+                    "/api/auth/verify_otp_for_signin",
+                    web::post().to(verify_otp_for_signin),
+                ),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token + "i",
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[actix_rt::test]
     async fn test_refresh_tokens() {
         let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
         let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
@@ -430,7 +969,9 @@ mod tests {
             .unwrap()
             .uid;
 
-        let refresh_token_payload = RefreshToken(user_tokens.refresh_token.to_string());
+        let refresh_token_payload = RefreshToken {
+            token: user_tokens.refresh_token.to_string(),
+        };
 
         let req = test::TestRequest::post()
             .uri("/api/auth/refresh_tokens")
@@ -441,7 +982,7 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let token_pair = actix_web::test::read_body_json::<jwt::TokenPair, _>(res).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
 
         let access_token = token_pair.access_token.to_string();
         let refresh_token = token_pair.refresh_token.to_string();
@@ -449,7 +990,7 @@ mod tests {
         assert!(access_token.len() > 0);
         assert!(refresh_token.len() > 0);
 
-        assert!(jwt::is_on_blacklist(&refresh_token_payload.0, &db_connection).unwrap());
+        assert!(jwt::is_on_blacklist(&refresh_token_payload.token, &db_connection).unwrap());
         assert_eq!(
             jwt::validate_access_token(&access_token).unwrap().uid,
             user_id
@@ -502,7 +1043,9 @@ mod tests {
         let user_tokens =
             actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
 
-        let refresh_token_payload = RefreshToken(user_tokens.refresh_token.to_string() + "e");
+        let refresh_token_payload = RefreshToken {
+            token: user_tokens.refresh_token.to_string() + "e",
+        };
 
         let req = test::TestRequest::post()
             .uri("/api/auth/refresh_tokens")
@@ -554,7 +1097,9 @@ mod tests {
         let user_tokens =
             actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
 
-        let refresh_token_payload = RefreshToken(user_tokens.access_token.to_string());
+        let refresh_token_payload = RefreshToken {
+            token: user_tokens.access_token.to_string(),
+        };
 
         let req = test::TestRequest::post()
             .uri("/api/auth/refresh_tokens")
@@ -608,7 +1153,9 @@ mod tests {
         let user_tokens =
             actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
 
-        let logout_payload = RefreshToken(user_tokens.refresh_token.to_string());
+        let logout_payload = RefreshToken {
+            token: user_tokens.refresh_token.to_string(),
+        };
 
         let req = test::TestRequest::post()
             .uri("/api/auth/logout")
@@ -619,6 +1166,6 @@ mod tests {
         let res = test::call_service(&mut app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        assert!(jwt::is_on_blacklist(&logout_payload.0, &db_connection).unwrap());
+        assert!(jwt::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
     }
 }

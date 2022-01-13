@@ -63,6 +63,7 @@ pub async fn get(
     })?
 }
 
+// TODO: Require OTP
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     user_data: web::Json<InputUser>,

@@ -28,3 +28,14 @@ pub struct OutputUserPublic {
     pub last_name: String,
     pub currency: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SigninToken {
+    pub signin_token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenPair {
+    pub access_token: String,
+    pub refresh_token: String,
+}

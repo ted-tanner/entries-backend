@@ -52,7 +52,7 @@ pub struct RefreshToken {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct OtpSigninTokenPair {
+pub struct SigninTokenOtpPair {
     pub signin_token: String,
     pub otp: String,
 }
