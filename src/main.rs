@@ -98,14 +98,14 @@ async fn main() -> std::io::Result<()> {
     log::info!("Connecting to database...");
 
     let db_connection_manager =
-        ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
+        ConnectionManager::<PgConnection>::new(env::CONF.connections.database_url.as_str());
     let db_thread_pool = r2d2::Pool::builder()
         .build(db_connection_manager)
         .expect("Failed to create database thread pool");
 
     log::info!("Successfully connected to database");
 
-    let redis_conf = deadpool_redis::Config::from_url(&*env::cache::REDIS_URL);
+    let redis_conf = deadpool_redis::Config::from_url(&env::CONF.connections.redis_url);
     let redis_thread_pool = redis_conf
         .create_pool(Some(deadpool_redis::Runtime::Tokio1))
         .expect("Failed to create Redis cache thread pool");

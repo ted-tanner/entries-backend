@@ -1,0 +1,21 @@
+###### Testing Configuration ######
+
+[connections]
+database_url = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
+redis_url = "redis://budgetappcacheuser:431sNI2aNd0wSPm31dps@localhost"
+
+[keys]
+hashing_key = "OCc!7xlc"
+signing_key = "3dn68OZo"
+otp_key = "K1Xn*5&b"
+
+[hashing]
+hash_length = 32
+hash_iterations = 2
+hash_mem_size_kib = 128
+salt_length_bytes = 16
+
+[lifetimes]
+otp_lifetime_mins = 5
+access_token_lifetime_mins = 8
+refresh_token_lifetime_days = 28

@@ -182,12 +182,12 @@ pub fn generate_token_pair(params: JwtParams) -> Result<TokenPair, JwtError> {
 
 fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, JwtError> {
     let lifetime_sec = match token_type {
-        TokenType::Access => *env::jwt::ACCESS_LIFETIME_SECS,
-        TokenType::Refresh => *env::jwt::REFRESH_LIFETIME_SECS,
+        TokenType::Access => env::CONF.lifetimes.access_token_lifetime_mins * 60,
+        TokenType::Refresh => env::CONF.lifetimes.refresh_token_lifetime_days * 24 * 60 * 60,
         // Because of how the one-time passcodes expire, a future passcode is sent to the user.
         // The verification endpoint checks the current code and the next (future) code, meaning
         // a user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
-        TokenType::SignIn => *env::otp::OTP_LIFETIME_SECS * 2,
+        TokenType::SignIn => env::CONF.lifetimes.otp_lifetime_mins * 60 * 2,
     };
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -213,7 +213,7 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
     let token = match jsonwebtoken::encode(
         &header,
         &claims,
-        &EncodingKey::from_secret(&env::jwt::SIGNING_SECRET_KEY),
+        &EncodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
     ) {
         Ok(t) => Ok(t),
         Err(e) => Err(JwtError::from(JwtError::EncodingError(e))),
@@ -247,7 +247,7 @@ pub fn validate_signin_token(token: &str) -> Result<TokenClaims, JwtError> {
 fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, JwtError> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
         &token,
-        &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+        &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
         &Validation::new(Algorithm::HS256),
     ) {
         Ok(t) => t,
@@ -399,7 +399,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -452,7 +452,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -505,7 +505,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -559,7 +559,7 @@ mod tests {
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &token.access_token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -578,7 +578,7 @@ mod tests {
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
             &token.refresh_token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -653,21 +653,21 @@ mod tests {
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &access_token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
             &refresh_token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
         let decoded_signin_token = jsonwebtoken::decode::<TokenClaims>(
             &signin_token.token,
-            &DecodingKey::from_secret(&*env::jwt::SIGNING_SECRET_KEY),
+            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();

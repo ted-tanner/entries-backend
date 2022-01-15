@@ -1,149 +1,68 @@
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::Read;
+
+#[derive(Deserialize, Serialize)]
+pub struct Conf {
+    pub connections: Connections,
+    pub keys: Keys,
+    pub hashing: Hashing,
+    pub lifetimes: Lifetimes,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Connections {
+    pub database_url: String,
+    pub redis_url: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Keys {
+    pub hashing_key: String,
+    pub signing_key: String,
+    pub otp_key: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Hashing {
+    pub hash_length: u32,
+    pub hash_iterations: u32,
+    pub hash_mem_size_kib: u32,
+    pub salt_length_bytes: usize,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Lifetimes {
+    pub access_token_lifetime_mins: u64,
+    pub refresh_token_lifetime_days: u64,
+    pub otp_lifetime_mins: u64,
+}
+
 lazy_static! {
     pub static ref APP_NAME: &'static str = "Budget App";
+    pub static ref CONF: Conf = build_conf();
 }
 
-pub mod cache {
-    lazy_static! {
-        pub static ref REDIS_URL: String = std::env::var("REDIS_URL").unwrap_or_else(|_| {
-            eprintln!("REDIS_URL environment variable must be set");
-            std::process::exit(1);
-        });
-    }
+fn build_conf() -> Conf {
+    const CONF_FILE_PATH: &'static str = "conf/budgetapp.toml";
 
-    pub fn initialize() {
-        let _ = *REDIS_URL;
-    }
-}
+    let mut conf_file = File::open(CONF_FILE_PATH).unwrap_or_else(|_| {
+        eprintln!("Expected configuration file at '{}'", CONF_FILE_PATH);
+        std::process::exit(1);
+    });
 
-pub mod db {
-    lazy_static! {
-        pub static ref DATABASE_URL: String = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            eprintln!("DATABASE_URL environment variable must be set");
-            std::process::exit(1);
-        });
-    }
+    let mut contents = String::new();
+    conf_file.read_to_string(&mut contents).unwrap_or_else(|_| {
+        eprintln!("Configuratioin file at '{}' should be a text file in the TOML format.", CONF_FILE_PATH);
+        std::process::exit(1);
+    });
 
-    pub fn initialize() {
-        let _ = *DATABASE_URL;
-    }
-}
-
-pub mod hashing {
-    const DEFAULT_HASH_LENGTH: u32 = 64;
-    const DEFAULT_HASH_ITERATIONS: u32 = 16;
-    const DEFAULT_HASH_MEM_SIZE_KIB: u32 = 262144;
-    const DEFAULT_SALT_LENGTH_BYTES: usize = 32;
-
-    lazy_static! {
-        pub static ref HASHING_SECRET_KEY: Vec<u8> = std::env::var("HASHING_SECRET_KEY")
-        .unwrap_or_else(|_| {
-            eprintln!("HASHING_SECRET_KEY environment variable must be set");
-            std::process::exit(1);
-        })
-            .as_bytes().to_owned();
-        pub static ref HASH_LENGTH: u32 = std::env::var("HASH_LENGTH")
-            .unwrap_or(DEFAULT_HASH_LENGTH.to_string())
-            .parse::<u32>()
-            .unwrap_or_else(|_| {
-                eprintln!("HASH_LENGTH environment variable must be an unsigned 32-bit integer");
-                std::process::exit(1);
-            });
-        pub static ref HASH_ITERATIONS: u32 = std::env::var("HASH_ITERATIONS")
-            .unwrap_or(DEFAULT_HASH_ITERATIONS.to_string())
-            .parse::<u32>()
-            .unwrap_or_else(|_| {
-                eprintln!("HASH_ITERATIONS environment variable must be an unsigned 32-bit integer");
-                std::process::exit(1);
-            });
-        pub static ref HASH_MEM_SIZE_KIB: u32 = std::env::var("HASH_MEM_SIZE_KIB")
-            .unwrap_or(DEFAULT_HASH_MEM_SIZE_KIB.to_string())
-            .parse::<u32>()
-            .unwrap_or_else(|_| {
-                eprintln!("HASH_MEM_SIZE_KIB environment variable must be an unsigned 32-bit integer");
-                std::process::exit(1);
-            });
-        pub static ref SALT_LENGTH_BYTES: usize = std::env::var("SALT_LENGTH_BYTES")
-            .unwrap_or(DEFAULT_SALT_LENGTH_BYTES.to_string())
-            .parse::<usize>()
-            .unwrap_or_else(|_| {
-                eprintln!("SALT_LENGTH_BYTES environment variable must be an unsigned integer matching the processor's instructon bit length");
-                std::process::exit(1);
-            });
-    }
-
-    pub fn initialize() {
-        let _ = *HASHING_SECRET_KEY;
-        let _ = *HASH_LENGTH;
-        let _ = *HASH_ITERATIONS;
-        let _ = *HASH_MEM_SIZE_KIB;
-        let _ = *SALT_LENGTH_BYTES;
-
-        if !HASH_MEM_SIZE_KIB.is_power_of_two() {
-            eprintln!("HASH_MEM_SIZE_KIB environment variable must be a power of two");
+    match toml::from_str::<Conf>(&contents) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Parsing '{}' failed: {}", CONF_FILE_PATH, e);
             std::process::exit(1);
         }
-    }
-}
-
-pub mod jwt {
-    const DEFAULT_ACCESS_TOKEN_LIFETIME_MINS: u64 = 8;
-    const DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS: u64 = 28;
-
-    lazy_static! {
-        pub static ref SIGNING_SECRET_KEY: Vec<u8> = std::env::var("SIGNING_SECRET_KEY")
-        .unwrap_or_else(|_| {
-            eprintln!("SIGNING_SECRET_KEY environment variable must be set");
-            std::process::exit(1);
-        })
-            .as_bytes().to_owned();
-        pub static ref ACCESS_LIFETIME_SECS: u64 = std::env::var("ACCESS_TOKEN_LIFETIME_MINS")
-            .unwrap_or(DEFAULT_ACCESS_TOKEN_LIFETIME_MINS.to_string())
-            .parse::<u64>()
-            .unwrap_or_else(|_| {
-                eprintln!("ACCESS_TOKEN_LIFETIME_MINS environment variable must be an unsigned 64-bit integer");
-                std::process::exit(1);
-            })
-            * 60;
-        pub static ref REFRESH_LIFETIME_SECS: u64 = std::env::var("REFRESH_TOKEN_LIFETIME_DAYS")
-            .unwrap_or(DEFAULT_REFRESH_TOKEN_LIFETIME_DAYS.to_string())
-            .parse::<u64>()
-            .unwrap_or_else(|_| {
-                eprintln!("REFRESH_TOKEN_LIFETIME_DAYS environment variable must be an unsigned 64-bit integer");
-                std::process::exit(1);
-            })
-            * 24
-            * 60
-            * 60;
-    }
-
-    pub fn initialize() {
-        let _ = *SIGNING_SECRET_KEY;
-        let _ = *ACCESS_LIFETIME_SECS;
-        let _ = *REFRESH_LIFETIME_SECS;
-    }
-}
-
-pub mod otp {
-    const DEFAULT_OTP_LIFETIME_MINS: u64 = 8;
-
-    lazy_static! {
-        pub static ref OTP_SECRET_KEY: Vec<u8> = std::env::var("OTP_SECRET_KEY")
-            .unwrap_or_else(|_| {
-                eprintln!("OTP_SECRET_KEY environment variable must be set");
-                std::process::exit(1);
-            })
-            .as_bytes()
-            .to_owned();
-        pub static ref OTP_LIFETIME_SECS: u64 = std::env::var("OTP_LIFETIME_MINS")
-            .unwrap_or(DEFAULT_OTP_LIFETIME_MINS.to_string())
-            .parse::<u64>()
-            .unwrap_or_else(|_| {
-                eprintln!(
-                    "OTP_LIFETIME_SECS environment variable must be an unsigned 64-bit integer"
-                );
-                std::process::exit(1);
-            })
-            * 60;
     }
 }
 
@@ -182,18 +101,19 @@ pub mod testing {
     lazy_static! {
         pub static ref THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
             .build(ConnectionManager::<PgConnection>::new(
-                crate::env::db::DATABASE_URL.as_str()
+                crate::env::CONF.connections.database_url.as_str()
             ))
             .unwrap();
     }
 }
 
 pub fn initialize() {
-    // Forego lazy initialization in order to validate environment variables
-    cache::initialize();
-    db::initialize();
-    hashing::initialize();
-    jwt::initialize();
+    // Forego lazy initialization in order to validate conf file
+    if !CONF.hashing.hash_mem_size_kib.is_power_of_two() {
+        eprintln!("Hash memory size must be a power of two. {} is not a power of two.", CONF.hashing.hash_mem_size_kib);
+        std::process::exit(1);
+    }
+
     password::initialize();
     rand::initialize();
 }

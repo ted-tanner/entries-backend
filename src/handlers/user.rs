@@ -1,14 +1,16 @@
 use actix_web::{web, HttpResponse};
 use log::error;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::db_utils;
 use crate::definitions::DbThreadPool;
+use crate::env;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    CurrentAndNewPasswordPair, InputUser, OutputUserPrivate,
+    CurrentAndNewPasswordPair, InputUser, OutputUserPrivate, SigninToken,
 };
 use crate::middleware;
-use crate::utils::{jwt, password_hasher, validators};
+use crate::utils::{jwt, otp, password_hasher, validators};
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -34,7 +36,7 @@ pub async fn get(
             created_timestamp: user.created_timestamp,
         };
 
-        Ok(HttpResponse::Ok().json(output_user))
+        Ok(HttpResponse::Created().json(output_user))
     })
     .map_err(|ref e| match e {
         actix_web::error::BlockingError::Error(err) => match err {
@@ -63,7 +65,6 @@ pub async fn get(
     })?
 }
 
-// TODO: Require OTP
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     user_data: web::Json<InputUser>,
@@ -82,24 +83,43 @@ pub async fn create(
     })
     .await
     .map(|user| {
-        let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+        let signin_token = jwt::generate_signin_token(jwt::JwtParams {
             user_id: &user.id,
             user_email: &user.email,
             user_currency: &user.currency,
         });
 
-        let token_pair = match token_pair {
-            Ok(token_pair) => token_pair,
-            Err(e) => {
-                error!("{}", e);
-
+        let signin_token = match signin_token {
+            Ok(signin_token) => signin_token,
+            Err(_) => {
                 return Err(ServerError::InternalServerError(Some(
-                    "User has been created, but token generation failed. Try signing in.",
+                    "Failed to generate sign-in token for user",
                 )));
             }
         };
 
-        Ok(HttpResponse::Created().json(token_pair))
+        let signin_token = SigninToken {
+            signin_token: signin_token.to_string(),
+        };
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_secs();
+
+        let otp = match otp::generate_otp(&user.id, &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60) {
+            Ok(p) => p,
+            Err(_) => {
+                return Err(ServerError::InternalServerError(Some(
+                    "Failed to generate OTP",
+                )))
+            }
+        };
+
+        // TODO: Don't log this, email it!
+        println!("\n\nOTP: {}\n\n", &otp);
+
+        Ok(HttpResponse::Ok().json(signin_token))
     })
     .map_err(|ref e| match e {
         actix_web::error::BlockingError::Error(err) => match err {
@@ -204,7 +224,6 @@ mod tests {
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
     use diesel::prelude::*;
-    use diesel::r2d2::{self, ConnectionManager};
     use rand::prelude::*;
 
     use crate::env;
@@ -214,8 +233,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -265,8 +283,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -302,8 +319,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -339,8 +355,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -401,8 +416,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -477,8 +491,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -553,8 +566,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()

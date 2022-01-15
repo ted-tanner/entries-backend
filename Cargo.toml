@@ -20,8 +20,8 @@ log = "0.4"
 rand = "0.8"
 ring = "0.16"
 serde = "1.0"
+toml = "0.5"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-serde_json = "1.0" # TODO: Remove this line
 
 [dev-dependencies]
 actix-rt = "2.5"

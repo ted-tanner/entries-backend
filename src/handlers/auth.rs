@@ -66,7 +66,7 @@ pub async fn sign_in(
         // it is sent. The verification endpoint will check the code for the current time as well as a future
         // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
         // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
-        let otp = match otp::generate_otp(&user.id, &current_time + *env::otp::OTP_LIFETIME_SECS) {
+        let otp = match otp::generate_otp(&user.id, &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60) {
             Ok(p) => p,
             Err(_) => {
                 return Err(ServerError::InternalServerError(Some(
@@ -128,7 +128,7 @@ pub async fn verify_otp_for_signin(
             is_valid = otp::verify_otp(
                 otp,
                 &token_claims.uid,
-                current_time + *env::otp::OTP_LIFETIME_SECS,
+                current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
             )?;
         }
 
@@ -261,7 +261,9 @@ pub async fn logout(
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
+        // TODO: REQUIRE ACCESS TOKEN
         // TODO: VALIDATE THE TOKEN FOR THE USER FIRST!!!
+        // TODO: Test that logout fails if token is invalid
         jwt::blacklist_token(
             refresh_token.0.token.as_str(),
             &db_thread_pool.get().expect("Failed to access thread pool"),
@@ -282,8 +284,6 @@ mod tests {
 
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
-    use diesel::prelude::*;
-    use diesel::r2d2::{self, ConnectionManager};
     use rand::prelude::*;
 
     use crate::env;
@@ -293,8 +293,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -357,8 +356,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -409,8 +407,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_with_current_code() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -510,8 +507,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_with_next_code() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -570,7 +566,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + *env::otp::OTP_LIFETIME_SECS;
+            + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
         let otp = otp::generate_otp(&user_id, future_time).unwrap();
 
@@ -612,8 +608,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -684,8 +679,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_expired_code() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -744,7 +738,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            - *env::otp::OTP_LIFETIME_SECS;
+            - env::CONF.lifetimes.otp_lifetime_mins * 60;
 
         let otp = otp::generate_otp(&user_id, past_time).unwrap();
 
@@ -765,8 +759,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_future_not_next_code() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -825,7 +818,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + (2 * *env::otp::OTP_LIFETIME_SECS);
+            + (2 * env::CONF.lifetimes.otp_lifetime_mins * 60);
 
         let otp = otp::generate_otp(&user_id, far_future_time).unwrap();
 
@@ -846,8 +839,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_token() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -926,8 +918,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -1005,8 +996,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -1059,8 +1049,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_acces_token() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
@@ -1113,8 +1102,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_logout() {
-        let manager = ConnectionManager::<PgConnection>::new(env::db::DATABASE_URL.as_str());
-        let db_thread_pool = r2d2::Pool::builder().build(manager).unwrap();
+        let db_thread_pool = &env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()

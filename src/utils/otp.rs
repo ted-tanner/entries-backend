@@ -73,7 +73,7 @@ impl PartialEq for OneTimePasscode {
 }
 
 pub fn generate_otp(user_id: &Uuid, unix_timestamp: u64) -> Result<OneTimePasscode, OtpError> {
-    let time_segment = unix_timestamp / *env::otp::OTP_LIFETIME_SECS;
+    let time_segment = unix_timestamp / (env::CONF.lifetimes.otp_lifetime_mins * 60);
 
     let contents = format!("{}:{}", user_id, time_segment);
 
@@ -86,7 +86,7 @@ pub fn generate_otp(user_id: &Uuid, unix_timestamp: u64) -> Result<OneTimePassco
     // I intentionally use HMAC_SHA1 here by RFC4226's recommendation.
     let key = hmac::Key::new(
         hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-        &*env::otp::OTP_SECRET_KEY,
+        env::CONF.keys.otp_key.as_bytes(),
     );
     let hash = hmac::sign(&key, contents.as_bytes());
 
@@ -141,12 +141,12 @@ mod tests {
 
         let user_id = Uuid::new_v4();
         let otp1 = generate_otp(&user_id, current_time).unwrap();
-        let otp2 = generate_otp(&user_id, current_time + *env::otp::OTP_LIFETIME_SECS).unwrap();
+        let otp2 = generate_otp(&user_id, current_time + env::CONF.lifetimes.otp_lifetime_mins * 60).unwrap();
 
         assert_ne!(otp1, otp2);
 
-        let time3 = current_time - (current_time % *env::otp::OTP_LIFETIME_SECS);
-        let time4 = time3 + *env::otp::OTP_LIFETIME_SECS;
+        let time3 = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let time4 = time3 + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
         let otp3 = generate_otp(&user_id, time3).unwrap();
         let otp4 = generate_otp(&user_id, time4).unwrap();
@@ -162,8 +162,8 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let time1 = current_time - (current_time % *env::otp::OTP_LIFETIME_SECS);
-        let time2 = time1 + *env::otp::OTP_LIFETIME_SECS - 1;
+        let time1 = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let time2 = time1 + env::CONF.lifetimes.otp_lifetime_mins * 60 - 1;
         let otp1 = generate_otp(&user_id, time1).unwrap();
         let otp2 = generate_otp(&user_id, time2).unwrap();
 
@@ -178,8 +178,8 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % *env::otp::OTP_LIFETIME_SECS);
-        let verify_time = generate_time + *env::otp::OTP_LIFETIME_SECS - 1;
+        let generate_time = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60 - 1;
         let otp = generate_otp(&user_id, generate_time).unwrap();
 
         assert!(verify_otp(otp, &user_id, verify_time).unwrap());
@@ -193,8 +193,8 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % *env::otp::OTP_LIFETIME_SECS);
-        let verify_time = generate_time + *env::otp::OTP_LIFETIME_SECS;
+        let generate_time = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60;
         let otp = generate_otp(&user_id, generate_time).unwrap();
 
         assert!(!verify_otp(otp, &user_id, verify_time).unwrap());

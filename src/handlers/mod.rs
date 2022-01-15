@@ -31,7 +31,7 @@ pub mod error {
             match self {
                 ServerError::InvalidFormat(msg) => format_err(f, "Invalid request format", msg),
                 ServerError::InputRejected(msg) => format_err(f, "Insecure password", msg),
-                ServerError::AlreadyExists(msg) => format_err(f, "Insecure password", msg),
+                ServerError::AlreadyExists(msg) => format_err(f, "Already exists", msg),
                 ServerError::UserUnauthorized(msg) => format_err(f, "User unauthorized", msg),
                 ServerError::AccessForbidden(msg) => format_err(f, "Access forbidden", msg),
                 ServerError::InternalServerError(msg) => {
