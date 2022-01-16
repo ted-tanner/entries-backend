@@ -9,6 +9,7 @@ use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
+use crate::middleware;
 use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
@@ -116,7 +117,6 @@ pub async fn verify_otp_for_signin(
             })?;
 
     web::block(move || {
-        // TODO: If this fails, check with system time + OTP_LIFETIME_SECS
         let otp = otp::OneTimePasscode::try_from(otp_and_token.0.otp)?;
 
         let current_time = SystemTime::now()
@@ -261,12 +261,45 @@ pub async fn refresh_tokens(
 
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
+    let refresh_token_copy = refresh_token.token.clone();
+    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
+
+    let refresh_token_claims =
+        web::block(move || jwt::validate_refresh_token(&refresh_token_copy, &db_connection))
+            .await
+            .map_err(|e| {
+                Err(match e {
+                    actix_web::error::BlockingError::Error(err) => match err {
+                        jwt::JwtError::TokenInvalid => {
+                            ServerError::UserUnauthorized(Some("Token is invalid"))
+                        }
+                        jwt::JwtError::TokenBlacklisted => {
+                            ServerError::UserUnauthorized(Some("Token has been blacklisted"))
+                        }
+                        jwt::JwtError::TokenExpired => {
+                            ServerError::UserUnauthorized(Some("Token has expired"))
+                        }
+                        jwt::JwtError::WrongTokenType => {
+                            ServerError::UserUnauthorized(Some("Incorrect token type"))
+                        }
+                        _ => ServerError::InternalServerError(Some("Error verifying token")),
+                    },
+                    actix_web::error::BlockingError::Canceled => {
+                        ServerError::InternalServerError(Some("Response canceled"))
+                    }
+                })
+            })?;
+
+    if refresh_token_claims.uid != auth_user_claims.0.uid {
+        return Err(ServerError::AccessForbidden(Some(
+            "Refresh token does not belong to user.",
+        )));
+    }
+
     match web::block(move || {
-        // TODO: REQUIRE ACCESS TOKEN
-        // TODO: VALIDATE THE TOKEN FOR THE USER FIRST!!!
-        // TODO: Test that logout fails if token is invalid
         jwt::blacklist_token(
             refresh_token.0.token.as_str(),
             &db_thread_pool.get().expect("Failed to access thread pool"),
@@ -1190,6 +1223,7 @@ mod tests {
         let req = test::TestRequest::post()
             .uri("/api/auth/logout")
             .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {}", &token_pair.access_token))
             .set_payload(serde_json::ser::to_vec(&logout_payload).unwrap())
             .to_request();
 
@@ -1198,5 +1232,81 @@ mod tests {
 
         let db_connection = db_thread_pool.get().unwrap();
         assert!(jwt::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
+    }
+
+    #[actix_rt::test]
+    async fn test_logout_fails_with_invalid_refresh_token() {
+        let db_thread_pool = &*env::testing::THREAD_POOL;
+
+        let mut app = test::init_service(
+            App::new()
+                .data(db_thread_pool.clone())
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let create_user_res = test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .header("content-type", "application/json")
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+
+        let logout_payload = RefreshToken {
+            token: token_pair.refresh_token.to_string() + "f",
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/logout")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {}", &token_pair.access_token))
+            .set_payload(serde_json::ser::to_vec(&logout_payload).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
+
+        let db_connection = db_thread_pool.get().unwrap();
+        assert!(!jwt::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
     }
 }
