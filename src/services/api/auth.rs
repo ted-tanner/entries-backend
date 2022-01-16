@@ -14,6 +14,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/refresh_tokens",
                 web::post().to(handlers::auth::refresh_tokens),
             )
-            .route("/logout", web::get().to(handlers::auth::logout)),
+            .route("/logout", web::post().to(handlers::auth::logout)),
     );
 }

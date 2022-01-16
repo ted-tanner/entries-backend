@@ -92,6 +92,7 @@ pub mod rand {
     }
 }
 
+#[cfg(test)]
 pub mod testing {
     use crate::definitions::DbThreadPool;
 

@@ -1,6 +1,7 @@
 ## TODO
 
-* Use more string slices to avoid extra allocations when creatin structs
+* Fix Docker environment
+* Use more string slices to avoid extra allocations when creating structs
 * Test signin and OTP verification endpoints!
 * Get Redis and email delivery set up
 * Logout endpoint: VALIDATE THE TOKEN FOR THE USER FIRST!!! Currently, anyone could add anything to the blacklist

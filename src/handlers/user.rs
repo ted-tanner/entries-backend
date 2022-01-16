@@ -36,7 +36,7 @@ pub async fn get(
             created_timestamp: user.created_timestamp,
         };
 
-        Ok(HttpResponse::Created().json(output_user))
+        Ok(HttpResponse::Ok().json(output_user))
     })
     .map_err(|ref e| match e {
         actix_web::error::BlockingError::Error(err) => match err {
@@ -107,7 +107,10 @@ pub async fn create(
             .expect("Failed to fetch system time")
             .as_secs();
 
-        let otp = match otp::generate_otp(&user.id, &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60) {
+        let otp = match otp::generate_otp(
+            &user.id,
+            &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+        ) {
             Ok(p) => p,
             Err(_) => {
                 return Err(ServerError::InternalServerError(Some(
@@ -119,7 +122,7 @@ pub async fn create(
         // TODO: Don't log this, email it!
         println!("\n\nOTP: {}\n\n", &otp);
 
-        Ok(HttpResponse::Ok().json(signin_token))
+        Ok(HttpResponse::Created().json(signin_token))
     })
     .map_err(|ref e| match e {
         actix_web::error::BlockingError::Error(err) => match err {
@@ -131,9 +134,11 @@ pub async fn create(
                 Err(ServerError::AccessForbidden(Some("No user with ID")))
             }
             diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
-                diesel::result::DatabaseErrorKind::UniqueViolation => Err(
-                    ServerError::AlreadyExists(Some("A user with the given email already exists")),
-                ),
+                diesel::result::DatabaseErrorKind::UniqueViolation => {
+                    Err(ServerError::AlreadyExists(Some(
+                        "A user with the given email address already exists",
+                    )))
+                }
                 _ => {
                     error!("{}", e);
                     Err(ServerError::InternalServerError(Some(
@@ -157,10 +162,6 @@ pub async fn create(
     })?
 }
 
-/// ## Test cases:
-///     * old_password wrong
-///     * new_password invalid
-///     * normal case
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
@@ -227,18 +228,20 @@ mod tests {
     use rand::prelude::*;
 
     use crate::env;
+    use crate::handlers::request_io::{SigninTokenOtpPair, TokenPair};
     use crate::models::user::User;
     use crate::schema::users as user_fields;
     use crate::schema::users::dsl::users;
+    use crate::services;
 
     #[actix_rt::test]
     async fn test_create() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -283,12 +286,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -319,12 +322,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -355,13 +358,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/get", web::get().to(get))
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -389,9 +391,29 @@ mod tests {
         )
         .await;
 
-        let user_tokens =
-            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
-        let access_token = user_tokens.access_token.to_string();
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
 
         let req = test::TestRequest::get()
             .uri("/api/user/get")
@@ -416,13 +438,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/change_password", web::post().to(change_password))
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -450,10 +471,29 @@ mod tests {
         )
         .await;
 
-        let user_tokens =
-            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
-        let access_token = user_tokens.access_token.to_string();
-        let user_id = jwt::read_claims(&access_token).unwrap().uid;
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
 
         let password_pair = CurrentAndNewPasswordPair {
             current_password: new_user.password.clone(),
@@ -491,13 +531,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/change_password", web::post().to(change_password))
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -525,10 +564,29 @@ mod tests {
         )
         .await;
 
-        let user_tokens =
-            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
-        let access_token = user_tokens.access_token.to_string();
-        let user_id = jwt::read_claims(&access_token).unwrap().uid;
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
 
         let password_pair = CurrentAndNewPasswordPair {
             current_password: new_user.password.clone() + " ",
@@ -566,13 +624,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
-        let db_thread_pool = &env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
                 .data(db_thread_pool.clone())
-                .route("/api/user/change_password", web::post().to(change_password))
-                .route("/api/user/create", web::post().to(create)),
+                .configure(services::api::configure),
         )
         .await;
 
@@ -600,10 +657,29 @@ mod tests {
         )
         .await;
 
-        let user_tokens =
-            actix_web::test::read_body_json::<jwt::TokenPair, _>(create_user_res).await;
-        let access_token = user_tokens.access_token.to_string();
-        let user_id = jwt::read_claims(&access_token).unwrap().uid;
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .header("content-type", "application/json")
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
 
         let password_pair = CurrentAndNewPasswordPair {
             current_password: new_user.password.clone(),
