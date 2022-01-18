@@ -2,7 +2,6 @@ use actix_web::{web, HttpResponse};
 use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::db_utils;
 use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -10,6 +9,7 @@ use crate::handlers::request_io::{
     CurrentAndNewPasswordPair, InputUser, OutputUserPrivate, SigninToken,
 };
 use crate::middleware;
+use crate::utils::db;
 use crate::utils::{jwt, otp, password_hasher, validators};
 
 pub async fn get(
@@ -17,8 +17,10 @@ pub async fn get(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        db_utils::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
     })
     .await
     .map(|user| {
@@ -78,8 +80,10 @@ pub async fn create(
     }
 
     web::block(move || {
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        db_utils::user::create_user(&db_connection, &user_data)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        db::user::create_user(&db_connection, &user_data)
     })
     .await
     .map(|user| {
@@ -167,10 +171,12 @@ pub async fn change_password(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = db_thread_pool
+        .get()
+        .expect("Failed to access database thread pool");
 
     let user =
-        web::block(move || db_utils::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
+        web::block(move || db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
             .await
             .map_err(|_| ServerError::InputRejected(Some("User not found")))?;
 
@@ -204,10 +210,12 @@ pub async fn change_password(
         return Err(ServerError::InputRejected(Some(msg)));
     };
 
-    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = db_thread_pool
+        .get()
+        .expect("Failed to access database thread pool");
 
     web::block(move || {
-        db_utils::user::change_password(
+        db::user::change_password(
             &db_connection,
             &auth_user_claims.0.uid,
             &password_pair.new_password,
@@ -514,8 +522,10 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;
 
@@ -607,8 +617,10 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;
 
@@ -700,8 +712,10 @@ mod tests {
 
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        let db_password_hash = db_utils::user::get_user_by_id(&db_connection, &user_id)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
             .unwrap()
             .password_hash;
 

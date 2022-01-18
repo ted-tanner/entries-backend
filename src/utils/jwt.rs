@@ -7,6 +7,7 @@ use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+use crate::definitions::*;
 use crate::env;
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
@@ -231,7 +232,7 @@ pub fn validate_access_token(token: &str) -> Result<TokenClaims, JwtError> {
 
 pub fn validate_refresh_token(
     token: &str,
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
 ) -> Result<TokenClaims, JwtError> {
     if is_on_blacklist(token, &db_connection)? {
         return Err(JwtError::from(JwtError::TokenBlacklisted));
@@ -296,7 +297,7 @@ pub fn read_claims(token: &str) -> Result<TokenClaims, JwtError> {
 
 pub fn blacklist_token(
     token: &str,
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
 ) -> Result<BlacklistedToken, JwtError> {
     let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(&token) {
         Ok(t) => t,
@@ -341,10 +342,7 @@ pub fn blacklist_token(
     }
 }
 
-pub fn is_on_blacklist(
-    token: &str,
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
-) -> Result<bool, JwtError> {
+pub fn is_on_blacklist(token: &str, db_connection: &DbConnection) -> Result<bool, JwtError> {
     match blacklisted_tokens
         .filter(blacklisted_token_fields::token.eq(token))
         .limit(1)

@@ -8,6 +8,7 @@ pub struct Conf {
     pub keys: Keys,
     pub hashing: Hashing,
     pub lifetimes: Lifetimes,
+    pub security: Security,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -36,6 +37,11 @@ pub struct Lifetimes {
     pub access_token_lifetime_mins: u64,
     pub refresh_token_lifetime_days: u64,
     pub otp_lifetime_mins: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Security {
+    pub secure_endpoint_max_attempts: u64,
 }
 
 lazy_static! {

@@ -3,6 +3,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
+use crate::definitions::*;
 use crate::handlers::request_io::InputUser;
 use crate::models::user::NewUser;
 use crate::models::user::User;
@@ -11,14 +12,14 @@ use crate::schema::users::dsl::users;
 use crate::utils::password_hasher;
 
 pub fn get_user_by_id(
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
     user_id: &Uuid,
 ) -> Result<User, diesel::result::Error> {
     users.find(user_id).first::<User>(db_connection)
 }
 
 pub fn get_user_by_email(
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
     user_email: &str,
 ) -> Result<User, diesel::result::Error> {
     users
@@ -27,7 +28,7 @@ pub fn get_user_by_email(
 }
 
 pub fn create_user(
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
     user_data: &web::Json<InputUser>,
 ) -> Result<User, diesel::result::Error> {
     let hashed_password = password_hasher::hash_argon2id(&user_data.password);
@@ -54,7 +55,7 @@ pub fn create_user(
 }
 
 pub fn change_password(
-    db_connection: &PooledConnection<ConnectionManager<PgConnection>>,
+    db_connection: &DbConnection,
     user_id: &Uuid,
     new_password: &str,
 ) -> Result<(), diesel::result::Error> {

@@ -9,8 +9,8 @@ use actix_web::{middleware::Logger, App, HttpServer};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use env_logger::Env;
+use std::net::{IpAddr, Ipv4Addr};
 
-mod db_utils;
 mod definitions;
 mod env;
 mod handlers;
@@ -24,7 +24,7 @@ diesel_migrations::embed_migrations!();
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mut ip = String::from("127.0.0.1");
+    let mut ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let mut port = 9000u16;
     let mut run_migrations = false;
 
@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
                     let next_arg = args.next();
 
                     match next_arg {
-                        Some(s) => s.to_string(),
+                        Some(s) => s,
                         None => {
                             eprintln!("--port option specified but no port was given");
                             std::process::exit(1);
@@ -67,7 +67,13 @@ async fn main() -> std::io::Result<()> {
                     let next_arg = args.next();
 
                     match next_arg {
-                        Some(s) => s.to_string(),
+                        Some(s) => match s.parse::<IpAddr>() {
+                            Ok(i) => i,
+                            Err(_) => {
+                                eprintln!("Invalid IP address");
+                                std::process::exit(1);
+                            }
+                        },
                         None => {
                             eprintln!("--ip option specified but no IP was given");
                             std::process::exit(1);

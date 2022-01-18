@@ -2,20 +2,48 @@
 
 [connections]
 database_url = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
-redis_url = "redis://budgetappcacheuser:431sNI2aNd0wSPm31dps@localhost"
+redis_url = "redis://:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
 
 [keys]
 hashing_key = "OCc!7xlc"
-signing_key = "3dn68OZo"
 otp_key = "K1Xn*5&b"
+signing_key = "3dn68OZo"
 
 [hashing]
-hash_length = 32
 hash_iterations = 2
+hash_length = 32
 hash_mem_size_kib = 128
 salt_length_bytes = 16
 
 [lifetimes]
-otp_lifetime_mins = 5
 access_token_lifetime_mins = 8
+otp_lifetime_mins = 5
 refresh_token_lifetime_days = 28
+
+[security]
+secure_endpoint_max_attempts = 8
+
+###### Sample Production Configuration ######
+
+# [connections]
+# database_url = "postgres://budgetappdbuser:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost/budgetapp_test"
+# redis_url = "redis://:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
+
+# [keys]
+# hashing_key = "OCc!7xlcOCc!7xlcOCc!7xlcOCc!7xlc"
+# otp_key = "K1Xn*5&bK1Xn*5&bK1Xn*5&bK1Xn*5&b"
+# signing_key = "3dn68OZo3dn68OZo3dn68OZo3dn68OZo"
+
+# [hashing]
+# hash_iterations = 12
+# hash_length = 32
+# hash_mem_size_kib = 262144
+# salt_length_bytes = 16
+
+# [lifetimes]
+# access_token_lifetime_mins = 8
+# otp_lifetime_mins = 5
+# refresh_token_lifetime_days = 28
+
+# [security]
+# secure_endpoint_max_attempts = 8

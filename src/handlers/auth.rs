@@ -2,14 +2,14 @@ use actix_web::{web, HttpResponse};
 use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::db_utils;
-use crate::definitions::DbThreadPool;
+use crate::definitions::*;
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use crate::middleware;
+use crate::utils::{db, redis};
 use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
@@ -25,8 +25,10 @@ pub async fn sign_in(
     let password = credentials.password.clone();
 
     let user = web::block(move || {
-        let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
-        db_utils::user::get_user_by_email(&db_connection, &credentials.email)
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        db::user::get_user_by_email(&db_connection, &credentials.email)
     })
     .await
     .map_err(|_| Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))))?;
@@ -89,6 +91,7 @@ pub async fn sign_in(
 }
 
 pub async fn verify_otp_for_signin(
+    redis_thread_pool: web::Data<RedisThreadPool>,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
     let token_claims =
@@ -115,6 +118,31 @@ pub async fn verify_otp_for_signin(
                     return Err(ServerError::InternalServerError(Some("Response canceled")))
                 }
             })?;
+
+    let mut redis_connection = redis_thread_pool
+        .get()
+        .await
+        .expect("Failed to access Redis thread pool");
+
+    let attempts = match redis::auth::get_and_incr_recent_otp_verifications(
+        &mut redis_connection,
+        &token_claims.uid,
+    )
+    .await
+    {
+        Ok(a) => a,
+        Err(_) => {
+            return Err(ServerError::InternalServerError(Some(
+                "Failed to get value OTP attempts from cache",
+            )))
+        }
+    };
+
+    if attempts > env::CONF.security.secure_endpoint_max_attempts {
+        return Err(ServerError::AccessForbidden(Some(
+            "Too many attempts. Try again in a few minutes.",
+        )));
+    }
 
     web::block(move || {
         let otp = otp::OneTimePasscode::try_from(otp_and_token.0.otp)?;
@@ -190,12 +218,16 @@ pub async fn refresh_tokens(
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = &token.0.token.clone();
-    let db_connection = &db_thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = &db_thread_pool
+        .get()
+        .expect("Failed to access database thread pool");
 
     web::block(move || {
         jwt::validate_refresh_token(
             token.0.token.as_str(),
-            &db_thread_pool.get().expect("Failed to access thread pool"),
+            &db_thread_pool
+                .get()
+                .expect("Failed to access database thread pool"),
         )
     })
     .await
@@ -265,7 +297,9 @@ pub async fn logout(
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token_copy = refresh_token.token.clone();
-    let db_connection = db_thread_pool.get().expect("Failed to access thread pool");
+    let db_connection = db_thread_pool
+        .get()
+        .expect("Failed to access database thread pool");
 
     let refresh_token_claims =
         web::block(move || jwt::validate_refresh_token(&refresh_token_copy, &db_connection))
@@ -302,7 +336,9 @@ pub async fn logout(
     match web::block(move || {
         jwt::blacklist_token(
             refresh_token.0.token.as_str(),
-            &db_thread_pool.get().expect("Failed to access thread pool"),
+            &db_thread_pool
+                .get()
+                .expect("Failed to access database thread pool"),
         )
     })
     .await
@@ -1223,7 +1259,10 @@ mod tests {
         let req = test::TestRequest::post()
             .uri("/api/auth/logout")
             .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {}", &token_pair.access_token))
+            .header(
+                "authorization",
+                format!("Bearer {}", &token_pair.access_token),
+            )
             .set_payload(serde_json::ser::to_vec(&logout_payload).unwrap())
             .to_request();
 
@@ -1299,7 +1338,10 @@ mod tests {
         let req = test::TestRequest::post()
             .uri("/api/auth/logout")
             .header("content-type", "application/json")
-            .header("authorization", format!("Bearer {}", &token_pair.access_token))
+            .header(
+                "authorization",
+                format!("Bearer {}", &token_pair.access_token),
+            )
             .set_payload(serde_json::ser::to_vec(&logout_payload).unwrap())
             .to_request();
 

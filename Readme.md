@@ -1,8 +1,20 @@
+## Redis Setup
+
+### Require a password
+
+Brute forcing is easy-ish with Redis, so this should be a really long password (60 chars, uppercase, lowercase, numbers)
+```
+CONFIG SET requirepass "[PASSWORD]"
+```
+
 ## TODO
 
+* Get Redis stuff working
+* Throttle connections to secure endpoints (by IP)
+* Test Redis utils
+* Test "secure" endpoints
 * Fix Docker environment
 * Use more string slices to avoid extra allocations when creating structs
-* Test signin and OTP verification endpoints!
 * Get Redis and email delivery set up
 * Logout endpoint: VALIDATE THE TOKEN FOR THE USER FIRST!!! Currently, anyone could add anything to the blacklist
 * Time limit the following endpoints: signin, otp, change_password, create user (clear create user cache daily)
