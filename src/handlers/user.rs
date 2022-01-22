@@ -75,6 +75,7 @@ pub async fn create(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
+
         db::user::create_user(&db_connection, &user_data)
     })
     .await?
@@ -157,17 +158,20 @@ pub async fn change_password(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
+    let db_thread_pool_pointer_copy = db_thread_pool.clone();
 
-    let user =
-        match web::block(move || db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
-            .await?
-        {
-            Ok(u) => u,
-            Err(_) => return Err(ServerError::InputRejected(Some("User not found"))),
-        };
+    let user = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(u) => u,
+        Err(_) => return Err(ServerError::InputRejected(Some("User not found"))),
+    };
 
     let current_password = password_pair.current_password.clone();
 
@@ -193,11 +197,11 @@ pub async fn change_password(
         return Err(ServerError::InputRejected(Some(msg)));
     };
 
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
-
     web::block(move || {
+        let db_connection = db_thread_pool_pointer_copy
+            .get()
+            .expect("Failed to access database thread pool");
+
         db::user::change_password(
             &db_connection,
             &auth_user_claims.0.uid,

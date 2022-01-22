@@ -28,6 +28,7 @@ pub async fn sign_in(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
+
         db::user::get_user_by_email(&db_connection, &credentials.email)
     })
     .await?
@@ -212,12 +213,14 @@ pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_pointer_copy = db_thread_pool.clone();
     let refresh_token = token.0.token.clone();
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
 
     let claims = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
         jwt::validate_refresh_token(token.0.token.as_str(), &db_connection)
     })
     .await?
@@ -249,7 +252,7 @@ pub async fn refresh_tokens(
     match web::block(move || {
         jwt::blacklist_token(
             refresh_token.as_str(),
-            &db_thread_pool
+            &db_thread_pool_pointer_copy
                 .get()
                 .expect("Failed to access database thread pool"),
         )
@@ -294,38 +297,41 @@ pub async fn logout(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_pointer_copy = db_thread_pool.clone();
     let refresh_token_copy = refresh_token.token.clone();
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
 
-    let refresh_token_claims =
-        match web::block(move || jwt::validate_refresh_token(&refresh_token_copy, &db_connection))
-            .await?
-        {
-            Ok(tc) => tc,
-            Err(e) => match e {
-                jwt::JwtError::TokenInvalid => {
-                    return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
-                }
-                jwt::JwtError::TokenBlacklisted => {
-                    return Err(ServerError::UserUnauthorized(Some(
-                        "Token has been blacklisted",
-                    )))
-                }
-                jwt::JwtError::TokenExpired => {
-                    return Err(ServerError::UserUnauthorized(Some("Token has expired")))
-                }
-                jwt::JwtError::WrongTokenType => {
-                    return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
-                }
-                _ => {
-                    return Err(ServerError::InternalServerError(Some(
-                        "Error verifying token",
-                    )))
-                }
-            },
-        };
+    let refresh_token_claims = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        jwt::validate_refresh_token(&refresh_token_copy, &db_connection)
+    })
+    .await?
+    {
+        Ok(tc) => tc,
+        Err(e) => match e {
+            jwt::JwtError::TokenInvalid => {
+                return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+            }
+            jwt::JwtError::TokenBlacklisted => {
+                return Err(ServerError::UserUnauthorized(Some(
+                    "Token has been blacklisted",
+                )))
+            }
+            jwt::JwtError::TokenExpired => {
+                return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+            }
+            jwt::JwtError::WrongTokenType => {
+                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+            }
+            _ => {
+                return Err(ServerError::InternalServerError(Some(
+                    "Error verifying token",
+                )))
+            }
+        },
+    };
 
     if refresh_token_claims.uid != auth_user_claims.0.uid {
         return Err(ServerError::AccessForbidden(Some(
@@ -336,7 +342,7 @@ pub async fn logout(
     match web::block(move || {
         jwt::blacklist_token(
             refresh_token.0.token.as_str(),
-            &db_thread_pool
+            &db_thread_pool_pointer_copy
                 .get()
                 .expect("Failed to access database thread pool"),
         )
