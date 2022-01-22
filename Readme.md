@@ -9,8 +9,8 @@ CONFIG SET requirepass "[PASSWORD]"
 
 ## TODO
 
-* Get Redis stuff working
-* Throttle connections to secure endpoints (by IP)
+* Cron job crate with a central timer/runner. Register cron jobs with the runner and pass closure for the runner to execute. Cron runner only runs when `--cron` argument is specified
+* Throttle connections to secure endpoints (by IP) and test
 * Test Redis utils
 * Test "secure" endpoints
 * Fix Docker environment

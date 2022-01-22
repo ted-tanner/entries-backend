@@ -4,11 +4,17 @@ use std::io::Read;
 
 #[derive(Deserialize, Serialize)]
 pub struct Conf {
+    pub workers: Workers,
     pub connections: Connections,
     pub keys: Keys,
     pub hashing: Hashing,
     pub lifetimes: Lifetimes,
     pub security: Security,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Workers {
+    pub actix_workers: usize,
 }
 
 #[derive(Deserialize, Serialize)]

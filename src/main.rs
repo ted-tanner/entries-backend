@@ -138,6 +138,7 @@ async fn main() -> std::io::Result<()> {
             .configure(services::index::configure)
             .wrap(Logger::default())
     })
+    .workers(env::CONF.workers.actix_workers)
     .bind(base_addr)?
     .run()
     .await
