@@ -227,7 +227,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -256,7 +256,7 @@ mod tests {
             .set_json(&new_user)
             .to_request();
 
-        let resp = test::call_service(&mut app, req).await;
+        let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
         let db_connection = db_thread_pool.get().unwrap();
@@ -279,7 +279,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -308,7 +308,7 @@ mod tests {
             .set_json(&new_user)
             .to_request();
 
-        let resp = test::call_service(&mut app, req).await;
+        let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
@@ -317,7 +317,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -346,7 +346,7 @@ mod tests {
             .set_json(&new_user)
             .to_request();
 
-        let resp = test::call_service(&mut app, req).await;
+        let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
@@ -355,7 +355,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -378,7 +378,7 @@ mod tests {
         };
 
         let create_user_res = test::call_service(
-            &mut app,
+            &app,
             test::TestRequest::post()
                 .uri("/api/user/create")
                 .insert_header(("content-type", "application/json"))
@@ -407,7 +407,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
         let access_token = token_pair.access_token.to_string();
 
@@ -419,7 +419,7 @@ mod tests {
             ))
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
@@ -437,7 +437,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -460,7 +460,7 @@ mod tests {
         };
 
         let create_user_res = test::call_service(
-            &mut app,
+            &app,
             test::TestRequest::post()
                 .uri("/api/user/create")
                 .insert_header(("content-type", "application/json"))
@@ -489,7 +489,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
         let access_token = token_pair.access_token.to_string();
 
@@ -508,7 +508,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
 
         assert_eq!(res.status(), http::StatusCode::OK);
 
@@ -534,7 +534,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -557,7 +557,7 @@ mod tests {
         };
 
         let create_user_res = test::call_service(
-            &mut app,
+            &app,
             test::TestRequest::post()
                 .uri("/api/user/create")
                 .insert_header(("content-type", "application/json"))
@@ -586,7 +586,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
         let access_token = token_pair.access_token.to_string();
 
@@ -605,7 +605,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
 
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
@@ -631,7 +631,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
-        let mut app = test::init_service(
+        let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
                 .app_data(Data::new(redis_thread_pool.clone()))
@@ -654,7 +654,7 @@ mod tests {
         };
 
         let create_user_res = test::call_service(
-            &mut app,
+            &app,
             test::TestRequest::post()
                 .uri("/api/user/create")
                 .insert_header(("content-type", "application/json"))
@@ -683,7 +683,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
         let access_token = token_pair.access_token.to_string();
 
@@ -702,7 +702,7 @@ mod tests {
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 
-        let res = test::call_service(&mut app, req).await;
+        let res = test::call_service(&app, req).await;
 
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 

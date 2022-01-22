@@ -734,14 +734,8 @@ mod tests {
             validate_access_token(&access_token.token).unwrap().uid,
             user_id
         );
-        assert!(match validate_access_token(&refresh_token.token) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
-        assert!(match validate_access_token(&signin_token.token) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
+        assert!(validate_access_token(&refresh_token.token).is_err());
+        assert!(validate_access_token(&signin_token.token).is_err());
     }
 
     #[test]
@@ -796,18 +790,8 @@ mod tests {
                 .uid,
             user_id
         );
-        assert!(
-            match validate_refresh_token(&access_token.token, &db_connection) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        );
-        assert!(
-            match validate_refresh_token(&signin_token.token, &db_connection) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        );
+        assert!(validate_refresh_token(&access_token.token, &db_connection).is_err());
+        assert!(validate_refresh_token(&signin_token.token, &db_connection).is_err());
     }
 
     #[test]
@@ -857,14 +841,8 @@ mod tests {
             validate_signin_token(&signin_token.token).unwrap().uid,
             user_id
         );
-        assert!(match validate_signin_token(&access_token.token) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
-        assert!(match validate_signin_token(&refresh_token.token) {
-            Ok(_) => false,
-            Err(_) => true,
-        });
+        assert!(validate_signin_token(&access_token.token).is_err());
+        assert!(validate_signin_token(&refresh_token.token).is_err());
     }
 
     #[test]
@@ -973,26 +951,9 @@ mod tests {
         })
         .unwrap();
 
-        assert!(
-            match validate_token(&access_token.token, TokenType::SignIn) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        );
-
-        assert!(
-            match validate_token(&refresh_token.token, TokenType::Access) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        );
-
-        assert!(
-            match validate_token(&signin_token.token, TokenType::Refresh) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        );
+        assert!(validate_token(&access_token.token, TokenType::SignIn).is_err());
+        assert!(validate_token(&refresh_token.token, TokenType::Access).is_err());
+        assert!(validate_token(&signin_token.token, TokenType::Refresh).is_err());
     }
 
     #[test]
