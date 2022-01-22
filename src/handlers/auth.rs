@@ -676,6 +676,94 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn test_verify_otp_fails_after_repeated_attempts() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+
+        let mut app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &mut app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let future_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + env::CONF.lifetimes.otp_lifetime_mins * 60;
+
+        let otp = otp::generate_otp(&user_id, future_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        for _ in 0..env::CONF.security.secure_endpoint_max_attempts {
+            let req = test::TestRequest::post()
+                .uri("/api/auth/verify_otp_for_signin")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+                .to_request();
+
+            let res = test::call_service(&mut app, req).await;
+            assert_eq!(res.status(), http::StatusCode::OK);
+        }
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(res.status(), http::StatusCode::FORBIDDEN);
+    }
+
+    #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;

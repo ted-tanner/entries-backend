@@ -30,3 +30,25 @@ pub async fn get_and_incr_recent_otp_verifications(
         Err(_) => Err(RedisError::QueryFailed(None)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use uuid::Uuid;
+
+    use crate::env;
+
+    #[actix_rt::test]
+    async fn test_get_and_incr_recent_otp_verifications() {
+        let user_id = Uuid::new_v4();
+        let mut redis_connection = (*env::testing::REDIS_THREAD_POOL).get().await.unwrap();
+
+        for i in 1..=15 {
+            let res = get_and_incr_recent_otp_verifications(&mut redis_connection, &user_id)
+                .await
+                .unwrap();
+            assert_eq!(res, i);
+        }
+    }
+}

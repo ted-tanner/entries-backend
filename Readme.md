@@ -9,6 +9,7 @@ CONFIG SET requirepass "[PASSWORD]"
 
 ## TODO
 
+* Move all get db connection to web::block
 * Cron job crate with a central timer/runner. Register cron jobs with the runner and pass closure for the runner to execute. Cron runner only runs when `--cron` argument is specified
 * Throttle connections to secure endpoints (by IP) and test
 * Test Redis utils
