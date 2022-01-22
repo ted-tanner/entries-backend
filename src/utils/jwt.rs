@@ -1,5 +1,4 @@
-use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -769,7 +768,7 @@ mod tests {
 
     #[test]
     fn test_validate_refresh_token() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
@@ -1085,7 +1084,7 @@ mod tests {
 
     #[test]
     fn test_blacklist_token() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
@@ -1141,7 +1140,7 @@ mod tests {
 
     #[test]
     fn test_is_token_on_blacklist() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();

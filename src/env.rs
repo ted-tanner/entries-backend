@@ -59,7 +59,10 @@ fn build_conf() -> Conf {
 
     let mut contents = String::new();
     conf_file.read_to_string(&mut contents).unwrap_or_else(|_| {
-        eprintln!("Configuratioin file at '{}' should be a text file in the TOML format.", CONF_FILE_PATH);
+        eprintln!(
+            "Configuratioin file at '{}' should be a text file in the TOML format.",
+            CONF_FILE_PATH
+        );
         std::process::exit(1);
     });
 
@@ -100,24 +103,31 @@ pub mod rand {
 
 #[cfg(test)]
 pub mod testing {
-    use crate::definitions::DbThreadPool;
+    use crate::definitions::*;
 
     use diesel::prelude::*;
     use diesel::r2d2::{self, ConnectionManager};
 
     lazy_static! {
-        pub static ref THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
+        pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
             .build(ConnectionManager::<PgConnection>::new(
                 crate::env::CONF.connections.database_url.as_str()
             ))
             .unwrap();
+        pub static ref REDIS_THREAD_POOL: RedisThreadPool =
+            deadpool_redis::Config::from_url(&crate::env::CONF.connections.redis_url)
+                .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+                .expect("Failed to create Redis cache thread pool");
     }
 }
 
 pub fn initialize() {
     // Forego lazy initialization in order to validate conf file
     if !CONF.hashing.hash_mem_size_kib.is_power_of_two() {
-        eprintln!("Hash memory size must be a power of two. {} is not a power of two.", CONF.hashing.hash_mem_size_kib);
+        eprintln!(
+            "Hash memory size must be a power of two. {} is not a power of two.",
+            CONF.hashing.hash_mem_size_kib
+        );
         std::process::exit(1);
     }
 

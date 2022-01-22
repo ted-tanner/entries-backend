@@ -16,55 +16,47 @@ pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
-    web::block(move || {
+    let user = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
         db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
     })
-    .await
-    .map(|user| {
-        let output_user = OutputUserPrivate {
-            id: user.id,
-            is_active: user.is_active,
-            is_premium: user.is_premium,
-            premium_expiration: user.premium_expiration,
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            date_of_birth: user.date_of_birth,
-            currency: user.currency,
-            modified_timestamp: user.modified_timestamp,
-            created_timestamp: user.created_timestamp,
-        };
-
-        Ok(HttpResponse::Ok().json(output_user))
-    })
-    .map_err(|ref e| match e {
-        actix_web::error::BlockingError::Error(err) => match err {
+    .await?
+    {
+        Ok(u) => u,
+        Err(e) => match e {
             diesel::result::Error::InvalidCString(_)
             | diesel::result::Error::DeserializationError(_) => {
-                Err(ServerError::InvalidFormat(None))
+                return Err(ServerError::InvalidFormat(None))
             }
             diesel::result::Error::NotFound => {
-                Err(ServerError::AccessForbidden(Some("No user with ID")))
+                return Err(ServerError::AccessForbidden(Some("No user with ID")))
             }
             _ => {
                 error!("{}", e);
-
-                Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(
                     "Failed to get user data",
-                )))
+                )));
             }
         },
-        actix_web::error::BlockingError::Canceled => {
-            error!("{}", e);
+    };
 
-            Err(ServerError::DatabaseTransactionError(Some(
-                "Database transaction canceled",
-            )))
-        }
-    })?
+    let output_user = OutputUserPrivate {
+        id: user.id,
+        is_active: user.is_active,
+        is_premium: user.is_premium,
+        premium_expiration: user.premium_expiration,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        date_of_birth: user.date_of_birth,
+        currency: user.currency,
+        modified_timestamp: user.modified_timestamp,
+        created_timestamp: user.created_timestamp,
+    };
+
+    Ok(HttpResponse::Ok().json(output_user))
 }
 
 pub async fn create(
@@ -79,91 +71,85 @@ pub async fn create(
         return Err(ServerError::InputRejected(Some(msg)));
     }
 
-    web::block(move || {
+    let user = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
         db::user::create_user(&db_connection, &user_data)
     })
-    .await
-    .map(|user| {
-        let signin_token = jwt::generate_signin_token(jwt::JwtParams {
-            user_id: &user.id,
-            user_email: &user.email,
-            user_currency: &user.currency,
-        });
-
-        let signin_token = match signin_token {
-            Ok(signin_token) => signin_token,
-            Err(_) => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Failed to generate sign-in token for user",
-                )));
-            }
-        };
-
-        let signin_token = SigninToken {
-            signin_token: signin_token.to_string(),
-        };
-
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
-
-        let otp = match otp::generate_otp(
-            &user.id,
-            &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
-        ) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Failed to generate OTP",
-                )))
-            }
-        };
-
-        // TODO: Don't log this, email it!
-        println!("\n\nOTP: {}\n\n", &otp);
-
-        Ok(HttpResponse::Created().json(signin_token))
-    })
-    .map_err(|ref e| match e {
-        actix_web::error::BlockingError::Error(err) => match err {
+    .await?
+    {
+        Ok(u) => u,
+        Err(e) => match e {
             diesel::result::Error::InvalidCString(_)
             | diesel::result::Error::DeserializationError(_) => {
-                Err(ServerError::InvalidFormat(None))
+                return Err(ServerError::InvalidFormat(None))
             }
             diesel::result::Error::NotFound => {
-                Err(ServerError::AccessForbidden(Some("No user with ID")))
+                return Err(ServerError::AccessForbidden(Some("No user with ID")))
             }
             diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
                 diesel::result::DatabaseErrorKind::UniqueViolation => {
-                    Err(ServerError::AlreadyExists(Some(
+                    return Err(ServerError::AlreadyExists(Some(
                         "A user with the given email address already exists",
                     )))
                 }
                 _ => {
                     error!("{}", e);
-                    Err(ServerError::InternalServerError(Some(
+                    return Err(ServerError::InternalServerError(Some(
                         "Failed to create user",
-                    )))
+                    )));
                 }
             },
             _ => {
                 error!("{}", e);
-                Err(ServerError::InternalServerError(Some(
+                return Err(ServerError::InternalServerError(Some(
                     "Failed to create user",
-                )))
+                )));
             }
         },
-        actix_web::error::BlockingError::Canceled => {
-            error!("{}", e);
-            Err(ServerError::InternalServerError(Some(
-                "Database transaction canceled",
+    };
+
+    let signin_token = jwt::generate_signin_token(jwt::JwtParams {
+        user_id: &user.id,
+        user_email: &user.email,
+        user_currency: &user.currency,
+    });
+
+    let signin_token = match signin_token {
+        Ok(signin_token) => signin_token,
+        Err(_) => {
+            return Err(ServerError::InternalServerError(Some(
+                "Failed to generate sign-in token for user",
+            )));
+        }
+    };
+
+    let signin_token = SigninToken {
+        signin_token: signin_token.to_string(),
+    };
+
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Failed to fetch system time")
+        .as_secs();
+
+    let otp = match otp::generate_otp(
+        &user.id,
+        &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+    ) {
+        Ok(p) => p,
+        Err(_) => {
+            return Err(ServerError::InternalServerError(Some(
+                "Failed to generate OTP",
             )))
         }
-    })?
+    };
+
+    // TODO: Don't log this, email it!
+    println!("\n\nOTP: {}\n\n", &otp);
+
+    Ok(HttpResponse::Created().json(signin_token))
 }
 
 pub async fn change_password(
@@ -176,21 +162,18 @@ pub async fn change_password(
         .expect("Failed to access database thread pool");
 
     let user =
-        web::block(move || db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
-            .await
-            .map_err(|_| ServerError::InputRejected(Some("User not found")))?;
+        match web::block(move || db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid))
+            .await?
+        {
+            Ok(u) => u,
+            Err(_) => return Err(ServerError::InputRejected(Some("User not found"))),
+        };
 
     let current_password = password_pair.current_password.clone();
 
-    let does_password_match_hash = web::block(move || {
-        Ok(password_hasher::verify_hash(
-            &current_password,
-            &user.password_hash,
-        ))
-        .map_err(|_: ServerError| ServerError::InternalServerError(None))
-    })
-    .await
-    .expect("Failed to block on password verification");
+    let does_password_match_hash =
+        web::block(move || password_hasher::verify_hash(&current_password, &user.password_hash))
+            .await?;
 
     if !does_password_match_hash {
         return Err(ServerError::UserUnauthorized(Some(
@@ -230,6 +213,7 @@ pub async fn change_password(
 mod tests {
     use super::*;
 
+    use actix_web::web::Data;
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
     use diesel::prelude::*;
@@ -244,11 +228,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -270,7 +256,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/create")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_json(&new_user)
             .to_request();
 
@@ -294,11 +280,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -320,7 +308,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/create")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_json(&new_user)
             .to_request();
 
@@ -330,11 +318,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -356,7 +346,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/create")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_json(&new_user)
             .to_request();
 
@@ -366,11 +356,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -393,7 +385,7 @@ mod tests {
             &mut app,
             test::TestRequest::post()
                 .uri("/api/user/create")
-                .header("content-type", "application/json")
+                .insert_header(("content-type", "application/json"))
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
@@ -415,7 +407,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/auth/verify_otp_for_signin")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
@@ -425,10 +417,10 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/api/user/get")
-            .header(
+            .insert_header((
                 "authorization",
                 format!("bearer {}", &access_token).as_str(),
-            )
+            ))
             .to_request();
 
         let res = test::call_service(&mut app, req).await;
@@ -446,11 +438,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -473,7 +467,7 @@ mod tests {
             &mut app,
             test::TestRequest::post()
                 .uri("/api/user/create")
-                .header("content-type", "application/json")
+                .insert_header(("content-type", "application/json"))
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
@@ -495,7 +489,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/auth/verify_otp_for_signin")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
@@ -510,11 +504,11 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/change_password")
-            .header("content-type", "application/json")
-            .header(
+            .insert_header(("content-type", "application/json"))
+            .insert_header((
                 "authorization",
                 format!("bearer {}", &access_token).as_str(),
-            )
+            ))
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 
@@ -541,11 +535,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -568,7 +564,7 @@ mod tests {
             &mut app,
             test::TestRequest::post()
                 .uri("/api/user/create")
-                .header("content-type", "application/json")
+                .insert_header(("content-type", "application/json"))
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
@@ -590,7 +586,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/auth/verify_otp_for_signin")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
@@ -605,11 +601,11 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/change_password")
-            .header("content-type", "application/json")
-            .header(
+            .insert_header(("content-type", "application/json"))
+            .insert_header((
                 "authorization",
                 format!("bearer {}", &access_token).as_str(),
-            )
+            ))
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 
@@ -636,11 +632,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
 
         let mut app = test::init_service(
             App::new()
-                .data(db_thread_pool.clone())
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_thread_pool.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -663,7 +661,7 @@ mod tests {
             &mut app,
             test::TestRequest::post()
                 .uri("/api/user/create")
-                .header("content-type", "application/json")
+                .insert_header(("content-type", "application/json"))
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
@@ -685,7 +683,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/auth/verify_otp_for_signin")
-            .header("content-type", "application/json")
+            .insert_header(("content-type", "application/json"))
             .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
             .to_request();
 
@@ -700,11 +698,11 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/api/user/change_password")
-            .header("content-type", "application/json")
-            .header(
+            .insert_header(("content-type", "application/json"))
+            .insert_header((
                 "authorization",
                 format!("bearer {}", &access_token).as_str(),
-            )
+            ))
             .set_payload(serde_json::ser::to_vec(&password_pair).unwrap())
             .to_request();
 

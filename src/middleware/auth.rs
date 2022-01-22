@@ -10,7 +10,6 @@ pub struct AuthorizedUserClaims(pub jwt::TokenClaims);
 impl FromRequest for AuthorizedUserClaims {
     type Error = error::Error;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         const INVALID_TOKEN_MSG: &'static str = "Token is invalid";
@@ -53,7 +52,6 @@ impl FromRequest for AuthorizedUserClaims {
 mod tests {
     use super::*;
 
-    use actix_web::http::header;
     use actix_web::test;
     use chrono::NaiveDate;
     use rand::prelude::*;
@@ -62,7 +60,7 @@ mod tests {
     use crate::models::user::NewUser;
 
     #[test]
-    fn test_jwt_user_auth_middleware() {
+    async fn test_jwt_user_auth_middleware() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -92,11 +90,9 @@ mod tests {
         })
         .unwrap();
 
-        let req = test::TestRequest::with_header(
-            "authorization",
-            format!("Bearer {}", &token.to_string()),
-        )
-        .to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", format!("Bearer {}", &token.to_string())))
+            .to_http_request();
 
         let user_claims = AuthorizedUserClaims::from_request(&req, &mut Payload::None)
             .into_inner()
@@ -105,11 +101,9 @@ mod tests {
 
         assert_eq!(&user_claims.uid, &user_id);
 
-        let req = test::TestRequest::with_header(
-            "Authorization",
-            format!("bearer {}", &token.to_string()),
-        )
-        .to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", format!("Bearer {}", &token.to_string())))
+            .to_http_request();
 
         let user_claims = AuthorizedUserClaims::from_request(&req, &mut Payload::None)
             .into_inner()
@@ -120,7 +114,45 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_middleware_rejects_request_without_auth_header() {
+    async fn test_auth_middleware_rejects_request_without_auth_header() {
+        let user_id = Uuid::new_v4();
+        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let timestamp = chrono::Utc::now().naive_utc();
+        let new_user = NewUser {
+            id: user_id,
+            is_active: true,
+            is_premium: false,
+            premium_expiration: Option::None,
+            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            password_hash: "test_hash",
+            first_name: &format!("Test-{}", &user_number).to_owned(),
+            last_name: &format!("User-{}", &user_number).to_owned(),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: "USD",
+            modified_timestamp: timestamp,
+            created_timestamp: timestamp,
+        };
+
+        let _token = jwt::generate_access_token(jwt::JwtParams {
+            user_id: &new_user.id,
+            user_email: new_user.email,
+            user_currency: new_user.currency,
+        })
+        .unwrap();
+
+        let req = test::TestRequest::get().to_http_request();
+
+        let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    async fn test_auth_middleware_rejects_header_without_bearer_keyword() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -150,11 +182,9 @@ mod tests {
         })
         .unwrap();
 
-        let req = test::TestRequest::with_header(
-            header::CONTENT_TYPE,
-            format!("bearer {}", &token.to_string()),
-        )
-        .to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", format!("{}", &token.to_string())))
+            .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
 
@@ -162,49 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_middleware_rejects_header_without_bearer_keyword() {
-        let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
-        let timestamp = chrono::Utc::now().naive_utc();
-        let new_user = NewUser {
-            id: user_id,
-            is_active: true,
-            is_premium: false,
-            premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: "USD",
-            modified_timestamp: timestamp,
-            created_timestamp: timestamp,
-        };
-
-        let token = jwt::generate_access_token(jwt::JwtParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
-        .unwrap();
-
-        let req = test::TestRequest::with_header(
-            header::AUTHORIZATION,
-            format!("{}", &token.to_string()),
-        )
-        .to_http_request();
-
-        let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
-
-        assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_auth_middleware_rejects_header_without_token() {
+    async fn test_auth_middleware_rejects_header_without_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -234,14 +222,16 @@ mod tests {
         })
         .unwrap();
 
-        let req = test::TestRequest::with_header(header::AUTHORIZATION, "bearer").to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", "bearer"))
+            .to_http_request();
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
 
         assert!(res.is_err());
     }
 
     #[test]
-    fn test_auth_middleware_rejects_invalid_token() {
+    async fn test_auth_middleware_rejects_invalid_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -275,11 +265,9 @@ mod tests {
         // Remove the last char of the token
         let broken_token = &token[0..token.len() - 1];
 
-        let req = test::TestRequest::with_header(
-            header::AUTHORIZATION,
-            format!("bearer {}", broken_token),
-        )
-        .to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", format!("Bearer {}", broken_token)))
+            .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
 
@@ -287,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
+    async fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -317,11 +305,9 @@ mod tests {
         })
         .unwrap();
 
-        let req = test::TestRequest::with_header(
-            header::AUTHORIZATION,
-            format!("bearer {}", &token.to_string()),
-        )
-        .to_http_request();
+        let req = test::TestRequest::get()
+            .insert_header(("authorization", format!("Bearer {}", &token.to_string())))
+            .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
 

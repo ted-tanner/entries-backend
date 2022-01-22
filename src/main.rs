@@ -5,7 +5,9 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate lazy_static;
 
-use actix_web::{middleware::Logger, App, HttpServer};
+use actix_web::middleware::Logger;
+use actix_web::web::Data;
+use actix_web::{App, HttpServer};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use env_logger::Env;
@@ -130,8 +132,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .data(db_thread_pool.clone())
-            .data(redis_thread_pool.clone())
+            .app_data(Data::new(db_thread_pool.clone()))
+            .app_data(Data::new(redis_thread_pool.clone()))
             .configure(services::api::configure)
             .configure(services::index::configure)
             .wrap(Logger::default())

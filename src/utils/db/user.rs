@@ -1,6 +1,5 @@
 use actix_web::web;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::{dsl, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
@@ -81,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_create_user() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "X$KC3%s&L91m!bVA*@Iu";
@@ -118,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_get_user_by_email() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
@@ -153,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_get_user_by_id() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
@@ -187,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_change_password() {
-        let db_thread_pool = &*env::testing::THREAD_POOL;
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
         const ORIGINAL_PASSWORD: &'static str = "Eq&6T@Vyz54O%DoX$";

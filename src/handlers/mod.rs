@@ -5,9 +5,8 @@ pub mod user;
 pub mod request_io;
 
 pub mod error {
-    use actix_web::dev::HttpResponseBuilder;
     use actix_web::http::{header, StatusCode};
-    use actix_web::HttpResponse;
+    use actix_web::{HttpResponse, HttpResponseBuilder};
     use std::fmt;
 
     #[derive(Debug)]
@@ -47,7 +46,7 @@ pub mod error {
     impl actix_web::error::ResponseError for ServerError {
         fn error_response(&self) -> HttpResponse {
             HttpResponseBuilder::new(self.status_code())
-                .set_header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
                 .body(self.to_string())
         }
 
@@ -60,6 +59,12 @@ pub mod error {
                 ServerError::AccessForbidden(_) => StatusCode::FORBIDDEN,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             }
+        }
+    }
+
+    impl From<actix_web::error::BlockingError> for ServerError {
+        fn from(_result: actix_web::error::BlockingError) -> Self {
+            ServerError::InternalServerError(Some("Actix thread pool failure"))
         }
     }
 

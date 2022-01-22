@@ -2,7 +2,7 @@
 
 [connections]
 database_url = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
-redis_url = "redis://:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
+redis_url = "redis://default:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
 
 [keys]
 hashing_key = "OCc!7xlc"
