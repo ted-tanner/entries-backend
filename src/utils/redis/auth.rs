@@ -1,5 +1,5 @@
 use deadpool_redis::redis;
-use std::net::IpAddr;
+// use std::net::IpAddr;
 use uuid::Uuid;
 
 use crate::definitions::*;

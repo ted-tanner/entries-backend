@@ -16,6 +16,7 @@ signing_key = "3dn68OZo"
 hash_iterations = 2
 hash_length = 32
 hash_mem_size_kib = 128
+hash_lanes = 2
 salt_length_bytes = 16
 
 [lifetimes]
@@ -44,6 +45,7 @@ secure_endpoint_max_attempts = 8
 # hash_iterations = 12
 # hash_length = 32
 # hash_mem_size_kib = 262144
+# hash_lanes = 2
 # salt_length_bytes = 16
 
 # [lifetimes]

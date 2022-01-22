@@ -8,6 +8,8 @@ pub fn hash_argon2id(password: &str) -> String {
     let mut hasher = argonautica::Hasher::default();
     hasher
         .configure_variant(Variant::Argon2id)
+        .configure_lanes(env::CONF.hashing.hash_lanes)
+        .configure_threads(env::CONF.hashing.hash_lanes)
         .configure_hash_len(env::CONF.hashing.hash_length)
         .configure_iterations(env::CONF.hashing.hash_iterations)
         .configure_memory_size(env::CONF.hashing.hash_mem_size_kib);
