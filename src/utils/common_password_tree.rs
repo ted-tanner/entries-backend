@@ -10,22 +10,18 @@ impl CommonPasswordTree {
     pub fn generate() -> CommonPasswordTree {
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);
 
-        let common_passwords_file = File::open(path).expect(
-            format!(
-                "Failed to open {}",
-                path.to_str()
-                    .unwrap_or(*env::password::COMMON_PASSWORDS_FILE_PATH)
-            )
-            .as_str(),
+        let file_error_msg = format!(
+            "Failed to open {}",
+            path.to_str()
+                .unwrap_or(*env::password::COMMON_PASSWORDS_FILE_PATH)
         );
+        let common_passwords_file = File::open(path).expect(&file_error_msg);
 
         let mut tree = BTreeSet::<String>::new();
 
         if let Ok(lines) = read_lines_from_file(common_passwords_file) {
-            for password in lines {
-                if let Ok(password) = password {
-                    tree.insert(password.to_string().to_lowercase());
-                }
+            for password in lines.flatten() {
+                tree.insert(password.to_string().to_lowercase());
             }
         }
 

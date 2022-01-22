@@ -16,7 +16,7 @@ pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, ServerError> {
-    const INVALID_CREDENTIALS_MSG: &'static str = "Incorrect email or password";
+    const INVALID_CREDENTIALS_MSG: &str = "Incorrect email or password";
 
     if !credentials.validate_email_address().is_valid() {
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
@@ -50,7 +50,7 @@ pub async fn sign_in(
         let signin_token = match signin_token {
             Ok(signin_token) => signin_token,
             Err(_) => {
-                return Err(ServerError::InternalServerError(Some(
+                return Err(ServerError::InternalError(Some(
                     "Failed to generate sign-in token for user",
                 )));
             }
@@ -71,14 +71,10 @@ pub async fn sign_in(
         // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
         let otp = match otp::generate_otp(
             &user.id,
-            &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+            current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
         ) {
             Ok(p) => p,
-            Err(_) => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Failed to generate OTP",
-                )))
-            }
+            Err(_) => return Err(ServerError::InternalError(Some("Failed to generate OTP"))),
         };
 
         // TODO: Don't log this, email it!
@@ -110,11 +106,7 @@ pub async fn verify_otp_for_signin(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
             }
-            _ => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Error verifying token",
-                )))
-            }
+            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
         },
     };
 
@@ -131,7 +123,7 @@ pub async fn verify_otp_for_signin(
     {
         Ok(a) => a,
         Err(_) => {
-            return Err(ServerError::InternalServerError(Some(
+            return Err(ServerError::InternalError(Some(
                 "Failed to get value OTP attempts from cache",
             )))
         }
@@ -175,7 +167,7 @@ pub async fn verify_otp_for_signin(
                 return Err(ServerError::InputRejected(Some("Invalid passcode")))
             }
             otp::OtpError::Error(_) => {
-                return Err(ServerError::InternalServerError(Some(
+                return Err(ServerError::InternalError(Some(
                     "Validating passcode failed",
                 )))
             }
@@ -195,7 +187,7 @@ pub async fn verify_otp_for_signin(
         Ok(token_pair) => token_pair,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalServerError(Some(
+            return Err(ServerError::InternalError(Some(
                 "Failed to generate tokens for new user",
             )));
         }
@@ -241,11 +233,7 @@ pub async fn refresh_tokens(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")));
             }
-            _ => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Error verifying token",
-                )))
-            }
+            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
         },
     };
 
@@ -278,7 +266,7 @@ pub async fn refresh_tokens(
         Ok(token_pair) => token_pair,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalServerError(Some(
+            return Err(ServerError::InternalError(Some(
                 "Failed to generate tokens for new user",
             )));
         }
@@ -325,11 +313,7 @@ pub async fn logout(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
             }
-            _ => {
-                return Err(ServerError::InternalServerError(Some(
-                    "Error verifying token",
-                )))
-            }
+            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
         },
     };
 
@@ -350,7 +334,7 @@ pub async fn logout(
     .await
     {
         Ok(_) => Ok(HttpResponse::Ok().finish()),
-        Err(_) => Err(ServerError::InternalServerError(Some(
+        Err(_) => Err(ServerError::InternalError(Some(
             "Failed to blacklist token",
         ))),
     }

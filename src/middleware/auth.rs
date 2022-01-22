@@ -12,7 +12,7 @@ impl FromRequest for AuthorizedUserClaims {
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        const INVALID_TOKEN_MSG: &'static str = "Token is invalid";
+        const INVALID_TOKEN_MSG: &str = "Token is invalid";
 
         let auth_header = match req.headers().get("Authorization") {
             Some(header) => header,

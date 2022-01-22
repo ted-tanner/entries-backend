@@ -141,7 +141,11 @@ mod tests {
 
         let user_id = Uuid::new_v4();
         let otp1 = generate_otp(&user_id, current_time).unwrap();
-        let otp2 = generate_otp(&user_id, current_time + env::CONF.lifetimes.otp_lifetime_mins * 60).unwrap();
+        let otp2 = generate_otp(
+            &user_id,
+            current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+        )
+        .unwrap();
 
         assert_ne!(otp1, otp2);
 
@@ -178,7 +182,8 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let generate_time =
+            current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60 - 1;
         let otp = generate_otp(&user_id, generate_time).unwrap();
 
@@ -193,7 +198,8 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
+        let generate_time =
+            current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60;
         let otp = generate_otp(&user_id, generate_time).unwrap();
 

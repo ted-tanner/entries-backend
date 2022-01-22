@@ -67,7 +67,7 @@ pub async fn create(
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 
-    if let validators::Validity::INVALID(msg) = user_data.0.validate_strong_password() {
+    if let validators::Validity::Invalid(msg) = user_data.0.validate_strong_password() {
         return Err(ServerError::InputRejected(Some(msg)));
     }
 
@@ -97,16 +97,12 @@ pub async fn create(
                 }
                 _ => {
                     error!("{}", e);
-                    return Err(ServerError::InternalServerError(Some(
-                        "Failed to create user",
-                    )));
+                    return Err(ServerError::InternalError(Some("Failed to create user")));
                 }
             },
             _ => {
                 error!("{}", e);
-                return Err(ServerError::InternalServerError(Some(
-                    "Failed to create user",
-                )));
+                return Err(ServerError::InternalError(Some("Failed to create user")));
             }
         },
     };
@@ -120,7 +116,7 @@ pub async fn create(
     let signin_token = match signin_token {
         Ok(signin_token) => signin_token,
         Err(_) => {
-            return Err(ServerError::InternalServerError(Some(
+            return Err(ServerError::InternalError(Some(
                 "Failed to generate sign-in token for user",
             )));
         }
@@ -137,14 +133,10 @@ pub async fn create(
 
     let otp = match otp::generate_otp(
         &user.id,
-        &current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+        current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
     ) {
         Ok(p) => p,
-        Err(_) => {
-            return Err(ServerError::InternalServerError(Some(
-                "Failed to generate OTP",
-            )))
-        }
+        Err(_) => return Err(ServerError::InternalError(Some("Failed to generate OTP"))),
     };
 
     // TODO: Don't log this, email it!
@@ -193,7 +185,7 @@ pub async fn change_password(
         &user.date_of_birth,
     );
 
-    if let validators::Validity::INVALID(msg) = new_password_validity {
+    if let validators::Validity::Invalid(msg) = new_password_validity {
         return Err(ServerError::InputRejected(Some(msg)));
     };
 

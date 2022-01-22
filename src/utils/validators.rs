@@ -5,16 +5,16 @@ use crate::env::password::COMMON_PASSWORDS_TREE;
 
 #[derive(Debug)]
 pub enum Validity {
-    VALID,
-    INVALID(&'static str),
+    Valid,
+    Invalid(&'static str),
 }
 
 impl Validity {
     #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         match &self {
-            Validity::VALID => true,
-            Validity::INVALID(_) => false,
+            Validity::Valid => true,
+            Validity::Invalid(_) => false,
         }
     }
 }
@@ -23,34 +23,34 @@ impl Validity {
 pub fn validate_email_address(email: &str) -> Validity {
     for c in email.chars() {
         if c == ' ' || !c.is_ascii() {
-            return Validity::INVALID("Email address cannot contain a space.");
+            return Validity::Invalid("Email address cannot contain a space.");
         }
     }
 
     if email.contains("@.") {
-        return Validity::INVALID("Doman name in email address cannot begin with a period.");
+        return Validity::Invalid("Doman name in email address cannot begin with a period.");
     }
 
     let email = match email.split_once('@') {
         Some(s) => s,
-        None => return Validity::INVALID("Email address must contain an at symbol (@)."),
+        None => return Validity::Invalid("Email address must contain an at symbol (@)."),
     };
 
-    if email.0.len() == 0 || email.1.len() < 3 {
-        return Validity::INVALID("Email username or domain name is to short.");
+    if email.0.is_empty() || email.1.len() < 3 {
+        return Validity::Invalid("Email username or domain name is to short.");
     }
 
     if email.1.contains('@') || !email.1.contains('.') {
-        return Validity::INVALID(
+        return Validity::Invalid(
             "Email address must have only one at symbol (@) and the domain must contain a period.",
         );
     }
 
     if email.1.ends_with('.') {
-        return Validity::INVALID("Email address cannot end with a period.");
+        return Validity::Invalid("Email address cannot end with a period.");
     }
 
-    return Validity::VALID;
+    Validity::Valid
 }
 
 #[inline]
@@ -63,7 +63,7 @@ pub fn validate_strong_password(
 ) -> Validity {
     // 12 is hardcoded because the common-passwords list assumes 12-character-long passwords
     if password.len() < 12 {
-        return Validity::INVALID("Password must be at least 12 characters long.");
+        return Validity::Invalid("Password must be at least 12 characters long.");
     }
 
     let lowercase_password = password.to_lowercase();
@@ -71,11 +71,11 @@ pub fn validate_strong_password(
     if lowercase_password.contains(&env::APP_NAME.to_lowercase().replace(" ", ""))
         || lowercase_password.contains(&env::APP_NAME.to_lowercase())
     {
-        return Validity::INVALID("Password must not contain the name of the app.");
+        return Validity::Invalid("Password must not contain the name of the app.");
     }
 
     if lowercase_password.contains("password") {
-        return Validity::INVALID("Password must not contain the word \"password.\"");
+        return Validity::Invalid("Password must not contain the word \"password.\"");
     }
 
     let mut contains_lowercase = false;
@@ -106,38 +106,38 @@ pub fn validate_strong_password(
     }
 
     if !contains_lowercase {
-        return Validity::INVALID("Password must contain at least one lowercase letter.");
+        return Validity::Invalid("Password must contain at least one lowercase letter.");
     }
 
     if !contains_uppercase {
-        return Validity::INVALID("Password must contain at least one uppercase letter.");
+        return Validity::Invalid("Password must contain at least one uppercase letter.");
     }
 
     if !contains_number {
-        return Validity::INVALID("Password must contain at least one number.");
+        return Validity::Invalid("Password must contain at least one number.");
     }
 
     if !contains_punct {
-        return Validity::INVALID(
+        return Validity::Invalid(
             "Password must contain at least one of the following: ! ? @ $ % - & + # * ( ) \" ' , . / : ; < = > [ \\ ] ^ _ { | } ~"
         );
     }
 
     if lowercase_password.contains(&first_name.to_lowercase()) {
-        return Validity::INVALID("Password must not contain your first name.");
+        return Validity::Invalid("Password must not contain your first name.");
     }
 
     if lowercase_password.contains(&last_name.to_lowercase()) {
-        return Validity::INVALID("Password must not contain your last name.");
+        return Validity::Invalid("Password must not contain your last name.");
     }
 
-    let email_username = email.split_once('@').unwrap_or((&email, "")).0;
+    let email_username = email.split_once('@').unwrap_or((email, "")).0;
     if lowercase_password.contains(&email_username.to_lowercase()) {
-        return Validity::INVALID("Password must not contain your email username.");
+        return Validity::Invalid("Password must not contain your email username.");
     }
 
     if password.contains(&date_of_birth.year().to_string()) {
-        return Validity::INVALID("Password must not contain your birth year.");
+        return Validity::Invalid("Password must not contain your birth year.");
     }
 
     let current_year = chrono::Utc::now().year();
@@ -145,19 +145,19 @@ pub fn validate_strong_password(
 
     for year in nearby_year_range {
         if password.contains(&year.to_string()) {
-            return Validity::INVALID(
+            return Validity::Invalid(
                 "Password must not contain a current, recent, or upcoming year.",
             );
         }
     }
 
     if COMMON_PASSWORDS_TREE.contains(&lowercase_password) {
-        return Validity::INVALID(
+        return Validity::Invalid(
             "Your password is too common. It was found on an online list of the 1,000,000 most commonly used passwords."
         );
     }
 
-    Validity::VALID
+    Validity::Valid
 }
 
 #[cfg(test)]

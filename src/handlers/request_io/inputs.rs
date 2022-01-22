@@ -11,7 +11,7 @@ pub struct CredentialPair {
 
 impl CredentialPair {
     pub fn validate_email_address(&self) -> validators::Validity {
-        return validators::validate_email_address(&self.email);
+        validators::validate_email_address(&self.email)
     }
 }
 

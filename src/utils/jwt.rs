@@ -23,9 +23,6 @@ pub enum JwtError {
     TokenExpired,
     SystemResourceAccessFailure,
     WrongTokenType,
-
-    #[doc(hidden)]
-    __Nonexhaustive,
 }
 
 impl std::error::Error for JwtError {}
@@ -37,7 +34,7 @@ impl fmt::Display for JwtError {
             JwtError::DecodingError(e) => write!(f, "DecodingError: {}", e),
             JwtError::EncodingError(e) => write!(f, "EncodingError: {}", e),
             JwtError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
-            _ => write!(f, "Error: {}", self.to_string()),
+            _ => write!(f, "Error: {}", self),
         }
     }
 }
@@ -120,29 +117,17 @@ pub struct Token {
 impl Token {
     #[allow(dead_code)]
     fn is_access_token(&self) -> bool {
-        if let TokenType::Access = self.token_type {
-            true
-        } else {
-            false
-        }
+        matches!(self.token_type, TokenType::Access)
     }
 
     #[allow(dead_code)]
     fn is_refresh_token(&self) -> bool {
-        if let TokenType::Refresh = self.token_type {
-            true
-        } else {
-            false
-        }
+        matches!(self.token_type, TokenType::Refresh)
     }
 
     #[allow(dead_code)]
     fn is_signin_token(&self) -> bool {
-        if let TokenType::SignIn = self.token_type {
-            true
-        } else {
-            false
-        }
+        matches!(self.token_type, TokenType::SignIn)
     }
 }
 
@@ -159,15 +144,15 @@ pub struct TokenPair {
 }
 
 pub fn generate_access_token(params: JwtParams) -> Result<Token, JwtError> {
-    Ok(generate_token(params, TokenType::Access)?)
+    generate_token(params, TokenType::Access)
 }
 
 pub fn generate_refresh_token(params: JwtParams) -> Result<Token, JwtError> {
-    Ok(generate_token(params, TokenType::Refresh)?)
+    generate_token(params, TokenType::Refresh)
 }
 
 pub fn generate_signin_token(params: JwtParams) -> Result<Token, JwtError> {
-    Ok(generate_token(params, TokenType::SignIn)?)
+    generate_token(params, TokenType::SignIn)
 }
 
 pub fn generate_token_pair(params: JwtParams) -> Result<TokenPair, JwtError> {
@@ -192,7 +177,7 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
-        Err(_) => return Err(JwtError::from(JwtError::SystemResourceAccessFailure)),
+        Err(_) => return Err(JwtError::SystemResourceAccessFailure),
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
@@ -203,12 +188,11 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
         uid: *params.user_id,
         eml: params.user_email.to_string(),
         cur: params.user_currency.to_string(),
-        typ: token_type.clone().into(),
+        typ: token_type.into(),
         slt: salt,
     };
 
-    let mut header = Header::default();
-    header.alg = Algorithm::HS256;
+    let header = Header::default();
 
     let token = match jsonwebtoken::encode(
         &header,
@@ -216,7 +200,7 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
         &EncodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
     ) {
         Ok(t) => Ok(t),
-        Err(e) => Err(JwtError::from(JwtError::EncodingError(e))),
+        Err(e) => Err(JwtError::EncodingError(e)),
     };
 
     Ok(Token {
@@ -233,8 +217,8 @@ pub fn validate_refresh_token(
     token: &str,
     db_connection: &DbConnection,
 ) -> Result<TokenClaims, JwtError> {
-    if is_on_blacklist(token, &db_connection)? {
-        return Err(JwtError::from(JwtError::TokenBlacklisted));
+    if is_on_blacklist(token, db_connection)? {
+        return Err(JwtError::TokenBlacklisted);
     }
 
     validate_token(token, TokenType::Refresh)
@@ -246,16 +230,14 @@ pub fn validate_signin_token(token: &str) -> Result<TokenClaims, JwtError> {
 
 fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, JwtError> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
-        &token,
+        token,
         &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
         &Validation::new(Algorithm::HS256),
     ) {
         Ok(t) => t,
         Err(e) => {
             return match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    Err(JwtError::from(JwtError::TokenExpired))
-                }
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => Err(JwtError::TokenExpired),
                 jsonwebtoken::errors::ErrorKind::InvalidToken
                 | jsonwebtoken::errors::ErrorKind::InvalidSignature
                 | jsonwebtoken::errors::ErrorKind::InvalidEcdsaKey
@@ -266,21 +248,19 @@ fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Jwt
                 | jsonwebtoken::errors::ErrorKind::InvalidAudience
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(JwtError::from(JwtError::TokenInvalid))
-                }
-                _ => Err(JwtError::from(JwtError::DecodingError(e))),
+                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => Err(JwtError::TokenInvalid),
+                _ => Err(JwtError::DecodingError(e)),
             }
         }
     };
 
     let token_type_claim = match TokenType::try_from(decoded_token.claims.typ) {
         Ok(t) => t,
-        Err(e) => return Err(JwtError::from(JwtError::InvalidTokenType(e))),
+        Err(e) => return Err(JwtError::InvalidTokenType(e)),
     };
 
     if std::mem::discriminant(&token_type_claim) != std::mem::discriminant(&token_type) {
-        Err(JwtError::from(JwtError::WrongTokenType))
+        Err(JwtError::WrongTokenType)
     } else {
         Ok(decoded_token.claims)
     }
@@ -290,7 +270,7 @@ fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Jwt
 pub fn read_claims(token: &str) -> Result<TokenClaims, JwtError> {
     match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
         Ok(c) => Ok(c.claims),
-        Err(e) => Err(JwtError::from(JwtError::DecodingError(e))),
+        Err(e) => Err(JwtError::DecodingError(e)),
     }
 }
 
@@ -298,7 +278,7 @@ pub fn blacklist_token(
     token: &str,
     db_connection: &DbConnection,
 ) -> Result<BlacklistedToken, JwtError> {
-    let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(&token) {
+    let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
         Ok(t) => t,
         Err(e) => {
             return match e.kind() {
@@ -312,10 +292,8 @@ pub fn blacklist_token(
                 | jsonwebtoken::errors::ErrorKind::InvalidAudience
                 | jsonwebtoken::errors::ErrorKind::InvalidSubject
                 | jsonwebtoken::errors::ErrorKind::ImmatureSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => {
-                    Err(JwtError::from(JwtError::TokenInvalid))
-                }
-                _ => Err(JwtError::from(JwtError::DecodingError(e))),
+                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => Err(JwtError::TokenInvalid),
+                _ => Err(JwtError::DecodingError(e)),
             }
         }
     };
@@ -324,11 +302,11 @@ pub fn blacklist_token(
     let expiration = decoded_token.claims.exp;
 
     let blacklisted_token = NewBlacklistedToken {
-        token: token,
-        user_id: user_id,
+        token,
+        user_id,
         token_expiration_time: match i64::try_from(expiration) {
             Ok(exp) => exp,
-            Err(_) => return Err(JwtError::from(JwtError::TokenInvalid)),
+            Err(_) => return Err(JwtError::TokenInvalid),
         },
     };
 
@@ -337,7 +315,7 @@ pub fn blacklist_token(
         .get_result::<BlacklistedToken>(db_connection)
     {
         Ok(t) => Ok(t),
-        Err(e) => Err(JwtError::from(JwtError::DatabaseError(e))),
+        Err(e) => Err(JwtError::DatabaseError(e)),
     }
 }
 

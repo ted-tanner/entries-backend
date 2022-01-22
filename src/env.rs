@@ -57,7 +57,7 @@ lazy_static! {
 }
 
 fn build_conf() -> Conf {
-    const CONF_FILE_PATH: &'static str = "conf/budgetapp.toml";
+    const CONF_FILE_PATH: &str = "conf/budgetapp.toml";
 
     let mut conf_file = File::open(CONF_FILE_PATH).unwrap_or_else(|_| {
         eprintln!("Expected configuration file at '{}'", CONF_FILE_PATH);

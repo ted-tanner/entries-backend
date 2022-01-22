@@ -19,7 +19,7 @@ pub mod error {
         AccessForbidden(Option<&'static str>),
 
         // 500 Errors
-        InternalServerError(Option<&'static str>),
+        InternalError(Option<&'static str>),
         DatabaseTransactionError(Option<&'static str>),
     }
 
@@ -33,9 +33,7 @@ pub mod error {
                 ServerError::AlreadyExists(msg) => format_err(f, "Already exists", msg),
                 ServerError::UserUnauthorized(msg) => format_err(f, "User unauthorized", msg),
                 ServerError::AccessForbidden(msg) => format_err(f, "Access forbidden", msg),
-                ServerError::InternalServerError(msg) => {
-                    format_err(f, "Internal server error", msg)
-                }
+                ServerError::InternalError(msg) => format_err(f, "Internal server error", msg),
                 ServerError::DatabaseTransactionError(msg) => {
                     format_err(f, "Database transaction failed", msg)
                 }
@@ -64,14 +62,14 @@ pub mod error {
 
     impl From<actix_web::error::BlockingError> for ServerError {
         fn from(_result: actix_web::error::BlockingError) -> Self {
-            ServerError::InternalServerError(Some("Actix thread pool failure"))
+            ServerError::InternalError(Some("Actix thread pool failure"))
         }
     }
 
     impl From<std::result::Result<HttpResponse, ServerError>> for ServerError {
         fn from(result: std::result::Result<HttpResponse, ServerError>) -> Self {
             match result {
-                Ok(_) => ServerError::InternalServerError(None),
+                Ok(_) => ServerError::InternalError(None),
                 Err(e) => e,
             }
         }
