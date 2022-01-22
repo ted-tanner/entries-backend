@@ -408,7 +408,7 @@ mod tests {
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
 
-        assert!(signin_token.signin_token.len() > 0);
+        assert!(!signin_token.signin_token.is_empty());
 
         assert_eq!(
             jwt::validate_signin_token(&signin_token.signin_token)
@@ -548,10 +548,10 @@ mod tests {
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
 
         let access_token = token_pair.access_token.to_string();
-        let refresh_token = token_pair.refresh_token.to_string();
+        let refresh_token = token_pair.refresh_token;
 
-        assert!(access_token.len() > 0);
-        assert!(refresh_token.len() > 0);
+        assert!(!access_token.is_empty());
+        assert!(!refresh_token.is_empty());
 
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -646,10 +646,10 @@ mod tests {
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
 
         let access_token = token_pair.access_token.to_string();
-        let refresh_token = token_pair.refresh_token.to_string();
+        let refresh_token = token_pair.refresh_token;
 
-        assert!(access_token.len() > 0);
-        assert!(refresh_token.len() > 0);
+        assert!(!access_token.is_empty());
+        assert!(!refresh_token.is_empty());
 
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -1129,10 +1129,10 @@ mod tests {
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
 
         let access_token = token_pair.access_token.to_string();
-        let refresh_token = token_pair.refresh_token.to_string();
+        let refresh_token = token_pair.refresh_token;
 
-        assert!(access_token.len() > 0);
-        assert!(refresh_token.len() > 0);
+        assert!(!access_token.is_empty());
+        assert!(!refresh_token.is_empty());
 
         assert!(jwt::is_on_blacklist(&refresh_token_payload.token, &db_connection).unwrap());
         assert_eq!(

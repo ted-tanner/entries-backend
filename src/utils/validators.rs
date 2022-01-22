@@ -170,17 +170,17 @@ mod tests {
     #[test]
     fn test_validate_email_address() {
         // Valid
-        const NORMAL: &'static str = "test@example.com";
-        const WITH_DOT_IN_USERNAME: &'static str = "test.me@example.com";
-        const MULTIPLE_DOT_DOMAIN: &'static str = "email@example.co.jp";
-        const PLUS_IN_USERNAME: &'static str = "firstname+lastname@example.com";
-        const IP_DOMAIN: &'static str = "email@123.123.123.123";
-        const BRACKETED_IP_DOMAIN: &'static str = "email@[123.123.123.123]";
-        const WITH_QUOTATION_MARKS: &'static str = "\"email\"@example.com";
-        const NUMERIC_USERNAME: &'static str = "1234567890@example.com";
-        const DASH_IN_DOMAIN: &'static str = "email@example-one.com";
-        const DASH_IN_USERNAME: &'static str = "firstname-lastname@example.com";
-        const ALL_UNDERSCORE_USERNAME: &'static str = "_______@example.com";
+        const NORMAL: &str = "test@example.com";
+        const WITH_DOT_IN_USERNAME: &str = "test.me@example.com";
+        const MULTIPLE_DOT_DOMAIN: &str = "email@example.co.jp";
+        const PLUS_IN_USERNAME: &str = "firstname+lastname@example.com";
+        const IP_DOMAIN: &str = "email@123.123.123.123";
+        const BRACKETED_IP_DOMAIN: &str = "email@[123.123.123.123]";
+        const WITH_QUOTATION_MARKS: &str = "\"email\"@example.com";
+        const NUMERIC_USERNAME: &str = "1234567890@example.com";
+        const DASH_IN_DOMAIN: &str = "email@example-one.com";
+        const DASH_IN_USERNAME: &str = "firstname-lastname@example.com";
+        const ALL_UNDERSCORE_USERNAME: &str = "_______@example.com";
 
         assert!(validate_email_address(NORMAL).is_valid());
         assert!(validate_email_address(WITH_DOT_IN_USERNAME).is_valid());
@@ -195,12 +195,12 @@ mod tests {
         assert!(validate_email_address(ALL_UNDERSCORE_USERNAME).is_valid());
 
         // Invalid
-        const WITH_SPACE: &'static str = "te st@example.com";
-        const NON_ASCII_CHAR: &'static str = "test😂@example.com";
-        const MULTIPLE_AT: &'static str = "test@exam.com@ple.com";
-        const NO_AT: &'static str = "testexample.com";
-        const DOMAIN_DOT_ADJACENT_TO_AT: &'static str = "test@.com";
-        const DOT_LAST_CHAR: &'static str = "test@example.com.";
+        const WITH_SPACE: &str = "te st@example.com";
+        const NON_ASCII_CHAR: &str = "test😂@example.com";
+        const MULTIPLE_AT: &str = "test@exam.com@ple.com";
+        const NO_AT: &str = "testexample.com";
+        const DOMAIN_DOT_ADJACENT_TO_AT: &str = "test@.com";
+        const DOT_LAST_CHAR: &str = "test@example.com.";
 
         assert!(!validate_email_address(WITH_SPACE).is_valid());
         assert!(!validate_email_address(NON_ASCII_CHAR).is_valid());
@@ -212,9 +212,9 @@ mod tests {
 
     #[test]
     fn test_validate_strong_password() {
-        const EMAIL: &'static str = "test_user@test.com";
-        const FIRST_NAME: &'static str = "Arnold";
-        const LAST_NAME: &'static str = "Schwarzenegger";
+        const EMAIL: &str = "test_user@test.com";
+        const FIRST_NAME: &str = "Arnold";
+        const LAST_NAME: &str = "Schwarzenegger";
 
         let date_of_birth = NaiveDate::from_ymd(
             rand::thread_rng().gen_range(1940..=1990),
@@ -238,7 +238,7 @@ mod tests {
         );
 
         // Contains app name with space
-        password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME) + "&45D";
+        password = String::from("&#AkG@Qe!^91z") + (*env::APP_NAME) + "&45D";
         assert!(
             !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
                 .is_valid()

@@ -69,10 +69,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
@@ -123,10 +123,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
@@ -161,10 +161,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
@@ -183,7 +183,7 @@ mod tests {
         .unwrap();
 
         let req = test::TestRequest::get()
-            .insert_header(("authorization", format!("{}", &token.to_string())))
+            .insert_header(("authorization", (&token.to_string()).to_string()))
             .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
@@ -201,10 +201,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
@@ -240,10 +240,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
@@ -284,10 +284,10 @@ mod tests {
             is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
-            email: &format!("test_user{}@test.com", &user_number).to_owned(),
+            email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number).to_owned(),
-            last_name: &format!("User-{}", &user_number).to_owned(),
+            first_name: &format!("Test-{}", &user_number),
+            last_name: &format!("User-{}", &user_number),
             date_of_birth: NaiveDate::from_ymd(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),

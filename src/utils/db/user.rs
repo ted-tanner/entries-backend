@@ -83,7 +83,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        const PASSWORD: &'static str = "X$KC3%s&L91m!bVA*@Iu";
+        const PASSWORD: &str = "X$KC3%s&L91m!bVA*@Iu";
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -120,7 +120,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
+        const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let user_email = format!("test_user{}@test.com", &user_number);
@@ -155,7 +155,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        const PASSWORD: &'static str = "Uo^Z56o%f#@8Ub#I9D&f";
+        const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -189,8 +189,8 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        const ORIGINAL_PASSWORD: &'static str = "Eq&6T@Vyz54O%DoX$";
-        const UPDATED_PASSWORD: &'static str = "P*%OaTMaMl^Uzft^$82Qn";
+        const ORIGINAL_PASSWORD: &str = "Eq&6T@Vyz54O%DoX$";
+        const UPDATED_PASSWORD: &str = "P*%OaTMaMl^Uzft^$82Qn";
 
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -206,7 +206,7 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let new_user_json = web::Json(new_user.clone());
+        let new_user_json = web::Json(new_user);
         let user_id = create_user(&db_connection, &new_user_json).unwrap().id;
 
         let original_password_saved_hash = users

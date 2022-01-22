@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn test_hash_argon2id() {
         let password = "@Pa$$20rd-Test";
-        let hash = hash_argon2id(&password);
+        let hash = hash_argon2id(password);
 
         assert!(!hash.contains(&password));
     }

@@ -64,7 +64,7 @@ mod tests {
             let password = &common_passwords[password_idx];
 
             debug_assert!(
-                tree.contains(&password),
+                tree.contains(password),
                 "Tree should have contained password, but did not: {}",
                 &password
             );
