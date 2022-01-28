@@ -4,17 +4,12 @@ use std::io::Read;
 
 #[derive(Deserialize, Serialize)]
 pub struct Conf {
-    pub workers: Workers,
     pub connections: Connections,
-    pub keys: Keys,
     pub hashing: Hashing,
+    pub keys: Keys,
     pub lifetimes: Lifetimes,
     pub security: Security,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct Workers {
-    pub actix_workers: usize,
+    pub workers: Workers,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -24,19 +19,19 @@ pub struct Connections {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Keys {
-    pub hashing_key: String,
-    pub signing_key: String,
-    pub otp_key: String,
-}
-
-#[derive(Deserialize, Serialize)]
 pub struct Hashing {
     pub hash_length: u32,
     pub hash_iterations: u32,
     pub hash_mem_size_kib: u32,
     pub hash_lanes: u32,
     pub salt_length_bytes: usize,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Keys {
+    pub hashing_key: String,
+    pub signing_key: String,
+    pub otp_key: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -54,6 +49,11 @@ pub struct Security {
 lazy_static! {
     pub static ref APP_NAME: &'static str = "Budget App";
     pub static ref CONF: Conf = build_conf();
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Workers {
+    pub actix_workers: usize,
 }
 
 fn build_conf() -> Conf {
@@ -120,11 +120,7 @@ pub mod testing {
             .build(ConnectionManager::<PgConnection>::new(
                 crate::env::CONF.connections.database_url.as_str()
             ))
-            .unwrap();
-        pub static ref REDIS_THREAD_POOL: RedisThreadPool =
-            deadpool_redis::Config::from_url(&crate::env::CONF.connections.redis_url)
-                .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-                .expect("Failed to create Redis cache thread pool");
+            .expect("Failed to create DB thread pool");
     }
 }
 

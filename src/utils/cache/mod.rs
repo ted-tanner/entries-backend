@@ -1,10 +1,11 @@
-pub mod auth;
+pub mod asynchr;
+pub mod synchr;
 
 use std::fmt;
 
 #[derive(Debug)]
 pub enum RedisError {
-    QueryFailed(Option<&'static str>),
+    CommandFailed(Option<&'static str>),
 }
 
 impl std::error::Error for RedisError {}
@@ -12,7 +13,7 @@ impl std::error::Error for RedisError {}
 impl fmt::Display for RedisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RedisError::QueryFailed(msg) => format_err(f, "Query failed", msg),
+            RedisError::CommandFailed(msg) => format_err(f, "Redis command failed", msg),
         }
     }
 }

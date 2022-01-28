@@ -6,10 +6,8 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.0.0-beta.21"
-argonautica = { version = "0.2", features = ["serde", "simd"] } # Faster
-# argonautica = { version = "0.2", features = ["serde"] }  # More compatible
+argonautica = { version = "0.2", features = ["serde", "simd"] }
 chrono = { version = "0.4", features = ["serde"] }
-deadpool-redis = "0.10"
 diesel = { version = "1.4", features = ["postgres", "uuidv07", "r2d2", "chrono"] }
 diesel_migrations = "1.4"
 env_logger = "0.9"
@@ -18,6 +16,7 @@ jsonwebtoken = "7.2"
 lazy_static = "1.4"
 log = "0.4"
 rand = "0.8"
+redis = { version = "0.21", features = ["tokio-comp"] }
 ring = "0.16"
 serde = "1.0"
 toml = "0.5"

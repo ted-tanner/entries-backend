@@ -1,16 +1,8 @@
 ###### Testing Configuration ######
 
-[workers]
-actix_workers = 12
-
 [connections]
 database_url = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
 redis_url = "redis://default:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
-
-[keys]
-hashing_key = "OCc!7xlc"
-otp_key = "K1Xn*5&b"
-signing_key = "3dn68OZo"
 
 [hashing]
 hash_iterations = 2
@@ -19,6 +11,11 @@ hash_mem_size_kib = 128
 hash_lanes = 2
 salt_length_bytes = 16
 
+[keys]
+hashing_key = "OCc!7xlc"
+otp_key = "K1Xn*5&b"
+signing_key = "3dn68OZo"
+
 [lifetimes]
 access_token_lifetime_mins = 8
 otp_lifetime_mins = 5
@@ -26,6 +23,9 @@ refresh_token_lifetime_days = 28
 
 [security]
 secure_endpoint_max_attempts = 8
+
+[workers]
+actix_workers = 12
 
 ###### Sample Production Configuration ######
 

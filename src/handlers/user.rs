@@ -225,12 +225,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_create() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -277,12 +278,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -315,12 +317,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -353,12 +356,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_get() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -435,12 +439,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -532,12 +537,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -629,12 +635,13 @@ mod tests {
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_thread_pool = &*env::testing::REDIS_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
