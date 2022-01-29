@@ -30,7 +30,10 @@ mod tests {
     use crate::env;
     use crate::utils::cache::asynchr::auth::get_and_incr_recent_otp_verifications;
 
+    // Ignore test because it will interfere with other tests if they are run with more than one thread
+    // To run all tests, run `cargo test -- --include-ignored --test-threads=1`
     #[actix_rt::test]
+    #[ignore]
     async fn test_clear_recent_otp_verifications() {
         let user_id = Uuid::new_v4();
 

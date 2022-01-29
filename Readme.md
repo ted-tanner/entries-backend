@@ -1,5 +1,11 @@
 ## Redis Setup
 
+### Run all tests
+
+```
+cargo test -- --include-ignored --test-threads=1
+```
+
 ### Require a password
 
 Brute forcing is easy-ish with Redis, so this should be a really long password (60 chars, uppercase, lowercase, numbers)
