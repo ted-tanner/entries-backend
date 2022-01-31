@@ -113,7 +113,34 @@ Obviously, for production the password should be something that doesn't suck and
 
 ### Diesel Migrations
 
-TODO
+**WARNING:*** Be extremely cautious when running migrations. Migrations may cause data loss. Migrations that get run in a production environment must be thoroughly tested in a staging environment and one must be careful not to accidently type the wrong command (or the right command more than once).
+
+The server uses an ORM library called Diesel. Diesel wraps up the migrations nicely within the binary so one can write the SQL for the migrations then not have to deal with a bunch of SQL files when actually running the migrations--they instead get compiled into the binary.
+
+To run the migrations, just run the (properly configured) server with the `--run-migrations` flag:
+
+```
+./budgetapp-server --run-migrations
+```
+
+During development, it might be helpful to be able to quickly run, revert, and redo the migrations on a test database. Diesel provides a tool for doing this, which can be installed via Cargo:
+
+```
+cargo install diesel_cli --no-default-features --features postgres
+```
+
+With the Diesel CLI installed, you can run the following commands (assuming your current working directory is the project folder with the migrations):
+
+```
+# Runs the migrations
+diesel migration run
+
+# Reverts the latest migration
+diesel migration revert
+
+# Restarts with a clean slate. Undoes all migrations and then runs them again.
+diesel migration redo
+```
 
 ### Redis Setup
 
@@ -127,7 +154,11 @@ CONFIG SET requirepass "[password]"
 
 ## Server Configuration
 
-TODO
+Certain behaviors of the server can be configured with the `budgetapp.toml` file in the conf folder. This configuration file (and the folder containing it) must be included alongside the binary distribution of the server in order for the server to run properly.
+
+**SECURITY WARNING:** In production, the `budgetapp.toml` file contains sensitive secrets. DO NOT push any sensitive keys to a git repository or make the file viewable or accessible to an untrusted party (or even to a trusted party if it can be avoided).
+
+TODO (document configuration options)
 
 ## Running the Server
 
