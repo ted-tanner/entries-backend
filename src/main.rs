@@ -137,7 +137,6 @@ async fn main() -> std::io::Result<()> {
     let mut runners = Vec::new();
 
     if schedule_cron_jobs {
-        // TODO: Get rid of this mutex?
         let clear_otp_verification_count_job = move || {
             let redis_client =
                 match redis::Client::open(crate::env::CONF.connections.redis_url.clone()) {
