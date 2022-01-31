@@ -1,3 +1,13 @@
+# Build dir
 target
+
+# Redis data dump
 dump.rdb
+
+# VS Code editor cfg dir
 .vscode
+
+# Emacs auto-save files
+**/#*
+**/.#*
+**/*~
