@@ -197,7 +197,7 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
     let token = match jsonwebtoken::encode(
         &header,
         &claims,
-        &EncodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+        &EncodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
     ) {
         Ok(t) => Ok(t),
         Err(e) => Err(JwtError::EncodingError(e)),
@@ -231,7 +231,7 @@ pub fn validate_signin_token(token: &str) -> Result<TokenClaims, JwtError> {
 fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, JwtError> {
     let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
         token,
-        &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+        &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
         &Validation::new(Algorithm::HS256),
     ) {
         Ok(t) => t,
@@ -374,7 +374,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -427,7 +427,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -480,7 +480,7 @@ mod tests {
 
         let decoded_token = jsonwebtoken::decode::<TokenClaims>(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -534,7 +534,7 @@ mod tests {
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &token.access_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -553,7 +553,7 @@ mod tests {
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
             &token.refresh_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
@@ -628,21 +628,21 @@ mod tests {
 
         let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
             &access_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
         let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
             &refresh_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
 
         let decoded_signin_token = jsonwebtoken::decode::<TokenClaims>(
             &signin_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.signing_key.as_bytes()),
+            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
             &Validation::new(Algorithm::HS256),
         )
         .unwrap();
