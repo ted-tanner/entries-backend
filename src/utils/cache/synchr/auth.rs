@@ -37,7 +37,7 @@ mod tests {
     async fn test_clear_recent_otp_verifications() {
         let user_id = Uuid::new_v4();
 
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
         let mut redis_async_connection = redis_client.get_async_connection().await.unwrap();
 

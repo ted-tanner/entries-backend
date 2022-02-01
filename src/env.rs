@@ -14,8 +14,8 @@ pub struct Conf {
 
 #[derive(Deserialize, Serialize)]
 pub struct Connections {
-    pub database_url: String,
-    pub redis_url: String,
+    pub database_uri: String,
+    pub redis_uri: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -43,7 +43,7 @@ pub struct Lifetimes {
 
 #[derive(Deserialize, Serialize)]
 pub struct Security {
-    pub secure_endpoint_max_attempts: u64,
+    pub otp_max_attempts: u64,
 }
 
 lazy_static! {
@@ -118,7 +118,7 @@ pub mod testing {
     lazy_static! {
         pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
             .build(ConnectionManager::<PgConnection>::new(
-                crate::env::CONF.connections.database_url.as_str()
+                crate::env::CONF.connections.database_uri.as_str()
             ))
             .expect("Failed to create DB thread pool");
     }

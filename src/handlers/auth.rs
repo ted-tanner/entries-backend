@@ -129,7 +129,7 @@ pub async fn verify_otp_for_signin(
         }
     };
 
-    if attempts > env::CONF.security.secure_endpoint_max_attempts {
+    if attempts > env::CONF.security.otp_max_attempts {
         return Err(ServerError::AccessForbidden(Some(
             "Too many attempts. Try again in a few minutes.",
         )));
@@ -357,7 +357,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -422,7 +422,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -475,7 +475,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_with_current_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -573,7 +573,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_with_next_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -672,7 +672,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_after_repeated_attempts() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -737,7 +737,7 @@ mod tests {
             otp: otp.to_string(),
         };
 
-        for _ in 0..env::CONF.security.secure_endpoint_max_attempts {
+        for _ in 0..env::CONF.security.otp_max_attempts {
             let req = test::TestRequest::post()
                 .uri("/api/auth/verify_otp_for_signin")
                 .insert_header(("content-type", "application/json"))
@@ -761,7 +761,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -830,7 +830,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_expired_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -908,7 +908,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_future_not_next_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -986,7 +986,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -1063,7 +1063,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -1160,7 +1160,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -1235,7 +1235,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_access_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -1310,7 +1310,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_logout() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(
@@ -1392,7 +1392,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_logout_fails_with_invalid_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_url.clone())
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
             .expect("Connection to Redis failed");
 
         let app = test::init_service(

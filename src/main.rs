@@ -114,7 +114,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("Connecting to database...");
 
     let db_connection_manager =
-        ConnectionManager::<PgConnection>::new(env::CONF.connections.database_url.as_str());
+        ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
     let db_thread_pool = r2d2::Pool::builder()
         .build(db_connection_manager)
         .expect("Failed to create database thread pool");
@@ -139,7 +139,7 @@ async fn main() -> std::io::Result<()> {
     if schedule_cron_jobs {
         let clear_otp_verification_count_job = move || {
             let redis_client =
-                match redis::Client::open(crate::env::CONF.connections.redis_url.clone()) {
+                match redis::Client::open(crate::env::CONF.connections.redis_uri.clone()) {
                     Ok(c) => c,
                     Err(_) => {
                         return Err(cron::CronJobError::JobFailure(Some(
