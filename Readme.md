@@ -2,30 +2,36 @@
 
 ## Contents
 
-- [Dependencies](#dependencies)
-- [Dev Dependencies](#dev-dependencies)
-- [Setup](#setup)
-  - [PostgreSQL Setup](#postgresql-setup)
-  - [Diesel Migrations](#diesel-migrations)
-  - [Redis Setup](#redis-setup)
-- [Server Configuration](#server-configuration)
-  - [Connections](#connections)
-  - [Hashing](#hashing)
-  - [Keys](#keys)
-  - [Lifetimes](#lifetimes)
-  - [Security](#security)
-  - [Workers](#workers)
-- [Running the Server](#running-the-server)
-  - [Files Needed by the Server](#files-needed-by-the-server)
-  - [Command-line Arguments](#command-line-arguments)
-- [Testing the Server](#testing-the-server)
-  - [Unit and Integration Tests](#unit-and-integration-tests)
-  - [Manual Testing](#manual-testing)
-- [Building the Server](#building-the-server)
-- [Checking your Code](#checking-your-code)
-- [To Do](#to-do)
-  - [Minimum Viable Product](#minimum-viable-product)
-  - [Do It Later](#do-it-later)
+- [The Budget App (Server)](#the-budget-app-server)
+  - [Contents](#contents)
+  - [Dependencies](#dependencies)
+  - [Dev Dependencies](#dev-dependencies)
+  - [Setup](#setup)
+    - [PostgreSQL Setup](#postgresql-setup)
+    - [Diesel Migrations](#diesel-migrations)
+    - [Redis Setup](#redis-setup)
+  - [Server Configuration](#server-configuration)
+    - [Connections](#connections)
+    - [Hashing](#hashing)
+    - [Keys](#keys)
+    - [Lifetimes](#lifetimes)
+    - [Security](#security)
+    - [Workers](#workers)
+  - [Running the Server](#running-the-server)
+    - [Files Needed by the Server](#files-needed-by-the-server)
+    - [Command-line Arguments](#command-line-arguments)
+        - [Example](#example)
+        - [Example](#example-1)
+        - [Example](#example-2)
+        - [Example](#example-3)
+  - [Testing the Server](#testing-the-server)
+    - [Unit and Integration Tests](#unit-and-integration-tests)
+    - [Manual Testing](#manual-testing)
+  - [Building the Server](#building-the-server)
+  - [Checking your Code](#checking-your-code)
+  - [To Do](#to-do)
+    - [Minimum Viable Product](#minimum-viable-product)
+    - [Do It Later](#do-it-later)
 
 ## Dependencies
 
@@ -399,7 +405,7 @@ Rust takes a freakishly long time to compile. Here's my recommendation: don't. I
 cargo check
 ```
 
-`cargo check` runs the lexical analyzer, the parser, and the borrow-checker. The borrow-checker is Rust's secret sauce for memory safety. Because Rust has this immediate step to compilation, it can't parse directly to LLVM IR; the lexical analyzer outputs a high-level IR representing the abstract syntax tree. The parser transforms the high-level IR into a different IR which then gets run through the borrow-checker and subsequently parsed to LLVM IR. Long story short, all of that front-end stuff still has to happen with `cargo check`, so it can still take a long time. It will not, however, pass the generated LLVM IR to LLVM for optimization or machine code generation so there is still a significant chunk of time that gets shaved off by using `cargo check`.  
+`cargo check` runs the lexical analyzer, the parser, and the borrow-checker, which can still take a significant amount of time.
 
 To improve code quality and find stupid mistakes that add extra CPU cycles to an operation that could be done more quickly, Cargo includes an excellent linter called Clippy (no relation to Windows Clippy). To run in, use the following:
 
