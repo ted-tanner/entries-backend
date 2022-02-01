@@ -2,24 +2,30 @@
 
 ## Contents
 
-1. [Dependencies](#dependencies)
-2. [Dev Dependencies](#dev-dependencies)
-3. [Setup](#setup)
-   1. [PostgreSQL Setup](#postgresql-setup)
-   2. [Diesel Migrations](#diesel-migrations)
-   3. [Redis Setup](#redis-setup)
-4. [Server Configuration](#server-configuration)
-5. [Running the Server](#running-the-server)
-   1. [Files Needed by the Server](#files-needed-by-the-server)
-   2. [Commmand-line Arguments](#command-line-arguments)
-6. [Testing the Server](#testing-the-server)
-   1. [Unit and Integration Tests](#unit-and-integration-tests)
-   2. [Manual Testing](#manual-testing)
-7. [Building the Server](#building-the-server)
-8. [Checking your Code](#checking-your-code)
-9. [To Do](#to-do)
-   1. [Minimum Viable Product](#minimum-viable-product)
-   2. [Do It Later](#do-it-later)
+- [Dependencies](#dependencies)
+- [Dev Dependencies](#dev-dependencies)
+- [Setup](#setup)
+  - [PostgreSQL Setup](#postgresql-setup)
+  - [Diesel Migrations](#diesel-migrations)
+  - [Redis Setup](#redis-setup)
+- [Server Configuration](#server-configuration)
+  - [Connections](#connections)
+  - [Hashing](#hashing)
+  - [Keys](#keys)
+  - [Lifetimes](#lifetimes)
+  - [Security](#security)
+  - [Workers](#workers)
+- [Running the Server](#running-the-server)
+  - [Files Needed by the Server](#files-needed-by-the-server)
+  - [Command-line Arguments](#command-line-arguments)
+- [Testing the Server](#testing-the-server)
+  - [Unit and Integration Tests](#unit-and-integration-tests)
+  - [Manual Testing](#manual-testing)
+- [Building the Server](#building-the-server)
+- [Checking your Code](#checking-your-code)
+- [To Do](#to-do)
+  - [Minimum Viable Product](#minimum-viable-product)
+  - [Do It Later](#do-it-later)
 
 ## Dependencies
 
@@ -158,15 +164,116 @@ Certain behaviors of the server can be configured with the `budgetapp.toml` file
 
 **SECURITY WARNING:** In production, the `budgetapp.toml` file contains sensitive secrets. DO NOT push any sensitive keys to a git repository or make the file viewable or accessible to an untrusted party (or even to a trusted party if it can be avoided).
 
-TODO (document configuration options)
+The configuration settings from `budgetapp.toml` are documented below:
+
+### Connections
+
+* `database_uri`
+
+  The URI used to connect to Postgres, including the database name, username, and password.
+
+* `redis_uri`
+
+  The URI used to connect to Redis.
+
+### Hashing
+
+The server uses the Argon2 hashing algorithm for passwords. Argon2 is a memory-hard algorithm, meaning that the machine running the hash function must use a specified amount of RAM or the computation becomes untennable. It is important for security that the RAM requirement be high enough to make brute-forcing a password infeasible for an attacker who has obtained the hashes. The `hash_mem_size_kib` parameter should be as high as can be afforded, then other parameters (such as iterations and lanes) can be adjusted to ensure the hashing is computationally expensive. Ideally, hashing a password should take 0.5s to 1.5s on modern hardware.
+
+* `hash_iterations`
+
+  The number of times the password is rehashed. Increasing this number makes hashing take longer, thereby increasing security.
+
+* `hash_length` (Sufficient entropy is sufficient, shouldn't take up a lot of space)
+
+  The length (in characters) of the output of the hash. The important thing here is to ensure that the entropy of the hash is higher than that of a strong password. After a certain point, a longer hash doesn't really increase security and just takes more space in the database.
+
+* `hash_mem_size_kib`
+
+  The amount of RAM (in kibibytes) a system needs to be able to calculate a hash without the computation becoming infeasibly expensive. This is probably the most import parameter for the Argon2 hash. The more RAM required for hashing, the more secure the passwords are. Make this as high as can be afforded.
+
+  The `hash_mem_size_kib` must be a power of 2 (e.g. 262144, 524288, or 1048576).
+
+* `hash_lanes`
+
+  The number of threads required to feasibly calculate the hash. An attacker with specialized hardware will likely not be constrained by threads in the same way he/she will be constrained by memory (GPUs tend to have more memory channels than CPUs). The hardware the server is running on will likely be more constrained than an attacker's hardware so, if the memory parameter is adequate, the number of lanes is not too important.
+
+* `salt_length_bytes`
+
+  The length of the randomly-generated salt that gets hashed with the password. It is recommended to be at least 128-bits (16 bytes) long.
+
+### Keys
+
+These keys are secret and should be handled with care. They should be randomly generated in a cryptographically-secure way.
+
+* `hashing_key`
+
+  Key used for password hashing.
+
+* `otp_key`
+
+  Key used for signing Time-based One-Time Passcodes (TOTP).
+
+* `jwt_signing_key`
+
+  Key used for signing JSON Web Tokens.
+
+### Lifetimes
+
+These configurations describe how long tokens last before being considered invalid.
+
+* `access_token_lifetime_mins`
+
+  The amount of time for which access tokens will be valid, in minutes.  The access token gets sent by the client with every request that needs to be authenticated. Because of the repeated usage of this token, it should be invalided quickly to prevent attackers who obtain the token from retaining sustained access.
+
+* `otp_lifetime_mins`
+
+  The amount of time for which TOTP codes will be valid. Also half the maximum amount of time for which siginin tokens will be valid.
+
+  The server issues passcodes that are valid `otp_lifetime_mins` in the future to prevent user access from expiring imediately after a code is issued when the time interval lapses. The server will accept a current code or a code slightly in the future such that a user who is issued a code just before the completion of a time interval will have a working code for `otp_lifetime_mins` whereas a user who is issued a code just *after* the completion of a time interval will have a working code for `2 * otp_lifetime_mins`.
+
+  Failed passcode attempts by a user are recorded and limited to prevent brute-forcing the code (see the `otp_max_attempts` configuration).
+
+* `refresh_token_lifetiime_days`
+
+  The amount of time for which refresh tokens will be valid, in days. A refresh token is used to obtain a new access token when the access token is lost or expired. Refresh tokens are blacklisted once used and a new refresh token is issued. Once the user device's refresh token expires, the device is effectively logged out. The consequence is that if a user's device doesn't make an authenticated request for `refresh_token_lifetime_days`, the device will be logged out. However, a device that consistently makes an authenticated request at least once every `refresh_token_lifetime_days` can remain logged in indefinitely.
+
+  When determining the lifetime of refresh tokens, consideration should be made in regard to user convenience. Too short of a lifetime will result in a poor user experience because the user may have to sign in frequently.
+
+### Security
+
+Miscellaneous configuration(s) related to server or data security.
+
+* `otp_max_attempts`
+
+  The maximum number of allowed failed TOTP attempts within `2 * otp_lifetime_mins`. The number of attempts is cached, but the cache is reset every `2 * otp_lifetime_mins`. The throttling of number of attempts is done because of the ease at which an 8-digit numerical code can be brute-forced and in compliance with [RFC4226 section 7.3](https://datatracker.ietf.org/doc/html/rfc4226#section-7.3).
+
+### Workers
+
+* `actix_workers`
+
+  Number of worker threads in the server's thread pool that will be made available to handle incoming requests. Because of the Actix actor model used by the handlers, each worker thread may be able to handle multiple requests simultaneously while resources (such as database fetches) are awaited upon.
 
 ## Running the Server
 
-TODO (how to run from `cargo` and from binary)
+To run the server via Cargo, the following commands can be used:
+
+```
+# Debug mode
+cargo run
+
+# Release mode
+cargo run --release
+
+# Production mode
+cargo run --profile production
+```
+
+The compiled server binary can be run from the command-line. See the [Command-line Argments](#command-line-arguments) section below for a list of available arguments that can be passed to the executable.
 
 ### Files Needed by the Server
 
-TODO (include what needs to be in CWD, like `assets/common-passwords.txt` and `conf/budgetapp.toml`)
+The server expects a few files to be present in the working directory from which it is run. The `assets` and `conf` directories (and their contents) are required for the server to start up correctly.
 
 ### Command-line Arguments
 
@@ -316,6 +423,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Try connecting to Redis on server startup just for verification purposes
 * Get email delivery set up
   * OTP
   * Forgot Password
