@@ -433,7 +433,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do It Later
 
 * Create integer error codes in an enum (EXPIRED, INVALID, INCORRECT_FORMAT, etc.)
-* Fix Docker environment
 * Pool Redis connections
 * Clean up `main()`
 * Use more string slices to avoid extra allocations when creating structs
