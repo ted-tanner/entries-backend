@@ -3,13 +3,13 @@ use diesel::{Insertable, Queryable};
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::user::User;
 use crate::models::budget::Budget;
+use crate::models::user::User;
 use crate::schema::user_budgets;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable)]
-#[belongs_to(User, foreign_key="user_id")]
-#[belongs_to(Budget, foreign_key="budget_id")]
+#[belongs_to(User, foreign_key = "user_id")]
+#[belongs_to(Budget, foreign_key = "budget_id")]
 #[table_name = "user_budgets"]
 pub struct UserBudget {
     pub id: i32,

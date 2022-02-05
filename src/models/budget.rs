@@ -1,6 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime};
-use diesel::{Insertable, Queryable};
 use diesel::sql_types::Jsonb;
+use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
 
 use crate::schema::budgets;
@@ -46,7 +46,7 @@ pub struct NewBudget<'a> {
     pub is_shared: bool,
     pub is_private: bool,
     pub is_deleted: bool,
-    
+
     pub name: &'a str,
     pub description: &'a str,
     pub categories: Option<Categories>,

@@ -438,3 +438,4 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Use more string slices to avoid extra allocations when creating structs
 * Create a method of encrypting data in the database
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once
+* Move `cron` crate into `utils`

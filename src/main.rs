@@ -168,9 +168,32 @@ async fn main() -> std::io::Result<()> {
             Ok(())
         };
 
+        let cron_job_db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        let clear_expired_blacklisted_tokens_job = move || {
+            if utils::db::auth::clear_all_expired_refresh_tokens(&cron_job_db_connection).is_err() {
+                return Err(cron::CronJobError::JobFailure(Some(
+                    "Failed to clear expired refresh tokens",
+                )));
+            }
+
+            Ok(())
+        };
+
+        const SECONDS_IN_DAY: u64 = 86_400;
+        let long_lifetime_runner =
+            cron::Runner::with_granularity(Duration::from_secs(SECONDS_IN_DAY));
+
         let short_lifetime_runner = cron::Runner::with_granularity(Duration::from_secs(
             env::CONF.lifetimes.otp_lifetime_mins * 2 * 60 + 1,
         ));
+
+        long_lifetime_runner.add_job(
+            clear_expired_blacklisted_tokens_job,
+            String::from("Clear expired blacklisted refresh tokens"),
+        );
 
         short_lifetime_runner.add_job(
             clear_otp_verification_count_job,
