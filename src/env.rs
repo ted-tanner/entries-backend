@@ -46,14 +46,14 @@ pub struct Security {
     pub otp_max_attempts: u64,
 }
 
-lazy_static! {
-    pub static ref APP_NAME: &'static str = "Budget App";
-    pub static ref CONF: Conf = build_conf();
-}
-
 #[derive(Deserialize, Serialize)]
 pub struct Workers {
     pub actix_workers: usize,
+}
+
+lazy_static! {
+    pub static ref APP_NAME: &'static str = "Budget App";
+    pub static ref CONF: Conf = build_conf();
 }
 
 fn build_conf() -> Conf {
