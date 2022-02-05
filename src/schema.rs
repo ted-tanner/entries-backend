@@ -54,7 +54,7 @@ table! {
         budget_id -> Uuid,
         user_id -> Uuid,
         is_deleted -> Bool,
-        amount -> Money,
+        amount -> Float8,
         date -> Date,
         name -> Nullable<Varchar>,
         category -> Nullable<Int2>,

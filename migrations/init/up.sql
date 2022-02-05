@@ -20,7 +20,6 @@ CREATE TABLE budgets (
     end_date DATE NOT NULL,
 
     categories JSONB DEFAULT '{"category_list": []}'::jsonb NOT NULL,
-
     latest_entry_time TIMESTAMP NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
@@ -58,7 +57,7 @@ CREATE TABLE entries (
     
     is_deleted BOOLEAN NOT NULL,
 
-    amount MONEY NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
     date DATE NOT NULL,
     name VARCHAR(25),
     category SMALLINT,

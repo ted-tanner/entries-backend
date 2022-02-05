@@ -7,6 +7,7 @@ use crate::schema::budgets;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Category {
+    pub id: i16,
     pub name: String,
     pub limit: f32,
     pub color: String,
