@@ -1,7 +1,6 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
-use crate::models::category::Category;
 use crate::utils::validators;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -64,11 +63,19 @@ pub struct CurrentAndNewPasswordPair {
     pub new_password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct InputCategory {
+    pub id: i16,
+    pub name: String,
+    pub limit_cents: i64,
+    pub color: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InputBudget {
     pub name: String,
     pub description: Option<String>,
-    pub categories: Vec<Category>,
+    pub categories: Vec<InputCategory>,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
 }
