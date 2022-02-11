@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
+use crate::models::category::Category;
 use crate::utils::validators;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -61,4 +62,13 @@ pub struct SigninTokenOtpPair {
 pub struct CurrentAndNewPasswordPair {
     pub current_password: String,
     pub new_password: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct InputBudget {
+    pub name: String,
+    pub description: Option<String>,
+    pub categories: Vec<Category>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
 }

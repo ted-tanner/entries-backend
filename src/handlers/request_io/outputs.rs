@@ -1,6 +1,8 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
+use crate::models::category::Category;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
     pub id: uuid::Uuid,
@@ -38,4 +40,23 @@ pub struct SigninToken {
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OutputBudget {
+    pub id: uuid::Uuid,
+    pub is_shared: bool,
+    pub is_private: bool,
+    pub is_deleted: bool,
+
+    pub name: String,
+    pub description: Option<String>,
+    pub categories: Vec<Category>,
+
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub latest_entry_time: NaiveDateTime,
+
+    pub modified_timestamp: NaiveDateTime,
+    pub created_timestamp: NaiveDateTime,
 }

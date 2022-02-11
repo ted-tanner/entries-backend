@@ -17,7 +17,7 @@ pub struct Entry {
 
     pub is_deleted: bool,
 
-    pub amount: f64,
+    pub amount_cents: i64,
     pub date: NaiveDate,
     pub name: String,
     pub category: i16,
@@ -35,7 +35,7 @@ pub struct NewEntry<'a> {
     pub user_id: uuid::Uuid,
 
     pub is_deleted: bool,
-    pub amount: f64,
+    pub amount_cents: i64,
     pub date: NaiveDate,
     pub name: &'a str,
     pub category: i16,

@@ -1,25 +1,10 @@
 use chrono::{NaiveDate, NaiveDateTime};
-use diesel::sql_types::Jsonb;
-use diesel::{Insertable, Queryable};
+use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
 
 use crate::schema::budgets;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Category {
-    pub id: i16,
-    pub name: String,
-    pub limit: f32,
-    pub color: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, AsExpression)]
-#[sql_type = "Jsonb"]
-pub struct Categories {
-    pub category_list: Vec<Category>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
+#[derive(Debug, Serialize, Deserialize, Associations, Identifiable, Queryable, QueryableByName)]
 #[table_name = "budgets"]
 pub struct Budget {
     pub id: uuid::Uuid,
@@ -29,7 +14,6 @@ pub struct Budget {
 
     pub name: String,
     pub description: Option<String>,
-    pub categories: Categories,
 
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
@@ -48,8 +32,7 @@ pub struct NewBudget<'a> {
     pub is_deleted: bool,
 
     pub name: &'a str,
-    pub description: &'a str,
-    pub categories: Option<Categories>,
+    pub description: Option<&'a str>,
 
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,

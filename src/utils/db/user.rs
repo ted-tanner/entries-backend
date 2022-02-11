@@ -4,8 +4,7 @@ use uuid::Uuid;
 
 use crate::definitions::*;
 use crate::handlers::request_io::InputUser;
-use crate::models::user::NewUser;
-use crate::models::user::User;
+use crate::models::user::{NewUser, User};
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 use crate::utils::password_hasher;

@@ -19,7 +19,6 @@ CREATE TABLE budgets (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
 
-    categories JSONB DEFAULT '{"category_list": []}'::jsonb NOT NULL,
     latest_entry_time TIMESTAMP NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
@@ -50,6 +49,16 @@ CREATE TABLE budget_comment_reactions (
     created_timestamp TIMESTAMP NOT NULL
 );
 
+CREATE TABLE categories (
+    pk SERIAL NOT NULL PRIMARY KEY,
+    budget_id UUID NOT NULL,
+
+    id SMALLINT NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    limit_cents BIGINT NOT NULL,
+    color VARCHAR(9) NOT NULL
+);
+
 CREATE TABLE entries (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
@@ -57,7 +66,7 @@ CREATE TABLE entries (
     
     is_deleted BOOLEAN NOT NULL,
 
-    amount DOUBLE PRECISION NOT NULL,
+    amount_cents BIGINT NOT NULL,
     date DATE NOT NULL,
     name VARCHAR(25),
     category SMALLINT,
@@ -137,6 +146,7 @@ ALTER TABLE budget_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFEREN
 ALTER TABLE budget_comments ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_comment_reactions ADD CONSTRAINT comment_key FOREIGN KEY(comment_id) REFERENCES budget_comments(id) ON DELETE CASCADE;
+ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entry_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

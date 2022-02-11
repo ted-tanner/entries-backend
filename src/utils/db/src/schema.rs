@@ -41,6 +41,7 @@ table! {
         description -> Nullable<Text>,
         start_date -> Date,
         end_date -> Date,
+        categories -> Jsonb,
         latest_entry_time -> Timestamp,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
