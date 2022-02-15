@@ -141,8 +141,7 @@ async fn main() -> std::io::Result<()> {
         // Test connection to Redis (then drop the test connection)
         log::info!("Connecting to Redis...");
 
-        let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri)
-        {
+        let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
             Ok(c) => c,
             Err(_) => {
                 eprintln!("Failed to connect to Redis");
@@ -166,15 +165,14 @@ async fn main() -> std::io::Result<()> {
 
     if schedule_cron_jobs {
         let clear_otp_verification_count_job = move || {
-            let redis_client =
-                match redis::Client::open(&*env::CONF.connections.redis_uri) {
-                    Ok(c) => c,
-                    Err(_) => {
-                        return Err(cron::CronJobError::JobFailure(Some(
-                            "Failed to connect to Redis",
-                        )));
-                    }
-                };
+            let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
+                Ok(c) => c,
+                Err(_) => {
+                    return Err(cron::CronJobError::JobFailure(Some(
+                        "Failed to connect to Redis",
+                    )));
+                }
+            };
 
             let mut redis_connection = match redis_client.get_connection() {
                 Ok(c) => c,
