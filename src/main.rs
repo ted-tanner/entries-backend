@@ -115,9 +115,13 @@ async fn main() -> std::io::Result<()> {
 
     let db_connection_manager =
         ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
-    let db_thread_pool = r2d2::Pool::builder()
-        .build(db_connection_manager)
-        .expect("Failed to create database thread pool");
+    let db_thread_pool = match r2d2::Pool::builder().build(db_connection_manager) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("Failed to connect to database");
+            std::process::exit(1);
+        }
+    };
 
     log::info!("Successfully connected to database");
 
@@ -131,6 +135,31 @@ async fn main() -> std::io::Result<()> {
             Ok(_) => log::info!("Migrations run successfully"),
             Err(e) => log::error!("Error running migrations: {}", e.to_string()),
         }
+    }
+
+    {
+        // Test connection to Redis (then drop the connection)
+
+        log::info!("Connecting to Redis...");
+
+        let redis_client = match redis::Client::open(crate::env::CONF.connections.redis_uri.clone())
+        {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("Failed to connect to Redis");
+                std::process::exit(1);
+            }
+        };
+
+        match redis_client.get_connection() {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("Failed to connect to Redis");
+                std::process::exit(1);
+            }
+        };
+
+        log::info!("Successfully connected to Redis");
     }
 
     // Declaring a vec of job runners here to give it the same lifetime as the HTTP server

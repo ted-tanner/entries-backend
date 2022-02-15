@@ -423,8 +423,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Get web app running
 * Figure out how to do timezone-aware dates
-* Try connecting to Redis on server startup just for verification purposes
 * Get email delivery set up
   * OTP
   * Forgot Password
