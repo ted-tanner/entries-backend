@@ -2,6 +2,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
 use crate::models::category::Category;
+use crate::models::entry::Entry;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
@@ -52,6 +53,7 @@ pub struct OutputBudget {
     pub name: String,
     pub description: Option<String>,
     pub categories: Vec<Category>,
+    pub entries: Vec<Entry>,
 
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,

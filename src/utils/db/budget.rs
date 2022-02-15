@@ -1,16 +1,19 @@
 use actix_web::web;
 use chrono::NaiveDate;
 use diesel::associations::GroupedBy;
-use diesel::{dsl, sql_query, BelongingToDsl, QueryDsl, RunQueryDsl};
+use diesel::{dsl, sql_query, BelongingToDsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
-use crate::handlers::request_io::{InputBudget, OutputBudget};
+use crate::handlers::request_io::{InputBudget, InputEntry, OutputBudget};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::category::{Category, NewCategory};
+use crate::models::entry::{Entry, NewEntry};
 use crate::models::m2m::user_budget::NewUserBudget;
+use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::categories::dsl::categories;
+use crate::schema::entries::dsl::entries;
 use crate::schema::user_budgets::dsl::user_budgets;
 
 pub fn get_budget_by_id(
@@ -20,9 +23,7 @@ pub fn get_budget_by_id(
     let budget = budgets.find(budget_id).first::<Budget>(db_connection)?;
 
     let loaded_categories = Category::belonging_to(&budget).load::<Category>(db_connection)?;
-
-    // TODO: Add entries to output budget
-    // TODO: Include entries here too
+    let loaded_entries = Entry::belonging_to(&budget).load::<Entry>(db_connection)?;
 
     let output_budget = OutputBudget {
         id: budget.id,
@@ -32,6 +33,7 @@ pub fn get_budget_by_id(
         name: budget.name,
         description: budget.description,
         categories: loaded_categories,
+        entries: loaded_entries,
         start_date: budget.start_date,
         end_date: budget.end_date,
         latest_entry_time: budget.latest_entry_time,
@@ -53,33 +55,36 @@ pub fn get_all_budgets_for_user(
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
-
-    let loaded_categories = Category::belonging_to(&loaded_budgets)
+    let mut loaded_categories = Category::belonging_to(&loaded_budgets)
         .load::<Category>(db_connection)?
-        .grouped_by(&loaded_budgets);
-    let categories_and_budgets = loaded_budgets
-        .into_iter()
-        .zip(loaded_categories)
-        .collect::<Vec<_>>();
-
-    // TODO: Add entries to output budget
+        .grouped_by(&loaded_budgets)
+        .into_iter();
+    let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+        .load::<Entry>(db_connection)?
+        .grouped_by(&loaded_budgets)
+        .into_iter();
 
     let mut output_budgets = Vec::new();
 
-    for budget_data in categories_and_budgets {
+    for budget in loaded_budgets.into_iter() {
         let output_budget = OutputBudget {
-            id: budget_data.0.id,
-            is_shared: budget_data.0.is_shared,
-            is_private: budget_data.0.is_private,
-            is_deleted: budget_data.0.is_deleted,
-            name: budget_data.0.name,
-            description: budget_data.0.description,
-            categories: budget_data.1,
-            start_date: budget_data.0.start_date,
-            end_date: budget_data.0.end_date,
-            latest_entry_time: budget_data.0.latest_entry_time,
-            modified_timestamp: budget_data.0.modified_timestamp,
-            created_timestamp: budget_data.0.created_timestamp,
+            id: budget.id,
+            is_shared: budget.is_shared,
+            is_private: budget.is_private,
+            is_deleted: budget.is_deleted,
+            name: budget.name,
+            description: budget.description,
+            categories: loaded_categories
+                .next()
+                .expect("Failed to fetch all categories for budget"),
+            entries: loaded_entries
+                .next()
+                .expect("Failed to fetch all entries for budget"),
+            start_date: budget.start_date,
+            end_date: budget.end_date,
+            latest_entry_time: budget.latest_entry_time,
+            modified_timestamp: budget.modified_timestamp,
+            created_timestamp: budget.created_timestamp,
         };
 
         output_budgets.push(output_budget);
@@ -103,33 +108,36 @@ pub fn get_all_budgets_for_user_between_dates(
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
-
-    let loaded_categories = Category::belonging_to(&loaded_budgets)
+    let mut loaded_categories = Category::belonging_to(&loaded_budgets)
         .load::<Category>(db_connection)?
-        .grouped_by(&loaded_budgets);
-    let categories_and_budgets = loaded_budgets
-        .into_iter()
-        .zip(loaded_categories)
-        .collect::<Vec<_>>();
-
-    // TODO: Add entries to output budget
+        .grouped_by(&loaded_budgets)
+        .into_iter();
+    let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+        .load::<Entry>(db_connection)?
+        .grouped_by(&loaded_budgets)
+        .into_iter();
 
     let mut output_budgets = Vec::new();
 
-    for budget_data in categories_and_budgets {
+    for budget in loaded_budgets.into_iter() {
         let output_budget = OutputBudget {
-            id: budget_data.0.id,
-            is_shared: budget_data.0.is_shared,
-            is_private: budget_data.0.is_private,
-            is_deleted: budget_data.0.is_deleted,
-            name: budget_data.0.name,
-            description: budget_data.0.description,
-            categories: budget_data.1,
-            start_date: budget_data.0.start_date,
-            end_date: budget_data.0.end_date,
-            latest_entry_time: budget_data.0.latest_entry_time,
-            modified_timestamp: budget_data.0.modified_timestamp,
-            created_timestamp: budget_data.0.created_timestamp,
+            id: budget.id,
+            is_shared: budget.is_shared,
+            is_private: budget.is_private,
+            is_deleted: budget.is_deleted,
+            name: budget.name,
+            description: budget.description,
+            categories: loaded_categories
+                .next()
+                .expect("Failed to fetch all categories for budget"),
+            entries: loaded_entries
+                .next()
+                .expect("Failed to fetch all entries for budget"),
+            start_date: budget.start_date,
+            end_date: budget.end_date,
+            latest_entry_time: budget.latest_entry_time,
+            modified_timestamp: budget.modified_timestamp,
+            created_timestamp: budget.created_timestamp,
         };
 
         output_budgets.push(output_budget);
@@ -194,9 +202,6 @@ pub fn create_budget(
         .values(budget_categories)
         .get_results::<Category>(db_connection)?;
 
-    // TODO: Add entries to output budget
-    // TODO: Include EMPTY entries vector in output
-
     let output_budget = OutputBudget {
         id: budget.id,
         is_shared: budget.is_shared,
@@ -205,6 +210,7 @@ pub fn create_budget(
         name: budget.name,
         description: budget.description,
         categories: inserted_categories,
+        entries: Vec::new(),
         start_date: budget.start_date,
         end_date: budget.end_date,
         latest_entry_time: budget.latest_entry_time,
@@ -213,6 +219,42 @@ pub fn create_budget(
     };
 
     Ok(output_budget)
+}
+
+pub fn create_entry(
+    db_connection: &DbConnection,
+    entry_data: &web::Json<InputEntry>,
+    budget_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<Entry, diesel::result::Error> {
+    let current_time = chrono::Utc::now().naive_utc();
+    let entry_id = Uuid::new_v4();
+
+    let name = entry_data.name.as_deref();
+    let note = entry_data.note.as_deref();
+
+    let new_entry = NewEntry {
+        id: entry_id,
+        budget_id: *budget_id,
+        user_id: *user_id,
+        is_deleted: false,
+        amount_cents: entry_data.amount_cents,
+        date: entry_data.date,
+        name,
+        category: entry_data.category,
+        note,
+        modified_timestamp: current_time,
+        created_timestamp: current_time,
+    };
+
+    let entry = dsl::insert_into(entries)
+        .values(&new_entry)
+        .get_result::<Entry>(db_connection)?;
+    diesel::update(budgets.find(budget_id))
+        .set(budget_fields::latest_entry_time.eq(current_time))
+        .execute(db_connection)?;
+
+    Ok(entry)
 }
 
 #[cfg(test)]

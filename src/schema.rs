@@ -67,7 +67,7 @@ table! {
         amount_cents -> Int8,
         date -> Date,
         name -> Nullable<Varchar>,
-        category -> Nullable<Int2>,
+        category -> Int2,
         note -> Nullable<Text>,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,

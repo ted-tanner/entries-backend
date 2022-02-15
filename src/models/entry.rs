@@ -19,9 +19,9 @@ pub struct Entry {
 
     pub amount_cents: i64,
     pub date: NaiveDate,
-    pub name: String,
+    pub name: Option<String>,
     pub category: i16,
-    pub note: String,
+    pub note: Option<String>,
 
     pub modified_timestamp: NaiveDateTime,
     pub created_timestamp: NaiveDateTime,
@@ -37,9 +37,9 @@ pub struct NewEntry<'a> {
     pub is_deleted: bool,
     pub amount_cents: i64,
     pub date: NaiveDate,
-    pub name: &'a str,
+    pub name: Option<&'a str>,
     pub category: i16,
-    pub note: &'a str,
+    pub note: Option<&'a str>,
 
     pub modified_timestamp: NaiveDateTime,
     pub created_timestamp: NaiveDateTime,

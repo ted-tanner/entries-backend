@@ -79,3 +79,12 @@ pub struct InputBudget {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct InputEntry {
+    pub amount_cents: i64,
+    pub date: NaiveDate,
+    pub name: Option<String>,
+    pub category: i16,
+    pub note: Option<String>,
+}

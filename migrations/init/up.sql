@@ -69,7 +69,7 @@ CREATE TABLE entries (
     amount_cents BIGINT NOT NULL,
     date DATE NOT NULL,
     name VARCHAR(25),
-    category SMALLINT,
+    category SMALLINT NOT NULL,
     note TEXT,
 
     modified_timestamp TIMESTAMP NOT NULL,
