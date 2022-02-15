@@ -138,8 +138,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     {
-        // Test connection to Redis (then drop the connection)
-
+        // Test connection to Redis (then drop the test connection)
         log::info!("Connecting to Redis...");
 
         let redis_client = match redis::Client::open(crate::env::CONF.connections.redis_uri.clone())
