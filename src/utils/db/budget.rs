@@ -51,7 +51,8 @@ pub fn get_all_budgets_for_user(
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
         WHERE user_budgets.user_id = '{user_id}' \
-        AND user_budgets.budget_id = budgets.id"
+        AND user_budgets.budget_id = budgets.id \
+	ORDER BY budgets.start_date"
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
@@ -104,7 +105,8 @@ pub fn get_all_budgets_for_user_between_dates(
         WHERE user_budgets.user_id = '{user_id}' \
         AND user_budgets.budget_id = budgets.id \
         AND budgets.end_date >= '{start_date}' \
-        AND budgets.start_date <= '{end_date}'"
+        AND budgets.start_date <= '{end_date}' \
+        ORDER BY budgets.start_date"
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
@@ -275,6 +277,7 @@ mod tests {
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::categories as category_fields;
     use crate::schema::categories::dsl::categories;
+    use crate::schema::entries as entry_fields;
     use crate::schema::user_budgets as user_budget_fields;
     use crate::schema::user_budgets::dsl::user_budgets;
     use crate::utils::db::user;
@@ -375,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_budget_by_id() {
+    fn test_create_entry() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -431,8 +434,147 @@ mod tests {
         };
 
         let new_budget_json = web::Json(new_budget);
+        let created_budget = create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+
+	let new_entry = InputEntry {
+	    amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: Some(format!("Test Entry 0 for {user_number}")),
+            category: Some(0),
+            note: Some(String::from("This is a little note")),
+        };	    
+
+	let new_entry_json = web::Json(new_entry.clone());
+        let created_entry = create_entry(&db_connection, &new_entry_json, &created_budget.id, &created_user.id).unwrap();
+	
+        let entry = entries
+            .filter(entry_fields::id.eq(created_entry.id))
+            .first::<Entry>(&db_connection)
+            .unwrap();
+
+        assert_eq!(entry.amount_cents, new_entry.amount_cents);
+        assert_eq!(entry.date, new_entry.date);
+        assert_eq!(entry.name, new_entry.name);
+        assert_eq!(entry.category, new_entry.category);
+        assert_eq!(entry.note, new_entry.note);
+
+	let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
+
+	assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
+	assert_eq!(fetched_budget.entries.len(), 1);
+
+	let fetched_budget_entry = &fetched_budget.entries[0];
+	assert_eq!(fetched_budget_entry.amount_cents, new_entry.amount_cents);
+        assert_eq!(fetched_budget_entry.date, new_entry.date);
+        assert_eq!(fetched_budget_entry.name, new_entry.name);
+        assert_eq!(fetched_budget_entry.category, new_entry.category);
+        assert_eq!(fetched_budget_entry.note, new_entry.note);
+    }
+
+    #[test]
+    fn test_get_budget_by_id() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", user_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user_number),
+            last_name: format!("User-{}", user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: None,
+            categories: budget_categories,
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget);
         let created_budget =
             create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+
+        let entry0 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: Some(format!("Test Entry 0 for {user_number}")),
+            category: Some(0),
+            note: Some(String::from("This is a little note")),
+        };
+
+        let entry1 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: None,
+            category: None,
+            note: None,
+        };
+
+        let created_entries = vec![entry0.clone(), entry1.clone()];
+
+        let entry0_json = web::Json(entry0);
+        let entry1_json = web::Json(entry1);
+        create_entry(
+            &db_connection,
+            &entry0_json,
+            &created_budget.id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry1_json,
+            &created_budget.id,
+            &created_user.id,
+        )
+        .unwrap();
 
         let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
 
@@ -444,10 +586,9 @@ mod tests {
         assert_eq!(fetched_budget.description, created_budget.description);
         assert_eq!(fetched_budget.start_date, created_budget.start_date);
         assert_eq!(fetched_budget.end_date, created_budget.end_date);
-        assert_eq!(
-            fetched_budget.latest_entry_time,
-            created_budget.latest_entry_time
-        );
+
+        assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
+
         assert_eq!(
             fetched_budget.modified_timestamp,
             created_budget.modified_timestamp
@@ -473,6 +614,19 @@ mod tests {
             assert_eq!(fetched_cat.name, created_cat.name);
             assert_eq!(fetched_cat.limit_cents, created_cat.limit_cents);
             assert_eq!(fetched_cat.color, created_cat.color);
+        }
+
+        assert!(!fetched_budget.entries.is_empty());
+        assert_eq!(fetched_budget.entries.len(), created_entries.len());
+        for i in 0..fetched_budget.entries.len() {
+            let fetched_entry = &fetched_budget.entries[i];
+            let created_entry = &created_entries[i];
+
+            assert_eq!(fetched_entry.amount_cents, created_entry.amount_cents);
+            assert_eq!(fetched_entry.date, created_entry.date);
+            assert_eq!(fetched_entry.name, created_entry.name);
+            assert_eq!(fetched_entry.category, created_entry.category);
+            assert_eq!(fetched_entry.note, created_entry.note);
         }
     }
 
@@ -536,12 +690,12 @@ mod tests {
             )),
             categories: budget0_categories,
             start_date: NaiveDate::from_ymd(
-                2021,
+                2020,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
             end_date: NaiveDate::from_ymd(
-                2023,
+                2024,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
@@ -575,6 +729,93 @@ mod tests {
         created_budgets
             .push(create_budget(&db_connection, &new_budget1_json, &created_user.id).unwrap());
 
+        let entry0 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: Some(format!("Test Entry 0 for {user_number}")),
+            category: Some(0),
+            note: Some(String::from("This is a little note")),
+        };
+
+        let entry1 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: None,
+            category: None,
+            note: None,
+        };
+
+        let entry2 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: Some(format!("Test Entry 2 for {user_number}")),
+            category: Some(0),
+            note: Some(String::from("This is 2 little note")),
+        };
+
+        let entry3 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(
+                2022,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            name: None,
+            category: None,
+            note: None,
+        };
+
+        let created_entries = vec![
+            vec![entry0.clone(), entry1.clone()],
+            vec![entry2.clone(), entry3.clone()],
+        ];
+
+        let entry0_json = web::Json(entry0);
+        let entry1_json = web::Json(entry1);
+        create_entry(
+            &db_connection,
+            &entry0_json,
+            &created_budgets[0].id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry1_json,
+            &created_budgets[0].id,
+            &created_user.id,
+        )
+        .unwrap();
+
+        let entry2_json = web::Json(entry2);
+        let entry3_json = web::Json(entry3);
+        create_entry(
+            &db_connection,
+            &entry2_json,
+            &created_budgets[1].id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry3_json,
+            &created_budgets[1].id,
+            &created_user.id,
+        )
+        .unwrap();
+
         let fetched_budgets = get_all_budgets_for_user(&db_connection, &created_user.id).unwrap();
         assert_eq!(fetched_budgets.len(), created_budgets.len());
 
@@ -590,10 +831,9 @@ mod tests {
             );
             assert_eq!(fetched_budgets[i].start_date, created_budgets[i].start_date);
             assert_eq!(fetched_budgets[i].end_date, created_budgets[i].end_date);
-            assert_eq!(
-                fetched_budgets[i].latest_entry_time,
-                created_budgets[i].latest_entry_time
-            );
+
+            assert!(fetched_budgets[i].latest_entry_time > created_budgets[i].latest_entry_time);
+
             assert_eq!(
                 fetched_budgets[i].modified_timestamp,
                 created_budgets[i].modified_timestamp
@@ -619,6 +859,17 @@ mod tests {
                 assert_eq!(fetched_cat.name, created_cat.name);
                 assert_eq!(fetched_cat.limit_cents, created_cat.limit_cents);
                 assert_eq!(fetched_cat.color, created_cat.color);
+            }
+
+            for j in 0..fetched_budgets[i].entries.len() {
+                let fetched_entry = &fetched_budgets[i].entries[j];
+                let created_entry = &created_entries[i][j];
+
+                assert_eq!(fetched_entry.amount_cents, created_entry.amount_cents);
+                assert_eq!(fetched_entry.date, created_entry.date);
+                assert_eq!(fetched_entry.name, created_entry.name);
+                assert_eq!(fetched_entry.category, created_entry.category);
+                assert_eq!(fetched_entry.note, created_entry.note);
             }
         }
     }
@@ -697,7 +948,7 @@ mod tests {
                 "This is a description of Test Budget2 {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 4, 3),
+            start_date: NaiveDate::from_ymd(2022, 4, 9),
             end_date: NaiveDate::from_ymd(2022, 5, 6),
         };
 
@@ -716,10 +967,9 @@ mod tests {
         let too_early_budget_json = web::Json(too_early_budget);
         create_budget(&db_connection, &too_early_budget_json, &created_user.id).unwrap();
 
-        let in_range_too_early_json = web::Json(in_range_budget0);
-        in_range_budgets.push(
-            create_budget(&db_connection, &in_range_too_early_json, &created_user.id).unwrap(),
-        );
+        let in_range_budget0_json = web::Json(in_range_budget0);
+        in_range_budgets
+            .push(create_budget(&db_connection, &in_range_budget0_json, &created_user.id).unwrap());
 
         let in_range_budget1_json = web::Json(in_range_budget1);
         in_range_budgets
@@ -731,6 +981,72 @@ mod tests {
 
         let too_late_budget_json = web::Json(too_late_budget);
         create_budget(&db_connection, &too_late_budget_json, &created_user.id).unwrap();
+
+        let entry0 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(2022, 4, 8),
+            name: Some(format!("Test Entry 0 for {user_number}")),
+            category: Some(0),
+            note: Some(String::from("This is a little note")),
+        };
+
+        let entry1 = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
+            date: NaiveDate::from_ymd(2022, 4, 9),
+            name: None,
+            category: None,
+            note: None,
+        };
+
+        let created_entries = vec![entry0.clone(), entry1.clone()];
+
+        let entry0_json = web::Json(entry0);
+        let entry1_json = web::Json(entry1);
+
+        create_entry(
+            &db_connection,
+            &entry0_json,
+            &in_range_budgets[0].id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry1_json,
+            &in_range_budgets[0].id,
+            &created_user.id,
+        )
+        .unwrap();
+
+        create_entry(
+            &db_connection,
+            &entry0_json,
+            &in_range_budgets[1].id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry1_json,
+            &in_range_budgets[1].id,
+            &created_user.id,
+        )
+        .unwrap();
+
+        create_entry(
+            &db_connection,
+            &entry0_json,
+            &in_range_budgets[2].id,
+            &created_user.id,
+        )
+        .unwrap();
+        create_entry(
+            &db_connection,
+            &entry1_json,
+            &in_range_budgets[2].id,
+            &created_user.id,
+        )
+        .unwrap();
 
         let fetched_budgets = get_all_budgets_for_user_between_dates(
             &db_connection,
@@ -762,10 +1078,9 @@ mod tests {
                 in_range_budgets[i].start_date
             );
             assert_eq!(fetched_budgets[i].end_date, in_range_budgets[i].end_date);
-            assert_eq!(
-                fetched_budgets[i].latest_entry_time,
-                in_range_budgets[i].latest_entry_time
-            );
+
+            assert!(fetched_budgets[i].latest_entry_time > in_range_budgets[i].latest_entry_time);
+
             assert_eq!(
                 fetched_budgets[i].modified_timestamp,
                 in_range_budgets[i].modified_timestamp
@@ -791,6 +1106,17 @@ mod tests {
                 assert_eq!(fetched_cat.name, in_range_cat.name);
                 assert_eq!(fetched_cat.limit_cents, in_range_cat.limit_cents);
                 assert_eq!(fetched_cat.color, in_range_cat.color);
+            }
+
+            for j in 0..fetched_budgets[i].entries.len() {
+                let fetched_entry = &fetched_budgets[i].entries[j];
+                let created_entry = &created_entries[j];
+
+                assert_eq!(fetched_entry.amount_cents, created_entry.amount_cents);
+                assert_eq!(fetched_entry.date, created_entry.date);
+                assert_eq!(fetched_entry.name, created_entry.name);
+                assert_eq!(fetched_entry.category, created_entry.category);
+                assert_eq!(fetched_entry.note, created_entry.note);
             }
         }
     }

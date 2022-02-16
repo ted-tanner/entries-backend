@@ -85,6 +85,6 @@ pub struct InputEntry {
     pub amount_cents: i64,
     pub date: NaiveDate,
     pub name: Option<String>,
-    pub category: i16,
+    pub category: Option<i16>,
     pub note: Option<String>,
 }
