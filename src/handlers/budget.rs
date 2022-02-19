@@ -3,7 +3,9 @@ use log::error;
 
 use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{InputBudget, InputBudgetId, InputDateRange, InputEntry, OutputBudget};
+use crate::handlers::request_io::{
+    InputBudget, InputBudgetId, InputDateRange, InputEntry, OutputBudget,
+};
 use crate::middleware;
 use crate::utils::db;
 
@@ -16,7 +18,7 @@ pub async fn get(
         .get()
         .expect("Failed to access database thread pool");
 
-    let budget_id_clone = budget_id.budget_id.clone();
+    let budget_id_clone = budget_id.budget_id;
 
     let is_user_in_budget = match web::block(move || {
         db::budget::check_user_in_budget(&db_connection, &auth_user_claims.0.uid, &budget_id_clone)
@@ -154,11 +156,7 @@ pub async fn create(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_budget(
-            &db_connection,
-	    &budget_data,
-            &auth_user_claims.0.uid,
-        )
+        db::budget::create_budget(&db_connection, &budget_data, &auth_user_claims.0.uid)
     })
     .await?
     {
@@ -189,11 +187,7 @@ pub async fn add_entry(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_entry(
-            &db_connection,
-	    &entry_data,
-            &auth_user_claims.0.uid,
-        )
+        db::budget::create_entry(&db_connection, &entry_data, &auth_user_claims.0.uid)
     })
     .await?
     {
@@ -214,4 +208,3 @@ pub async fn add_entry(
 
     Ok(HttpResponse::Ok().json(new_entry))
 }
-

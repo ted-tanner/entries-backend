@@ -159,13 +159,7 @@ pub fn check_user_in_budget(
         .filter(user_budget_fields::budget_id.eq(budget_id))
         .execute(db_connection)
     {
-        Ok(count) => {
-            if count > 0 {
-                true
-            } else {
-                false
-            }
-        }
+        Ok(count) => count > 0,
         Err(e) => {
             if e == diesel::result::Error::NotFound {
                 false
@@ -467,7 +461,7 @@ mod tests {
             create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
 
         let new_entry = InputEntry {
-	    budget_id: created_budget.id,
+            budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -480,12 +474,8 @@ mod tests {
         };
 
         let new_entry_json = web::Json(new_entry.clone());
-        let created_entry = create_entry(
-            &db_connection,
-            &new_entry_json,
-            &created_user.id,
-        )
-        .unwrap();
+        let created_entry =
+            create_entry(&db_connection, &new_entry_json, &created_user.id).unwrap();
 
         let entry = entries
             .filter(entry_fields::id.eq(created_entry.id))
@@ -570,7 +560,7 @@ mod tests {
             create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
 
         let entry0 = InputEntry {
-	    budget_id: created_budget.id,
+            budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -583,7 +573,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
-	    budget_id: created_budget.id,
+            budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -599,18 +589,8 @@ mod tests {
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
-        create_entry(
-            &db_connection,
-            &entry0_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry1_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
 
         let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
 
@@ -766,7 +746,7 @@ mod tests {
             .push(create_budget(&db_connection, &new_budget1_json, &created_user.id).unwrap());
 
         let entry0 = InputEntry {
-	    budget_id: created_budgets[0].id,
+            budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -779,7 +759,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
-	    budget_id: created_budgets[0].id,
+            budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -792,7 +772,7 @@ mod tests {
         };
 
         let entry2 = InputEntry {
-	    budget_id: created_budgets[1].id,
+            budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -805,7 +785,7 @@ mod tests {
         };
 
         let entry3 = InputEntry {
-	    budget_id: created_budgets[1].id,
+            budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -824,33 +804,13 @@ mod tests {
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
-        create_entry(
-            &db_connection,
-            &entry0_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry1_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
 
         let entry2_json = web::Json(entry2);
         let entry3_json = web::Json(entry3);
-        create_entry(
-            &db_connection,
-            &entry2_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry3_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry2_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry3_json, &created_user.id).unwrap();
 
         let fetched_budgets = get_all_budgets_for_user(&db_connection, &created_user.id).unwrap();
         assert_eq!(fetched_budgets.len(), created_budgets.len());
@@ -1019,7 +979,7 @@ mod tests {
         create_budget(&db_connection, &too_late_budget_json, &created_user.id).unwrap();
 
         let entry0 = InputEntry {
-	    budget_id: in_range_budgets[0].id,
+            budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(2022, 4, 8),
             name: Some(format!("Test Entry 0 for {user_number}")),
@@ -1028,7 +988,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
-	    budget_id: in_range_budgets[0].id,
+            budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(2022, 4, 9),
             name: None,
@@ -1036,65 +996,42 @@ mod tests {
             note: None,
         };
 
-	let mut entry2 = entry0.clone();
-	entry2.budget_id = in_range_budgets[1].id;
+        let mut entry2 = entry0.clone();
+        entry2.budget_id = in_range_budgets[1].id;
 
-	let mut entry3 = entry1.clone();
-	entry3.budget_id = in_range_budgets[1].id;
+        let mut entry3 = entry1.clone();
+        entry3.budget_id = in_range_budgets[1].id;
 
-	let mut entry4 = entry0.clone();
-	entry4.budget_id = in_range_budgets[2].id;
+        let mut entry4 = entry0.clone();
+        entry4.budget_id = in_range_budgets[2].id;
 
-	let mut entry5 = entry1.clone();
-	entry5.budget_id = in_range_budgets[2].id;
+        let mut entry5 = entry1.clone();
+        entry5.budget_id = in_range_budgets[2].id;
 
-        let created_entries = vec![entry0.clone(), entry1.clone(), entry2.clone(), entry3.clone(), entry4.clone(), entry5.clone()];
+        let created_entries = vec![
+            entry0.clone(),
+            entry1.clone(),
+            entry2.clone(),
+            entry3.clone(),
+            entry4.clone(),
+            entry5.clone(),
+        ];
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
-	let entry2_json = web::Json(entry2);
-	let entry3_json = web::Json(entry3);
-	let entry4_json = web::Json(entry4);
-	let entry5_json = web::Json(entry5);
+        let entry2_json = web::Json(entry2);
+        let entry3_json = web::Json(entry3);
+        let entry4_json = web::Json(entry4);
+        let entry5_json = web::Json(entry5);
 
-        create_entry(
-            &db_connection,
-            &entry0_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry1_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
 
-        create_entry(
-            &db_connection,
-            &entry2_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry3_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry2_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry3_json, &created_user.id).unwrap();
 
-        create_entry(
-            &db_connection,
-            &entry4_json,
-            &created_user.id,
-        )
-        .unwrap();
-        create_entry(
-            &db_connection,
-            &entry5_json,
-            &created_user.id,
-        )
-        .unwrap();
+        create_entry(&db_connection, &entry4_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry5_json, &created_user.id).unwrap();
 
         let fetched_budgets = get_all_budgets_for_user_between_dates(
             &db_connection,
