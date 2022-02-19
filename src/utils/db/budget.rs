@@ -14,6 +14,7 @@ use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::categories::dsl::categories;
 use crate::schema::entries::dsl::entries;
+use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 
 pub fn get_budget_by_id(
@@ -148,6 +149,35 @@ pub fn get_all_budgets_for_user_between_dates(
     Ok(output_budgets)
 }
 
+pub fn check_user_in_budget(
+    db_connection: &DbConnection,
+    user_id: &Uuid,
+    budget_id: &Uuid,
+) -> Result<bool, diesel::result::Error> {
+    let association_exists = match user_budgets
+        .filter(user_budget_fields::user_id.eq(user_id))
+        .filter(user_budget_fields::budget_id.eq(budget_id))
+        .execute(db_connection)
+    {
+        Ok(count) => {
+            if count > 0 {
+                true
+            } else {
+                false
+            }
+        }
+        Err(e) => {
+            if e == diesel::result::Error::NotFound {
+                false
+            } else {
+                return Err(e);
+            }
+        }
+    };
+
+    Ok(association_exists)
+}
+
 pub fn create_budget(
     db_connection: &DbConnection,
     budget_data: &web::Json<InputBudget>,
@@ -226,7 +256,6 @@ pub fn create_budget(
 pub fn create_entry(
     db_connection: &DbConnection,
     entry_data: &web::Json<InputEntry>,
-    budget_id: &Uuid,
     user_id: &Uuid,
 ) -> Result<Entry, diesel::result::Error> {
     let current_time = chrono::Utc::now().naive_utc();
@@ -237,7 +266,7 @@ pub fn create_entry(
 
     let new_entry = NewEntry {
         id: entry_id,
-        budget_id: *budget_id,
+        budget_id: entry_data.budget_id,
         user_id: *user_id,
         is_deleted: false,
         amount_cents: entry_data.amount_cents,
@@ -252,7 +281,7 @@ pub fn create_entry(
     let entry = dsl::insert_into(entries)
         .values(&new_entry)
         .get_result::<Entry>(db_connection)?;
-    diesel::update(budgets.find(budget_id))
+    diesel::update(budgets.find(new_entry.budget_id))
         .set(budget_fields::latest_entry_time.eq(current_time))
         .execute(db_connection)?;
 
@@ -434,10 +463,11 @@ mod tests {
         };
 
         let new_budget_json = web::Json(new_budget);
-        let created_budget = create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+        let created_budget =
+            create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
 
-	let new_entry = InputEntry {
-	    amount_cents: rand::thread_rng().gen_range(90..=120000),
+        let new_entry = InputEntry {
+            amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
                 rand::thread_rng().gen_range(1..=12),
@@ -446,11 +476,17 @@ mod tests {
             name: Some(format!("Test Entry 0 for {user_number}")),
             category: Some(0),
             note: Some(String::from("This is a little note")),
-        };	    
+        };
 
-	let new_entry_json = web::Json(new_entry.clone());
-        let created_entry = create_entry(&db_connection, &new_entry_json, &created_budget.id, &created_user.id).unwrap();
-	
+        let new_entry_json = web::Json(new_entry.clone());
+        let created_entry = create_entry(
+            &db_connection,
+            &new_entry_json,
+            &created_budget.id,
+            &created_user.id,
+        )
+        .unwrap();
+
         let entry = entries
             .filter(entry_fields::id.eq(created_entry.id))
             .first::<Entry>(&db_connection)
@@ -462,13 +498,13 @@ mod tests {
         assert_eq!(entry.category, new_entry.category);
         assert_eq!(entry.note, new_entry.note);
 
-	let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
+        let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
 
-	assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
-	assert_eq!(fetched_budget.entries.len(), 1);
+        assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
+        assert_eq!(fetched_budget.entries.len(), 1);
 
-	let fetched_budget_entry = &fetched_budget.entries[0];
-	assert_eq!(fetched_budget_entry.amount_cents, new_entry.amount_cents);
+        let fetched_budget_entry = &fetched_budget.entries[0];
+        assert_eq!(fetched_budget_entry.amount_cents, new_entry.amount_cents);
         assert_eq!(fetched_budget_entry.date, new_entry.date);
         assert_eq!(fetched_budget_entry.name, new_entry.name);
         assert_eq!(fetched_budget_entry.category, new_entry.category);

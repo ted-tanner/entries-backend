@@ -425,6 +425,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Get web app running
 * Figure out how to do timezone-aware dates
+* Create delete handlers (and db::utils) for budget and entry
 * Get email delivery set up
   * OTP
   * Forgot Password
@@ -433,6 +434,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do It Later
 
+* Don't make two `db_connection`s in one handler. Get two references to the same connection. The references rather than the connection will get moved into `web::block`
 * Create integer error codes in an enum (EXPIRED, INVALID, INCORRECT_FORMAT, etc.)
 * Pool Redis connections
 * Clean up `main()`

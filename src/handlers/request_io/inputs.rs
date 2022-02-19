@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::utils::validators;
 
@@ -17,7 +18,18 @@ impl CredentialPair {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputUserId {
-    pub user_id: uuid::Uuid,
+    pub user_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputBudgetId {
+    pub budget_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputDateRange {
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -82,6 +94,7 @@ pub struct InputBudget {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InputEntry {
+    pub budget_id: Uuid,
     pub amount_cents: i64,
     pub date: NaiveDate,
     pub name: Option<String>,
