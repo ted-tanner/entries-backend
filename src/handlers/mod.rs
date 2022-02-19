@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod budget;
 pub mod index;
 pub mod user;
 
@@ -17,6 +18,7 @@ pub mod error {
         AlreadyExists(Option<&'static str>),
         UserUnauthorized(Option<&'static str>),
         AccessForbidden(Option<&'static str>),
+        NotFound(Option<&'static str>),
 
         // 500 Errors
         InternalError(Option<&'static str>),
@@ -33,6 +35,7 @@ pub mod error {
                 ServerError::AlreadyExists(msg) => format_err(f, "Already exists", msg),
                 ServerError::UserUnauthorized(msg) => format_err(f, "User unauthorized", msg),
                 ServerError::AccessForbidden(msg) => format_err(f, "Access forbidden", msg),
+                ServerError::NotFound(msg) => format_err(f, "Not found", msg),
                 ServerError::InternalError(msg) => format_err(f, "Internal server error", msg),
                 ServerError::DatabaseTransactionError(msg) => {
                     format_err(f, "Database transaction failed", msg)
@@ -55,6 +58,7 @@ pub mod error {
                 | ServerError::AlreadyExists(_) => StatusCode::BAD_REQUEST,
                 ServerError::UserUnauthorized(_) => StatusCode::UNAUTHORIZED,
                 ServerError::AccessForbidden(_) => StatusCode::FORBIDDEN,
+                ServerError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }
