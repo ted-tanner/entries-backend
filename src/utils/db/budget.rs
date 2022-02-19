@@ -467,6 +467,7 @@ mod tests {
             create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
 
         let new_entry = InputEntry {
+	    budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -482,7 +483,6 @@ mod tests {
         let created_entry = create_entry(
             &db_connection,
             &new_entry_json,
-            &created_budget.id,
             &created_user.id,
         )
         .unwrap();
@@ -570,6 +570,7 @@ mod tests {
             create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
 
         let entry0 = InputEntry {
+	    budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -582,6 +583,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
+	    budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -600,14 +602,12 @@ mod tests {
         create_entry(
             &db_connection,
             &entry0_json,
-            &created_budget.id,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
             &entry1_json,
-            &created_budget.id,
             &created_user.id,
         )
         .unwrap();
@@ -766,6 +766,7 @@ mod tests {
             .push(create_budget(&db_connection, &new_budget1_json, &created_user.id).unwrap());
 
         let entry0 = InputEntry {
+	    budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -778,6 +779,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
+	    budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -790,6 +792,7 @@ mod tests {
         };
 
         let entry2 = InputEntry {
+	    budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -802,6 +805,7 @@ mod tests {
         };
 
         let entry3 = InputEntry {
+	    budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
@@ -823,14 +827,12 @@ mod tests {
         create_entry(
             &db_connection,
             &entry0_json,
-            &created_budgets[0].id,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
             &entry1_json,
-            &created_budgets[0].id,
             &created_user.id,
         )
         .unwrap();
@@ -840,14 +842,12 @@ mod tests {
         create_entry(
             &db_connection,
             &entry2_json,
-            &created_budgets[1].id,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
             &entry3_json,
-            &created_budgets[1].id,
             &created_user.id,
         )
         .unwrap();
@@ -1019,6 +1019,7 @@ mod tests {
         create_budget(&db_connection, &too_late_budget_json, &created_user.id).unwrap();
 
         let entry0 = InputEntry {
+	    budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(2022, 4, 8),
             name: Some(format!("Test Entry 0 for {user_number}")),
@@ -1027,6 +1028,7 @@ mod tests {
         };
 
         let entry1 = InputEntry {
+	    budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(2022, 4, 9),
             name: None,
@@ -1034,52 +1036,62 @@ mod tests {
             note: None,
         };
 
-        let created_entries = vec![entry0.clone(), entry1.clone()];
+	let mut entry2 = entry0.clone();
+	entry2.budget_id = in_range_budgets[1].id;
+
+	let mut entry3 = entry1.clone();
+	entry3.budget_id = in_range_budgets[1].id;
+
+	let mut entry4 = entry0.clone();
+	entry4.budget_id = in_range_budgets[2].id;
+
+	let mut entry5 = entry1.clone();
+	entry5.budget_id = in_range_budgets[2].id;
+
+        let created_entries = vec![entry0.clone(), entry1.clone(), entry2.clone(), entry3.clone(), entry4.clone(), entry5.clone()];
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
+	let entry2_json = web::Json(entry2);
+	let entry3_json = web::Json(entry3);
+	let entry4_json = web::Json(entry4);
+	let entry5_json = web::Json(entry5);
 
         create_entry(
             &db_connection,
             &entry0_json,
-            &in_range_budgets[0].id,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
             &entry1_json,
-            &in_range_budgets[0].id,
             &created_user.id,
         )
         .unwrap();
 
         create_entry(
             &db_connection,
-            &entry0_json,
-            &in_range_budgets[1].id,
+            &entry2_json,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
-            &entry1_json,
-            &in_range_budgets[1].id,
+            &entry3_json,
             &created_user.id,
         )
         .unwrap();
 
         create_entry(
             &db_connection,
-            &entry0_json,
-            &in_range_budgets[2].id,
+            &entry4_json,
             &created_user.id,
         )
         .unwrap();
         create_entry(
             &db_connection,
-            &entry1_json,
-            &in_range_budgets[2].id,
+            &entry5_json,
             &created_user.id,
         )
         .unwrap();
