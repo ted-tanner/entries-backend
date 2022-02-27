@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4.0.0-beta.21"
+actix-web = "4.0"
 argonautica = { version = "0.2", features = ["serde", "simd"] }
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "1.4", features = ["postgres", "uuidv07", "r2d2", "chrono"] }
@@ -25,7 +25,3 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 
 [dev-dependencies]
 actix-rt = "2.5"
-
-[profile.production]
-inherits = "release"
-lto = true

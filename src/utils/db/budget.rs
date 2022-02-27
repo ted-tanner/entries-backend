@@ -12,7 +12,9 @@ use crate::models::entry::{Entry, NewEntry};
 use crate::models::m2m::user_budget::NewUserBudget;
 use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
+use crate::schema::categories as category_fields;
 use crate::schema::categories::dsl::categories;
+use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
 use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
@@ -23,8 +25,8 @@ pub fn get_budget_by_id(
 ) -> Result<OutputBudget, diesel::result::Error> {
     let budget = budgets.find(budget_id).first::<Budget>(db_connection)?;
 
-    let loaded_categories = Category::belonging_to(&budget).load::<Category>(db_connection)?;
-    let loaded_entries = Entry::belonging_to(&budget).load::<Entry>(db_connection)?;
+    let loaded_categories = Category::belonging_to(&budget).order(category_fields::id.asc()).load::<Category>(db_connection)?;
+    let loaded_entries = Entry::belonging_to(&budget).order(entry_fields::date.asc()).load::<Entry>(db_connection)?;
 
     let output_budget = OutputBudget {
         id: budget.id,
@@ -58,10 +60,12 @@ pub fn get_all_budgets_for_user(
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
+	.order(category_fields::id.asc())
         .load::<Category>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
     let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+	.order(entry_fields::date.asc())
         .load::<Entry>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
@@ -112,10 +116,12 @@ pub fn get_all_budgets_for_user_between_dates(
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
+	.order(category_fields::id.asc())
         .load::<Category>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
     let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+	.order(entry_fields::date.asc())
         .load::<Entry>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
@@ -305,8 +311,8 @@ mod tests {
     use crate::schema::user_budgets::dsl::user_budgets;
     use crate::utils::db::user;
 
-    #[test]
-    fn test_create_budget() {
+    #[actix_rt::test]
+    async fn test_create_budget() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -377,7 +383,7 @@ mod tests {
 
         let budget_id = created_user_budget_associations[0].budget_id;
         let budget = budgets
-            .filter(budget_fields::id.eq(budget_id))
+            .find(budget_id)
             .first::<Budget>(&db_connection)
             .unwrap();
 
@@ -400,8 +406,8 @@ mod tests {
         assert_eq!(saved_categories[0].color, budget_categories[0].color);
     }
 
-    #[test]
-    fn test_create_entry() {
+    #[actix_rt::test]
+    async fn test_create_entry() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -501,8 +507,8 @@ mod tests {
         assert_eq!(fetched_budget_entry.note, new_entry.note);
     }
 
-    #[test]
-    fn test_get_budget_by_id() {
+    #[actix_rt::test]
+    async fn test_get_budget_by_id() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -564,7 +570,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: Some(format!("Test Entry 0 for {user_number}")),
@@ -577,7 +583,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: None,
@@ -646,8 +652,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_all_budgets_for_user() {
+    #[actix_rt::test]
+    async fn test_get_all_budgets_for_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -750,7 +756,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: Some(format!("Test Entry 0 for {user_number}")),
@@ -763,7 +769,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: None,
@@ -776,7 +782,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: Some(format!("Test Entry 2 for {user_number}")),
@@ -789,7 +795,7 @@ mod tests {
             amount_cents: rand::thread_rng().gen_range(90..=120000),
             date: NaiveDate::from_ymd(
                 2022,
-                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
             name: None,
@@ -870,8 +876,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_all_budgets_for_user_between_dates() {
+    #[actix_rt::test]
+    async fn test_get_all_budgets_for_user_between_dates() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 

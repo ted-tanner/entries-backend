@@ -115,8 +115,8 @@ mod tests {
 
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    #[test]
-    fn test_generate_otp_different_for_different_users() {
+    #[actix_rt::test]
+    async fn test_generate_otp_different_for_different_users() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -132,8 +132,8 @@ mod tests {
         assert_eq!(user1_otp, generate_otp(&user1_id, current_time).unwrap());
     }
 
-    #[test]
-    fn test_generate_otp_different_at_different_times() {
+    #[actix_rt::test]
+    async fn test_generate_otp_different_at_different_times() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -158,8 +158,8 @@ mod tests {
         assert_ne!(otp3, otp4);
     }
 
-    #[test]
-    fn test_generate_otp_same_within_time_segment() {
+    #[actix_rt::test]
+    async fn test_generate_otp_same_within_time_segment() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -174,8 +174,8 @@ mod tests {
         assert_eq!(otp1, otp2);
     }
 
-    #[test]
-    fn test_verify_otp() {
+    #[actix_rt::test]
+    async fn test_verify_otp() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -190,8 +190,8 @@ mod tests {
         assert!(verify_otp(otp, &user_id, verify_time).unwrap());
     }
 
-    #[test]
-    fn test_verify_opt_fails_if_otp_is_expired() {
+    #[actix_rt::test]
+    async fn test_verify_opt_fails_if_otp_is_expired() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -206,8 +206,8 @@ mod tests {
         assert!(!verify_otp(otp, &user_id, verify_time).unwrap());
     }
 
-    #[test]
-    fn test_verify_opt_fails_if_otp_has_wrong_user_id() {
+    #[actix_rt::test]
+    async fn test_verify_opt_fails_if_otp_has_wrong_user_id() {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

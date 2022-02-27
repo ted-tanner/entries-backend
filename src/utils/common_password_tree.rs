@@ -43,8 +43,8 @@ mod tests {
 
     use rand::prelude::*;
 
-    #[test]
-    fn test_common_password_tree() {
+    #[actix_rt::test]
+    async fn test_common_password_tree() {
         let tree = CommonPasswordTree::generate();
 
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);

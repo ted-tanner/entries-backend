@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::category::Category;
 use crate::models::entry::Entry;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
     pub id: uuid::Uuid,
     pub is_active: bool,
@@ -22,7 +22,7 @@ pub struct OutputUserPrivate {
     pub created_timestamp: NaiveDateTime,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPublic {
     pub id: uuid::Uuid,
     pub is_premium: bool,
@@ -32,18 +32,18 @@ pub struct OutputUserPublic {
     pub currency: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SigninToken {
     pub signin_token: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputBudget {
     pub id: uuid::Uuid,
     pub is_shared: bool,

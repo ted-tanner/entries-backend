@@ -19,7 +19,6 @@ impl Validity {
     }
 }
 
-#[inline]
 pub fn validate_email_address(email: &str) -> Validity {
     for c in email.chars() {
         if c == ' ' || !c.is_ascii() {
@@ -53,7 +52,6 @@ pub fn validate_email_address(email: &str) -> Validity {
     Validity::Valid
 }
 
-#[inline]
 pub fn validate_strong_password(
     password: &str,
     email: &str,
@@ -167,8 +165,8 @@ mod tests {
     use chrono::NaiveDate;
     use rand::prelude::*;
 
-    #[test]
-    fn test_validate_email_address() {
+    #[actix_rt::test]
+    async fn test_validate_email_address() {
         // Valid
         const NORMAL: &str = "test@example.com";
         const WITH_DOT_IN_USERNAME: &str = "test.me@example.com";
@@ -210,8 +208,8 @@ mod tests {
         assert!(!validate_email_address(DOT_LAST_CHAR).is_valid());
     }
 
-    #[test]
-    fn test_validate_strong_password() {
+    #[actix_rt::test]
+    async fn test_validate_strong_password() {
         const EMAIL: &str = "test_user@test.com";
         const FIRST_NAME: &str = "Arnold";
         const LAST_NAME: &str = "Schwarzenegger";

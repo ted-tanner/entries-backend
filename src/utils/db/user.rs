@@ -77,8 +77,8 @@ mod tests {
 
     use crate::env;
 
-    #[test]
-    fn test_create_user() {
+    #[actix_rt::test]
+    async fn test_create_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -114,8 +114,8 @@ mod tests {
         assert_eq!(&new_user.currency, &created_user.currency);
     }
 
-    #[test]
-    fn test_get_user_by_email() {
+    #[actix_rt::test]
+    async fn test_get_user_by_email() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -149,8 +149,8 @@ mod tests {
         assert_eq!(&new_user.currency, &created_user.currency);
     }
 
-    #[test]
-    fn test_get_user_by_id() {
+    #[actix_rt::test]
+    async fn test_get_user_by_id() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -183,8 +183,8 @@ mod tests {
         assert_eq!(&new_user.currency, &created_user.currency);
     }
 
-    #[test]
-    fn test_change_password() {
+    #[actix_rt::test]
+    async fn test_change_password() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 

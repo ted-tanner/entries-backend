@@ -5,8 +5,8 @@ use crate::handlers;
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/budget")
-            .route("/get", web::get().to(handlers::budget::get))
-            .route("/get_all", web::post().to(handlers::budget::get_all))
+            .route("/get", web::post().to(handlers::budget::get))
+            .route("/get_all", web::get().to(handlers::budget::get_all))
             .route(
                 "/get_all_between_dates",
                 web::post().to(handlers::budget::get_all_between_dates),

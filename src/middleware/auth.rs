@@ -59,7 +59,7 @@ mod tests {
 
     use crate::models::user::NewUser;
 
-    #[test]
+    #[actix_rt::test]
     async fn test_jwt_user_auth_middleware() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(&user_claims.uid, &user_id);
     }
 
-    #[test]
+    #[actix_rt::test]
     async fn test_auth_middleware_rejects_request_without_auth_header() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -151,7 +151,7 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[actix_rt::test]
     async fn test_auth_middleware_rejects_header_without_bearer_keyword() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -191,7 +191,7 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[actix_rt::test]
     async fn test_auth_middleware_rejects_header_without_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -230,7 +230,7 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[actix_rt::test]
     async fn test_auth_middleware_rejects_invalid_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
@@ -274,7 +274,7 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
+    #[actix_rt::test]
     async fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);

@@ -40,16 +40,16 @@ pub fn verify_hash(password: &str, hash: &str) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_hash_argon2id() {
+    #[actix_rt::test]
+    async fn test_hash_argon2id() {
         let password = "@Pa$$20rd-Test";
         let hash = hash_argon2id(password);
 
         assert!(!hash.contains(&password));
     }
 
-    #[test]
-    fn test_verify_hash() {
+    #[actix_rt::test]
+    async fn test_verify_hash() {
         let password = "@Pa$$20rd-Test";
         let hash = hash_argon2id(password);
 

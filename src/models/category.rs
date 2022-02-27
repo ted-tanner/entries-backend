@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::budget::Budget;
 use crate::schema::categories;
 
-#[derive(Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
+#[derive(Clone, Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
 #[belongs_to(Budget, foreign_key = "budget_id")]
 #[table_name = "categories"]
 pub struct Category {
@@ -16,7 +16,7 @@ pub struct Category {
     pub color: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Clone, Debug, Insertable)]
 #[table_name = "categories"]
 pub struct NewCategory<'a> {
     pub budget_id: uuid::Uuid,

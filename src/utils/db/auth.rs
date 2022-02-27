@@ -41,8 +41,8 @@ mod tests {
     use crate::utils::db::user;
     use crate::utils::jwt;
 
-    #[test]
-    fn test_clear_all_expired_refresh_tokens() {
+    #[actix_rt::test]
+    async fn test_clear_all_expired_refresh_tokens() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 

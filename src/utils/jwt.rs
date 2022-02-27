@@ -339,8 +339,8 @@ mod tests {
     use crate::models::user::NewUser;
     use crate::schema::users::dsl::users;
 
-    #[test]
-    fn test_generate_access_token() {
+    #[actix_rt::test]
+    async fn test_generate_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -392,8 +392,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_refresh_token() {
+    #[actix_rt::test]
+    async fn test_generate_refresh_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -445,8 +445,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_signin_token() {
+    #[actix_rt::test]
+    async fn test_generate_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -498,8 +498,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_token_pair() {
+    #[actix_rt::test]
+    async fn test_generate_token_pair() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -574,8 +574,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_token() {
+    #[actix_rt::test]
+    async fn test_generate_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -687,8 +687,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validate_access_token() {
+    #[actix_rt::test]
+    async fn test_validate_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -738,8 +738,8 @@ mod tests {
         assert!(validate_access_token(&signin_token.token).is_err());
     }
 
-    #[test]
-    fn test_validate_refresh_token() {
+    #[actix_rt::test]
+    async fn test_validate_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -794,8 +794,8 @@ mod tests {
         assert!(validate_refresh_token(&signin_token.token, &db_connection).is_err());
     }
 
-    #[test]
-    fn test_validate_signin_token() {
+    #[actix_rt::test]
+    async fn test_validate_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -845,8 +845,8 @@ mod tests {
         assert!(validate_signin_token(&refresh_token.token).is_err());
     }
 
-    #[test]
-    fn test_validate_token() {
+    #[actix_rt::test]
+    async fn test_validate_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -908,8 +908,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
+    #[actix_rt::test]
+    async fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -956,8 +956,8 @@ mod tests {
         assert!(validate_token(&signin_token.token, TokenType::Refresh).is_err());
     }
 
-    #[test]
-    fn test_read_claims() {
+    #[actix_rt::test]
+    async fn test_read_claims() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1021,8 +1021,8 @@ mod tests {
         assert!(signin_token_claims.exp > current_time);
     }
 
-    #[test]
-    fn test_blacklist_token() {
+    #[actix_rt::test]
+    async fn test_blacklist_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -1077,8 +1077,8 @@ mod tests {
             .unwrap();
     }
 
-    #[test]
-    fn test_is_token_on_blacklist() {
+    #[actix_rt::test]
+    async fn test_is_token_on_blacklist() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
@@ -1123,8 +1123,8 @@ mod tests {
         assert!(is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
     }
 
-    #[test]
-    fn test_is_access_token() {
+    #[actix_rt::test]
+    async fn test_is_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1159,8 +1159,8 @@ mod tests {
         assert!(!access_token.is_signin_token());
     }
 
-    #[test]
-    fn test_is_refresh_token() {
+    #[actix_rt::test]
+    async fn test_is_refresh_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1195,8 +1195,8 @@ mod tests {
         assert!(!refresh_token.is_signin_token());
     }
 
-    #[test]
-    fn test_is_signin_token() {
+    #[actix_rt::test]
+    async fn test_is_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
