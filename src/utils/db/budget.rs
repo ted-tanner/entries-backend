@@ -25,8 +25,12 @@ pub fn get_budget_by_id(
 ) -> Result<OutputBudget, diesel::result::Error> {
     let budget = budgets.find(budget_id).first::<Budget>(db_connection)?;
 
-    let loaded_categories = Category::belonging_to(&budget).order(category_fields::id.asc()).load::<Category>(db_connection)?;
-    let loaded_entries = Entry::belonging_to(&budget).order(entry_fields::date.asc()).load::<Entry>(db_connection)?;
+    let loaded_categories = Category::belonging_to(&budget)
+        .order(category_fields::id.asc())
+        .load::<Category>(db_connection)?;
+    let loaded_entries = Entry::belonging_to(&budget)
+        .order(entry_fields::date.asc())
+        .load::<Entry>(db_connection)?;
 
     let output_budget = OutputBudget {
         id: budget.id,
@@ -60,12 +64,12 @@ pub fn get_all_budgets_for_user(
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
-	.order(category_fields::id.asc())
+        .order(category_fields::id.asc())
         .load::<Category>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
     let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
-	.order(entry_fields::date.asc())
+        .order(entry_fields::date.asc())
         .load::<Entry>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
@@ -116,12 +120,12 @@ pub fn get_all_budgets_for_user_between_dates(
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
-	.order(category_fields::id.asc())
+        .order(category_fields::id.asc())
         .load::<Category>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
     let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
-	.order(entry_fields::date.asc())
+        .order(entry_fields::date.asc())
         .load::<Entry>(db_connection)?
         .grouped_by(&loaded_budgets)
         .into_iter();
