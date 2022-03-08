@@ -137,18 +137,18 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
+    log::info!("Connecting to Redis...");
+
+    let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("Failed to connect to Redis");
+            std::process::exit(1);
+        }
+    };
+    
     {
         // Test connection to Redis (then drop the test connection)
-        log::info!("Connecting to Redis...");
-
-        let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
-            Ok(c) => c,
-            Err(_) => {
-                eprintln!("Failed to connect to Redis");
-                std::process::exit(1);
-            }
-        };
-
         match redis_client.get_connection() {
             Ok(c) => c,
             Err(_) => {
@@ -232,6 +232,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
+	    .app_data(Data::new(redis_client.clone()))
             .configure(services::api::configure)
             .configure(services::index::configure)
             .wrap(Logger::default())
