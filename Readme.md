@@ -426,6 +426,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Get web app running
 * Figure out how to do timezone-aware dates
 * Create delete handlers (and db::utils) for user, budget, and entry
+  - Create a deletion record in the database when a user deletes their account and set the `is_deleted` field to true for the user
+  - Create a cron job that periodically goest through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 
+  - Don't have the cron job delete users if the request is less than 24 hours old
+  - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
+  - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
+  - Upon requesting deletion, log the user out and notify the user their account will be deleted once they are inactive for 48 hours. Also let them know they can cancel the request within the next 24 hours in account settings after signing in again.
 * Create edit handlers (and db::utils) for user, budget, and entry
 * Get email delivery set up
   * OTP
