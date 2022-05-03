@@ -46,7 +46,7 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number: u32 = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number: u32 = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),

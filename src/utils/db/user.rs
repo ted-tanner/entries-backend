@@ -11,7 +11,7 @@ use crate::utils::password_hasher;
 
 pub fn get_user_by_id(
     db_connection: &DbConnection,
-    user_id: &Uuid,
+    user_id: Uuid,
 ) -> Result<User, diesel::result::Error> {
     users.find(user_id).first::<User>(db_connection)
 }
@@ -54,7 +54,7 @@ pub fn create_user(
 
 pub fn change_password(
     db_connection: &DbConnection,
-    user_id: &Uuid,
+    user_id: Uuid,
     new_password: &str,
 ) -> Result<(), diesel::result::Error> {
     let hashed_password = password_hasher::hash_argon2id(new_password);
@@ -84,7 +84,7 @@ mod tests {
 
         const PASSWORD: &str = "X$KC3%s&L91m!bVA*@Iu";
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -121,7 +121,7 @@ mod tests {
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let user_email = format!("test_user{}@test.com", &user_number);
         let new_user = InputUser {
             email: user_email.clone(),
@@ -156,7 +156,7 @@ mod tests {
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -173,7 +173,7 @@ mod tests {
         let new_user_json = web::Json(new_user.clone());
         let user_id = create_user(&db_connection, &new_user_json).unwrap().id;
 
-        let created_user = get_user_by_id(&db_connection, &user_id).unwrap();
+        let created_user = get_user_by_id(&db_connection, user_id).unwrap();
 
         assert_eq!(&new_user.email, &created_user.email);
         assert_ne!(&new_user.password, &created_user.password_hash);
@@ -191,7 +191,7 @@ mod tests {
         const ORIGINAL_PASSWORD: &str = "Eq&6T@Vyz54O%DoX$";
         const UPDATED_PASSWORD: &str = "P*%OaTMaMl^Uzft^$82Qn";
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: ORIGINAL_PASSWORD.to_string(),
@@ -209,7 +209,7 @@ mod tests {
         let user_id = create_user(&db_connection, &new_user_json).unwrap().id;
 
         let original_password_saved_hash = users
-            .find(&user_id)
+            .find(user_id)
             .select(user_fields::password_hash)
             .get_result::<String>(&db_connection)
             .unwrap();
@@ -219,10 +219,10 @@ mod tests {
             &original_password_saved_hash
         ));
 
-        change_password(&db_connection, &user_id, UPDATED_PASSWORD).unwrap();
+        change_password(&db_connection, user_id, UPDATED_PASSWORD).unwrap();
 
         let updated_password_saved_hash = users
-            .find(&user_id)
+            .find(user_id)
             .select(user_fields::password_hash)
             .get_result::<String>(&db_connection)
             .unwrap();

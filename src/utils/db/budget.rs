@@ -21,7 +21,7 @@ use crate::schema::user_budgets::dsl::user_budgets;
 
 pub fn get_budget_by_id(
     db_connection: &DbConnection,
-    budget_id: &Uuid,
+    budget_id: Uuid,
 ) -> Result<OutputBudget, diesel::result::Error> {
     let budget = budgets.find(budget_id).first::<Budget>(db_connection)?;
 
@@ -53,7 +53,7 @@ pub fn get_budget_by_id(
 
 pub fn get_all_budgets_for_user(
     db_connection: &DbConnection,
-    user_id: &Uuid,
+    user_id: Uuid,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
@@ -105,7 +105,7 @@ pub fn get_all_budgets_for_user(
 
 pub fn get_all_budgets_for_user_between_dates(
     db_connection: &DbConnection,
-    user_id: &Uuid,
+    user_id: Uuid,
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
@@ -161,8 +161,8 @@ pub fn get_all_budgets_for_user_between_dates(
 
 pub fn check_user_in_budget(
     db_connection: &DbConnection,
-    user_id: &Uuid,
-    budget_id: &Uuid,
+    user_id: Uuid,
+    budget_id: Uuid,
 ) -> Result<bool, diesel::result::Error> {
     let association_exists = match user_budgets
         .filter(user_budget_fields::user_id.eq(user_id))
@@ -185,7 +185,7 @@ pub fn check_user_in_budget(
 pub fn create_budget(
     db_connection: &DbConnection,
     budget_data: &web::Json<InputBudget>,
-    user_id: &Uuid,
+    user_id: Uuid,
 ) -> Result<OutputBudget, diesel::result::Error> {
     let current_time = chrono::Utc::now().naive_utc();
     let budget_id = Uuid::new_v4();
@@ -212,7 +212,7 @@ pub fn create_budget(
 
     let new_user_budget_association = NewUserBudget {
         created_timestamp: current_time,
-        user_id: *user_id,
+        user_id: user_id,
         budget_id,
     };
 
@@ -221,14 +221,17 @@ pub fn create_budget(
         .execute(db_connection)?;
 
     let mut budget_categories = Vec::new();
-
+    
     for category in &budget_data.categories {
         let new_category = NewCategory {
             budget_id,
+            is_deleted: false,
             id: category.id,
             name: &category.name,
             limit_cents: category.limit_cents,
             color: &category.color,
+            modified_timestamp: budget.modified_timestamp,
+            created_timestamp: budget.created_timestamp,
         };
 
         budget_categories.push(new_category);
@@ -260,7 +263,7 @@ pub fn create_budget(
 pub fn create_entry(
     db_connection: &DbConnection,
     entry_data: &web::Json<InputEntry>,
-    user_id: &Uuid,
+    user_id: Uuid,
 ) -> Result<Entry, diesel::result::Error> {
     let current_time = chrono::Utc::now().naive_utc();
     let entry_id = Uuid::new_v4();
@@ -271,7 +274,7 @@ pub fn create_entry(
     let new_entry = NewEntry {
         id: entry_id,
         budget_id: entry_data.budget_id,
-        user_id: *user_id,
+        user_id: user_id,
         is_deleted: false,
         amount_cents: entry_data.amount_cents,
         date: entry_data.date,
@@ -306,7 +309,6 @@ mod tests {
     use crate::models::budget::Budget;
     use crate::models::category::Category;
     use crate::models::m2m::user_budget::UserBudget;
-    use crate::schema::budgets as budget_fields;
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::categories as category_fields;
     use crate::schema::categories::dsl::categories;
@@ -372,7 +374,7 @@ mod tests {
         };
 
         let new_budget_json = web::Json(new_budget.clone());
-        create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+        create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
 
         let created_user_budget_associations = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user.id))
@@ -468,7 +470,7 @@ mod tests {
 
         let new_budget_json = web::Json(new_budget);
         let created_budget =
-            create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
 
         let new_entry = InputEntry {
             budget_id: created_budget.id,
@@ -485,7 +487,7 @@ mod tests {
 
         let new_entry_json = web::Json(new_entry.clone());
         let created_entry =
-            create_entry(&db_connection, &new_entry_json, &created_user.id).unwrap();
+            create_entry(&db_connection, &new_entry_json, created_user.id).unwrap();
 
         let entry = entries
             .filter(entry_fields::id.eq(created_entry.id))
@@ -498,7 +500,7 @@ mod tests {
         assert_eq!(entry.category, new_entry.category);
         assert_eq!(entry.note, new_entry.note);
 
-        let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
+        let fetched_budget = get_budget_by_id(&db_connection, created_budget.id).unwrap();
 
         assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
         assert_eq!(fetched_budget.entries.len(), 1);
@@ -567,7 +569,7 @@ mod tests {
 
         let new_budget_json = web::Json(new_budget);
         let created_budget =
-            create_budget(&db_connection, &new_budget_json, &created_user.id).unwrap();
+            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
 
         let entry0 = InputEntry {
             budget_id: created_budget.id,
@@ -599,10 +601,10 @@ mod tests {
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
-        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry0_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, created_user.id).unwrap();
 
-        let fetched_budget = get_budget_by_id(&db_connection, &created_budget.id).unwrap();
+        let fetched_budget = get_budget_by_id(&db_connection, created_budget.id).unwrap();
 
         assert_eq!(fetched_budget.id, created_budget.id);
         assert_eq!(fetched_budget.is_shared, created_budget.is_shared);
@@ -749,11 +751,11 @@ mod tests {
 
         let new_budget0_json = web::Json(new_budget0);
         created_budgets
-            .push(create_budget(&db_connection, &new_budget0_json, &created_user.id).unwrap());
+            .push(create_budget(&db_connection, &new_budget0_json, created_user.id).unwrap());
 
         let new_budget1_json = web::Json(new_budget1);
         created_budgets
-            .push(create_budget(&db_connection, &new_budget1_json, &created_user.id).unwrap());
+            .push(create_budget(&db_connection, &new_budget1_json, created_user.id).unwrap());
 
         let entry0 = InputEntry {
             budget_id: created_budgets[0].id,
@@ -814,15 +816,15 @@ mod tests {
 
         let entry0_json = web::Json(entry0);
         let entry1_json = web::Json(entry1);
-        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry0_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, created_user.id).unwrap();
 
         let entry2_json = web::Json(entry2);
         let entry3_json = web::Json(entry3);
-        create_entry(&db_connection, &entry2_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry3_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry2_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry3_json, created_user.id).unwrap();
 
-        let fetched_budgets = get_all_budgets_for_user(&db_connection, &created_user.id).unwrap();
+        let fetched_budgets = get_all_budgets_for_user(&db_connection, created_user.id).unwrap();
         assert_eq!(fetched_budgets.len(), created_budgets.len());
 
         for i in 0..fetched_budgets.len() {
@@ -971,22 +973,22 @@ mod tests {
         let mut in_range_budgets = Vec::new();
 
         let too_early_budget_json = web::Json(too_early_budget);
-        create_budget(&db_connection, &too_early_budget_json, &created_user.id).unwrap();
+        create_budget(&db_connection, &too_early_budget_json, created_user.id).unwrap();
 
         let in_range_budget0_json = web::Json(in_range_budget0);
         in_range_budgets
-            .push(create_budget(&db_connection, &in_range_budget0_json, &created_user.id).unwrap());
+            .push(create_budget(&db_connection, &in_range_budget0_json, created_user.id).unwrap());
 
         let in_range_budget1_json = web::Json(in_range_budget1);
         in_range_budgets
-            .push(create_budget(&db_connection, &in_range_budget1_json, &created_user.id).unwrap());
+            .push(create_budget(&db_connection, &in_range_budget1_json, created_user.id).unwrap());
 
         let in_range_budget2_json = web::Json(in_range_budget2);
         in_range_budgets
-            .push(create_budget(&db_connection, &in_range_budget2_json, &created_user.id).unwrap());
+            .push(create_budget(&db_connection, &in_range_budget2_json, created_user.id).unwrap());
 
         let too_late_budget_json = web::Json(too_late_budget);
-        create_budget(&db_connection, &too_late_budget_json, &created_user.id).unwrap();
+        create_budget(&db_connection, &too_late_budget_json, created_user.id).unwrap();
 
         let entry0 = InputEntry {
             budget_id: in_range_budgets[0].id,
@@ -1034,18 +1036,18 @@ mod tests {
         let entry4_json = web::Json(entry4);
         let entry5_json = web::Json(entry5);
 
-        create_entry(&db_connection, &entry0_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry1_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry0_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry1_json, created_user.id).unwrap();
 
-        create_entry(&db_connection, &entry2_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry3_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry2_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry3_json, created_user.id).unwrap();
 
-        create_entry(&db_connection, &entry4_json, &created_user.id).unwrap();
-        create_entry(&db_connection, &entry5_json, &created_user.id).unwrap();
+        create_entry(&db_connection, &entry4_json, created_user.id).unwrap();
+        create_entry(&db_connection, &entry5_json, created_user.id).unwrap();
 
         let fetched_budgets = get_all_budgets_for_user_between_dates(
             &db_connection,
-            &created_user.id,
+            created_user.id,
             NaiveDate::from_ymd(2022, 4, 6),
             NaiveDate::from_ymd(2022, 4, 12),
         )

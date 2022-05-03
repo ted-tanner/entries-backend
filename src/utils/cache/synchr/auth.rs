@@ -42,7 +42,7 @@ mod tests {
         let mut redis_async_connection = redis_client.get_async_connection().await.unwrap();
 
         for i in 1..=5 {
-            let res = get_and_incr_recent_otp_verifications(&mut redis_async_connection, &user_id)
+            let res = get_and_incr_recent_otp_verifications(&mut redis_async_connection, user_id)
                 .await
                 .unwrap();
             assert_eq!(res, i);
@@ -52,7 +52,7 @@ mod tests {
         clear_recent_otp_verifications(&mut redis_sync_connection).unwrap();
 
         // Make sure table was cleared
-        let res = get_and_incr_recent_otp_verifications(&mut redis_async_connection, &user_id)
+        let res = get_and_incr_recent_otp_verifications(&mut redis_async_connection, user_id)
             .await
             .unwrap();
         assert_eq!(res, 1);

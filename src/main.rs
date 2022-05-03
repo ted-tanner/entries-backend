@@ -234,7 +234,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(db_thread_pool.clone()))
 	    .app_data(Data::new(redis_client.clone()))
             .configure(services::api::configure)
-            .configure(services::index::configure)
+            .configure(services::web::configure)
             .wrap(Logger::default())
     })
     .workers(env::CONF.workers.actix_workers)

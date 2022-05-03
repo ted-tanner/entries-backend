@@ -21,7 +21,7 @@ pub async fn get(
     let budget_id_clone = budget_id.budget_id;
 
     let is_user_in_budget = match web::block(move || {
-        db::budget::check_user_in_budget(&db_connection, &auth_user_claims.0.uid, &budget_id_clone)
+        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id_clone)
     })
     .await?
     {
@@ -50,7 +50,7 @@ pub async fn get(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::get_budget_by_id(&db_connection, &budget_id.budget_id)
+        db::budget::get_budget_by_id(&db_connection, budget_id.budget_id)
     })
     .await?
     {
@@ -83,7 +83,7 @@ pub async fn get_all(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::get_all_budgets_for_user(&db_connection, &auth_user_claims.0.uid)
+        db::budget::get_all_budgets_for_user(&db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -119,7 +119,7 @@ pub async fn get_all_between_dates(
             .expect("Failed to access database thread pool");
         db::budget::get_all_budgets_for_user_between_dates(
             &db_connection,
-            &auth_user_claims.0.uid,
+            auth_user_claims.0.uid,
             date_range.start_date,
             date_range.end_date,
         )
@@ -156,7 +156,7 @@ pub async fn create(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_budget(&db_connection, &budget_data, &auth_user_claims.0.uid)
+        db::budget::create_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -190,7 +190,7 @@ pub async fn add_entry(
     let budget_id = entry_data.budget_id;
 
     let is_user_in_budget = match web::block(move || {
-        db::budget::check_user_in_budget(&db_connection, &auth_user_claims.0.uid, &budget_id)
+        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id)
     })
     .await?
     {
@@ -219,7 +219,7 @@ pub async fn add_entry(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_entry(&db_connection, &entry_data, &auth_user_claims.0.uid)
+        db::budget::create_entry(&db_connection, &entry_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -278,7 +278,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -309,7 +309,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -419,7 +419,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -450,7 +450,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -576,7 +576,7 @@ mod tests {
             .uri("/api/budget/get")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(&budget_id)
+            .set_json(budget_id)
             .to_request();
 
         let fetched_budget_resp = test::call_service(&app, fetched_budget_req).await;
@@ -627,7 +627,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -658,7 +658,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -780,7 +780,7 @@ mod tests {
             .uri("/api/budget/get")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(&input_budget_id)
+            .set_json(input_budget_id)
             .to_request();
 
         let res = test::call_service(&app, req).await;
@@ -844,7 +844,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -875,7 +875,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1147,7 +1147,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -1178,7 +1178,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1704,7 +1704,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1750,7 +1750,7 @@ mod tests {
             .unwrap()
             .uid;
 
-        let unauth_user_otp = otp::generate_otp(&unauth_user_id, current_time).unwrap();
+        let unauth_user_otp = otp::generate_otp(unauth_user_id, current_time).unwrap();
 
         let unauth_user_token_and_otp = SigninTokenOtpPair {
             signin_token: unauth_user_signin_token.signin_token,
@@ -1876,7 +1876,7 @@ mod tests {
                 "authorization",
                 format!("bearer {unauth_user_access_token}"),
             ))
-            .set_json(&input_budget_id)
+            .set_json(input_budget_id)
             .to_request();
 
         let unauth_get_res = test::call_service(&app, unauth_get_req).await;
@@ -1910,7 +1910,7 @@ mod tests {
             .uri("/api/budget/get")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(&input_budget_id)
+            .set_json(input_budget_id)
             .to_request();
 
         let res = test::call_service(&app, req).await;

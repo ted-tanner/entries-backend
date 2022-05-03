@@ -342,7 +342,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_generate_access_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -395,7 +395,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_generate_refresh_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -448,7 +448,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_generate_signin_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -501,7 +501,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_generate_token_pair() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -577,7 +577,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_generate_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -690,7 +690,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_validate_access_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -744,7 +744,7 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -797,7 +797,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_validate_signin_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -848,7 +848,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_validate_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -911,7 +911,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -959,7 +959,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_read_claims() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -1027,7 +1027,7 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -1083,7 +1083,7 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -1126,7 +1126,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_is_access_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -1162,7 +1162,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_is_refresh_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -1198,7 +1198,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_is_signin_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,

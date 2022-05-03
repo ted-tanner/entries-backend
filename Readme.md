@@ -425,7 +425,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Get web app running
 * Figure out how to do timezone-aware dates
-* Create delete handlers (and db::utils) for budget and entry
+* Create delete handlers (and db::utils) for user, budget, and entry
 * Create edit handlers (and db::utils) for user, budget, and entry
 * Get email delivery set up
   * OTP

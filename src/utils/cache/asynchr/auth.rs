@@ -19,7 +19,7 @@ use crate::utils::cache::RedisError;
 
 pub async fn get_and_incr_recent_otp_verifications(
     redis_connection: &mut RedisAsyncConnection,
-    user_id: &Uuid,
+    user_id: Uuid,
 ) -> Result<u64, RedisError> {
     match redis::cmd("HINCRBY")
         .arg("budgetapp:otp:user_recent_verification_counts")
@@ -54,7 +54,7 @@ mod tests {
         let mut redis_connection = redis_client.get_async_connection().await.unwrap();
 
         for i in 1..=10 {
-            let res = get_and_incr_recent_otp_verifications(&mut redis_connection, &user_id)
+            let res = get_and_incr_recent_otp_verifications(&mut redis_connection, user_id)
                 .await
                 .unwrap();
             assert_eq!(res, i);

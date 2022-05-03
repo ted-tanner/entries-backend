@@ -62,7 +62,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_jwt_user_auth_middleware() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -99,7 +99,7 @@ mod tests {
             .unwrap()
             .0;
 
-        assert_eq!(&user_claims.uid, &user_id);
+        assert_eq!(user_claims.uid, user_id);
 
         let req = test::TestRequest::get()
             .insert_header(("authorization", format!("Bearer {}", &token.to_string())))
@@ -110,13 +110,13 @@ mod tests {
             .unwrap()
             .0;
 
-        assert_eq!(&user_claims.uid, &user_id);
+        assert_eq!(user_claims.uid, user_id);
     }
 
     #[actix_rt::test]
     async fn test_auth_middleware_rejects_request_without_auth_header() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -154,7 +154,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_auth_middleware_rejects_header_without_bearer_keyword() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -194,7 +194,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_auth_middleware_rejects_header_without_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -233,7 +233,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_auth_middleware_rejects_invalid_token() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,
@@ -277,7 +277,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
         let user_id = Uuid::new_v4();
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
         let new_user = NewUser {
             id: user_id,

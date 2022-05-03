@@ -70,7 +70,7 @@ pub async fn sign_in(
         // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
         // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
         let otp = match otp::generate_otp(
-            &user.id,
+            user.id,
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
         ) {
             Ok(p) => p,
@@ -117,7 +117,7 @@ pub async fn verify_otp_for_signin(
 
     let attempts = match cache::asynchr::auth::get_and_incr_recent_otp_verifications(
         &mut redis_connection,
-        &token_claims.uid,
+        token_claims.uid,
     )
     .await
     {
@@ -143,13 +143,13 @@ pub async fn verify_otp_for_signin(
             .expect("Failed to fetch system time")
             .as_secs();
 
-        let mut is_valid = otp::verify_otp(otp, &token_claims.uid, current_time)?;
+        let mut is_valid = otp::verify_otp(otp, token_claims.uid, current_time)?;
 
         // A future code gets sent to the user, so check a current and future code
         if !is_valid {
             is_valid = otp::verify_otp(
                 otp,
-                &token_claims.uid,
+                token_claims.uid,
                 current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
             )?;
         }
@@ -368,7 +368,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -433,7 +433,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -486,7 +486,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -532,7 +532,7 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -584,7 +584,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -631,7 +631,7 @@ mod tests {
             .as_secs()
             + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(&user_id, future_time).unwrap();
+        let otp = otp::generate_otp(user_id, future_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -683,7 +683,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -730,7 +730,7 @@ mod tests {
             .as_secs()
             + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(&user_id, future_time).unwrap();
+        let otp = otp::generate_otp(user_id, future_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -772,7 +772,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -841,7 +841,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -888,7 +888,7 @@ mod tests {
             .as_secs()
             - env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(&user_id, past_time).unwrap();
+        let otp = otp::generate_otp(user_id, past_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -919,7 +919,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -966,7 +966,7 @@ mod tests {
             .as_secs()
             + (2 * env::CONF.lifetimes.otp_lifetime_mins * 60);
 
-        let otp = otp::generate_otp(&user_id, far_future_time).unwrap();
+        let otp = otp::generate_otp(user_id, far_future_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -997,7 +997,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1043,7 +1043,7 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token + "i",
@@ -1074,7 +1074,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1107,7 +1107,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1171,7 +1171,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1202,7 +1202,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1246,7 +1246,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1277,7 +1277,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1321,7 +1321,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1352,7 +1352,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1403,7 +1403,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1434,7 +1434,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,

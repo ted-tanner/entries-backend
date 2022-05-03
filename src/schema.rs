@@ -51,10 +51,13 @@ table! {
     categories (pk) {
         pk -> Int4,
         budget_id -> Uuid,
+        is_deleted -> Bool,
         id -> Int2,
         name -> Varchar,
         limit_cents -> Int8,
         color -> Varchar,
+        modified_timestamp -> Timestamp,
+        created_timestamp -> Timestamp,
     }
 }
 

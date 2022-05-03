@@ -72,7 +72,7 @@ impl PartialEq for OneTimePasscode {
     }
 }
 
-pub fn generate_otp(user_id: &Uuid, unix_timestamp: u64) -> Result<OneTimePasscode, OtpError> {
+pub fn generate_otp(user_id: Uuid, unix_timestamp: u64) -> Result<OneTimePasscode, OtpError> {
     let time_segment = unix_timestamp / (env::CONF.lifetimes.otp_lifetime_mins * 60);
 
     let contents = format!("{}:{}", user_id, time_segment);
@@ -103,7 +103,7 @@ pub fn generate_otp(user_id: &Uuid, unix_timestamp: u64) -> Result<OneTimePassco
 
 pub fn verify_otp(
     passcode: OneTimePasscode,
-    user_id: &Uuid,
+    user_id: Uuid,
     unix_timestamp: u64,
 ) -> Result<bool, OtpError> {
     Ok(generate_otp(user_id, unix_timestamp)? == passcode)
@@ -125,11 +125,11 @@ mod tests {
         let user1_id = Uuid::new_v4();
         let user2_id = Uuid::new_v4();
 
-        let user1_otp = generate_otp(&user1_id, current_time).unwrap();
-        let user2_otp = generate_otp(&user2_id, current_time).unwrap();
+        let user1_otp = generate_otp(user1_id, current_time).unwrap();
+        let user2_otp = generate_otp(user2_id, current_time).unwrap();
 
         assert_ne!(user1_otp, user2_otp);
-        assert_eq!(user1_otp, generate_otp(&user1_id, current_time).unwrap());
+        assert_eq!(user1_otp, generate_otp(user1_id, current_time).unwrap());
     }
 
     #[actix_rt::test]
@@ -140,9 +140,9 @@ mod tests {
             .as_secs();
 
         let user_id = Uuid::new_v4();
-        let otp1 = generate_otp(&user_id, current_time).unwrap();
+        let otp1 = generate_otp(user_id, current_time).unwrap();
         let otp2 = generate_otp(
-            &user_id,
+            user_id,
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
         )
         .unwrap();
@@ -152,8 +152,8 @@ mod tests {
         let time3 = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let time4 = time3 + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp3 = generate_otp(&user_id, time3).unwrap();
-        let otp4 = generate_otp(&user_id, time4).unwrap();
+        let otp3 = generate_otp(user_id, time3).unwrap();
+        let otp4 = generate_otp(user_id, time4).unwrap();
 
         assert_ne!(otp3, otp4);
     }
@@ -168,8 +168,8 @@ mod tests {
         let user_id = Uuid::new_v4();
         let time1 = current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let time2 = time1 + env::CONF.lifetimes.otp_lifetime_mins * 60 - 1;
-        let otp1 = generate_otp(&user_id, time1).unwrap();
-        let otp2 = generate_otp(&user_id, time2).unwrap();
+        let otp1 = generate_otp(user_id, time1).unwrap();
+        let otp2 = generate_otp(user_id, time2).unwrap();
 
         assert_eq!(otp1, otp2);
     }
@@ -185,9 +185,9 @@ mod tests {
         let generate_time =
             current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60 - 1;
-        let otp = generate_otp(&user_id, generate_time).unwrap();
+        let otp = generate_otp(user_id, generate_time).unwrap();
 
-        assert!(verify_otp(otp, &user_id, verify_time).unwrap());
+        assert!(verify_otp(otp, user_id, verify_time).unwrap());
     }
 
     #[actix_rt::test]
@@ -201,9 +201,9 @@ mod tests {
         let generate_time =
             current_time - (current_time % (env::CONF.lifetimes.otp_lifetime_mins * 60));
         let verify_time = generate_time + env::CONF.lifetimes.otp_lifetime_mins * 60;
-        let otp = generate_otp(&user_id, generate_time).unwrap();
+        let otp = generate_otp(user_id, generate_time).unwrap();
 
-        assert!(!verify_otp(otp, &user_id, verify_time).unwrap());
+        assert!(!verify_otp(otp, user_id, verify_time).unwrap());
     }
 
     #[actix_rt::test]
@@ -216,10 +216,10 @@ mod tests {
         let user1_id = Uuid::new_v4();
         let user2_id = Uuid::new_v4();
 
-        let otp1 = generate_otp(&user1_id, current_time).unwrap();
-        let otp2 = generate_otp(&user2_id, current_time).unwrap();
+        let otp1 = generate_otp(user1_id, current_time).unwrap();
+        let otp2 = generate_otp(user2_id, current_time).unwrap();
 
-        assert!(!verify_otp(otp1, &user2_id, current_time).unwrap());
-        assert!(!verify_otp(otp2, &user1_id, current_time).unwrap());
+        assert!(!verify_otp(otp1, user2_id, current_time).unwrap());
+        assert!(!verify_otp(otp2, user1_id, current_time).unwrap());
     }
 }

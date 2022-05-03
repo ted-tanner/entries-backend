@@ -20,7 +20,7 @@ pub async fn get(
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
+        db::user::get_user_by_id(&db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -63,7 +63,7 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
-    if !&user_data.0.validate_email_address().is_valid() {
+    if !user_data.0.validate_email_address().is_valid() {
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 
@@ -132,7 +132,7 @@ pub async fn create(
         .as_secs();
 
     let otp = match otp::generate_otp(
-        &user.id,
+        user.id,
         current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
     ) {
         Ok(p) => p,
@@ -157,7 +157,7 @@ pub async fn change_password(
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::get_user_by_id(&db_connection, &auth_user_claims.0.uid)
+        db::user::get_user_by_id(&db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -196,7 +196,7 @@ pub async fn change_password(
 
         db::user::change_password(
             &db_connection,
-            &auth_user_claims.0.uid,
+            auth_user_claims.0.uid,
             &password_pair.new_password,
         )
     })
@@ -236,7 +236,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -289,7 +289,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
 
         let new_user = InputUser {
             email: format!("test_user{}test.com", &user_number),
@@ -328,7 +328,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -367,7 +367,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
@@ -398,7 +398,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -450,7 +450,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -481,7 +481,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -520,7 +520,7 @@ mod tests {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
+        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
             .unwrap()
             .password_hash;
 
@@ -548,7 +548,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -579,7 +579,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -618,7 +618,7 @@ mod tests {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
+        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
             .unwrap()
             .password_hash;
 
@@ -646,7 +646,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -677,7 +677,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(&user_id, current_time).unwrap();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -716,7 +716,7 @@ mod tests {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, &user_id)
+        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
             .unwrap()
             .password_hash;
 

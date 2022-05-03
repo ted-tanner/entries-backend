@@ -53,10 +53,15 @@ CREATE TABLE categories (
     pk SERIAL NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
 
+    is_deleted BOOLEAN NOT NULL,
+
     id SMALLINT NOT NULL,
     name VARCHAR(120) NOT NULL,
     limit_cents BIGINT NOT NULL,
-    color VARCHAR(9) NOT NULL
+    color VARCHAR(9) NOT NULL,
+
+    modified_timestamp TIMESTAMP NOT NULL,
+    created_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE entries (
