@@ -52,6 +52,24 @@ pub fn create_user(
         .get_result::<User>(db_connection)
 }
 
+pub fn edit_user(
+    db_connection: &DbConnection,
+    user_id: Uuid,
+    edited_user_data: &web::Json<InputUser>,
+) -> Result<(), diesel::result::Error> {
+    match dsl::update(users.filter(user_fields::id.eq(user_id)))
+        .set((user_fields::email.eq(&edited_user_data.email),
+             user_fields::first_name.eq(&edited_user_data.first_name),
+             user_fields::last_name.eq(&edited_user_data.last_name),
+             user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
+             user_fields::currency.eq(&edited_user_data.currency)))
+        .execute(db_connection)
+    {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),        
+    }
+}
+
 pub fn change_password(
     db_connection: &DbConnection,
     user_id: Uuid,
@@ -181,6 +199,105 @@ mod tests {
         assert_eq!(&new_user.last_name, &created_user.last_name);
         assert_eq!(&new_user.date_of_birth, &created_user.date_of_birth);
         assert_eq!(&new_user.currency, &created_user.currency);
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_user_one_field() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: PASSWORD.to_string(),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let user_before = create_user(&db_connection, &new_user_json).unwrap();
+
+        let user_edits = InputUser {
+            email: user_before.email.clone(),
+            password: String::from("this is a test password"),
+            first_name: String::from("Edited Name"),
+            last_name: user_before.last_name.clone(),
+            date_of_birth: user_before.date_of_birth.clone(),
+            currency: user_before.currency.clone(),
+        };
+
+        let user_edits_json = web::Json(user_edits.clone());
+        edit_user(&db_connection, user_before.id, &user_edits_json).unwrap();
+
+        let user_after = get_user_by_id(&db_connection, user_before.id).unwrap();
+        
+        assert_eq!(&user_after.email, &user_before.email);
+        assert_eq!(&user_after.last_name, &user_before.last_name);
+        assert_eq!(&user_after.date_of_birth, &user_before.date_of_birth);
+        assert_eq!(&user_after.currency, &user_before.currency);
+
+        assert_eq!(&user_after.password_hash, &user_before.password_hash);
+
+        assert_eq!(&user_after.first_name, &user_edits.first_name);
+    }
+    
+    #[actix_rt::test]
+    async fn test_edit_user_all_fields() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: PASSWORD.to_string(),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let user_before = create_user(&db_connection, &new_user_json).unwrap();
+
+        let user_edits = InputUser {
+            email: format!("test_user{}-edited@test.com", &user_number),
+            password: String::from("this is a test password"),
+            first_name: String::from("Edited"),
+            last_name: String::from("Name"),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1940..=1949),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("DOP"),
+        };
+
+        let user_edits_json = web::Json(user_edits.clone());
+        edit_user(&db_connection, user_before.id, &user_edits_json).unwrap();
+
+        let user_after = get_user_by_id(&db_connection, user_before.id).unwrap();
+        
+        assert_eq!(&user_after.password_hash, &user_before.password_hash);
+
+        assert_eq!(&user_after.email, &user_edits.email);
+        assert_eq!(&user_after.first_name, &user_edits.first_name);
+        assert_eq!(&user_after.last_name, &user_edits.last_name);
+        assert_eq!(&user_after.date_of_birth, &user_edits.date_of_birth);
+        assert_eq!(&user_after.currency, &user_edits.currency);
     }
 
     #[actix_rt::test]
