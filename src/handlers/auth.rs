@@ -49,7 +49,8 @@ pub async fn sign_in(
 
         let signin_token = match signin_token {
             Ok(signin_token) => signin_token,
-            Err(_) => {
+            Err(e) => {
+                error!("{}", e);
                 return Err(ServerError::InternalError(Some(
                     "Failed to generate sign-in token for user",
                 )));
@@ -74,7 +75,10 @@ pub async fn sign_in(
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
         ) {
             Ok(p) => p,
-            Err(_) => return Err(ServerError::InternalError(Some("Failed to generate OTP"))),
+            Err(e) => {
+                error!("{}", e);
+                return Err(ServerError::InternalError(Some("Failed to generate OTP")));
+            }
         };
 
         // TODO: Don't log this, email it!
@@ -106,7 +110,10 @@ pub async fn verify_otp_for_signin(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
             }
-            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
+            e => {
+                error!("{}", e);
+                return Err(ServerError::InternalError(Some("Error verifying token")));
+            }
         },
     };
 
@@ -122,10 +129,11 @@ pub async fn verify_otp_for_signin(
     .await
     {
         Ok(a) => a,
-        Err(_) => {
+        Err(e) => {
+            error!("{}", e);
             return Err(ServerError::InternalError(Some(
                 "Failed to get value OTP attempts from cache",
-            )))
+            )));
         }
     };
 
@@ -167,9 +175,10 @@ pub async fn verify_otp_for_signin(
                 return Err(ServerError::InputRejected(Some("Invalid passcode")))
             }
             otp::OtpError::Error(_) => {
+                error!("{}", e);
                 return Err(ServerError::InternalError(Some(
                     "Validating passcode failed",
-                )))
+                )));
             }
         },
     };
@@ -233,7 +242,10 @@ pub async fn refresh_tokens(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")));
             }
-            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
+            e => {
+                error!("{}", e);
+                return Err(ServerError::InternalError(Some("Error verifying token")));
+            }
         },
     };
 
@@ -313,7 +325,10 @@ pub async fn logout(
             jwt::JwtError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
             }
-            _ => return Err(ServerError::InternalError(Some("Error verifying token"))),
+            e => {
+                error!("{}", e);
+                return Err(ServerError::InternalError(Some("Error verifying token")));
+            }
         },
     };
 
@@ -334,9 +349,12 @@ pub async fn logout(
     .await
     {
         Ok(_) => Ok(HttpResponse::Ok().finish()),
-        Err(_) => Err(ServerError::InternalError(Some(
-            "Failed to blacklist token",
-        ))),
+        Err(e) => {
+            error!("{}", e);
+            Err(ServerError::InternalError(Some(
+                "Failed to blacklist token",
+            )))
+        }
     }
 }
 

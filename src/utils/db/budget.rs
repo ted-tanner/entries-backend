@@ -221,7 +221,7 @@ pub fn create_budget(
         .execute(db_connection)?;
 
     let mut budget_categories = Vec::new();
-    
+
     for category in &budget_data.categories {
         let new_category = NewCategory {
             budget_id,
@@ -486,8 +486,7 @@ mod tests {
         };
 
         let new_entry_json = web::Json(new_entry.clone());
-        let created_entry =
-            create_entry(&db_connection, &new_entry_json, created_user.id).unwrap();
+        let created_entry = create_entry(&db_connection, &new_entry_json, created_user.id).unwrap();
 
         let entry = entries
             .filter(entry_fields::id.eq(created_entry.id))

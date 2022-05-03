@@ -146,7 +146,7 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     {
         // Test connection to Redis (then drop the test connection)
         match redis_client.get_connection() {
@@ -232,7 +232,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
-	    .app_data(Data::new(redis_client.clone()))
+            .app_data(Data::new(redis_client.clone()))
             .configure(services::api::configure)
             .configure(services::web::configure)
             .wrap(Logger::default())

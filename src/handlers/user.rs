@@ -115,7 +115,8 @@ pub async fn create(
 
     let signin_token = match signin_token {
         Ok(signin_token) => signin_token,
-        Err(_) => {
+        Err(e) => {
+            error!("{}", e);
             return Err(ServerError::InternalError(Some(
                 "Failed to generate sign-in token for user",
             )));
@@ -136,13 +137,36 @@ pub async fn create(
         current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
     ) {
         Ok(p) => p,
-        Err(_) => return Err(ServerError::InternalError(Some("Failed to generate OTP"))),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::InternalError(Some("Failed to generate OTP")));
+        }
     };
 
     // TODO: Don't log this, email it!
     println!("\n\nOTP: {}\n\n", &otp);
 
     Ok(HttpResponse::Created().json(signin_token))
+}
+
+pub async fn edit(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    user_data: web::Json<InputUser>,
+) -> Result<HttpResponse, ServerError> {
+    web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::edit_user(&db_connection, auth_user_claims.0.uid, &user_data)
+    })
+    .await
+    .map(|_| HttpResponse::Ok().finish())
+    .map_err(|e| {
+        error!("{}", e);
+        ServerError::DatabaseTransactionError(Some("Failed to edit user"))
+    })
 }
 
 pub async fn change_password(
@@ -162,7 +186,10 @@ pub async fn change_password(
     .await?
     {
         Ok(u) => u,
-        Err(_) => return Err(ServerError::InputRejected(Some("User not found"))),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::InputRejected(Some("User not found")));
+        }
     };
 
     let current_password = password_pair.current_password.clone();
@@ -202,7 +229,10 @@ pub async fn change_password(
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
-    .map_err(|_| ServerError::DatabaseTransactionError(Some("Failed to update password")))
+    .map_err(|e| {
+        error!("{}", e);
+        ServerError::DatabaseTransactionError(Some("Failed to update password"))
+    })
 }
 
 #[cfg(test)]

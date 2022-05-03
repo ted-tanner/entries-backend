@@ -58,15 +58,17 @@ pub fn edit_user(
     edited_user_data: &web::Json<InputUser>,
 ) -> Result<(), diesel::result::Error> {
     match dsl::update(users.filter(user_fields::id.eq(user_id)))
-        .set((user_fields::email.eq(&edited_user_data.email),
-             user_fields::first_name.eq(&edited_user_data.first_name),
-             user_fields::last_name.eq(&edited_user_data.last_name),
-             user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
-             user_fields::currency.eq(&edited_user_data.currency)))
+        .set((
+            user_fields::email.eq(&edited_user_data.email),
+            user_fields::first_name.eq(&edited_user_data.first_name),
+            user_fields::last_name.eq(&edited_user_data.last_name),
+            user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
+            user_fields::currency.eq(&edited_user_data.currency),
+        ))
         .execute(db_connection)
     {
         Ok(_) => Ok(()),
-        Err(e) => Err(e),        
+        Err(e) => Err(e),
     }
 }
 
@@ -238,7 +240,7 @@ mod tests {
         edit_user(&db_connection, user_before.id, &user_edits_json).unwrap();
 
         let user_after = get_user_by_id(&db_connection, user_before.id).unwrap();
-        
+
         assert_eq!(&user_after.email, &user_before.email);
         assert_eq!(&user_after.last_name, &user_before.last_name);
         assert_eq!(&user_after.date_of_birth, &user_before.date_of_birth);
@@ -248,7 +250,7 @@ mod tests {
 
         assert_eq!(&user_after.first_name, &user_edits.first_name);
     }
-    
+
     #[actix_rt::test]
     async fn test_edit_user_all_fields() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
@@ -290,7 +292,7 @@ mod tests {
         edit_user(&db_connection, user_before.id, &user_edits_json).unwrap();
 
         let user_after = get_user_by_id(&db_connection, user_before.id).unwrap();
-        
+
         assert_eq!(&user_after.password_hash, &user_before.password_hash);
 
         assert_eq!(&user_after.email, &user_edits.email);
