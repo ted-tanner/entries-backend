@@ -163,7 +163,7 @@ mod tests {
 
         let state_for_closure = state.clone();
 
-        let mut job_runner = Runner::with_granularity(Duration::from_millis(8));
+        let mut job_runner = Runner::with_granularity(Duration::from_millis(16));
         job_runner.add_job(
             move || {
                 let mut state = state_for_closure.lock().unwrap();
@@ -174,7 +174,7 @@ mod tests {
             String::from("Test modify state"),
         );
 
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(42));
         job_runner.stop();
 
         let state_mutex = state.lock().unwrap();
@@ -183,7 +183,7 @@ mod tests {
 
         assert_eq!(curr_state, 2);
 
-        thread::sleep(Duration::from_millis(12));
+        thread::sleep(Duration::from_millis(24));
 
         let state_mutex = state.lock().unwrap();
         let curr_state = *state_mutex;
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(curr_state, 2);
 
         job_runner.start();
-        thread::sleep(Duration::from_millis(12));
+        thread::sleep(Duration::from_millis(24));
         job_runner.stop();
 
         let state_mutex = state.lock().unwrap();
