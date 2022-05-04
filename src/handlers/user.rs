@@ -306,6 +306,110 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn test_edit() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
+            .expect("Connection to Redis failed");
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("1dIbCx^n@VF9f&0*c*39"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let create_user_res = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
+
+        let edited_user = InputUser {
+            email: new_user.email.clone(),
+            password: String::new(),
+            first_name: format!("Test-{}-edited", &user_number),
+            last_name: new_user.last_name.clone(),
+            date_of_birth: new_user.date_of_birth.clone(),
+            currency: String::from("DOP"),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/edit")
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &access_token).as_str(),
+            ))
+            .set_json(&edited_user)
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let after_edit_get_req = test::TestRequest::get()
+            .uri("/api/user/get")
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &access_token).as_str(),
+            ))
+            .to_request();
+
+        let after_edit_get_res = test::call_service(&app, after_edit_get_req).await;
+
+        let res_body = String::from_utf8(actix_web::test::read_body(after_edit_get_res).await.to_vec()).unwrap();
+        let user_after_edit = serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap();
+            
+        assert_eq!(&new_user.email, &user_after_edit.email);
+        assert_eq!(&new_user.last_name, &user_after_edit.last_name);
+        assert_eq!(&new_user.date_of_birth, &user_after_edit.date_of_birth);
+        
+        assert_eq!(&edited_user.first_name, &user_after_edit.first_name);
+        assert_eq!(&edited_user.currency, &user_after_edit.currency);
+    }
+
+    #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())

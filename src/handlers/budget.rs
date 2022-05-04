@@ -4,7 +4,7 @@ use log::error;
 use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEntry, OutputBudget,
+    InputBudget, InputBudgetId, InputDateRange, InputEntry, OutputBudget, InputEditBudget,
 };
 use crate::middleware;
 use crate::utils::db;
@@ -176,6 +176,58 @@ pub async fn create(
     };
 
     Ok(HttpResponse::Created().json(new_budget))
+}
+
+pub async fn edit(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    budget_data: web::Json<InputEditBudget>,
+) -> Result<HttpResponse, ServerError> {
+    let db_connection = db_thread_pool
+        .get()
+        .expect("Failed to access database thread pool");
+
+    let budget_id = budget_data.id.clone();
+
+    let is_user_in_budget = match web::block(move || {
+        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                return Err(ServerError::InvalidFormat(None));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to get budget data",
+                )));
+            }
+        },
+    };
+
+    if !is_user_in_budget {
+        return Err(ServerError::AccessForbidden(Some(
+            "User has no budget with provided ID",
+        )));
+    }
+    
+    web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::edit_budget(&db_connection, &budget_data)
+    })
+    .await
+    .map(|_| HttpResponse::Ok().finish())
+    .map_err(|e| {
+        error!("{}", e);
+        ServerError::DatabaseTransactionError(Some("Failed to edit budget"))
+    })
 }
 
 pub async fn add_entry(

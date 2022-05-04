@@ -5,7 +5,7 @@ use diesel::{dsl, sql_query, BelongingToDsl, ExpressionMethods, QueryDsl, RunQue
 use uuid::Uuid;
 
 use crate::definitions::*;
-use crate::handlers::request_io::{InputBudget, InputEntry, OutputBudget};
+use crate::handlers::request_io::{InputBudget, InputEntry, OutputBudget, InputEditBudget};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
@@ -260,6 +260,24 @@ pub fn create_budget(
     Ok(output_budget)
 }
 
+pub fn edit_budget(
+    db_connection: &DbConnection,
+    edited_budget_data: &web::Json<InputEditBudget>,
+) -> Result<(), diesel::result::Error> {
+    match dsl::update(budgets.filter(budget_fields::id.eq(edited_budget_data.id)))
+        .set((
+            budget_fields::name.eq(&edited_budget_data.name),
+            budget_fields::description.eq(&edited_budget_data.description),
+            budget_fields::start_date.eq(&edited_budget_data.start_date),
+            budget_fields::end_date.eq(&edited_budget_data.end_date),
+        ))
+        .execute(db_connection)
+    {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn create_entry(
     db_connection: &DbConnection,
     entry_data: &web::Json<InputEntry>,
@@ -410,6 +428,187 @@ mod tests {
             budget_categories[0].limit_cents
         );
         assert_eq!(saved_categories[0].color, budget_categories[0].color);
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_budget_one_field() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", user_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user_number),
+            last_name: format!("User-{}", user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+       let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user_number}.",
+            )),
+            categories: budget_categories,
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget.clone());
+        let budget_before =
+            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+
+        let budget_edits = InputEditBudget {
+            id: budget_before.id.clone(),
+            name: budget_before.name.clone(),
+            description: None,
+            start_date: budget_before.start_date.clone(),
+            end_date: budget_before.end_date.clone(),
+        };
+
+        let budget_edits_json = web::Json(budget_edits.clone());
+        edit_budget(&db_connection, &budget_edits_json).unwrap();
+
+        let budget_after = get_budget_by_id(&db_connection, budget_before.id).unwrap();
+
+        assert_eq!(&budget_after.name, &budget_before.name);
+        assert_eq!(&budget_after.start_date, &budget_before.start_date);
+        assert_eq!(&budget_after.end_date, &budget_before.end_date);
+
+        for i in 0..budget_after.categories.len() {
+            assert_eq!(budget_after.categories[i].id, budget_before.categories[i].id);
+            assert_eq!(budget_after.categories[i].name, budget_before.categories[i].name);
+            assert_eq!(budget_after.categories[i].limit_cents, budget_before.categories[i].limit_cents);
+            assert_eq!(budget_after.categories[i].color, budget_before.categories[i].color);
+        }
+
+        assert_eq!(&budget_after.description, &budget_edits.description);
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_budget_all_fields() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", user_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user_number),
+            last_name: format!("User-{}", user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+       let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user_number}.",
+            )),
+            categories: budget_categories,
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget.clone());
+        let budget_before =
+            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+                
+        let budget_edits = InputEditBudget {
+            id: budget_before.id.clone(),
+            name: String::from("this is an edited budget name"),
+            description: Some(String::from("This is an edited description for the budget")),
+            start_date: NaiveDate::from_ymd(
+                2024,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2025,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let budget_edits_json = web::Json(budget_edits.clone());
+        edit_budget(&db_connection, &budget_edits_json).unwrap();
+
+        let budget_after = get_budget_by_id(&db_connection, budget_before.id).unwrap();
+
+        assert_eq!(&budget_after.name, &budget_edits.name);
+        assert_eq!(&budget_after.description, &budget_edits.description);
+        assert_eq!(&budget_after.start_date, &budget_edits.start_date);
+        assert_eq!(&budget_after.end_date, &budget_edits.end_date);
+
+        for i in 0..budget_after.categories.len() {
+            assert_eq!(budget_after.categories[i].id, budget_before.categories[i].id);
+            assert_eq!(budget_after.categories[i].name, budget_before.categories[i].name);
+            assert_eq!(budget_after.categories[i].limit_cents, budget_before.categories[i].limit_cents);
+            assert_eq!(budget_after.categories[i].color, budget_before.categories[i].color);
+        }
     }
 
     #[actix_rt::test]

@@ -383,14 +383,6 @@ To make a release build with -O3 optimizations, run:
 cargo build --release
 ```
 
-To make a production build with -O3 optimizations as well as LTO (link-time optimization), run:
-
-```
-cargo build --profile production
-```
-
-These build flags also work with other commands such as `cargo test` and `cargo run`. Debug builds tend to take about half as long as release builds. LLVM is still LLVM when compiling Rust instead of C++, so link time optimization will still take a long, long time.
-
 ## Checking your Code
 
 Rust takes a freakishly long time to compile. Here's my recommendation: don't. Instead of using `cargo run` or `cargo build`, use the following:
@@ -423,6 +415,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Don't have the categories be a separate model. They can just be part of the budget.
+
 * Get web app running
 * Figure out how to do timezone-aware dates
 * Create delete handlers (and db::utils) for user, budget, and entry
@@ -431,7 +425,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Don't have the cron job delete users if the request is less than 24 hours old
   - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
   - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
-  - Upon requesting deletion, log the user out and notify the user their account will be deleted once they are inactive for 48 hours. Also let them know they can cancel the request within the next 24 hours in account settings after signing in again.
+  - Upon requesting deletion, let the user know they can cancel the request within the next 24 hours in account settings after signing in again. Place the button to restore in a clear-to-see place in account settings
 * Create edit handlers (and db::utils) for user, budget, and entry
 * Get email delivery set up
   * OTP

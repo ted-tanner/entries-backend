@@ -93,6 +93,15 @@ pub struct InputBudget {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct InputEditBudget {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InputEntry {
     pub budget_id: Uuid,
     pub amount_cents: i64,
