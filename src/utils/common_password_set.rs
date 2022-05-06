@@ -1,13 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead};
 
 use crate::env;
 
-pub struct CommonPasswordTree(BTreeSet<String>);
+pub struct CommonPasswordSet(HashSet<String>);
 
-impl CommonPasswordTree {
-    pub fn generate() -> CommonPasswordTree {
+impl CommonPasswordSet {
+    pub fn generate() -> CommonPasswordSet {
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);
 
         let file_error_msg = format!(
@@ -17,15 +17,15 @@ impl CommonPasswordTree {
         );
         let common_passwords_file = File::open(path).expect(&file_error_msg);
 
-        let mut tree = BTreeSet::<String>::new();
+        let mut set = HashSet::<String>::new();
 
         if let Ok(lines) = read_lines_from_file(common_passwords_file) {
             for password in lines.flatten() {
-                tree.insert(password.to_string().to_lowercase());
+                set.insert(password.to_string().to_lowercase());
             }
         }
 
-        CommonPasswordTree(tree)
+        CommonPasswordSet(set)
     }
 
     pub fn contains(&self, password: &str) -> bool {
@@ -44,8 +44,8 @@ mod tests {
     use rand::prelude::*;
 
     #[actix_rt::test]
-    async fn test_common_password_tree() {
-        let tree = CommonPasswordTree::generate();
+    async fn test_common_password_set() {
+        let set = CommonPasswordSet::generate();
 
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);
         let common_passwords_file = File::open(path).unwrap();
@@ -64,19 +64,19 @@ mod tests {
             let password = &common_passwords[password_idx];
 
             debug_assert!(
-                tree.contains(password),
-                "Tree should have contained password, but did not: {}",
+                set.contains(password),
+                "Set should have contained password, but did not: {}",
                 &password
             );
         }
 
         debug_assert!(
-            tree.contains("password1234"),
-            "Tree should have contained password, but did not: password1234"
+            set.contains("password1234"),
+            "Set should have contained password, but did not: password1234"
         );
 
-        assert!(!tree.contains("&!zatug"));
-        assert!(!tree.contains("r6&vh0d60a&hvb"));
-        assert!(!tree.contains("yptnmontq9f@%ije7z45"));
+        assert!(!set.contains("&!zatug"));
+        assert!(!set.contains("r6&vh0d60a&hvb"));
+        assert!(!set.contains("yptnmontq9f@%ije7z45"));
     }
 }

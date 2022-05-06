@@ -436,6 +436,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do It Later
 
 * Don't make two `db_connection`s in one handler. Get two references to the same connection. The references rather than the connection will get moved into `web::block`
+* Clean up tests by pulling some of the repetetive stuff (e.g. creating users, creating budgets, etc.) into functions
 * Create integer error codes in an enum (EXPIRED, INVALID, INCORRECT_FORMAT, etc.)
 * Pool Redis connections
 * Clean up `main()`

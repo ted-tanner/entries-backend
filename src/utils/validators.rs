@@ -1,7 +1,7 @@
 use chrono::Datelike;
 
 use crate::env;
-use crate::env::password::COMMON_PASSWORDS_TREE;
+use crate::env::password::COMMON_PASSWORDS_SET;
 
 #[derive(Debug)]
 pub enum Validity {
@@ -149,7 +149,7 @@ pub fn validate_strong_password(
         }
     }
 
-    if COMMON_PASSWORDS_TREE.contains(&lowercase_password) {
+    if COMMON_PASSWORDS_SET.contains(&lowercase_password) {
         return Validity::Invalid(
             "Your password is too common. It was found on an online list of the 1,000,000 most commonly used passwords."
         );
