@@ -21,7 +21,7 @@ impl CommonPasswordSet {
 
         if let Ok(lines) = read_lines_from_file(common_passwords_file) {
             for password in lines.flatten() {
-                set.insert(password.to_string().to_lowercase());
+                set.insert(password.to_string());
             }
         }
 
@@ -46,13 +46,12 @@ mod tests {
     #[actix_rt::test]
     async fn test_common_password_set() {
         let set = CommonPasswordSet::generate();
-
+        
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);
         let common_passwords_file = File::open(path).unwrap();
         let common_passwords = io::BufReader::new(common_passwords_file)
             .lines()
             .filter_map(io::Result::ok)
-            .map(|password| password.to_lowercase())
             .collect::<Vec<String>>();
 
         assert_ne!(common_passwords.len(), 0);
@@ -71,12 +70,12 @@ mod tests {
         }
 
         debug_assert!(
-            set.contains("password1234"),
-            "Set should have contained password, but did not: password1234"
+            set.contains("Z3_nz92_koz15EJsos250264"),
+            "Set should have contained password, but did not: `Z3_nz92_koz15EJsos250264`"
         );
 
-        assert!(!set.contains("&!zatug"));
-        assert!(!set.contains("r6&vh0d60a&hvb"));
-        assert!(!set.contains("yptnmontq9f@%ije7z45"));
+        assert!(!set.contains("vdK626vxI@E9%NcF%C65"));
+        assert!(!set.contains("2AY9L5wl$lfD57UM3tn9"));
+        assert!(!set.contains("&Hy!r38&My1V$uJDcX"));
     }
 }

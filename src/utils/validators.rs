@@ -27,7 +27,7 @@ pub fn validate_email_address(email: &str) -> Validity {
     }
 
     if email.contains("@.") {
-        return Validity::Invalid("Doman name in email address cannot begin with a period.");
+        return Validity::Invalid("Domain name in email address cannot begin with a period.");
     }
 
     let email = match email.split_once('@') {
@@ -149,7 +149,7 @@ pub fn validate_strong_password(
         }
     }
 
-    if COMMON_PASSWORDS_SET.contains(&lowercase_password) {
+    if COMMON_PASSWORDS_SET.contains(&password) {
         return Validity::Invalid(
             "Your password is too common. It was found on an online list of the 1,000,000 most commonly used passwords."
         );
