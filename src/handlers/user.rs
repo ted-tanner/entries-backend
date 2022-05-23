@@ -368,7 +368,6 @@ mod tests {
         let access_token = token_pair.access_token.to_string();
 
         let edited_user = InputEditUser {
-            password: String::new(),
             first_name: format!("Test-{}-edited", &user_number),
             last_name: new_user.last_name.clone(),
             date_of_birth: new_user.date_of_birth.clone(),

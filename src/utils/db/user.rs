@@ -227,7 +227,6 @@ mod tests {
         let user_before = create_user(&db_connection, &new_user_json).unwrap();
 
         let user_edits = InputEditUser {
-            password: String::from("this is a test password"),
             first_name: String::from("Edited Name"),
             last_name: user_before.last_name.clone(),
             date_of_birth: user_before.date_of_birth.clone(),
@@ -274,7 +273,6 @@ mod tests {
         let user_before = create_user(&db_connection, &new_user_json).unwrap();
 
         let user_edits = InputEditUser {
-            password: String::from("this is a test password"),
             first_name: String::from("Edited"),
             last_name: String::from("Name"),
             date_of_birth: NaiveDate::from_ymd(
