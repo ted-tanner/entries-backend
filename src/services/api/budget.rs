@@ -12,6 +12,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::post().to(handlers::budget::get_all_between_dates),
             )
             .route("/create", web::post().to(handlers::budget::create))
+            .route("/edit", web::post().to(handlers::budget::edit))
             .route("/add_entry", web::post().to(handlers::budget::add_entry)),
     );
 }

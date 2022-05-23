@@ -183,6 +183,10 @@ pub async fn edit(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
+    if budget_data.start_date > budget_data.end_date {
+        return Err(ServerError::InputRejected(Some("End date cannot come before start date")));
+    }
+    
     let db_connection = db_thread_pool
         .get()
         .expect("Failed to access database thread pool");
@@ -305,7 +309,7 @@ mod tests {
     use crate::env;
     use crate::handlers::request_io::{
         InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEntry, InputUser,
-        OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
+        OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair, InputEditBudget,
     };
     use crate::models::budget::Budget;
     use crate::models::category::Category;
@@ -314,7 +318,7 @@ mod tests {
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::entries as entry_fields;
     use crate::services;
-    use crate::utils::{jwt, otp};
+    use crate::utils::{db, jwt, otp};
 
     #[actix_rt::test]
     async fn test_create_budget() {
@@ -455,6 +459,294 @@ mod tests {
             assert_eq!(created_cat.limit_cents, new_cat.limit_cents);
             assert_eq!(created_cat.color, new_cat.color);
         }
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_budget() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
+            .expect("Connection to Redis failed");
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("tNmUV%9$khHK2TqOLw*%W"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let create_user_res = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let otp_req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let otp_res = test::call_service(&app, otp_req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(otp_res).await;
+        let access_token = token_pair.access_token.to_string();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let create_budget_req = test::TestRequest::post()
+            .uri("/api/budget/create")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {access_token}")))
+            .set_json(&new_budget)
+            .to_request();
+
+        let create_budget_resp = test::call_service(&app, create_budget_req).await;
+        let create_budget_res_body = String::from_utf8(
+            actix_web::test::read_body(create_budget_resp)
+                .await
+                .to_vec(),
+        )
+        .unwrap();
+
+        let budget_before_edit = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
+        
+        let edit_budget = InputEditBudget {
+            id: budget_before_edit.id.clone(),
+            name: format!("Test Budget {user_number} after edit"),
+            description: new_budget.description.clone(),
+            start_date: new_budget.start_date.clone(),
+            end_date: NaiveDate::from_ymd(
+                2024,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/edit")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {access_token}")))
+            .set_json(&edit_budget)
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        
+        let budget_after_edit = db::budget::get_budget_by_id(&db_thread_pool.get().unwrap(),
+                                                             budget_before_edit.id.clone()).unwrap();
+
+        assert_eq!(&budget_after_edit.name, &edit_budget.name);
+        assert_eq!(&budget_after_edit.description, &edit_budget.description);
+        assert_eq!(&budget_after_edit.start_date, &edit_budget.start_date);
+        assert_eq!(&budget_after_edit.end_date, &edit_budget.end_date);
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_budget_start_cannot_be_after_end() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
+            .expect("Connection to Redis failed");
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(redis_client.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("tNmUV%9$khHK2TqOLw*%W"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let create_user_res = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(user_id, current_time).unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let otp_req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let otp_res = test::call_service(&app, otp_req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(otp_res).await;
+        let access_token = token_pair.access_token.to_string();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let create_budget_req = test::TestRequest::post()
+            .uri("/api/budget/create")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {access_token}")))
+            .set_json(&new_budget)
+            .to_request();
+
+        let create_budget_resp = test::call_service(&app, create_budget_req).await;
+        let create_budget_res_body = String::from_utf8(
+            actix_web::test::read_body(create_budget_resp)
+                .await
+                .to_vec(),
+        )
+        .unwrap();
+
+        let budget_before_edit = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
+        
+        let edit_budget = InputEditBudget {
+            id: budget_before_edit.id.clone(),
+            name: format!("Test Budget {user_number} after edit"),
+            description: new_budget.description.clone(),
+            start_date: new_budget.start_date.clone(),
+            end_date: NaiveDate::from_ymd(
+                2019,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/edit")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {access_token}")))
+            .set_json(&edit_budget)
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+        
+        let budget_after_edit = db::budget::get_budget_by_id(&db_thread_pool.get().unwrap(),
+                                                             budget_before_edit.id.clone()).unwrap();
+
+        assert_eq!(&budget_after_edit.name, &new_budget.name);
+        assert_eq!(&budget_after_edit.description, &new_budget.description);
+        assert_eq!(&budget_after_edit.start_date, &new_budget.start_date);
+        assert_eq!(&budget_after_edit.end_date, &new_budget.end_date);
     }
 
     #[actix_rt::test]
