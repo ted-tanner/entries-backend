@@ -3,7 +3,7 @@ use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
-use crate::handlers::request_io::InputUser;
+use crate::handlers::request_io::{InputUser, InputEditUser};
 use crate::models::user::{NewUser, User};
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
@@ -55,11 +55,10 @@ pub fn create_user(
 pub fn edit_user(
     db_connection: &DbConnection,
     user_id: Uuid,
-    edited_user_data: &web::Json<InputUser>,
+    edited_user_data: &web::Json<InputEditUser>,
 ) -> Result<(), diesel::result::Error> {
     match dsl::update(users.filter(user_fields::id.eq(user_id)))
         .set((
-            user_fields::email.eq(&edited_user_data.email),
             user_fields::first_name.eq(&edited_user_data.first_name),
             user_fields::last_name.eq(&edited_user_data.last_name),
             user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
@@ -227,8 +226,7 @@ mod tests {
         let new_user_json = web::Json(new_user);
         let user_before = create_user(&db_connection, &new_user_json).unwrap();
 
-        let user_edits = InputUser {
-            email: user_before.email.clone(),
+        let user_edits = InputEditUser {
             password: String::from("this is a test password"),
             first_name: String::from("Edited Name"),
             last_name: user_before.last_name.clone(),
@@ -272,11 +270,10 @@ mod tests {
             currency: String::from("USD"),
         };
 
-        let new_user_json = web::Json(new_user);
+        let new_user_json = web::Json(new_user.clone());
         let user_before = create_user(&db_connection, &new_user_json).unwrap();
 
-        let user_edits = InputUser {
-            email: format!("test_user{}-edited@test.com", &user_number),
+        let user_edits = InputEditUser {
             password: String::from("this is a test password"),
             first_name: String::from("Edited"),
             last_name: String::from("Name"),
@@ -295,7 +292,7 @@ mod tests {
 
         assert_eq!(&user_after.password_hash, &user_before.password_hash);
 
-        assert_eq!(&user_after.email, &user_edits.email);
+        assert_eq!(&user_after.email, &new_user.email);
         assert_eq!(&user_after.first_name, &user_edits.first_name);
         assert_eq!(&user_after.last_name, &user_edits.last_name);
         assert_eq!(&user_after.date_of_birth, &user_edits.date_of_birth);

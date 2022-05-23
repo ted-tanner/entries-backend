@@ -58,6 +58,15 @@ impl InputUser {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEditUser {
+    pub password: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub date_of_birth: NaiveDate,
+    pub currency: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RefreshToken {
     pub token: String,

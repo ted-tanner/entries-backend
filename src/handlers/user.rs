@@ -6,7 +6,7 @@ use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    CurrentAndNewPasswordPair, InputUser, OutputUserPrivate, SigninToken,
+    CurrentAndNewPasswordPair, InputUser, InputEditUser, OutputUserPrivate, SigninToken,
 };
 use crate::middleware;
 use crate::utils::db;
@@ -152,7 +152,7 @@ pub async fn create(
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    user_data: web::Json<InputUser>,
+    user_data: web::Json<InputEditUser>,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
         let db_connection = db_thread_pool
@@ -367,8 +367,7 @@ mod tests {
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
         let access_token = token_pair.access_token.to_string();
 
-        let edited_user = InputUser {
-            email: new_user.email.clone(),
+        let edited_user = InputEditUser {
             password: String::new(),
             first_name: format!("Test-{}-edited", &user_number),
             last_name: new_user.last_name.clone(),
