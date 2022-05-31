@@ -9,7 +9,7 @@ use crate::handlers::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use crate::middleware;
-use crate::utils::{cache, db};
+use crate::utils::db;
 use crate::utils::{jwt, otp, password_hasher};
 
 pub async fn sign_in(
@@ -91,7 +91,7 @@ pub async fn sign_in(
 }
 
 pub async fn verify_otp_for_signin(
-    redis_client: web::Data<RedisClient>,
+    db_thread_pool: web::Data<DbThreadPool>,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
     let token_claims = match web::block(move || {
@@ -117,22 +117,20 @@ pub async fn verify_otp_for_signin(
         },
     };
 
-    let mut redis_connection = redis_client
-        .get_async_connection()
-        .await
-        .expect("Failed to access Redis thread pool");
-
-    let attempts = match cache::asynchr::auth::get_and_incr_recent_otp_verifications(
-        &mut redis_connection,
-        token_claims.uid,
-    )
-    .await
+    let attempts = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+        db::auth::get_and_increment_otp_verification_count(&db_connection, token_claims.uid)
+    })
+    .await?
     {
         Ok(a) => a,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalError(Some(
-                "Failed to get value OTP attempts from cache",
+            println!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to check OTP attempt count",
             )));
         }
     };
@@ -375,13 +373,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -440,13 +435,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -493,13 +485,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_with_current_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -591,13 +580,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_with_next_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -690,13 +676,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_after_repeated_attempts() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -779,13 +762,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -848,13 +828,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_expired_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -926,13 +903,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_future_not_next_code() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1004,13 +978,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1081,13 +1052,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1178,13 +1146,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1253,13 +1218,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_access_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1328,13 +1290,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_logout() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1410,13 +1369,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_logout_fails_with_invalid_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;

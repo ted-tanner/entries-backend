@@ -4,7 +4,7 @@ use log::error;
 use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEntry, OutputBudget, InputEditBudget,
+    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, OutputBudget,
 };
 use crate::middleware;
 use crate::utils::db;
@@ -184,9 +184,11 @@ pub async fn edit(
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
     if budget_data.start_date > budget_data.end_date {
-        return Err(ServerError::InputRejected(Some("End date cannot come before start date")));
+        return Err(ServerError::InputRejected(Some(
+            "End date cannot come before start date",
+        )));
     }
-    
+
     let db_connection = db_thread_pool
         .get()
         .expect("Failed to access database thread pool");
@@ -218,7 +220,7 @@ pub async fn edit(
             "User has no budget with provided ID",
         )));
     }
-    
+
     web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -308,8 +310,8 @@ mod tests {
 
     use crate::env;
     use crate::handlers::request_io::{
-        InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEntry, InputUser,
-        OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair, InputEditBudget,
+        InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
+        InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
     };
     use crate::models::budget::Budget;
     use crate::models::category::Category;
@@ -323,13 +325,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_create_budget() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -464,13 +463,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_edit_budget() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -572,8 +568,9 @@ mod tests {
         )
         .unwrap();
 
-        let budget_before_edit = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
-        
+        let budget_before_edit =
+            serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
+
         let edit_budget = InputEditBudget {
             id: budget_before_edit.id.clone(),
             name: format!("Test Budget {user_number} after edit"),
@@ -592,12 +589,15 @@ mod tests {
             .insert_header(("authorization", format!("bearer {access_token}")))
             .set_json(&edit_budget)
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
-        
-        let budget_after_edit = db::budget::get_budget_by_id(&db_thread_pool.get().unwrap(),
-                                                             budget_before_edit.id.clone()).unwrap();
+
+        let budget_after_edit = db::budget::get_budget_by_id(
+            &db_thread_pool.get().unwrap(),
+            budget_before_edit.id.clone(),
+        )
+        .unwrap();
 
         assert_eq!(&budget_after_edit.name, &edit_budget.name);
         assert_eq!(&budget_after_edit.description, &edit_budget.description);
@@ -608,13 +608,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_edit_budget_start_cannot_be_after_end() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -716,8 +713,9 @@ mod tests {
         )
         .unwrap();
 
-        let budget_before_edit = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
-        
+        let budget_before_edit =
+            serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
+
         let edit_budget = InputEditBudget {
             id: budget_before_edit.id.clone(),
             name: format!("Test Budget {user_number} after edit"),
@@ -736,12 +734,15 @@ mod tests {
             .insert_header(("authorization", format!("bearer {access_token}")))
             .set_json(&edit_budget)
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
-        
-        let budget_after_edit = db::budget::get_budget_by_id(&db_thread_pool.get().unwrap(),
-                                                             budget_before_edit.id.clone()).unwrap();
+
+        let budget_after_edit = db::budget::get_budget_by_id(
+            &db_thread_pool.get().unwrap(),
+            budget_before_edit.id.clone(),
+        )
+        .unwrap();
 
         assert_eq!(&budget_after_edit.name, &new_budget.name);
         assert_eq!(&budget_after_edit.description, &new_budget.description);
@@ -752,13 +753,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_add_entry() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -960,13 +958,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_get_budget() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1177,13 +1172,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1480,13 +1472,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user_between_dates() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2006,13 +1995,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_cant_access_budget_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let redis_client = redis::Client::open(env::CONF.connections.redis_uri.clone())
-            .expect("Connection to Redis failed");
 
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(db_thread_pool.clone()))
-                .app_data(Data::new(redis_client.clone()))
                 .configure(services::api::configure),
         )
         .await;

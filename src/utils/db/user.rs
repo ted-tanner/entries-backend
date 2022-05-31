@@ -3,7 +3,7 @@ use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
-use crate::handlers::request_io::{InputUser, InputEditUser};
+use crate::handlers::request_io::{InputEditUser, InputUser};
 use crate::models::user::{NewUser, User};
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;

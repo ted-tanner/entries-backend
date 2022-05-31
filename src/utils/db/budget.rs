@@ -5,7 +5,7 @@ use diesel::{dsl, sql_query, BelongingToDsl, ExpressionMethods, QueryDsl, RunQue
 use uuid::Uuid;
 
 use crate::definitions::*;
-use crate::handlers::request_io::{InputBudget, InputEntry, OutputBudget, InputEditBudget};
+use crate::handlers::request_io::{InputBudget, InputEditBudget, InputEntry, OutputBudget};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
@@ -468,7 +468,7 @@ mod tests {
 
         let budget_categories = vec![category0, category1];
 
-       let new_budget = InputBudget {
+        let new_budget = InputBudget {
             name: format!("Test Budget {user_number}"),
             description: Some(format!(
                 "This is a description of Test Budget {user_number}.",
@@ -508,10 +508,22 @@ mod tests {
         assert_eq!(&budget_after.end_date, &budget_before.end_date);
 
         for i in 0..budget_after.categories.len() {
-            assert_eq!(budget_after.categories[i].id, budget_before.categories[i].id);
-            assert_eq!(budget_after.categories[i].name, budget_before.categories[i].name);
-            assert_eq!(budget_after.categories[i].limit_cents, budget_before.categories[i].limit_cents);
-            assert_eq!(budget_after.categories[i].color, budget_before.categories[i].color);
+            assert_eq!(
+                budget_after.categories[i].id,
+                budget_before.categories[i].id
+            );
+            assert_eq!(
+                budget_after.categories[i].name,
+                budget_before.categories[i].name
+            );
+            assert_eq!(
+                budget_after.categories[i].limit_cents,
+                budget_before.categories[i].limit_cents
+            );
+            assert_eq!(
+                budget_after.categories[i].color,
+                budget_before.categories[i].color
+            );
         }
 
         assert_eq!(&budget_after.description, &budget_edits.description);
@@ -555,7 +567,7 @@ mod tests {
 
         let budget_categories = vec![category0, category1];
 
-       let new_budget = InputBudget {
+        let new_budget = InputBudget {
             name: format!("Test Budget {user_number}"),
             description: Some(format!(
                 "This is a description of Test Budget {user_number}.",
@@ -576,7 +588,7 @@ mod tests {
         let new_budget_json = web::Json(new_budget.clone());
         let budget_before =
             create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
-                
+
         let budget_edits = InputEditBudget {
             id: budget_before.id.clone(),
             name: String::from("this is an edited budget name"),
@@ -604,10 +616,22 @@ mod tests {
         assert_eq!(&budget_after.end_date, &budget_edits.end_date);
 
         for i in 0..budget_after.categories.len() {
-            assert_eq!(budget_after.categories[i].id, budget_before.categories[i].id);
-            assert_eq!(budget_after.categories[i].name, budget_before.categories[i].name);
-            assert_eq!(budget_after.categories[i].limit_cents, budget_before.categories[i].limit_cents);
-            assert_eq!(budget_after.categories[i].color, budget_before.categories[i].color);
+            assert_eq!(
+                budget_after.categories[i].id,
+                budget_before.categories[i].id
+            );
+            assert_eq!(
+                budget_after.categories[i].name,
+                budget_before.categories[i].name
+            );
+            assert_eq!(
+                budget_after.categories[i].limit_cents,
+                budget_before.categories[i].limit_cents
+            );
+            assert_eq!(
+                budget_after.categories[i].color,
+                budget_before.categories[i].color
+            );
         }
     }
 

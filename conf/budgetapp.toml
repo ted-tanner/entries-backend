@@ -2,7 +2,6 @@
 
 [connections]
 database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
-redis_uri = "redis://default:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
 
 [hashing]
 hash_iterations = 2

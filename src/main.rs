@@ -137,55 +137,18 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    log::info!("Connecting to Redis...");
-
-    let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("Failed to connect to Redis");
-            std::process::exit(1);
-        }
-    };
-
-    {
-        // Test connection to Redis (then drop the test connection)
-        match redis_client.get_connection() {
-            Ok(c) => c,
-            Err(_) => {
-                eprintln!("Failed to connect to Redis");
-                std::process::exit(1);
-            }
-        };
-
-        log::info!("Successfully connected to Redis");
-    }
-
     // Declaring a vec of job runners here to give it the same lifetime as the HTTP server
     let mut runners = Vec::new();
 
     if schedule_cron_jobs {
+        let db_thread_pool_ref = db_thread_pool.clone();
+
         let clear_otp_verification_count_job = move || {
-            let redis_client = match redis::Client::open(&*env::CONF.connections.redis_uri) {
-                Ok(c) => c,
-                Err(_) => {
-                    return Err(cron::CronJobError::JobFailure(Some(
-                        "Failed to connect to Redis",
-                    )));
-                }
-            };
+            let db_connection = db_thread_pool_ref
+                .get()
+                .expect("Failed to get thread for connecting to db");
 
-            let mut redis_connection = match redis_client.get_connection() {
-                Ok(c) => c,
-                Err(_) => {
-                    return Err(cron::CronJobError::JobFailure(Some(
-                        "Failed to connect to Redis",
-                    )));
-                }
-            };
-
-            if utils::cache::synchr::auth::clear_recent_otp_verifications(&mut redis_connection)
-                .is_err()
-            {
+            if utils::db::auth::clear_otp_verification_count(&db_connection).is_err() {
                 return Err(cron::CronJobError::JobFailure(Some(
                     "Failed to clear recent OTP verfications",
                 )));
@@ -194,12 +157,14 @@ async fn main() -> std::io::Result<()> {
             Ok(())
         };
 
-        let cron_job_db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
+        let db_thread_pool_ref = db_thread_pool.clone();
 
         let clear_expired_blacklisted_tokens_job = move || {
-            if utils::db::auth::clear_all_expired_refresh_tokens(&cron_job_db_connection).is_err() {
+            let db_connection = db_thread_pool_ref
+                .get()
+                .expect("Failed to get thread for connecting to db");
+
+            if utils::db::auth::clear_all_expired_refresh_tokens(&db_connection).is_err() {
                 return Err(cron::CronJobError::JobFailure(Some(
                     "Failed to clear expired refresh tokens",
                 )));
@@ -232,7 +197,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
-            .app_data(Data::new(redis_client.clone()))
             .configure(services::api::configure)
             .configure(services::web::configure)
             .wrap(Logger::default())

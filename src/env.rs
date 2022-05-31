@@ -15,7 +15,6 @@ pub struct Conf {
 #[derive(Deserialize, Serialize)]
 pub struct Connections {
     pub database_uri: String,
-    pub redis_uri: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -43,7 +42,7 @@ pub struct Lifetimes {
 
 #[derive(Deserialize, Serialize)]
 pub struct Security {
-    pub otp_max_attempts: u64,
+    pub otp_max_attempts: i16,
 }
 
 #[derive(Deserialize, Serialize)]

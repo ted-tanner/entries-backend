@@ -46,7 +46,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_common_password_set() {
         let set = CommonPasswordSet::generate();
-        
+
         let path = std::path::Path::new(*env::password::COMMON_PASSWORDS_FILE_PATH);
         let common_passwords_file = File::open(path).unwrap();
         let common_passwords = io::BufReader::new(common_passwords_file)
