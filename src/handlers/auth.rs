@@ -128,7 +128,6 @@ pub async fn verify_otp_for_signin(
         Ok(a) => a,
         Err(e) => {
             error!("{}", e);
-            println!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(
                 "Failed to check OTP attempt count",
             )));
