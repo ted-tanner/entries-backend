@@ -55,6 +55,9 @@ pub fn get_all_budgets_for_user(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
+    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed JWT.
+    //
+    // BEWARE of using this function when the user_id comes as input directly from the client.
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
         WHERE user_budgets.user_id = '{user_id}' \
@@ -109,6 +112,12 @@ pub fn get_all_budgets_for_user_between_dates(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
+    // The use of this raw(ish) query is safe because the user_id comes from a signed JWT and the
+    // dates are type-checked when they are deserialized.
+    //
+    // BEWARE of using this function when either the user_id or the dates come as input directly
+    // from the client.
+
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
         WHERE user_budgets.user_id = '{user_id}' \

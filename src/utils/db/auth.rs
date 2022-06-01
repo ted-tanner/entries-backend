@@ -29,6 +29,7 @@ pub fn clear_all_expired_refresh_tokens(
 pub fn clear_otp_verification_count(
     db_connection: &DbConnection,
 ) -> Result<usize, diesel::result::Error> {
+    // The use of this raw(ish) query is safe because it takes no input from the client.
     diesel::sql_query("TRUNCATE otp_attempts").execute(db_connection)
 }
 
@@ -42,6 +43,9 @@ pub fn get_and_increment_otp_verification_count(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
+    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed JWT.
+    //
+    // BEWARE of using this function when the user_id comes as input directly from the client.
     let query = format!(
         "INSERT INTO otp_attempts \
          (user_id, attempt_count) \

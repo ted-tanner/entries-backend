@@ -33,7 +33,6 @@ actix_workers = 12
 
 # [connections]
 # database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
-# redis_uri = "redis://default:c9AE2ysdmjnwXzjuloGVL6vXdTOqMUohxgN9H0ePVEZCTUMYZIbIuGrfYxHaSfY0@localhost"
 
 # [keys]
 # hashing_key = "OCc!7xlcOCc!7xlcOCc!7xlcOCc!7xlc"
