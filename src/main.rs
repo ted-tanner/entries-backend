@@ -192,7 +192,7 @@ async fn main() -> std::io::Result<()> {
         const SECONDS_IN_DAY: u64 = 86_400;
         let long_lifetime_runner =
             cron::Runner::with_granularity(Duration::from_secs(SECONDS_IN_DAY));
-        
+
         let otp_attempts_reset_runner = cron::Runner::with_granularity(Duration::from_secs(
             TryInto::<u64>::try_into(env::CONF.security.otp_attempts_reset_mins)
                 .expect("Invalid otp_attempts_reset_mins config")

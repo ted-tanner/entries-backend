@@ -33,7 +33,7 @@ pub async fn sign_in(
 
         db::user::get_user_by_email(&db_connection, &credentials.email)
     })
-        .await?
+    .await?
     {
         Ok(u) => u,
         Err(_) => return Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))),
@@ -45,7 +45,7 @@ pub async fn sign_in(
             .expect("Failed to access database thread pool");
         db::auth::get_and_increment_password_attempt_count(&db_connection, user.id)
     })
-        .await?
+    .await?
     {
         Ok(a) => a,
         Err(e) => {
@@ -57,9 +57,9 @@ pub async fn sign_in(
     };
 
     if attempts > env::CONF.security.password_max_attempts {
-        return Err(ServerError::AccessForbidden(
-            Some("Too many login attempts. Try again in a few minutes.")
-        ));
+        return Err(ServerError::AccessForbidden(Some(
+            "Too many login attempts. Try again in a few minutes.",
+        )));
     }
 
     let does_password_match_hash =
@@ -122,7 +122,7 @@ pub async fn verify_otp_for_signin(
     let token_claims = match web::block(move || {
         jwt::validate_signin_token(&otp_and_token.0.signin_token)
     })
-        .await?
+    .await?
     {
         Ok(t) => t,
         Err(e) => match e {
@@ -148,7 +148,7 @@ pub async fn verify_otp_for_signin(
             .expect("Failed to access database thread pool");
         db::auth::get_and_increment_otp_verification_count(&db_connection, token_claims.uid)
     })
-        .await?
+    .await?
     {
         Ok(a) => a,
         Err(e) => {
@@ -186,7 +186,7 @@ pub async fn verify_otp_for_signin(
 
         Ok(is_valid)
     })
-        .await?
+    .await?
     {
         Ok(v) => v,
         Err(e) => match e {
@@ -246,7 +246,7 @@ pub async fn refresh_tokens(
 
         jwt::validate_refresh_token(token.0.token.as_str(), &db_connection)
     })
-        .await?
+    .await?
     {
         Ok(c) => c,
         Err(e) => match e {
@@ -279,7 +279,7 @@ pub async fn refresh_tokens(
                 .expect("Failed to access database thread pool"),
         )
     })
-        .await?
+    .await?
     {
         Ok(_) => {}
         Err(e) => {
@@ -329,7 +329,7 @@ pub async fn logout(
 
         jwt::validate_refresh_token(&refresh_token_copy, &db_connection)
     })
-        .await?
+    .await?
     {
         Ok(tc) => tc,
         Err(e) => match e {
@@ -368,7 +368,7 @@ pub async fn logout(
                 .expect("Failed to access database thread pool"),
         )
     })
-        .await
+    .await
     {
         Ok(_) => Ok(HttpResponse::Ok().finish()),
         Err(e) => {
@@ -403,7 +403,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -427,7 +427,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -465,7 +465,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -489,7 +489,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email.clone(),
@@ -515,7 +515,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -539,8 +539,8 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
-        
+        .await;
+
         let credentials = CredentialPair {
             email: new_user.email,
             password: new_user.password,
@@ -562,7 +562,7 @@ mod tests {
             .insert_header(("content-type", "application/json"))
             .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
             .to_request();
-        
+
         let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::FORBIDDEN);
     }
@@ -576,7 +576,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -600,7 +600,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -671,7 +671,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -695,7 +695,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -767,7 +767,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -791,7 +791,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -853,7 +853,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -877,7 +877,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -919,7 +919,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -943,7 +943,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -994,7 +994,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1018,7 +1018,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -1069,7 +1069,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1093,7 +1093,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let credentials = CredentialPair {
             email: new_user.email,
@@ -1143,7 +1143,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1169,7 +1169,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
@@ -1237,7 +1237,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1261,7 +1261,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
@@ -1309,7 +1309,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1333,7 +1333,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
@@ -1381,7 +1381,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1405,7 +1405,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
@@ -1460,7 +1460,7 @@ mod tests {
                 .app_data(Data::new(db_thread_pool.clone()))
                 .configure(services::api::configure),
         )
-            .await;
+        .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let new_user = InputUser {
@@ -1484,7 +1484,7 @@ mod tests {
                 .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
                 .to_request(),
         )
-            .await;
+        .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
         let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;

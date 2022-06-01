@@ -90,7 +90,6 @@ pub fn get_and_increment_password_attempt_count(
     Ok(db_resp[0].attempt_count)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,7 +244,7 @@ mod tests {
             get_and_increment_password_attempt_count(&db_connection, user.id).unwrap();
         assert_eq!(current_count, 3);
     }
-    
+
     #[allow(dead_code)]
     #[derive(Queryable, QueryableByName)]
     struct AttemptsField {
