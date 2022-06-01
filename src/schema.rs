@@ -109,6 +109,13 @@ table! {
 }
 
 table! {
+    password_attempts (user_id) {
+        user_id -> Uuid,
+        attempt_count -> Int2,
+    }
+}
+
+table! {
     user_budgets (id) {
         id -> Int4,
         created_timestamp -> Timestamp,
@@ -162,6 +169,7 @@ allow_tables_to_appear_in_same_query!(
     entry_comment_reactions,
     entry_comments,
     otp_attempts,
+    password_attempts,
     user_budgets,
     user_notifications,
     users,

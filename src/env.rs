@@ -43,6 +43,9 @@ pub struct Lifetimes {
 #[derive(Deserialize, Serialize)]
 pub struct Security {
     pub otp_max_attempts: i16,
+    pub otp_attempts_reset_mins: i16,
+    pub password_max_attempts: i16,
+    pub password_attempts_reset_mins: i16,
 }
 
 #[derive(Deserialize, Serialize)]

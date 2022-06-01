@@ -22,6 +22,9 @@ refresh_token_lifetime_days = 28
 
 [security]
 otp_max_attempts = 8
+otp_attempts_reset_mins = 15
+password_max_attempts = 12
+password_attempts_reset_mins = 15
 
 [workers]
 actix_workers = 12

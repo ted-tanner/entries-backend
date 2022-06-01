@@ -159,6 +159,22 @@ async fn main() -> std::io::Result<()> {
 
         let db_thread_pool_ref = db_thread_pool.clone();
 
+        let clear_password_attempt_count_job = move || {
+            let db_connection = db_thread_pool_ref
+                .get()
+                .expect("Failed to get thread for connecting to db");
+
+            if utils::db::auth::clear_password_attempt_count(&db_connection).is_err() {
+                return Err(cron::CronJobError::JobFailure(Some(
+                    "Failed to clear recent password attempts",
+                )));
+            }
+
+            Ok(())
+        };
+
+        let db_thread_pool_ref = db_thread_pool.clone();
+
         let clear_expired_blacklisted_tokens_job = move || {
             let db_connection = db_thread_pool_ref
                 .get()
@@ -176,9 +192,17 @@ async fn main() -> std::io::Result<()> {
         const SECONDS_IN_DAY: u64 = 86_400;
         let long_lifetime_runner =
             cron::Runner::with_granularity(Duration::from_secs(SECONDS_IN_DAY));
+        
+        let otp_attempts_reset_runner = cron::Runner::with_granularity(Duration::from_secs(
+            TryInto::<u64>::try_into(env::CONF.security.otp_attempts_reset_mins)
+                .expect("Invalid otp_attempts_reset_mins config")
+                * 60,
+        ));
 
-        let short_lifetime_runner = cron::Runner::with_granularity(Duration::from_secs(
-            env::CONF.lifetimes.otp_lifetime_mins * 2 * 60 + 1,
+        let password_attempts_reset_runner = cron::Runner::with_granularity(Duration::from_secs(
+            TryInto::<u64>::try_into(env::CONF.security.password_attempts_reset_mins)
+                .expect("Invalid password_attempts_reset_mins config")
+                * 60,
         ));
 
         long_lifetime_runner.add_job(
@@ -186,15 +210,22 @@ async fn main() -> std::io::Result<()> {
             String::from("Clear expired blacklisted refresh tokens"),
         );
 
-        short_lifetime_runner.add_job(
+        otp_attempts_reset_runner.add_job(
             clear_otp_verification_count_job,
             String::from("Clear OTP Verificaiton"),
         );
 
-        runners.push(short_lifetime_runner);
+        password_attempts_reset_runner.add_job(
+            clear_password_attempt_count_job,
+            String::from("Clear Password Attemps"),
+        );
+
+        runners.push(long_lifetime_runner);
+        runners.push(otp_attempts_reset_runner);
+        runners.push(password_attempts_reset_runner);
     }
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
             .configure(services::api::configure)
@@ -204,5 +235,12 @@ async fn main() -> std::io::Result<()> {
     .workers(env::CONF.workers.actix_workers)
     .bind(base_addr)?
     .run()
-    .await
+    .await;
+
+    // Log something so th runners vec doesn't get optimized away
+    for _ in runners {
+        log::info!("Shutting down cron job runner...");
+    }
+
+    return server;
 }

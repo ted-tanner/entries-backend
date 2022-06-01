@@ -417,9 +417,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Throttle password attempts similar to how OTP attempts get throttled
 * Editing budget shouldn't allow for changing categories. Handle that in separate endpoint
-* [UPDATE: Look at second bullet under this and follow that] Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
+* Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
-  - Perhaps the server should just get out of the business of handling categories altogether and just store categories as strings. The client can then create a set of those strings for calculations. This might be the most robust (least error prone) solution.
+  - Perhaps no deletion is necessary for categories until budget is deleted
 
 * Get web app running
 * Figure out how to do timezone-aware dates

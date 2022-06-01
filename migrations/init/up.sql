@@ -111,6 +111,11 @@ CREATE TABLE otp_attempts (
     attempt_count SMALLINT NOT NULL
 );
 
+CREATE TABLE password_attempts (
+    user_id UUID UNIQUE NOT NULL PRIMARY KEY,
+    attempt_count SMALLINT NOT NULL
+);
+
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     password_hash TEXT NOT NULL,
@@ -164,6 +169,7 @@ ALTER TABLE entry_comments ADD CONSTRAINT entry_key FOREIGN KEY(entry_id) REFERE
 ALTER TABLE entry_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE entry_comment_reactions ADD CONSTRAINT comment_key FOREIGN KEY(comment_id) REFERENCES entry_comments(id) ON DELETE CASCADE;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_notifications ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 
 -- Many-to-many relational tables

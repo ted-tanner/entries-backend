@@ -13,6 +13,7 @@ ALTER TABLE entry_comments DROP CONSTRAINT entry_key;
 ALTER TABLE entry_comment_reactions DROP CONSTRAINT user_key;
 ALTER TABLE entry_comment_reactions DROP CONSTRAINT comment_key;
 ALTER TABLE otp_attempts DROP CONSTRAINT user_key;
+ALTER TABLE password_attempts DROP CONSTRAINT user_key;
 ALTER TABLE user_notifications DROP CONSTRAINT user_key;
 
 ALTER TABLE user_budgets DROP CONSTRAINT user_key;
@@ -28,6 +29,7 @@ DROP TABLE entries;
 DROP TABLE entry_comments;
 DROP TABLE entry_comment_reactions;
 DROP TABLE otp_attempts;
+DROP TABLE password_attempts;
 DROP TABLE users;
 DROP TABLE user_notifications;
 
