@@ -287,6 +287,37 @@ pub fn edit_budget(
     }
 }
 
+pub fn add_user(
+    db_connection: &DbConnection,
+    budget_id: Uuid,
+    user_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    let current_time = chrono::Utc::now().naive_utc();
+
+    let new_user_budget_association = NewUserBudget {
+        created_timestamp: current_time,
+        user_id,
+        budget_id,
+    };
+
+    dsl::insert_into(user_budgets)
+        .values(&new_user_budget_association)
+        .execute(db_connection)
+}
+
+pub fn remove_user(
+    db_connection: &DbConnection,
+    budget_id: Uuid,
+    user_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(
+        user_budgets
+            .filter(user_budget_fields::user_id.eq(user_id))
+            .filter(user_budget_fields::budget_id.eq(budget_id)),
+    )
+    .execute(db_connection)
+}
+
 pub fn create_entry(
     db_connection: &DbConnection,
     entry_data: &web::Json<InputEntry>,
@@ -437,6 +468,314 @@ mod tests {
             budget_categories[0].limit_cents
         );
         assert_eq!(saved_categories[0].color, budget_categories[0].color);
+    }
+
+    #[actix_rt::test]
+    async fn test_add_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user1 = InputUser {
+            email: format!("test_user1{}@test.com", user1_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user1_number),
+            last_name: format!("User1-{}", user1_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user1_json = web::Json(new_user1);
+        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user2 = InputUser {
+            email: format!("test_user2{}@test.com", user2_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user2_number),
+            last_name: format!("User2-{}", user2_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user2_json = web::Json(new_user2);
+        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user1_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget.clone());
+        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+
+        add_user(&db_connection, budget.id, created_user2.id).unwrap();
+
+        let created_user1_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user1.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        let created_user2_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_user1_budget_associations.len(), 1);
+        assert_eq!(created_user2_budget_associations.len(), 1);
+
+        assert!(
+            created_user1_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
+        );
+        assert!(
+            created_user2_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
+        );
+
+        assert_eq!(
+            created_user1_budget_associations[0].user_id,
+            created_user1.id
+        );
+        assert_eq!(
+            created_user2_budget_associations[0].user_id,
+            created_user2.id
+        );
+
+        let query_user1 = format!(
+            "SELECT budgets.* FROM user_budgets, budgets \
+             WHERE user_budgets.user_id = '{}' \
+             AND user_budgets.budget_id = budgets.id \
+	     ORDER BY budgets.start_date",
+            created_user1.id,
+        );
+
+        let query_user2 = format!(
+            "SELECT budgets.* FROM user_budgets, budgets \
+             WHERE user_budgets.user_id = '{}' \
+             AND user_budgets.budget_id = budgets.id \
+	     ORDER BY budgets.start_date",
+            created_user2.id,
+        );
+
+        let user1_loaded_budgets = sql_query(&query_user1)
+            .load::<Budget>(&db_connection)
+            .unwrap();
+        let user2_loaded_budgets = sql_query(&query_user2)
+            .load::<Budget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(user1_loaded_budgets.len(), 1);
+        assert_eq!(user2_loaded_budgets.len(), 1);
+
+        let budget_for_user1 = &user1_loaded_budgets[0];
+        let budget_for_user2 = &user2_loaded_budgets[0];
+
+        assert_eq!(budget_for_user1.id, budget_for_user2.id);
+        assert_eq!(budget_for_user1.name, budget_for_user2.name);
+        assert_eq!(budget_for_user1.description, budget_for_user2.description);
+        assert_eq!(budget_for_user1.start_date, budget_for_user2.start_date);
+        assert_eq!(budget_for_user1.end_date, budget_for_user2.end_date);
+    }
+
+    #[actix_rt::test]
+    async fn test_remove_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user1 = InputUser {
+            email: format!("test_user1{}@test.com", user1_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user1_number),
+            last_name: format!("User1-{}", user1_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user1_json = web::Json(new_user1);
+        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user2 = InputUser {
+            email: format!("test_user2{}@test.com", user2_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user2_number),
+            last_name: format!("User2-{}", user2_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user2_json = web::Json(new_user2);
+        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget1 = InputBudget {
+            name: format!("Test Budget {user1_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget2 = InputBudget {
+            name: format!("Test Budget {user2_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user2_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget1_json = web::Json(new_budget1.clone());
+        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
+
+        let new_budget2_json = web::Json(new_budget2.clone());
+        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user2.id).unwrap();
+
+        add_user(&db_connection, budget1.id, created_user2.id).unwrap();
+        add_user(&db_connection, budget2.id, created_user1.id).unwrap();
+
+        let created_user1_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user1.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        let created_user2_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_user1_budget_associations.len(), 2);
+        assert_eq!(created_user2_budget_associations.len(), 2);
+
+        let affected_row_count = remove_user(&db_connection, budget2.id, created_user2.id).unwrap();
+        assert_eq!(affected_row_count, 1);
+
+        let created_user1_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user1.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        let created_user2_budget_associations = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2.id))
+            .load::<UserBudget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_user1_budget_associations.len(), 2);
+        assert_eq!(created_user2_budget_associations.len(), 1);
+
+        let query_user1 = format!(
+            "SELECT budgets.* FROM user_budgets, budgets \
+             WHERE user_budgets.user_id = '{}' \
+             AND user_budgets.budget_id = budgets.id \
+	     ORDER BY budgets.start_date",
+            created_user1.id,
+        );
+
+        let query_user2 = format!(
+            "SELECT budgets.* FROM user_budgets, budgets \
+             WHERE user_budgets.user_id = '{}' \
+             AND user_budgets.budget_id = budgets.id \
+	     ORDER BY budgets.start_date",
+            created_user2.id,
+        );
+
+        let user1_loaded_budgets = sql_query(&query_user1)
+            .load::<Budget>(&db_connection)
+            .unwrap();
+        let user2_loaded_budgets = sql_query(&query_user2)
+            .load::<Budget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(user1_loaded_budgets.len(), 2);
+        assert_eq!(user2_loaded_budgets.len(), 1);
+
+        let mut budget_ids_for_user1 = Vec::new();
+        budget_ids_for_user1.push(user1_loaded_budgets[0].id);
+        budget_ids_for_user1.push(user1_loaded_budgets[1].id);
+        let budget1_for_user2 = &user2_loaded_budgets[0];
+
+        assert!(budget_ids_for_user1.contains(&budget1.id));
+        assert!(budget_ids_for_user1.contains(&budget2.id));
+        assert_eq!(budget1_for_user2.id, budget1.id);
     }
 
     #[actix_rt::test]
