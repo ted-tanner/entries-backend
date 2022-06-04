@@ -254,6 +254,7 @@ mod tests {
         attempt_count: i16,
     }
 
+    #[ignore]
     #[actix_rt::test]
     async fn test_clear_otp_verification_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
@@ -304,6 +305,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[actix_rt::test]
     async fn test_clear_password_attempt_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
