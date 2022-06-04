@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse};
 use log::error;
+use uuid::Uuid;
 
 use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
@@ -14,37 +15,9 @@ pub async fn get(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_id: web::Json<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
-
     let budget_id_clone = budget_id.budget_id;
 
-    let is_user_in_budget = match web::block(move || {
-        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id_clone)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
-            _ => {
-                error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to get budget data",
-                )));
-            }
-        },
-    };
-
-    if !is_user_in_budget {
-        return Err(ServerError::NotFound(Some(
-            "User has no budget with provided ID",
-        )));
-    }
+    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id_clone).await?;
 
     let budget = match web::block(move || {
         let db_connection = db_thread_pool
@@ -189,38 +162,9 @@ pub async fn edit(
         )));
     }
 
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
-
     let budget_id = budget_data.id.clone();
-
-    let is_user_in_budget = match web::block(move || {
-        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
-            _ => {
-                error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to get budget data",
-                )));
-            }
-        },
-    };
-
-    if !is_user_in_budget {
-        return Err(ServerError::AccessForbidden(Some(
-            "User has no budget with provided ID",
-        )));
-    }
-
+    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
+    
     web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -241,38 +185,9 @@ pub async fn add_entry(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     entry_data: web::Json<InputEntry>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
-
     let budget_id = entry_data.budget_id;
-
-    let is_user_in_budget = match web::block(move || {
-        db::budget::check_user_in_budget(&db_connection, auth_user_claims.0.uid, budget_id)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
-            _ => {
-                error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to get budget data",
-                )));
-            }
-        },
-    };
-
-    if !is_user_in_budget {
-        return Err(ServerError::AccessForbidden(Some(
-            "User has no budget with provided ID",
-        )));
-    }
-
+    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
+    
     let new_entry = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -297,6 +212,45 @@ pub async fn add_entry(
     };
 
     Ok(HttpResponse::Created().json(new_entry))
+}
+
+#[inline]
+async fn ensure_user_in_budget(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_id: Uuid,
+    budget_id: Uuid,
+) -> Result<(), ServerError> {
+    let is_user_in_budget = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::check_user_in_budget(&db_connection, user_id, budget_id)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                return Err(ServerError::InvalidFormat(None));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to get budget data",
+                )));
+            }
+        },
+    };
+
+    if !is_user_in_budget {
+        return Err(ServerError::NotFound(Some(
+            "User has no budget with provided ID",
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2228,7 +2182,7 @@ mod tests {
             .to_request();
 
         let unauth_entry0_res = test::call_service(&app, unauth_entry0_req).await;
-        assert_eq!(unauth_entry0_res.status(), http::StatusCode::FORBIDDEN);
+        assert_eq!(unauth_entry0_res.status(), http::StatusCode::NOT_FOUND);
 
         // Make sure the created budget hasn't changed
 
