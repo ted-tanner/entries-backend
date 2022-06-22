@@ -1,10 +1,12 @@
+/* jshint esversion: 6 */
+
 const PAGE_LOAD_FADE_IN_DURATION = 1650;
 const PAGE_LOAD_FADE_IN_INTERVAL = 400;
 
-const SCROLL_FADE_IN_DURATION = 1650;
+const SCROLL_FADE_IN_DURATION = 1250;
 const SCROLL_FADE_IN_INTERVAL = 400;
 
-const QUICK_SCROLL_FADE_IN_DURATION = 600;
+const QUICK_SCROLL_FADE_IN_DURATION = 1000;
 const QUICK_SCROLL_FADE_IN_INTERVAL = 350;
 
 const FADE_IN_ON_LOAD_CLASS = 'fade-in-on-load';
@@ -26,9 +28,6 @@ const CITATION_SHIFT = 0.18;
 const WRAP_AFTER_WIDTH = 750;
 const MAX_SCALE_WIDTH = 1300;
 
-const LIGHT_PHONE_IMG_NAME = 'budget-app-light.png';
-const DARK_PHONE_IMG_NAME = 'budget-app-dark.png';
-
 class TextResizeDescriptor {
     constructor(cssClass, scale, leftPadding) {
         this.cssClass = cssClass;
@@ -48,97 +47,112 @@ const extraLineBreaks = [];
 let userHasScrolled = false;
 let areElementsLoading = false;
 
-let _resizeText = (textResizeDescriptors) => {
+function resizeText(textResizeDescriptors) {
     textResizeDescriptors.forEach(descriptor => {
         let elements = document.getElementsByClassName(descriptor.cssClass);
 
-        for (element of elements) {
-            if ($(window).width() > WRAP_AFTER_WIDTH) {
-                element.style.fontSize = ((Math.min($(window).width(), MAX_SCALE_WIDTH) / 10) * descriptor.scale) + 'px';
-            }
+        for (let element of elements) {
+            if (window.innerWidth > WRAP_AFTER_WIDTH)
+                element.style.fontSize = ((Math.min(window.innerWidth,
+                                                    MAX_SCALE_WIDTH) / 10) * descriptor.scale) + 'px';
 
-            if (descriptor.leftPadding !== null) {
-                element.style.marginLeft = (3 * ($(window).width() / 10) * descriptor.leftPadding) + 'px';
-            }
+            if (descriptor.leftPadding !== null)
+                element.style.marginLeft = (3 * (window.innerWidth / 10) * descriptor.leftPadding) + 'px';
         }
     });
 }
 
-let _fadeInByGroup = (cssClassName, fadeInDuration, fadeInInterval) => {
+function fadeInElement(element, fadeInDuration) {    
+    element.style.opacity = 0;
+    element.style.display = "block";
+    
+    let start = null;
+    let fadeInDurationSquared = fadeInDuration * fadeInDuration;
+    
+    function fadeInStep(timestamp) {
+        if (start === null)
+            start = timestamp;
+
+        let elapsed = timestamp - start;
+        let percentOpacity = Math.min((elapsed * elapsed) / fadeInDurationSquared, 1);
+
+        element.style.opacity = percentOpacity;
+
+        if (percentOpacity !== 1)
+            window.requestAnimationFrame(fadeInStep);
+    }
+
+    window.requestAnimationFrame(fadeInStep);
+}
+
+function fadeInByGroup(cssClassName, fadeInDuration, fadeInInterval) {
     if (areElementsLoading) {
-        setTimeout(() => { _fadeInByGroup(cssClassName, fadeInDuration, fadeInInterval); }, 200);
+        setTimeout(() => { fadeInByGroup(cssClassName, fadeInDuration, fadeInInterval); }, 200);
         return;
     }
 
     areElementsLoading = true;
-    let fadeInElements = document.getElementsByClassName(cssClassName);
+    let elements = document.getElementsByClassName(cssClassName);
 
-    for (let i = 0; i < fadeInElements.length; ++i) {
-        fadeInElements[i].classList.add('___fade-in-group-' + i);
-    }
-
-    for (let i = 0; i < fadeInElements.length; ++i) {
+    for (let i = 0; i < elements.length; ++i) {
         setTimeout(() => {
-            $('.___fade-in-group-' + i).fadeIn(fadeInDuration).removeClass('___fade-in-group-' + i);
+            fadeInElement(elements[i], fadeInDuration);
         }, fadeInInterval * i);
     }
 
-    setTimeout(() => { areElementsLoading = false; }, fadeInInterval * (fadeInElements.length - 1));
+    setTimeout(() => { areElementsLoading = false; }, fadeInInterval * (elements.length - 1));
 }
 
-let _ensurePageIsScrollable = () => {
+function ensurePageIsScrollable() {
     let mainDocument = document.getElementById('main-document');
 
-    while (mainDocument.offsetHeight <= $(window).height()) {
+    while (mainDocument.offsetHeight <= window.innerHeight) {
         let br = document.createElement('br');
         mainDocument.appendChild(br);
         extraLineBreaks.push(br);
     }
 
-    while (mainDocument.offsetHeight > $(window).height() && extraLineBreaks.length > 0) {
+    while (mainDocument.offsetHeight > window.innerHeight && extraLineBreaks.length > 0)
         mainDocument.removeChild(extraLineBreaks.pop());
-    }
 }
 
-let _replaceFinalSegmentInUri = (uri, newSegment) => {
-    return uri.substr(0, uri.lastIndexOf('/') + 1) + newSegment;
-}
+window.addEventListener('load', () => {
+    let phoneImage = document.getElementById('iphone-img');
+    let phoneImageNewSrc = phoneImage.getAttribute(
+        window.matchMedia('(prefers-color-scheme: dark)').matches ?
+            'dark-mode-img' :
+            'light-mode-img');
 
-$(document).ready(() => {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        let phoneImage = document.getElementById('iphone-img');
-        let phoneImageSrc = phoneImage.getAttribute('src');
-        let phoneImageNewSrc = _replaceFinalSegmentInUri(phoneImageSrc, DARK_PHONE_IMG_NAME);
+    phoneImage.setAttribute('src', phoneImageNewSrc);
 
-        phoneImage.setAttribute('src', phoneImageNewSrc);
-    }
 
-    _resizeText(defaultTextResizeDescriptors);
-    _fadeInByGroup(FADE_IN_ON_LOAD_CLASS, PAGE_LOAD_FADE_IN_DURATION, PAGE_LOAD_FADE_IN_INTERVAL);
+    resizeText(defaultTextResizeDescriptors);
+    fadeInByGroup(FADE_IN_ON_LOAD_CLASS, PAGE_LOAD_FADE_IN_DURATION, PAGE_LOAD_FADE_IN_INTERVAL);
 
     let bottomLineBreaksDiv = document.getElementById('bottom-line-breaks');
-    for (let i = 0; i < ENDING_LINE_BREAKS_COUNT; ++i) {
+    for (let i = 0; i < ENDING_LINE_BREAKS_COUNT; ++i)
         bottomLineBreaksDiv.appendChild(document.createElement('br'));
-    }
 
-    _ensurePageIsScrollable();
+    ensurePageIsScrollable();
 
     console.log('Happy budgeting!');
-});
+}, false);
 
-$(window).scroll(() => {
+window.onscroll = () => {
     if (!userHasScrolled) {
         userHasScrolled = true;
 
-        _fadeInByGroup(FADE_IN_ON_SCROLL_CLASS, SCROLL_FADE_IN_DURATION, SCROLL_FADE_IN_INTERVAL);
+        fadeInByGroup(FADE_IN_ON_SCROLL_CLASS, SCROLL_FADE_IN_DURATION, SCROLL_FADE_IN_INTERVAL);
         setTimeout(() => {
-            _fadeInByGroup(QUICK_FADE_IN_ON_SCROLL_CLASS, QUICK_SCROLL_FADE_IN_DURATION, QUICK_SCROLL_FADE_IN_INTERVAL);
+            fadeInByGroup(QUICK_FADE_IN_ON_SCROLL_CLASS,
+                          QUICK_SCROLL_FADE_IN_DURATION,
+                          QUICK_SCROLL_FADE_IN_INTERVAL);
         }, SCROLL_FADE_IN_DURATION / 1.5);
     }
-    _ensurePageIsScrollable();
-});
+    ensurePageIsScrollable();
+};
 
-$(window).resize(() => {
-    _resizeText(defaultTextResizeDescriptors);
-    _ensurePageIsScrollable();
+window.addEventListener("resize", () => {
+    resizeText(defaultTextResizeDescriptors);
+    ensurePageIsScrollable();
 });

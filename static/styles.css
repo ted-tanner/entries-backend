@@ -4,6 +4,7 @@ body {
 
 li {
     margin-right: 30px;
+    padding: 10px;
 }
 
 #fade-out-footer {
@@ -43,27 +44,27 @@ li {
 }
 
 .ultra-heavy-text {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Verdana', sans-serif;
     font-weight: 900;
 }
 
 .very-heavy-text {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Verdana', sans-serif;
     font-weight: 800;
 }
 
 .heavy-text {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Verdana', sans-serif;
     font-weight: 700;
 }
 
 .medium-text {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Verdana', sans-serif;
     font-weight: 600;
 }
 
 .light-text {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Verdana', sans-serif;
     font-weight: 400;
 }
 
@@ -96,6 +97,7 @@ li {
 .citation {
     margin-left: 300px;
     margin-top: 0px;
+    padding: 15px;
 }
 
 .quote {
@@ -124,9 +126,4 @@ li {
 
 .quick-fade-in-after-scroll {
     display: none;
-}
-
-.invisible {
-    opacity: 0;
-    width: 100%;
 }
