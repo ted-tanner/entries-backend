@@ -10,6 +10,7 @@ pub mod error {
     use actix_web::{HttpResponse, HttpResponseBuilder};
     use std::fmt;
 
+    #[allow(dead_code)]
     #[derive(Debug)]
     pub enum ServerError {
         // 400 Errors

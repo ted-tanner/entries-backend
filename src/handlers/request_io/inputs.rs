@@ -110,6 +110,12 @@ pub struct InputEditBudget {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct UserInvitationToBudget {
+    pub invitee_user_id: Uuid,
+    pub budget_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InputEntry {
     pub budget_id: Uuid,
     pub amount_cents: i64,

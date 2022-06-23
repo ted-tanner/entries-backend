@@ -17,7 +17,12 @@ pub async fn get(
 ) -> Result<HttpResponse, ServerError> {
     let budget_id_clone = budget_id.budget_id;
 
-    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id_clone).await?;
+    ensure_user_in_budget(
+        db_thread_pool.clone(),
+        auth_user_claims.0.uid,
+        budget_id_clone,
+    )
+    .await?;
 
     let budget = match web::block(move || {
         let db_connection = db_thread_pool
@@ -164,7 +169,7 @@ pub async fn edit(
 
     let budget_id = budget_data.id.clone();
     ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
-    
+
     web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -187,7 +192,7 @@ pub async fn add_entry(
 ) -> Result<HttpResponse, ServerError> {
     let budget_id = entry_data.budget_id;
     ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
-    
+
     let new_entry = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -213,6 +218,38 @@ pub async fn add_entry(
 
     Ok(HttpResponse::Created().json(new_entry))
 }
+
+// // TODO: Test
+// pub async fn invite_user(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+//     invitation_info: web::Json<UserInvitationToBudget>,
+// ) -> Result<HttpResponse, ServerError> {
+//     let inviting_user_id = auth_user_claims.0.uid.clone();
+//     ensure_user_in_budget(db_thread_pool.clone(), inviting_user_id, invitation_info.budget_id.clone())
+//         .await?;
+
+//     // TODO
+// }
+
+// // TODO: Test
+// pub async fn accept_invitation(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+//     invitation_info: web::Json<UserInvitationToBudget>,
+// ) -> Result<HttpResponse, ServerError> {
+
+// }
+
+// // TODO: Test
+// pub async fn remove_budget(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+//     budget_id: web::Json<Uuid>,
+// ) -> Result<HttpResponse, ServerError> {
+//     // TODO: Delete relationship if not last user in budget. Otherwise, delete budget
+//     // entirely
+// }
 
 #[inline]
 async fn ensure_user_in_budget(

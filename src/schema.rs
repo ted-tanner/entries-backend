@@ -32,6 +32,18 @@ table! {
 }
 
 table! {
+    budget_share_events (id) {
+        id -> Uuid,
+        recipient_user_id -> Uuid,
+        sharer_user_id -> Uuid,
+        budget_id -> Uuid,
+        accepted -> Bool,
+        share_timestamp -> Timestamp,
+        accepted_declined_timestamp -> Nullable<Timestamp>,
+    }
+}
+
+table! {
     budgets (id) {
         id -> Uuid,
         is_shared -> Bool,
@@ -163,6 +175,7 @@ allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
     budget_comment_reactions,
     budget_comments,
+    budget_share_events,
     budgets,
     categories,
     entries,

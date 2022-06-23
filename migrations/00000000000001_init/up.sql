@@ -49,6 +49,17 @@ CREATE TABLE budget_comment_reactions (
     created_timestamp TIMESTAMP NOT NULL
 );
 
+CREATE TABLE budget_share_events (
+    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    recipient_user_id UUID NOT NULL,
+    sharer_user_id UUID NOT NULL,
+    budget_id UUID NOT NULL,
+    accepted BOOLEAN NOT NULL,
+    share_timestamp TIMESTAMP NOT NULL,
+    accepted_declined_timestamp TIMESTAMP,
+    UNIQUE (recipient_user_id, sharer_user_id, budget_id)
+);
+
 CREATE TABLE categories (
     pk SERIAL NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
@@ -161,6 +172,9 @@ ALTER TABLE budget_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFEREN
 ALTER TABLE budget_comments ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_comment_reactions ADD CONSTRAINT comment_key FOREIGN KEY(comment_id) REFERENCES budget_comments(id) ON DELETE CASCADE;
+ALTER TABLE budget_share_events ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE budget_share_events ADD CONSTRAINT sharer_key FOREIGN KEY(sharer_user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE budget_share_events ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
@@ -178,7 +192,8 @@ CREATE TABLE user_budgets (
     id SERIAL PRIMARY KEY,
     created_timestamp TIMESTAMP NOT NULL,
     user_id UUID NOT NULL,
-    budget_id UUID NOT NULL
+    budget_id UUID NOT NULL,
+    UNIQUE (user_id, budget_id)
 );
 
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
