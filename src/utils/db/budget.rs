@@ -351,7 +351,7 @@ pub fn get_all_pending_invitations_for_user(
     budget_share_events
         .filter(budget_share_event_fields::recipient_user_id.eq(user_id))
         .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-        .order(budget_share_event_fields::share_timestamp.desc())
+        .order(budget_share_event_fields::share_timestamp.asc())
         .load::<BudgetShareEvent>(db_connection)
 }
 
@@ -362,7 +362,7 @@ pub fn get_all_pending_invitations_made_by_user(
     budget_share_events
         .filter(budget_share_event_fields::sharer_user_id.eq(user_id))
         .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-        .order(budget_share_event_fields::share_timestamp.desc())
+        .order(budget_share_event_fields::share_timestamp.asc())
         .load::<BudgetShareEvent>(db_connection)
 }
 
@@ -1040,17 +1040,470 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_pending_invitations_for_user() {
-        todo!();
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user1 = InputUser {
+            email: format!("test_user1{}@test.com", user1_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user1_number),
+            last_name: format!("User1-{}", user1_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user1_json = web::Json(new_user1);
+        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user2 = InputUser {
+            email: format!("test_user2{}@test.com", user2_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user2_number),
+            last_name: format!("User2-{}", user2_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user2_json = web::Json(new_user2);
+        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget1 = InputBudget {
+            name: format!("Test Budget {user1_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget2 = InputBudget {
+            name: format!("Test Budget {user1_number} #2"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number} #2.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+        
+        let new_budget1_json = web::Json(new_budget1.clone());
+        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
+
+        let new_budget2_json = web::Json(new_budget2.clone());
+        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user1.id).unwrap();
+
+        invite_user(
+            &db_connection,
+            budget1.id,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        invite_user(
+            &db_connection,
+            budget2.id,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let share_events = get_all_pending_invitations_for_user(&db_connection,
+                                                                created_user1.id).unwrap();
+        
+        assert_eq!(share_events.len(), 0);
+        
+        let share_events = get_all_pending_invitations_for_user(&db_connection,
+                                                                created_user2.id).unwrap();
+
+        assert_eq!(share_events.len(), 2);
+
+        assert_eq!(
+            share_events[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[0].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[0].budget_id, budget1.id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+
+        assert_eq!(
+            share_events[1].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[1].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[1].budget_id, budget2.id);
+        assert_eq!(share_events[1].accepted, false);
+
+        assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].accepted_declined_timestamp.is_none());
+
+        mark_invitation_accepted(&db_connection, share_events[0].id).unwrap();
+
+        let share_events = get_all_pending_invitations_for_user(&db_connection,
+                                                                created_user2.id).unwrap();
+        
+        assert_eq!(share_events.len(), 1);
+
+        assert_eq!(
+            share_events[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[0].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[0].budget_id, budget2.id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
     #[actix_rt::test]
     async fn test_get_all_pending_invitations_made_by_user() {
-        todo!();
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user1 = InputUser {
+            email: format!("test_user1{}@test.com", user1_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user1_number),
+            last_name: format!("User1-{}", user1_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user1_json = web::Json(new_user1);
+        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user2 = InputUser {
+            email: format!("test_user2{}@test.com", user2_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user2_number),
+            last_name: format!("User2-{}", user2_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user2_json = web::Json(new_user2);
+        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget1 = InputBudget {
+            name: format!("Test Budget {user1_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget2 = InputBudget {
+            name: format!("Test Budget {user1_number} #2"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number} #2.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+        
+        let new_budget1_json = web::Json(new_budget1.clone());
+        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
+
+        let new_budget2_json = web::Json(new_budget2.clone());
+        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user1.id).unwrap();
+
+        invite_user(
+            &db_connection,
+            budget1.id,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        invite_user(
+            &db_connection,
+            budget2.id,
+            created_user2.id,
+            created_user1.id,
+        )
+            .unwrap();
+
+        let share_events = get_all_pending_invitations_made_by_user(&db_connection,
+                                                                    created_user2.id).unwrap();
+        
+        assert_eq!(share_events.len(), 0);
+
+        let share_events = get_all_pending_invitations_made_by_user(&db_connection,
+                                                                    created_user1.id).unwrap();
+
+        assert_eq!(share_events.len(), 2);
+
+        assert_eq!(
+            share_events[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[0].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[0].budget_id, budget1.id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+
+        assert_eq!(
+            share_events[1].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[1].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[1].budget_id, budget2.id);
+        assert_eq!(share_events[1].accepted, false);
+
+        assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].accepted_declined_timestamp.is_none());
+
+        mark_invitation_declined(&db_connection, share_events[0].id).unwrap();
+
+        let share_events = get_all_pending_invitations_made_by_user(&db_connection,
+                                                                    created_user1.id).unwrap();
+        
+        assert_eq!(share_events.len(), 1);
+
+        assert_eq!(
+            share_events[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_events[0].sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_events[0].budget_id, budget2.id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
     #[actix_rt::test]
     async fn test_get_invitation() {
-        todo!();
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user1 = InputUser {
+            email: format!("test_user1{}@test.com", user1_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user1_number),
+            last_name: format!("User1-{}", user1_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user1_json = web::Json(new_user1);
+        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user2 = InputUser {
+            email: format!("test_user2{}@test.com", user2_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user2_number),
+            last_name: format!("User2-{}", user2_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user2_json = web::Json(new_user2);
+        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user1_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user1_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user1_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget.clone());
+        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+
+        invite_user(
+            &db_connection,
+            budget.id,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let created_budget_share_events = budget_share_events
+            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+        
+        assert_eq!(created_budget_share_events.len(), 1);
+
+        mark_invitation_accepted(&db_connection, created_budget_share_events[0].id).unwrap();
+
+        let share_event = get_invitation(&db_connection, created_budget_share_events[0].id).unwrap();
+
+        assert_eq!(
+            share_event.recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            share_event.sharer_user_id,
+            created_user1.id
+        );
+        assert_eq!(share_event.budget_id, budget.id);
+        assert_eq!(share_event.accepted, true);
+
+        assert!(share_event.share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(
+            share_event
+                .accepted_declined_timestamp
+                .unwrap()
+                < chrono::Utc::now().naive_utc()
+        );
+        assert!(
+            share_event
+                .accepted_declined_timestamp
+                .unwrap()
+                > share_event.share_timestamp
+        );
     }
 
     #[actix_rt::test]
