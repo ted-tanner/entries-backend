@@ -5,7 +5,8 @@ use uuid::Uuid;
 use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, OutputBudget,
+    InputBudget, InputBudgetId, InputBudgetShareEventId, InputDateRange, InputEditBudget,
+    InputEntry, OutputBudget, UserInvitationToBudget,
 };
 use crate::middleware;
 use crate::utils::db;
@@ -219,26 +220,102 @@ pub async fn add_entry(
     Ok(HttpResponse::Created().json(new_entry))
 }
 
+// TODO: Test
+pub async fn invite_user(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    invitation_info: web::Json<UserInvitationToBudget>,
+) -> Result<HttpResponse, ServerError> {
+    let inviting_user_id = auth_user_claims.0.uid.clone();
+    ensure_user_in_budget(
+        db_thread_pool.clone(),
+        inviting_user_id,
+        invitation_info.budget_id.clone(),
+    )
+    .await?;
+
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::invite_user(
+            &db_connection,
+            invitation_info.budget_id,
+            invitation_info.invitee_user_id,
+            inviting_user_id,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                return Err(ServerError::InvalidFormat(None));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to share budget",
+                )));
+            }
+        },
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 // // TODO: Test
-// pub async fn invite_user(
+// pub async fn retract_invitation(
 //     db_thread_pool: web::Data<DbThreadPool>,
 //     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_info: web::Json<UserInvitationToBudget>,
+//     invitation_id: web::Json<InputBudgetShareEventId>,
 // ) -> Result<HttpResponse, ServerError> {
-//     let inviting_user_id = auth_user_claims.0.uid.clone();
-//     ensure_user_in_budget(db_thread_pool.clone(), inviting_user_id, invitation_info.budget_id.clone())
-//         .await?;
-
-//     // TODO
+//     todo!();
 // }
 
 // // TODO: Test
 // pub async fn accept_invitation(
 //     db_thread_pool: web::Data<DbThreadPool>,
 //     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_info: web::Json<UserInvitationToBudget>,
+//     invitation_id: web::Json<InputBudgetShareEventId>,
 // ) -> Result<HttpResponse, ServerError> {
+//     todo!();
+// }
 
+// // TODO: Test
+// pub async fn decline_invitation(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+//     invitation_id: web::Json<InputBudgetShareEventId>,
+// ) -> Result<HttpResponse, ServerError> {
+//     todo!();
+// }
+
+// // TODO: Test
+// pub async fn get_all_pending_invitations_for_user(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+// ) -> Result<HttpResponse, ServerError> {
+//     todo!();
+// }
+
+// // TODO: Test
+// pub async fn get_all_pending_invitations_made_by_user(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+// ) -> Result<HttpResponse, ServerError> {
+//     todo!();
+// }
+
+// // TODO: Test
+// pub async fn get_invitation(
+//     db_thread_pool: web::Data<DbThreadPool>,
+//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+//     invitation_id: web::Json<InputBudgetShareEventId>,
+// ) -> Result<HttpResponse, ServerError> {
+//     todo!();
 // }
 
 // // TODO: Test
@@ -249,6 +326,7 @@ pub async fn add_entry(
 // ) -> Result<HttpResponse, ServerError> {
 //     // TODO: Delete relationship if not last user in budget. Otherwise, delete budget
 //     // entirely
+//     todo!();
 // }
 
 #[inline]
