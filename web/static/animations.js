@@ -63,8 +63,7 @@ function resizeText(textResizeDescriptors) {
 }
 
 function fadeInElement(element, fadeInDuration) {    
-    element.style.opacity = 0;
-    element.style.display = "block";
+    element.style.display = 'block';
     
     let start = null;
     let fadeInDurationSquared = fadeInDuration * fadeInDuration;
@@ -103,19 +102,6 @@ function fadeInByGroup(cssClassName, fadeInDuration, fadeInInterval) {
     setTimeout(() => { areElementsLoading = false; }, fadeInInterval * (elements.length - 1));
 }
 
-function ensurePageIsScrollable() {
-    let mainDocument = document.getElementById('main-document');
-
-    while (mainDocument.offsetHeight <= window.innerHeight) {
-        let br = document.createElement('br');
-        mainDocument.appendChild(br);
-        extraLineBreaks.push(br);
-    }
-
-    while (mainDocument.offsetHeight > window.innerHeight && extraLineBreaks.length > 0)
-        mainDocument.removeChild(extraLineBreaks.pop());
-}
-
 window.addEventListener('load', () => {
     let phoneImage = document.getElementById('iphone-img');
     let phoneImageNewSrc = phoneImage.getAttribute(
@@ -133,8 +119,6 @@ window.addEventListener('load', () => {
     for (let i = 0; i < ENDING_LINE_BREAKS_COUNT; ++i)
         bottomLineBreaksDiv.appendChild(document.createElement('br'));
 
-    ensurePageIsScrollable();
-
     console.log('Happy budgeting!');
 }, false);
 
@@ -149,10 +133,8 @@ window.onscroll = () => {
                           QUICK_SCROLL_FADE_IN_INTERVAL);
         }, SCROLL_FADE_IN_DURATION / 1.5);
     }
-    ensurePageIsScrollable();
 };
 
 window.addEventListener("resize", () => {
     resizeText(defaultTextResizeDescriptors);
-    ensurePageIsScrollable();
 });

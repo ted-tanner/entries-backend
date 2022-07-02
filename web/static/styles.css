@@ -112,18 +112,28 @@ li {
     text-align: center;
 }
 
+.centered-img {
+    margin-left: auto;
+    margin-right: auto;
+
+    width: 50%;
+}
+
 .left {
     text-align: left;
 }
 
 .fade-in-on-load {
     display: none;
+    opacity: 0;
 }
 
 .fade-in-on-scroll {
     display: none;
+    opacity: 0;
 }
 
 .quick-fade-in-after-scroll {
     display: none;
+    opacity: 0;
 }
