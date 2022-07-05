@@ -13,7 +13,7 @@ salt_length_bytes = 16
 [keys]
 hashing_key = "OCc!7xlc"
 otp_key = "K1Xn*5&b"
-jwt_signing_key = "3dn68OZo"
+token_signing_key = "3dn68OZo"
 
 [lifetimes]
 access_token_lifetime_mins = 8
@@ -40,7 +40,7 @@ actix_workers = 12
 # [keys]
 # hashing_key = "OCc!7xlcOCc!7xlcOCc!7xlcOCc!7xlc"
 # otp_key = "K1Xn*5&bK1Xn*5&bK1Xn*5&bK1Xn*5&b"
-# jwt_signing_key = "3dn68OZo3dn68OZo3dn68OZo3dn68OZo"
+# token_signing_key = "3dn68OZo3dn68OZo3dn68OZo3dn68OZo"
 
 # [hashing]
 # hash_iterations = 12

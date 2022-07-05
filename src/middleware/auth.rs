@@ -2,10 +2,10 @@ use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
 
-use crate::utils::jwt;
+use crate::utils::auth_token;
 
 #[derive(Debug)]
-pub struct AuthorizedUserClaims(pub jwt::TokenClaims);
+pub struct AuthorizedUserClaims(pub auth_token::TokenClaims);
 
 impl FromRequest for AuthorizedUserClaims {
     type Error = error::Error;
@@ -39,7 +39,7 @@ impl FromRequest for AuthorizedUserClaims {
             None => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        let claims = match jwt::validate_access_token(token) {
+        let claims = match auth_token::validate_access_token(token) {
             Ok(c) => c,
             Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
@@ -60,7 +60,7 @@ mod tests {
     use crate::models::user::NewUser;
 
     #[actix_rt::test]
-    async fn test_jwt_user_auth_middleware() {
+    async fn test_auth_token_user_auth_middleware() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -83,7 +83,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = jwt::generate_access_token(jwt::JwtParams {
+        let token = auth_token::generate_access_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -137,7 +137,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _token = jwt::generate_access_token(jwt::JwtParams {
+        let _token = auth_token::generate_access_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -175,7 +175,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = jwt::generate_access_token(jwt::JwtParams {
+        let token = auth_token::generate_access_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -215,7 +215,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _ = jwt::generate_access_token(jwt::JwtParams {
+        let _ = auth_token::generate_access_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -254,7 +254,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = jwt::generate_access_token(jwt::JwtParams {
+        let token = auth_token::generate_access_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -298,7 +298,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = jwt::generate_refresh_token(jwt::JwtParams {
+        let token = auth_token::generate_refresh_token(auth_token::TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,

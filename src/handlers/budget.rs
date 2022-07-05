@@ -389,7 +389,8 @@ mod tests {
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::entries as entry_fields;
     use crate::services;
-    use crate::utils::{db, jwt, otp};
+    use crate::utils::auth_token::TokenClaims;
+    use crate::utils::{db, otp};
 
     #[actix_rt::test]
     async fn test_create_budget() {
@@ -427,7 +428,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -565,7 +568,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -710,7 +715,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -855,7 +862,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1060,7 +1069,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1274,7 +1285,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1574,7 +1587,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2097,7 +2112,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2145,9 +2162,10 @@ mod tests {
 
         let unauth_user_signin_token =
             test::read_body_json::<SigninToken, _>(create_unauth_user_res).await;
-        let unauth_user_id = jwt::read_claims(&unauth_user_signin_token.signin_token)
-            .unwrap()
-            .uid;
+        let unauth_user_id =
+            TokenClaims::from_token_without_validation(&unauth_user_signin_token.signin_token)
+                .unwrap()
+                .uid;
 
         let unauth_user_otp = otp::generate_otp(unauth_user_id, current_time).unwrap();
 

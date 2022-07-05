@@ -1,7 +1,8 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use hmac::{Hmac, Mac};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -13,10 +14,8 @@ use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
 #[derive(Debug)]
-pub enum JwtError {
+pub enum TokenError {
     DatabaseError(diesel::result::Error),
-    DecodingError(jsonwebtoken::errors::Error),
-    EncodingError(jsonwebtoken::errors::Error),
     InvalidTokenType(TokenTypeError),
     TokenInvalid,
     TokenBlacklisted,
@@ -25,15 +24,13 @@ pub enum JwtError {
     WrongTokenType,
 }
 
-impl std::error::Error for JwtError {}
+impl std::error::Error for TokenError {}
 
-impl fmt::Display for JwtError {
+impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JwtError::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
-            JwtError::DecodingError(e) => write!(f, "DecodingError: {}", e),
-            JwtError::EncodingError(e) => write!(f, "EncodingError: {}", e),
-            JwtError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
+            TokenError::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
+            TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
             _ => write!(f, "Error: {}", self),
         }
     }
@@ -85,13 +82,13 @@ impl std::convert::From<TokenType> for u8 {
 }
 
 #[derive(Debug, Clone)]
-pub struct JwtParams<'a> {
+pub struct TokenParams<'a> {
     pub user_id: &'a Uuid,
     pub user_email: &'a str,
     pub user_currency: &'a str,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,    // Expiration in time since UNIX epoch
     pub uid: Uuid,   // User ID
@@ -100,6 +97,78 @@ pub struct TokenClaims {
     pub typ: u8,     // Token type (Access=0, Refresh=1, SignIn=2)
     pub slt: u32,    // Random salt (makes it so two tokens generated in the same
                      //              second are different--useful for testing)
+}
+
+// TODO: Test
+impl TokenClaims {
+    pub fn create_token(&self, key: &[u8]) -> String {
+        let mut claims_and_hash = serde_json::to_vec(self).expect("Failed to transform claims into JSON");
+        
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        mac.update(&claims_and_hash);
+        let hash = hex::encode(mac.finalize().into_bytes());
+
+        claims_and_hash.push(124); // 124 is the ASCII value of the | character
+        claims_and_hash.extend_from_slice(&hash.into_bytes());
+        
+        base64::encode_config(claims_and_hash, base64::URL_SAFE_NO_PAD)
+    }
+    
+    pub fn from_token_with_validation(token: &str, key: &[u8]) -> Result<TokenClaims, TokenError> {
+        let (claims, claims_json_str, hash) = TokenClaims::token_to_claims_and_hash(token)?;
+        
+        let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(t) => t,
+                Err(_) => return Err(TokenError::SystemResourceAccessFailure),
+            };
+
+        if time_since_epoch.as_secs() >= claims.exp {
+            return Err(TokenError::TokenExpired);
+        }
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        mac.update(&claims_json_str.as_bytes());
+        
+        match mac.verify_slice(&hash) {
+            Ok(_) => Ok(claims),
+            Err(_) => Err(TokenError::TokenInvalid),
+        }
+    }
+
+    pub fn from_token_without_validation(token: &str) -> Result<TokenClaims, TokenError> {
+        Ok(TokenClaims::token_to_claims_and_hash(token)?.0)
+    }
+
+    fn token_to_claims_and_hash<'a>(token: &'a str) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
+        let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
+            Ok(t) => t,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+        
+        let token_str = String::from_utf8_lossy(&decoded_token);
+        let split_token = token_str.split('|').collect::<Vec<_>>();
+
+        if split_token.len() < 2 {
+            return Err(TokenError::TokenInvalid);
+        }
+        
+        let mut claims_json_str = String::new();
+        for i in 0..(split_token.len() - 1) {
+            claims_json_str.push_str(split_token[i]);
+        }
+
+        let claims = match serde_json::from_str::<TokenClaims>(claims_json_str.as_str()) {
+            Ok(c) => c,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+
+        let hash = match hex::decode(split_token[split_token.len() - 1]) {
+            Ok(h) => h,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+        
+        Ok((claims, claims_json_str, hash))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,19 +212,19 @@ pub struct TokenPair {
     pub refresh_token: Token,
 }
 
-pub fn generate_access_token(params: JwtParams) -> Result<Token, JwtError> {
+pub fn generate_access_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::Access)
 }
 
-pub fn generate_refresh_token(params: JwtParams) -> Result<Token, JwtError> {
+pub fn generate_refresh_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::Refresh)
 }
 
-pub fn generate_signin_token(params: JwtParams) -> Result<Token, JwtError> {
+pub fn generate_signin_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::SignIn)
 }
 
-pub fn generate_token_pair(params: JwtParams) -> Result<TokenPair, JwtError> {
+pub fn generate_token_pair(params: TokenParams) -> Result<TokenPair, TokenError> {
     let access_token = generate_access_token(params.clone())?;
     let refresh_token = generate_refresh_token(params)?;
 
@@ -165,7 +234,7 @@ pub fn generate_token_pair(params: JwtParams) -> Result<TokenPair, JwtError> {
     })
 }
 
-fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, JwtError> {
+fn generate_token(params: TokenParams, token_type: TokenType) -> Result<Token, TokenError> {
     let lifetime_sec = match token_type {
         TokenType::Access => env::CONF.lifetimes.access_token_lifetime_mins * 60,
         TokenType::Refresh => env::CONF.lifetimes.refresh_token_lifetime_days * 24 * 60 * 60,
@@ -177,7 +246,7 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
 
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
-        Err(_) => return Err(JwtError::SystemResourceAccessFailure),
+        Err(_) => return Err(TokenError::SystemResourceAccessFailure),
     };
 
     let expiration = time_since_epoch.as_secs() + lifetime_sec;
@@ -192,121 +261,64 @@ fn generate_token(params: JwtParams, token_type: TokenType) -> Result<Token, Jwt
         slt: salt,
     };
 
-    let header = Header::default();
-
-    let token = match jsonwebtoken::encode(
-        &header,
-        &claims,
-        &EncodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-    ) {
-        Ok(t) => Ok(t),
-        Err(e) => Err(JwtError::EncodingError(e)),
-    };
+    let token = claims.create_token(env::CONF.keys.token_signing_key.as_bytes());
 
     Ok(Token {
-        token: token?,
+        token,
         token_type,
     })
 }
 
-pub fn validate_access_token(token: &str) -> Result<TokenClaims, JwtError> {
+pub fn validate_access_token(token: &str) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::Access)
 }
 
 pub fn validate_refresh_token(
     token: &str,
     db_connection: &DbConnection,
-) -> Result<TokenClaims, JwtError> {
+) -> Result<TokenClaims, TokenError> {
     if is_on_blacklist(token, db_connection)? {
-        return Err(JwtError::TokenBlacklisted);
+        return Err(TokenError::TokenBlacklisted);
     }
 
     validate_token(token, TokenType::Refresh)
 }
 
-pub fn validate_signin_token(token: &str) -> Result<TokenClaims, JwtError> {
+pub fn validate_signin_token(token: &str) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::SignIn)
 }
 
-fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, JwtError> {
-    let decoded_token = match jsonwebtoken::decode::<TokenClaims>(
-        token,
-        &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-        &Validation::new(Algorithm::HS256),
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            return match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => Err(JwtError::TokenExpired),
-                jsonwebtoken::errors::ErrorKind::InvalidToken
-                | jsonwebtoken::errors::ErrorKind::InvalidSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidEcdsaKey
-                | jsonwebtoken::errors::ErrorKind::InvalidRsaKey
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithmName
-                | jsonwebtoken::errors::ErrorKind::InvalidKeyFormat
-                | jsonwebtoken::errors::ErrorKind::InvalidIssuer
-                | jsonwebtoken::errors::ErrorKind::InvalidAudience
-                | jsonwebtoken::errors::ErrorKind::InvalidSubject
-                | jsonwebtoken::errors::ErrorKind::ImmatureSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => Err(JwtError::TokenInvalid),
-                _ => Err(JwtError::DecodingError(e)),
-            }
-        }
-    };
+fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, TokenError> {
+    let decoded_token = TokenClaims::from_token_with_validation(token,
+                                                                env::CONF.keys.token_signing_key.as_bytes())?;
 
-    let token_type_claim = match TokenType::try_from(decoded_token.claims.typ) {
+    let token_type_claim = match TokenType::try_from(decoded_token.typ) {
         Ok(t) => t,
-        Err(e) => return Err(JwtError::InvalidTokenType(e)),
+        Err(e) => return Err(TokenError::InvalidTokenType(e)),
     };
 
     if std::mem::discriminant(&token_type_claim) != std::mem::discriminant(&token_type) {
-        Err(JwtError::WrongTokenType)
+        Err(TokenError::WrongTokenType)
     } else {
-        Ok(decoded_token.claims)
-    }
-}
-
-#[allow(dead_code)]
-pub fn read_claims(token: &str) -> Result<TokenClaims, JwtError> {
-    match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
-        Ok(c) => Ok(c.claims),
-        Err(e) => Err(JwtError::DecodingError(e)),
+        Ok(decoded_token)
     }
 }
 
 pub fn blacklist_token(
     token: &str,
     db_connection: &DbConnection,
-) -> Result<BlacklistedToken, JwtError> {
-    let decoded_token = match jsonwebtoken::dangerous_insecure_decode::<TokenClaims>(token) {
-        Ok(t) => t,
-        Err(e) => {
-            return match e.kind() {
-                jsonwebtoken::errors::ErrorKind::InvalidToken
-                | jsonwebtoken::errors::ErrorKind::InvalidSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidEcdsaKey
-                | jsonwebtoken::errors::ErrorKind::InvalidRsaKey
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithmName
-                | jsonwebtoken::errors::ErrorKind::InvalidKeyFormat
-                | jsonwebtoken::errors::ErrorKind::InvalidIssuer
-                | jsonwebtoken::errors::ErrorKind::InvalidAudience
-                | jsonwebtoken::errors::ErrorKind::InvalidSubject
-                | jsonwebtoken::errors::ErrorKind::ImmatureSignature
-                | jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => Err(JwtError::TokenInvalid),
-                _ => Err(JwtError::DecodingError(e)),
-            }
-        }
-    };
+) -> Result<BlacklistedToken, TokenError> {
+    let decoded_token = TokenClaims::from_token_without_validation(token)?;
 
-    let user_id = decoded_token.claims.uid;
-    let expiration = decoded_token.claims.exp;
+    let user_id = decoded_token.uid;
+    let expiration = decoded_token.exp;
 
     let blacklisted_token = NewBlacklistedToken {
         token,
         user_id,
         token_expiration_time: match i64::try_from(expiration) {
             Ok(exp) => exp,
-            Err(_) => return Err(JwtError::TokenInvalid),
+            Err(_) => return Err(TokenError::TokenInvalid),
         },
     };
 
@@ -315,11 +327,11 @@ pub fn blacklist_token(
         .get_result::<BlacklistedToken>(db_connection)
     {
         Ok(t) => Ok(t),
-        Err(e) => Err(JwtError::DatabaseError(e)),
+        Err(e) => Err(TokenError::DatabaseError(e)),
     }
 }
 
-pub fn is_on_blacklist(token: &str, db_connection: &DbConnection) -> Result<bool, JwtError> {
+pub fn is_on_blacklist(token: &str, db_connection: &DbConnection) -> Result<bool, TokenError> {
     match blacklisted_tokens
         .filter(blacklisted_token_fields::token.eq(token))
         .limit(1)
@@ -363,7 +375,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_access_token(JwtParams {
+        let token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -372,19 +384,18 @@ mod tests {
 
         assert!(!token.token.contains(&user_id.to_string()));
 
-        let decoded_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_token = TokenClaims::from_token_with_validation(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Access));
-        assert_eq!(decoded_token.claims.uid, user_id);
-        assert_eq!(decoded_token.claims.eml, new_user.email);
-        assert_eq!(decoded_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_token.typ, u8::from(TokenType::Access));
+        assert_eq!(decoded_token.uid, user_id);
+        assert_eq!(decoded_token.eml, new_user.email);
+        assert_eq!(decoded_token.cur, new_user.currency);
         assert!(
-            decoded_token.claims.exp
+            decoded_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -416,7 +427,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_refresh_token(JwtParams {
+        let token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -425,19 +436,18 @@ mod tests {
 
         assert!(!token.token.contains(&user_id.to_string()));
 
-        let decoded_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_token = TokenClaims::from_token_with_validation(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::Refresh));
-        assert_eq!(decoded_token.claims.uid, user_id);
-        assert_eq!(decoded_token.claims.eml, new_user.email);
-        assert_eq!(decoded_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_token.typ, u8::from(TokenType::Refresh));
+        assert_eq!(decoded_token.uid, user_id);
+        assert_eq!(decoded_token.eml, new_user.email);
+        assert_eq!(decoded_token.cur, new_user.currency);
         assert!(
-            decoded_token.claims.exp
+            decoded_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -469,7 +479,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_signin_token(JwtParams {
+        let token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -478,19 +488,18 @@ mod tests {
 
         assert!(!token.token.contains(&user_id.to_string()));
 
-        let decoded_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_token = TokenClaims::from_token_with_validation(
             &token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        assert_eq!(decoded_token.claims.typ, u8::from(TokenType::SignIn));
-        assert_eq!(decoded_token.claims.uid, user_id);
-        assert_eq!(decoded_token.claims.eml, new_user.email);
-        assert_eq!(decoded_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_token.typ, u8::from(TokenType::SignIn));
+        assert_eq!(decoded_token.uid, user_id);
+        assert_eq!(decoded_token.eml, new_user.email);
+        assert_eq!(decoded_token.cur, new_user.currency);
         assert!(
-            decoded_token.claims.exp
+            decoded_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -522,7 +531,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_token_pair(JwtParams {
+        let token = generate_token_pair(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -532,41 +541,39 @@ mod tests {
         assert!(!token.access_token.token.contains(&user_id.to_string()));
         assert!(!token.refresh_token.token.contains(&user_id.to_string()));
 
-        let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_access_token = TokenClaims::from_token_with_validation(
             &token.access_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
-        assert_eq!(decoded_access_token.claims.uid, user_id);
-        assert_eq!(decoded_access_token.claims.eml, new_user.email);
-        assert_eq!(decoded_access_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_access_token.typ, u8::from(TokenType::Access));
+        assert_eq!(decoded_access_token.uid, user_id);
+        assert_eq!(decoded_access_token.eml, new_user.email);
+        assert_eq!(decoded_access_token.cur, new_user.currency);
         assert!(
-            decoded_access_token.claims.exp
+            decoded_access_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
         );
 
-        let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_refresh_token = TokenClaims::from_token_with_validation(
             &token.refresh_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
         assert_eq!(
-            decoded_refresh_token.claims.typ,
+            decoded_refresh_token.typ,
             u8::from(TokenType::Refresh)
         );
-        assert_eq!(decoded_refresh_token.claims.uid, user_id);
-        assert_eq!(decoded_refresh_token.claims.eml, new_user.email);
-        assert_eq!(decoded_refresh_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_refresh_token.uid, user_id);
+        assert_eq!(decoded_refresh_token.eml, new_user.email);
+        assert_eq!(decoded_refresh_token.cur, new_user.currency);
         assert!(
-            decoded_refresh_token.claims.exp
+            decoded_refresh_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -599,7 +606,7 @@ mod tests {
         };
 
         let access_token = generate_token(
-            JwtParams {
+            TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
@@ -608,7 +615,7 @@ mod tests {
         )
         .unwrap();
         let refresh_token = generate_token(
-            JwtParams {
+            TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
@@ -617,7 +624,7 @@ mod tests {
         )
         .unwrap();
         let signin_token = generate_token(
-            JwtParams {
+            TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
@@ -626,33 +633,30 @@ mod tests {
         )
         .unwrap();
 
-        let decoded_access_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_access_token = TokenClaims::from_token_with_validation(
             &access_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        let decoded_refresh_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_refresh_token = TokenClaims::from_token_with_validation(
             &refresh_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        let decoded_signin_token = jsonwebtoken::decode::<TokenClaims>(
+        let decoded_signin_token = TokenClaims::from_token_with_validation(
             &signin_token.token,
-            &DecodingKey::from_secret(env::CONF.keys.jwt_signing_key.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
         .unwrap();
 
-        assert_eq!(decoded_access_token.claims.typ, u8::from(TokenType::Access));
-        assert_eq!(decoded_access_token.claims.uid, user_id);
-        assert_eq!(decoded_access_token.claims.eml, new_user.email);
-        assert_eq!(decoded_access_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_access_token.typ, u8::from(TokenType::Access));
+        assert_eq!(decoded_access_token.uid, user_id);
+        assert_eq!(decoded_access_token.eml, new_user.email);
+        assert_eq!(decoded_access_token.cur, new_user.currency);
         assert!(
-            decoded_access_token.claims.exp
+            decoded_access_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -660,26 +664,26 @@ mod tests {
         );
 
         assert_eq!(
-            decoded_refresh_token.claims.typ,
+            decoded_refresh_token.typ,
             u8::from(TokenType::Refresh)
         );
-        assert_eq!(decoded_refresh_token.claims.uid, user_id);
-        assert_eq!(decoded_refresh_token.claims.eml, new_user.email);
-        assert_eq!(decoded_refresh_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_refresh_token.uid, user_id);
+        assert_eq!(decoded_refresh_token.eml, new_user.email);
+        assert_eq!(decoded_refresh_token.cur, new_user.currency);
         assert!(
-            decoded_refresh_token.claims.exp
+            decoded_refresh_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
         );
 
-        assert_eq!(decoded_signin_token.claims.typ, u8::from(TokenType::SignIn));
-        assert_eq!(decoded_signin_token.claims.uid, user_id);
-        assert_eq!(decoded_signin_token.claims.eml, new_user.email);
-        assert_eq!(decoded_signin_token.claims.cur, new_user.currency);
+        assert_eq!(decoded_signin_token.typ, u8::from(TokenType::SignIn));
+        assert_eq!(decoded_signin_token.uid, user_id);
+        assert_eq!(decoded_signin_token.eml, new_user.email);
+        assert_eq!(decoded_signin_token.cur, new_user.currency);
         assert!(
-            decoded_signin_token.claims.exp
+            decoded_signin_token.exp
                 > SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -711,19 +715,19 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -765,19 +769,19 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -818,19 +822,19 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -869,19 +873,19 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -932,19 +936,19 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -980,28 +984,28 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
         })
         .unwrap();
 
-        let access_token_claims = read_claims(&access_token.to_string()).unwrap();
-        let refresh_token_claims = read_claims(&refresh_token.to_string()).unwrap();
-        let signin_token_claims = read_claims(&signin_token.to_string()).unwrap();
+        let access_token_claims = TokenClaims::from_token_without_validation(&access_token.to_string()).unwrap();
+        let refresh_token_claims = TokenClaims::from_token_without_validation(&refresh_token.to_string()).unwrap();
+        let signin_token_claims = TokenClaims::from_token_without_validation(&signin_token.to_string()).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1053,7 +1057,7 @@ mod tests {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -1109,7 +1113,7 @@ mod tests {
             .execute(&db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -1147,7 +1151,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(JwtParams {
+        let access_token = generate_access_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -1183,7 +1187,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let refresh_token = generate_refresh_token(JwtParams {
+        let refresh_token = generate_refresh_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,
@@ -1219,7 +1223,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let signin_token = generate_signin_token(JwtParams {
+        let signin_token = generate_signin_token(TokenParams {
             user_id: &new_user.id,
             user_email: new_user.email,
             user_currency: new_user.currency,

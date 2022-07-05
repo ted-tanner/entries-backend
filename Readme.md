@@ -214,9 +214,9 @@ These keys are secret and should be handled with care. They should be randomly g
 
   Key used for signing Time-based One-Time Passcodes (TOTP).
 
-* `jwt_signing_key`
+* `token_signing_key`
 
-  Key used for signing JSON Web Tokens.
+  Key used for signing auth tokens.
 
 ### Lifetimes
 
@@ -357,13 +357,13 @@ or
 curl -X POST "http://localhost:9000/api/auth/login" -H "Content-Type: application/json" -d '{"email": "test@example.com", "password": "aT3stPa$$w0rd"}'
 ```
 
-To authenticate, send a JWT access token in the `Authorization` header:
+To authenticate, send an access token in the `Authorization` header:
 
 ```
 curl -X GET "http://localhost:9000/api/user/get" -H "Authorization: Bearer [ACCESS_TOKEN]"
 ```
 
-To refresh a JWT access token, you need to use a JWT refresh token (you should get it upon login):
+To refresh an access token, you need to use a refresh token (you should get it upon login):
 
 ```
 curl -X POST "http://localhost:9000/api/auth/refresh_token" -H "Content-Type: application/json" -d '{"refresh_token": "[REFRESH_TOKEN]"}'
@@ -418,6 +418,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Implement budget sharing (add/remove user from budget db utils are already in place)
 
 * There is a CVE in a dependency for the `argonautica` crate. Remove `argonautica` and call the C library directly.
+
+* Make sure DB VARCHAR(256) is large enough to hold tokens of any size
 
 * Editing budget shouldn't allow for changing categories. Handle that in separate endpoint
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:

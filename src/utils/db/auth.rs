@@ -50,7 +50,7 @@ pub fn get_and_increment_otp_verification_count(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed JWT.
+    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed token.
     //
     // BEWARE of using this function when the user_id comes as input directly from the client.
     let query = format!(
@@ -106,8 +106,8 @@ mod tests {
     use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
     use crate::schema::otp_attempts::dsl::otp_attempts;
     use crate::schema::password_attempts::dsl::password_attempts;
+    use crate::utils::auth_token;
     use crate::utils::db::user;
-    use crate::utils::jwt;
 
     #[actix_rt::test]
     async fn test_clear_all_expired_refresh_tokens() {
@@ -134,14 +134,15 @@ mod tests {
             .unwrap()
             .id;
 
-        let jwt_params = jwt::JwtParams {
+        let token_params = auth_token::TokenParams {
             user_id: &user_id,
             user_email: &new_user.email,
             user_currency: &new_user.currency,
         };
 
-        let pretend_expired_token = jwt::generate_refresh_token(jwt_params.clone()).unwrap();
-        let unexpired_token = jwt::generate_refresh_token(jwt_params).unwrap();
+        let pretend_expired_token =
+            auth_token::generate_refresh_token(token_params.clone()).unwrap();
+        let unexpired_token = auth_token::generate_refresh_token(token_params).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -171,8 +172,11 @@ mod tests {
 
         assert!(clear_all_expired_refresh_tokens(&db_connection).unwrap() >= 1);
 
-        assert!(!jwt::is_on_blacklist(&pretend_expired_token.to_string(), &db_connection).unwrap());
-        assert!(jwt::is_on_blacklist(&unexpired_token.to_string(), &db_connection).unwrap());
+        assert!(
+            !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &db_connection)
+                .unwrap()
+        );
+        assert!(auth_token::is_on_blacklist(&unexpired_token.to_string(), &db_connection).unwrap());
     }
 
     #[actix_rt::test]

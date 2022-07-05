@@ -10,7 +10,7 @@ use crate::handlers::request_io::{
 };
 use crate::middleware;
 use crate::utils::db;
-use crate::utils::{jwt, otp, password_hasher};
+use crate::utils::{auth_token, otp, password_hasher};
 
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -66,7 +66,7 @@ pub async fn sign_in(
         web::block(move || password_hasher::verify_hash(&password, &user.password_hash)).await?;
 
     if does_password_match_hash {
-        let signin_token = jwt::generate_signin_token(jwt::JwtParams {
+        let signin_token = auth_token::generate_signin_token(auth_token::TokenParams {
             user_id: &user.id,
             user_email: &user.email,
             user_currency: &user.currency,
@@ -119,28 +119,27 @@ pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let token_claims = match web::block(move || {
-        jwt::validate_signin_token(&otp_and_token.0.signin_token)
-    })
-    .await?
-    {
-        Ok(t) => t,
-        Err(e) => match e {
-            jwt::JwtError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
-            }
-            jwt::JwtError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some("Token has expired")))
-            }
-            jwt::JwtError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
-            }
-            e => {
-                error!("{}", e);
-                return Err(ServerError::InternalError(Some("Error verifying token")));
-            }
-        },
-    };
+    let token_claims =
+        match web::block(move || auth_token::validate_signin_token(&otp_and_token.0.signin_token))
+            .await?
+        {
+            Ok(t) => t,
+            Err(e) => match e {
+                auth_token::TokenError::TokenInvalid => {
+                    return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+                }
+                auth_token::TokenError::TokenExpired => {
+                    return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+                }
+                auth_token::TokenError::WrongTokenType => {
+                    return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+                }
+                e => {
+                    error!("{}", e);
+                    return Err(ServerError::InternalError(Some("Error verifying token")));
+                }
+            },
+        };
 
     let attempts = match web::block(move || {
         let db_connection = db_thread_pool
@@ -208,7 +207,7 @@ pub async fn verify_otp_for_signin(
     if !is_valid {
         return Err(ServerError::UserUnauthorized(Some("Incorrect passcode")));
     }
-    let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+    let token_pair = auth_token::generate_token_pair(auth_token::TokenParams {
         user_id: &token_claims.uid,
         user_email: &token_claims.eml,
         user_currency: &token_claims.cur,
@@ -244,24 +243,24 @@ pub async fn refresh_tokens(
             .get()
             .expect("Failed to access database thread pool");
 
-        jwt::validate_refresh_token(token.0.token.as_str(), &db_connection)
+        auth_token::validate_refresh_token(token.0.token.as_str(), &db_connection)
     })
     .await?
     {
         Ok(c) => c,
         Err(e) => match e {
-            jwt::JwtError::TokenInvalid => {
+            auth_token::TokenError::TokenInvalid => {
                 return Err(ServerError::UserUnauthorized(Some("Token is invalid")));
             }
-            jwt::JwtError::TokenBlacklisted => {
+            auth_token::TokenError::TokenBlacklisted => {
                 return Err(ServerError::UserUnauthorized(Some(
                     "Token has been blacklisted",
                 )));
             }
-            jwt::JwtError::TokenExpired => {
+            auth_token::TokenError::TokenExpired => {
                 return Err(ServerError::UserUnauthorized(Some("Token has expired")));
             }
-            jwt::JwtError::WrongTokenType => {
+            auth_token::TokenError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")));
             }
             e => {
@@ -272,7 +271,7 @@ pub async fn refresh_tokens(
     };
 
     match web::block(move || {
-        jwt::blacklist_token(
+        auth_token::blacklist_token(
             refresh_token.as_str(),
             &db_thread_pool_pointer_copy
                 .get()
@@ -290,7 +289,7 @@ pub async fn refresh_tokens(
         }
     }
 
-    let token_pair = jwt::generate_token_pair(jwt::JwtParams {
+    let token_pair = auth_token::generate_token_pair(auth_token::TokenParams {
         user_id: &claims.uid,
         user_email: &claims.eml,
         user_currency: &claims.cur,
@@ -327,24 +326,24 @@ pub async fn logout(
             .get()
             .expect("Failed to access database thread pool");
 
-        jwt::validate_refresh_token(&refresh_token_copy, &db_connection)
+        auth_token::validate_refresh_token(&refresh_token_copy, &db_connection)
     })
     .await?
     {
         Ok(tc) => tc,
         Err(e) => match e {
-            jwt::JwtError::TokenInvalid => {
+            auth_token::TokenError::TokenInvalid => {
                 return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
             }
-            jwt::JwtError::TokenBlacklisted => {
+            auth_token::TokenError::TokenBlacklisted => {
                 return Err(ServerError::UserUnauthorized(Some(
                     "Token has been blacklisted",
                 )))
             }
-            jwt::JwtError::TokenExpired => {
+            auth_token::TokenError::TokenExpired => {
                 return Err(ServerError::UserUnauthorized(Some("Token has expired")))
             }
-            jwt::JwtError::WrongTokenType => {
+            auth_token::TokenError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
             }
             e => {
@@ -361,7 +360,7 @@ pub async fn logout(
     }
 
     match web::block(move || {
-        jwt::blacklist_token(
+        auth_token::blacklist_token(
             refresh_token.0.token.as_str(),
             &db_thread_pool_pointer_copy
                 .get()
@@ -392,6 +391,7 @@ mod tests {
     use crate::env;
     use crate::handlers::request_io::{InputUser, RefreshToken, SigninToken, SigninTokenOtpPair};
     use crate::services;
+    use crate::utils::auth_token::TokenClaims;
     use crate::utils::otp;
 
     #[actix_rt::test]
@@ -444,12 +444,14 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         assert!(!signin_token.signin_token.is_empty());
 
         assert_eq!(
-            jwt::validate_signin_token(&signin_token.signin_token)
+            auth_token::validate_signin_token(&signin_token.signin_token)
                 .unwrap()
                 .uid,
             user_id
@@ -617,7 +619,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -651,11 +655,13 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         assert_eq!(
-            jwt::validate_access_token(&access_token).unwrap().uid,
+            auth_token::validate_access_token(&access_token)
+                .unwrap()
+                .uid,
             user_id
         );
         assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -712,7 +718,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -747,11 +755,13 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         assert_eq!(
-            jwt::validate_access_token(&access_token).unwrap().uid,
+            auth_token::validate_access_token(&access_token)
+                .unwrap()
+                .uid,
             user_id
         );
         assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -808,7 +818,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -960,7 +972,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let past_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1035,7 +1049,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let far_future_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1110,7 +1126,9 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1172,7 +1190,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1215,13 +1235,15 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        assert!(jwt::is_on_blacklist(&refresh_token_payload.token, &db_connection).unwrap());
+        assert!(auth_token::is_on_blacklist(&refresh_token_payload.token, &db_connection).unwrap());
         assert_eq!(
-            jwt::validate_access_token(&access_token).unwrap().uid,
+            auth_token::validate_access_token(&access_token)
+                .unwrap()
+                .uid,
             user_id
         );
         assert_eq!(
-            jwt::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -1264,7 +1286,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1336,7 +1360,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1408,7 +1434,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1448,7 +1476,7 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::OK);
 
         let db_connection = db_thread_pool.get().unwrap();
-        assert!(jwt::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
+        assert!(auth_token::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
     }
 
     #[actix_rt::test]
@@ -1487,7 +1515,9 @@ mod tests {
         .await;
 
         let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = jwt::read_claims(&signin_token.signin_token).unwrap().uid;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1527,6 +1557,6 @@ mod tests {
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
         let db_connection = db_thread_pool.get().unwrap();
-        assert!(!jwt::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
+        assert!(!auth_token::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
     }
 }

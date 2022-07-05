@@ -29,7 +29,7 @@ pub struct Hashing {
 #[derive(Deserialize, Serialize)]
 pub struct Keys {
     pub hashing_key: String,
-    pub jwt_signing_key: String,
+    pub token_signing_key: String,
     pub otp_key: String,
 }
 
