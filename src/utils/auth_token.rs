@@ -13,6 +13,8 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
+// TODO: This module needs to be refactored for clarity and performace
+
 #[derive(Debug)]
 pub enum TokenError {
     DatabaseError(diesel::result::Error),
@@ -99,36 +101,38 @@ pub struct TokenClaims {
                      //              second are different--useful for testing)
 }
 
-// TODO: Test
 impl TokenClaims {
     pub fn create_token(&self, key: &[u8]) -> String {
-        let mut claims_and_hash = serde_json::to_vec(self).expect("Failed to transform claims into JSON");
-        
-        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        let mut claims_and_hash =
+            serde_json::to_vec(self).expect("Failed to transform claims into JSON");
+
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
         mac.update(&claims_and_hash);
         let hash = hex::encode(mac.finalize().into_bytes());
 
         claims_and_hash.push(124); // 124 is the ASCII value of the | character
         claims_and_hash.extend_from_slice(&hash.into_bytes());
-        
+
         base64::encode_config(claims_and_hash, base64::URL_SAFE_NO_PAD)
     }
-    
+
     pub fn from_token_with_validation(token: &str, key: &[u8]) -> Result<TokenClaims, TokenError> {
         let (claims, claims_json_str, hash) = TokenClaims::token_to_claims_and_hash(token)?;
-        
+
         let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                Ok(t) => t,
-                Err(_) => return Err(TokenError::SystemResourceAccessFailure),
-            };
+            Ok(t) => t,
+            Err(_) => return Err(TokenError::SystemResourceAccessFailure),
+        };
 
         if time_since_epoch.as_secs() >= claims.exp {
             return Err(TokenError::TokenExpired);
         }
 
-        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
         mac.update(&claims_json_str.as_bytes());
-        
+
         match mac.verify_slice(&hash) {
             Ok(_) => Ok(claims),
             Err(_) => Err(TokenError::TokenInvalid),
@@ -139,19 +143,21 @@ impl TokenClaims {
         Ok(TokenClaims::token_to_claims_and_hash(token)?.0)
     }
 
-    fn token_to_claims_and_hash<'a>(token: &'a str) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
+    fn token_to_claims_and_hash<'a>(
+        token: &'a str,
+    ) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
         let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
-        
+
         let token_str = String::from_utf8_lossy(&decoded_token);
         let split_token = token_str.split('|').collect::<Vec<_>>();
 
         if split_token.len() < 2 {
             return Err(TokenError::TokenInvalid);
         }
-        
+
         let mut claims_json_str = String::new();
         for i in 0..(split_token.len() - 1) {
             claims_json_str.push_str(split_token[i]);
@@ -166,7 +172,7 @@ impl TokenClaims {
             Ok(h) => h,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
-        
+
         Ok((claims, claims_json_str, hash))
     }
 }
@@ -212,18 +218,22 @@ pub struct TokenPair {
     pub refresh_token: Token,
 }
 
+#[inline]
 pub fn generate_access_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::Access)
 }
 
+#[inline]
 pub fn generate_refresh_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::Refresh)
 }
 
+#[inline]
 pub fn generate_signin_token(params: TokenParams) -> Result<Token, TokenError> {
     generate_token(params, TokenType::SignIn)
 }
 
+#[inline]
 pub fn generate_token_pair(params: TokenParams) -> Result<TokenPair, TokenError> {
     let access_token = generate_access_token(params.clone())?;
     let refresh_token = generate_refresh_token(params)?;
@@ -263,16 +273,15 @@ fn generate_token(params: TokenParams, token_type: TokenType) -> Result<Token, T
 
     let token = claims.create_token(env::CONF.keys.token_signing_key.as_bytes());
 
-    Ok(Token {
-        token,
-        token_type,
-    })
+    Ok(Token { token, token_type })
 }
 
+#[inline]
 pub fn validate_access_token(token: &str) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::Access)
 }
 
+#[inline]
 pub fn validate_refresh_token(
     token: &str,
     db_connection: &DbConnection,
@@ -284,13 +293,16 @@ pub fn validate_refresh_token(
     validate_token(token, TokenType::Refresh)
 }
 
+#[inline]
 pub fn validate_signin_token(token: &str) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::SignIn)
 }
 
 fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, TokenError> {
-    let decoded_token = TokenClaims::from_token_with_validation(token,
-                                                                env::CONF.keys.token_signing_key.as_bytes())?;
+    let decoded_token = TokenClaims::from_token_with_validation(
+        token,
+        env::CONF.keys.token_signing_key.as_bytes(),
+    )?;
 
     let token_type_claim = match TokenType::try_from(decoded_token.typ) {
         Ok(t) => t,
@@ -350,6 +362,149 @@ mod tests {
 
     use crate::models::user::NewUser;
     use crate::schema::users::dsl::users;
+
+    #[actix_rt::test]
+    async fn test_create_token() {
+        let claims = TokenClaims {
+            exp: 123456789,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let claims_different = TokenClaims {
+            exp: 123456788,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let token = claims.create_token(env::CONF.keys.token_signing_key.as_bytes());
+        let token_different =
+            claims_different.create_token(env::CONF.keys.token_signing_key.as_bytes());
+        let expected_token = String::from("eyJleHAiOjEyMzQ1Njc4OSwidWlkIjoiNjdlNTUwNDQtMTBiMS00MjZmLTkyNDctYmI2ODBlNWZlMGM4IiwiZW1sIjoiVGVzdGluZ190b2tlbnNAZXhhbXBsZS5jb20iLCJjdXIiOiJVU0QiLCJ0eXAiOjAsInNsdCI6MTAwMDB9fDY0OWYyNDBkNzZiYzRhOThhMTYzMzc5Y2VhZTdhZDBkNzAwOTgwNWMzYzVlMDlmMzkyMjRjNmM5NGEzZGVlN2Q");
+
+        assert_eq!(token, expected_token);
+        assert_ne!(token, token_different);
+
+        let decoded_token =
+            base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD).unwrap();
+        let token_str = String::from_utf8_lossy(&decoded_token);
+        let split_token = token_str.split('|').collect::<Vec<_>>();
+
+        let mut claims_json_str = String::new();
+        for i in 0..(split_token.len() - 1) {
+            claims_json_str.push_str(split_token[i]);
+        }
+
+        let decoded_claims = serde_json::from_str::<TokenClaims>(claims_json_str.as_str()).unwrap();
+
+        assert_eq!(decoded_claims.exp, claims.exp);
+        assert_eq!(decoded_claims.uid, claims.uid);
+        assert_eq!(decoded_claims.eml, claims.eml);
+        assert_eq!(decoded_claims.cur, claims.cur);
+        assert_eq!(decoded_claims.typ, claims.typ);
+        assert_eq!(decoded_claims.slt, claims.slt);
+    }
+
+    #[actix_rt::test]
+    async fn test_claims_from_token_with_validation() {
+        let claims = TokenClaims {
+            exp: u64::MAX,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        let result = TokenClaims::from_token_with_validation(
+            &token,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        );
+
+        assert!(result.is_ok());
+
+        let decoded_claims = result.unwrap();
+        
+        assert_eq!(decoded_claims.exp, claims.exp);
+        assert_eq!(decoded_claims.uid, claims.uid);
+        assert_eq!(decoded_claims.eml, claims.eml);
+        assert_eq!(decoded_claims.cur, claims.cur);
+        assert_eq!(decoded_claims.typ, claims.typ);
+        assert_eq!(decoded_claims.slt, claims.slt);
+    }
+
+    #[actix_rt::test]
+    async fn test_token_validation_fails_with_wrong_key() {
+        let claims = TokenClaims {
+            exp: u64::MAX,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        let result = TokenClaims::from_token_with_validation(
+            &token,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17],
+        );
+
+        let error = result.unwrap_err();
+
+        assert_eq!(std::mem::discriminant(&error), std::mem::discriminant(&TokenError::TokenInvalid));
+    }
+
+    #[actix_rt::test]
+    async fn test_token_validation_fails_when_expired() {
+        let claims = TokenClaims {
+            exp: 1657076995,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        let result = TokenClaims::from_token_with_validation(
+            &token,
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        );
+
+        let error = result.unwrap_err();
+
+        assert_eq!(std::mem::discriminant(&error), std::mem::discriminant(&TokenError::TokenExpired));
+    }
+
+    #[actix_rt::test]
+    async fn test_claims_from_token_without_validation() {
+        let claims = TokenClaims {
+            exp: 1657076995,
+            uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            eml: format!("Testing_tokens@example.com"),
+            cur: String::from("USD"),
+            typ: u8::from(TokenType::Access),
+            slt: 10000,
+        };
+
+        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        let decoded_claims = TokenClaims::from_token_without_validation(&token).unwrap();
+
+        assert_eq!(decoded_claims.exp, claims.exp);
+        assert_eq!(decoded_claims.uid, claims.uid);
+        assert_eq!(decoded_claims.eml, claims.eml);
+        assert_eq!(decoded_claims.cur, claims.cur);
+        assert_eq!(decoded_claims.typ, claims.typ);
+        assert_eq!(decoded_claims.slt, claims.slt);
+    }
 
     #[actix_rt::test]
     async fn test_generate_access_token() {
@@ -565,10 +720,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            decoded_refresh_token.typ,
-            u8::from(TokenType::Refresh)
-        );
+        assert_eq!(decoded_refresh_token.typ, u8::from(TokenType::Refresh));
         assert_eq!(decoded_refresh_token.uid, user_id);
         assert_eq!(decoded_refresh_token.eml, new_user.email);
         assert_eq!(decoded_refresh_token.cur, new_user.currency);
@@ -663,10 +815,7 @@ mod tests {
                     .as_secs()
         );
 
-        assert_eq!(
-            decoded_refresh_token.typ,
-            u8::from(TokenType::Refresh)
-        );
+        assert_eq!(decoded_refresh_token.typ, u8::from(TokenType::Refresh));
         assert_eq!(decoded_refresh_token.uid, user_id);
         assert_eq!(decoded_refresh_token.eml, new_user.email);
         assert_eq!(decoded_refresh_token.cur, new_user.currency);
@@ -1003,9 +1152,12 @@ mod tests {
         })
         .unwrap();
 
-        let access_token_claims = TokenClaims::from_token_without_validation(&access_token.to_string()).unwrap();
-        let refresh_token_claims = TokenClaims::from_token_without_validation(&refresh_token.to_string()).unwrap();
-        let signin_token_claims = TokenClaims::from_token_without_validation(&signin_token.to_string()).unwrap();
+        let access_token_claims =
+            TokenClaims::from_token_without_validation(&access_token.to_string()).unwrap();
+        let refresh_token_claims =
+            TokenClaims::from_token_without_validation(&refresh_token.to_string()).unwrap();
+        let signin_token_claims =
+            TokenClaims::from_token_without_validation(&signin_token.to_string()).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
