@@ -431,7 +431,7 @@ mod tests {
         assert!(result.is_ok());
 
         let decoded_claims = result.unwrap();
-        
+
         assert_eq!(decoded_claims.exp, claims.exp);
         assert_eq!(decoded_claims.uid, claims.uid);
         assert_eq!(decoded_claims.eml, claims.eml);
@@ -459,7 +459,10 @@ mod tests {
 
         let error = result.unwrap_err();
 
-        assert_eq!(std::mem::discriminant(&error), std::mem::discriminant(&TokenError::TokenInvalid));
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&TokenError::TokenInvalid)
+        );
     }
 
     #[actix_rt::test]
@@ -481,7 +484,10 @@ mod tests {
 
         let error = result.unwrap_err();
 
-        assert_eq!(std::mem::discriminant(&error), std::mem::discriminant(&TokenError::TokenExpired));
+        assert_eq!(
+            std::mem::discriminant(&error),
+            std::mem::discriminant(&TokenError::TokenExpired)
+        );
     }
 
     #[actix_rt::test]

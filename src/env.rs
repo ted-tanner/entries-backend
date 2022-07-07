@@ -19,7 +19,7 @@ pub struct Connections {
 
 #[derive(Deserialize, Serialize)]
 pub struct Hashing {
-    pub hash_length: u32,
+    pub hash_length: usize,
     pub hash_iterations: u32,
     pub hash_mem_size_kib: u32,
     pub hash_lanes: u32,
