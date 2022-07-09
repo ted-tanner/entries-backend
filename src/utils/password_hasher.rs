@@ -17,7 +17,7 @@ struct TokenizedHash {
     pub b64_hash: String,
 }
 
-struct BinaryHash {
+pub struct BinaryHash {
     pub v: u32,
     pub memory_kib: u32,
     pub iterations: u32,
@@ -406,7 +406,7 @@ pub fn verify_hash(password: &str, hash: &str) -> bool {
     verify_argon2id(password, hash, unsafe { hashing_key_mut.as_bytes_mut() })
 }
 
-fn hash_argon2id(
+pub fn hash_argon2id(
     password: &str,
     key: &mut [u8],
     salt: &mut [u8],
@@ -458,7 +458,7 @@ fn hash_argon2id(
     }
 }
 
-fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
+pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
         Err(_) => {
@@ -500,7 +500,157 @@ fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
 mod tests {
     use super::*;
 
-    // TODO: Test TokenizedHash impl
+    #[actix_rt::test]
+    async fn test_binary_hash_to_hash_string() {
+        let hash = BinaryHash {
+            v: 19,
+            memory_kib: 128,
+            iterations: 3,
+            lanes: 2,
+            salt: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            hash: base64::decode_config("ypJ3pKxN4aWGkwMv0TOb08OIzwrfK1SZWy64vyTLKo8",
+                                        base64::STANDARD_NO_PAD).unwrap().to_vec(),
+        };
+
+        assert_eq!(hash.to_hash_string(),
+                   String::from(
+                       "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$ypJ3pKxN4aWGkwMv0TOb08OIzwrfK1SZWy64vyTLKo8"
+                   ));
+    }
+
+    #[actix_rt::test]
+    async fn test_tokenized_hash_from_str() {
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        ).unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(tokenized_hash.b64_hash, String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"));
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,m=128,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        ).unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(tokenized_hash.b64_hash, String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"));
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$p=2,m=128,t=3$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        ).unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(tokenized_hash.b64_hash, String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"));
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        ).unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(tokenized_hash.b64_hash, String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"));
+    }
+
+    #[actix_rt::test]
+    async fn test_invalid_tokenized_hash_from_str() {
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2,$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,m=128,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2i$v=19$p=2m=128,t=3$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$t=3,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2i$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+        
+        let tokenized_hash = TokenizedHash::from_str(
+            "argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc$"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$$"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=2,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+    }
 
     #[actix_rt::test]
     async fn test_hash_password() {
@@ -514,9 +664,15 @@ mod tests {
     async fn test_verify_hash() {
         let password = "@Pa$$20rd-Test";
         let hash = hash_password(password);
-
-        // TODO: Hard code hash
-
+        
         assert!(verify_hash(password, &hash));
+    }
+
+    #[actix_rt::test]
+    async fn test_verify_incorrect_password() {
+        let password = "@Pa$$20rd-Test";
+        let hash = hash_password(password);
+
+        assert!(!verify_hash("@pa$$20rd-Test", &hash));
     }
 }
