@@ -17,6 +17,15 @@ struct TokenizedHash {
     pub b64_hash: String,
 }
 
+struct BinaryHash {
+    pub v: u32,
+    pub memory_kib: u32,
+    pub iterations: u32,
+    pub lanes: u32,
+    pub salt: Vec<u8>,
+    pub hash: Vec<u8>,
+}
+
 impl TokenizedHash {
     pub fn from_str(parameterized_hash: &str) -> Result<TokenizedHash, ()> {
         enum HashStates {
@@ -356,15 +365,21 @@ impl TokenizedHash {
             b64_hash: hash,
         })
     }
+}
 
+impl BinaryHash {
+    #[inline]
     pub fn to_hash_string(self) -> String {
+        let b64_salt = base64::encode_config(self.salt, base64::STANDARD_NO_PAD);
+        let b64_hash = base64::encode_config(self.hash, base64::STANDARD_NO_PAD);
         format!(
             "$argon2id$v={}$m={},t={},p={}${}${}",
-            self.v, self.memory_kib, self.iterations, self.lanes, self.b64_salt, self.b64_hash
+            self.v, self.memory_kib, self.iterations, self.lanes, b64_salt, b64_hash
         )
     }
 }
 
+#[inline]
 pub fn hash_password(password: &str) -> String {
     let mut salt = vec![0u8; env::CONF.hashing.salt_length_bytes];
 
@@ -382,15 +397,16 @@ pub fn hash_password(password: &str) -> String {
         env::CONF.hashing.hash_iterations,
         env::CONF.hashing.hash_mem_size_kib,
         env::CONF.hashing.hash_lanes,
-    )
+    ).to_hash_string()
 }
 
+#[inline]
 pub fn verify_hash(password: &str, hash: &str) -> bool {
     let mut hashing_key_mut = env::CONF.keys.hashing_key.clone();
     verify_argon2id(password, hash, unsafe { hashing_key_mut.as_bytes_mut() })
 }
 
-pub fn hash_argon2id(
+fn hash_argon2id(
     password: &str,
     key: &mut [u8],
     salt: &mut [u8],
@@ -398,7 +414,7 @@ pub fn hash_argon2id(
     iterations: u32,
     memory_kib: u32,
     lanes: u32,
-) -> String {
+) -> BinaryHash {
     let mut password_mut = String::from(password);
     let mut hash_buffer = vec![0u8; usize::try_from(hash_len).expect("Invalid hash length")];
 
@@ -432,19 +448,17 @@ pub fn hash_argon2id(
         });
     }
 
-    let hash = TokenizedHash {
+    BinaryHash {
         v: 19,
         memory_kib: memory_kib,
         iterations: iterations,
         lanes: lanes,
-        b64_salt: base64::encode_config(salt, base64::STANDARD_NO_PAD),
-        b64_hash: base64::encode_config(hash_buffer, base64::STANDARD_NO_PAD),
-    };
-
-    hash.to_hash_string()
+        salt: Vec::from(salt),
+        hash: Vec::from(hash_buffer),
+    }
 }
 
-pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
+fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
         Err(_) => {
@@ -468,23 +482,15 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
         tokenized_hash.lanes,
     );
 
-    let tokenized_verification_hash = match TokenizedHash::from_str(&hashed_password) {
-        Ok(h) => h,
-        Err(_) => {
-            error!("Hash passed to verifier was invalid");
-            return false;
-        }
-    };
-
-    let decoded_verification_hash =
-        base64::decode_config(tokenized_verification_hash.b64_hash, base64::STANDARD_NO_PAD)
-        .expect("Failed to decode hash");
+    if hashed_password.v != tokenized_hash.v {
+        return false;
+    }
 
     let mut is_valid = 0u8;
 
     // Do bitwise comparison to prevent timing attacks (entire length of string must be compared
     for i in 0..decoded_hash.len() {
-        is_valid |= decoded_hash[i] ^ decoded_verification_hash[i];
+        is_valid |= decoded_hash[i] ^ hashed_password.hash[i];
     }
 
     return is_valid == 0;
