@@ -152,23 +152,24 @@ impl TokenClaims {
         };
 
         let token_str = String::from_utf8_lossy(&decoded_token);
-        let split_token = token_str.split('|').collect::<Vec<_>>();
+        let mut split_token = token_str.split('|').peekable();
 
-        if split_token.len() < 2 {
-            return Err(TokenError::TokenInvalid);
+        let mut claims_json_str = String::with_capacity(256);
+        let mut hash_str = String::with_capacity(92);
+        while let Some(part) = split_token.next() {
+            if split_token.peek().is_none() {
+                hash_str.push_str(part);
+            } else {
+                claims_json_str.push_str(part);
+            }
         }
 
-        let mut claims_json_str = String::new();
-        for i in 0..(split_token.len() - 1) {
-            claims_json_str.push_str(split_token[i]);
-        }
-
-        let claims = match serde_json::from_str::<TokenClaims>(claims_json_str.as_str()) {
+        let claims = match serde_json::from_str::<TokenClaims>(&claims_json_str) {
             Ok(c) => c,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
-        let hash = match hex::decode(split_token[split_token.len() - 1]) {
+        let hash = match hex::decode(&hash_str) {
             Ok(h) => h,
             Err(_) => return Err(TokenError::TokenInvalid),
         };

@@ -29,7 +29,7 @@ pub fn create_user(
     db_connection: &DbConnection,
     user_data: &web::Json<InputUser>,
 ) -> Result<User, diesel::result::Error> {
-    let hashed_password = password_hasher::hash_argon2id(&user_data.password);
+    let hashed_password = password_hasher::hash_password(&user_data.password);
     let current_time = chrono::Utc::now().naive_utc();
 
     let new_user = NewUser {
@@ -76,7 +76,7 @@ pub fn change_password(
     user_id: Uuid,
     new_password: &str,
 ) -> Result<(), diesel::result::Error> {
-    let hashed_password = password_hasher::hash_argon2id(new_password);
+    let hashed_password = password_hasher::hash_password(new_password);
 
     match dsl::update(users.filter(user_fields::id.eq(user_id)))
         .set(user_fields::password_hash.eq(hashed_password))

@@ -24,7 +24,7 @@ fn main() {
         .include("libraries/phc-winner-argon2/include")
         .flag("-std=c89")
         .flag("-pthread");
-    
+
     build.compile("argon2");
 
     // println!("cargo:rustc-link-search={}", out_dir);
