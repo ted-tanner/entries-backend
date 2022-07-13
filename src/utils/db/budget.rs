@@ -63,9 +63,9 @@ pub fn get_all_budgets_for_user(
     // BEWARE of using this function when the user_id comes as input directly from the client.
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
-        WHERE user_budgets.user_id = '{user_id}' \
-        AND user_budgets.budget_id = budgets.id \
-	ORDER BY budgets.start_date"
+         WHERE user_budgets.user_id = '{user_id}' \
+         AND user_budgets.budget_id = budgets.id \
+	 ORDER BY budgets.start_date"
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
@@ -123,11 +123,11 @@ pub fn get_all_budgets_for_user_between_dates(
 
     let query = format!(
         "SELECT budgets.* FROM user_budgets, budgets \
-        WHERE user_budgets.user_id = '{user_id}' \
-        AND user_budgets.budget_id = budgets.id \
-        AND budgets.end_date >= '{start_date}' \
-        AND budgets.start_date <= '{end_date}' \
-        ORDER BY budgets.start_date"
+         WHERE user_budgets.user_id = '{user_id}' \
+         AND user_budgets.budget_id = budgets.id \
+         AND budgets.end_date >= '{start_date}' \
+         AND budgets.start_date <= '{end_date}' \
+         ORDER BY budgets.start_date"
     );
 
     let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
@@ -451,10 +451,11 @@ mod tests {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::{InputBudget, InputCategory, InputUser};
+    use crate::handlers::request_io::{InputBudget, InputCategory, InputUser, OutputBudget};
     use crate::models::budget::Budget;
     use crate::models::budget_share_event::BudgetShareEvent;
     use crate::models::category::Category;
+    use crate::models::user::User;
     use crate::models::user_budget::UserBudget;
     use crate::schema::budget_share_events as budget_share_event_fields;
     use crate::schema::budget_share_events::dsl::budget_share_events;
@@ -465,6 +466,74 @@ mod tests {
     use crate::schema::user_budgets as user_budget_fields;
     use crate::schema::user_budgets::dsl::user_budgets;
     use crate::utils::db::user;
+
+    pub struct UserAndBudget {
+        user: User,
+        budget: OutputBudget,
+    }
+
+    pub fn generate_user_and_budget(
+        db_connection: &DbConnection,
+    ) -> Result<UserAndBudget, diesel::result::Error> {
+        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", user_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user_number),
+            last_name: format!("User-{}", user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        let created_user = user::create_user(db_connection, &new_user_json)?;
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category {user_number}"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget {user_number}"),
+            description: Some(format!(
+                "This is a description of Test Budget {user_number}.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let new_budget_json = web::Json(new_budget.clone());
+        let created_budget = create_budget(db_connection, &new_budget_json, created_user.id)?;
+
+        Ok(UserAndBudget {
+            user: created_user,
+            budget: created_budget,
+        })
+    }
 
     #[actix_rt::test]
     async fn test_create_budget() {
@@ -566,76 +635,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+        let budget = created_user_and_budget1.budget.clone();
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
@@ -684,77 +690,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
-
+        let budget = created_user_and_budget1.budget.clone();
         invite_user(
             &db_connection,
             budget.id,
@@ -787,76 +729,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+        let budget = created_user_and_budget1.budget.clone();
 
         invite_user(
             &db_connection,
@@ -915,76 +794,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+        let budget = created_user_and_budget1.budget.clone();
 
         invite_user(
             &db_connection,
@@ -1043,97 +859,14 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget1 = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget2 = InputBudget {
-            name: format!("Test Budget {user1_number} #2"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number} #2.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget1_json = web::Json(new_budget1.clone());
-        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
-
-        let new_budget2_json = web::Json(new_budget2.clone());
-        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user1.id).unwrap();
+        let budget1 = created_user_and_budget1.budget.clone();
+        let budget2 = created_user_and_budget2.budget.clone();
 
         invite_user(
             &db_connection,
@@ -1198,97 +931,14 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget1 = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget2 = InputBudget {
-            name: format!("Test Budget {user1_number} #2"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number} #2.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget1_json = web::Json(new_budget1.clone());
-        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
-
-        let new_budget2_json = web::Json(new_budget2.clone());
-        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user1.id).unwrap();
+        let budget1 = created_user_and_budget1.budget.clone();
+        let budget2 = created_user_and_budget2.budget.clone();
 
         invite_user(
             &db_connection,
@@ -1353,76 +1003,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+        let budget = created_user_and_budget1.budget.clone();
 
         invite_user(
             &db_connection,
@@ -1460,76 +1047,13 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget = create_budget(&db_connection, &new_budget_json, created_user1.id).unwrap();
+        let budget = created_user_and_budget1.budget.clone();
 
         add_user(&db_connection, budget.id, created_user2.id).unwrap();
 
@@ -1544,23 +1068,29 @@ mod tests {
             .unwrap();
 
         assert_eq!(created_user1_budget_associations.len(), 1);
-        assert_eq!(created_user2_budget_associations.len(), 1);
+        assert_eq!(created_user2_budget_associations.len(), 2);
+
+        let mut user2_budget_association: Option<UserBudget> = None;
+
+        for assoc in created_user2_budget_associations {
+            if assoc.budget_id == budget.id {
+                user2_budget_association = Some(assoc);
+                break;
+            }
+        }
+
+        let user2_budget_association = user2_budget_association.unwrap();
 
         assert!(
             created_user1_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
         );
-        assert!(
-            created_user2_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
-        );
+        assert!(user2_budget_association.created_timestamp < chrono::Utc::now().naive_utc());
 
         assert_eq!(
             created_user1_budget_associations[0].user_id,
             created_user1.id
         );
-        assert_eq!(
-            created_user2_budget_associations[0].user_id,
-            created_user2.id
-        );
+        assert_eq!(user2_budget_association.user_id, created_user2.id);
 
         let query_user1 = format!(
             "SELECT budgets.* FROM user_budgets, budgets \
@@ -1586,10 +1116,19 @@ mod tests {
             .unwrap();
 
         assert_eq!(user1_loaded_budgets.len(), 1);
-        assert_eq!(user2_loaded_budgets.len(), 1);
+        assert_eq!(user2_loaded_budgets.len(), 2);
+
+        let mut budget_for_user2: Option<Budget> = None;
+
+        for budg in user2_loaded_budgets {
+            if budg.id == budget.id {
+                budget_for_user2 = Some(budg);
+                break;
+            }
+        }
 
         let budget_for_user1 = &user1_loaded_budgets[0];
-        let budget_for_user2 = &user2_loaded_budgets[0];
+        let budget_for_user2 = budget_for_user2.unwrap();
 
         assert_eq!(budget_for_user1.id, budget_for_user2.id);
         assert_eq!(budget_for_user1.name, budget_for_user2.name);
@@ -1603,97 +1142,14 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user1_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user1 = InputUser {
-            email: format!("test_user1{}@test.com", user1_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user1_number),
-            last_name: format!("User1-{}", user1_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
 
-        let new_user1_json = web::Json(new_user1);
-        let created_user1 = user::create_user(&db_connection, &new_user1_json).unwrap();
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
 
-        let user2_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user2 = InputUser {
-            email: format!("test_user2{}@test.com", user2_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user2_number),
-            last_name: format!("User2-{}", user2_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user2_json = web::Json(new_user2);
-        let created_user2 = user::create_user(&db_connection, &new_user2_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user1_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget1 = InputBudget {
-            name: format!("Test Budget {user1_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user1_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget2 = InputBudget {
-            name: format!("Test Budget {user2_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user2_number}.",
-            )),
-            categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget1_json = web::Json(new_budget1.clone());
-        let budget1 = create_budget(&db_connection, &new_budget1_json, created_user1.id).unwrap();
-
-        let new_budget2_json = web::Json(new_budget2.clone());
-        let budget2 = create_budget(&db_connection, &new_budget2_json, created_user2.id).unwrap();
+        let budget1 = created_user_and_budget1.budget.clone();
+        let budget2 = created_user_and_budget2.budget.clone();
 
         add_user(&db_connection, budget1.id, created_user2.id).unwrap();
         add_user(&db_connection, budget2.id, created_user1.id).unwrap();
@@ -1768,60 +1224,8 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user_number}.",
-            )),
-            categories: budget_categories,
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget_before =
-            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let budget_before = created_user_and_budget.budget.clone();
 
         let budget_edits = InputEditBudget {
             id: budget_before.id.clone(),
@@ -1867,60 +1271,8 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user_number}.",
-            )),
-            categories: budget_categories,
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget.clone());
-        let budget_before =
-            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let budget_before = created_user_and_budget.budget.clone();
 
         let budget_edits = InputEditBudget {
             id: budget_before.id.clone(),
@@ -1973,60 +1325,9 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget {user_number}.",
-            )),
-            categories: budget_categories,
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget);
-        let created_budget =
-            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
+        let created_budget = created_user_and_budget.budget.clone();
 
         let new_entry = InputEntry {
             budget_id: created_budget.id,
@@ -2036,7 +1337,7 @@ mod tests {
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
             ),
-            name: Some(format!("Test Entry 0 for {user_number}")),
+            name: Some(format!("Test Entry 0 for user")),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -2073,58 +1374,9 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
-
-        let category0 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
-
-        let category1 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user_number}"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget_categories = vec![category0, category1];
-
-        let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
-            description: None,
-            categories: budget_categories,
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
-        let new_budget_json = web::Json(new_budget);
-        let created_budget =
-            create_budget(&db_connection, &new_budget_json, created_user.id).unwrap();
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
+        let created_budget = created_user_and_budget.budget.clone();
 
         let entry0 = InputEntry {
             budget_id: created_budget.id,
@@ -2134,7 +1386,7 @@ mod tests {
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
-            name: Some(format!("Test Entry 0 for {user_number}")),
+            name: Some(format!("Test Entry 0 for user")),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -2218,60 +1470,30 @@ mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(&db_connection, &new_user_json).unwrap();
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
+        let budget0 = created_user_and_budget.budget.clone();
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category {user_number}"),
+            name: format!("First Random Category user"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category {user_number}"),
+            name: format!("Second Random Category user"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
 
-        let category2 = InputCategory {
-            id: 0,
-            name: format!("First Random Category {user_number} (Second Budget)"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#ff11ee"),
-        };
+        let budget1_categories = vec![category0, category1];
 
-        let category3 = InputCategory {
-            id: 1,
-            name: format!("Second Random Category {user_number} (Second Budget)"),
-            limit_cents: rand::thread_rng().gen_range(100..500),
-            color: String::from("#112233"),
-        };
-
-        let budget0_categories = vec![category0, category1];
-        let budget1_categories = vec![category2, category3];
-
-        let new_budget0 = InputBudget {
-            name: format!("Test Budget0 {user_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget0 {user_number}.",
-            )),
-            categories: budget0_categories,
+        let new_budget1 = InputBudget {
+            name: format!("Test Budget1 user"),
+            description: Some(format!("This is a description of Test Budget1 user.",)),
+            categories: budget1_categories,
             start_date: NaiveDate::from_ymd(
                 2020,
                 rand::thread_rng().gen_range(1..=12),
@@ -2284,33 +1506,13 @@ mod tests {
             ),
         };
 
-        let new_budget1 = InputBudget {
-            name: format!("Test Budget1 {user_number}"),
-            description: Some(format!(
-                "This is a description of Test Budget1 {user_number}.",
-            )),
-            categories: budget1_categories,
-            start_date: NaiveDate::from_ymd(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-        };
-
         let mut created_budgets = Vec::new();
-
-        let new_budget0_json = web::Json(new_budget0);
-        created_budgets
-            .push(create_budget(&db_connection, &new_budget0_json, created_user.id).unwrap());
 
         let new_budget1_json = web::Json(new_budget1);
         created_budgets
             .push(create_budget(&db_connection, &new_budget1_json, created_user.id).unwrap());
+
+        created_budgets.push(budget0);
 
         let entry0 = InputEntry {
             budget_id: created_budgets[0].id,
@@ -2320,7 +1522,7 @@ mod tests {
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
-            name: Some(format!("Test Entry 0 for {user_number}")),
+            name: Some(format!("Test Entry 0 for user")),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -2346,7 +1548,7 @@ mod tests {
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
             ),
-            name: Some(format!("Test Entry 2 for {user_number}")),
+            name: Some(format!("Test Entry 2 for user")),
             category: Some(0),
             note: Some(String::from("This is 2 little note")),
         };

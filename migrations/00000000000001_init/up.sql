@@ -57,7 +57,8 @@ CREATE TABLE budget_share_events (
     accepted BOOLEAN NOT NULL,
     share_timestamp TIMESTAMP NOT NULL,
     accepted_declined_timestamp TIMESTAMP,
-    UNIQUE (recipient_user_id, sharer_user_id, budget_id)
+    UNIQUE (recipient_user_id, sharer_user_id, budget_id),
+    CHECK (recipient_user_id != sharer_user_id)
 );
 
 CREATE TABLE categories (
