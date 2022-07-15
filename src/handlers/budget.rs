@@ -40,7 +40,7 @@ pub async fn get(
                 return Err(ServerError::InvalidFormat(None));
             }
             diesel::result::Error::NotFound => {
-                return Err(ServerError::AccessForbidden(Some("No budget with ID")));
+                return Err(ServerError::NotFound(Some("No budget with provided ID")));
             }
             _ => {
                 error!("{}", e);
@@ -266,32 +266,200 @@ pub async fn invite_user(
     Ok(HttpResponse::Ok().finish())
 }
 
-// // TODO: Test
-// pub async fn retract_invitation(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_id: web::Json<InputBudgetShareEventId>,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
+// TODO: Test
+pub async fn retract_invitation(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    invitation_id: web::Json<InputBudgetShareEventId>,
+) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_copy = db_thread_pool.clone();
+    let share_event_id_copy = invitation_id.clone().share_event_id;
+    
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
 
-// // TODO: Test
-// pub async fn accept_invitation(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_id: web::Json<InputBudgetShareEventId>,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
+        db::budget::get_invitation(
+            &db_connection,
+            invitation_id.share_event_id,
+        )
+    })
+    .await?
+    {
+        Ok(inv) => {
+            if inv.sharer_user_id != auth_user_claims.0.uid {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            }
+            
+            ()
+        },
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            },
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find budget",
+                )));
+            }
+        },
+    }
 
-// // TODO: Test
-// pub async fn decline_invitation(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_id: web::Json<InputBudgetShareEventId>,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
+    match web::block(move || {
+        let db_connection = db_thread_pool_copy
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::delete_invitation(
+            &db_connection,
+            share_event_id_copy,
+        )
+    })
+        .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to delete invitation",
+            )));
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn accept_invitation(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    invitation_id: web::Json<InputBudgetShareEventId>,
+) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_copy = db_thread_pool.clone();
+    let share_event_id_copy = invitation_id.clone().share_event_id;
+    
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::get_invitation(
+            &db_connection,
+            invitation_id.share_event_id,
+        )
+    })
+    .await?
+    {
+        Ok(inv) => {
+            if inv.recipient_user_id != auth_user_claims.0.uid {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            }
+            
+            ()
+        },
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            },
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find budget",
+                )));
+            }
+        },
+    }
+
+    match web::block(move || {
+        let db_connection = db_thread_pool_copy
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::mark_invitation_accepted(
+            &db_connection,
+            share_event_id_copy,
+        )
+    })
+        .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to accept invitation",
+            )));
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn decline_invitation(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    invitation_id: web::Json<InputBudgetShareEventId>,
+) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_copy = db_thread_pool.clone();
+    let share_event_id_copy = invitation_id.clone().share_event_id;
+    
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::get_invitation(
+            &db_connection,
+            invitation_id.share_event_id,
+        )
+    })
+    .await?
+    {
+        Ok(inv) => {
+            if inv.recipient_user_id != auth_user_claims.0.uid {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            }
+            
+            ()
+        },
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No share event with provided ID")));
+            },
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find budget",
+                )));
+            }
+        },
+    }
+
+    match web::block(move || {
+        let db_connection = db_thread_pool_copy
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::mark_invitation_declined(
+            &db_connection,
+            share_event_id_copy,
+        )
+    })
+        .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to accept invitation",
+            )));
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
 
 // // TODO: Test
 // pub async fn get_all_pending_invitations_for_user(
@@ -381,7 +549,7 @@ mod tests {
     use crate::env;
     use crate::handlers::request_io::{
         InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
-        InputUser, OutputBudget, OutputUserPrivate, SigninToken, SigninTokenOtpPair, TokenPair,
+        InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
     };
     use crate::models::budget::Budget;
     use crate::models::category::Category;
@@ -394,7 +562,6 @@ mod tests {
     use crate::utils::{db, otp};
 
     pub struct UserAndBudgetWithAuthTokens {
-        user: OutputUserPrivate,
         budget: OutputBudget,
         token_pair: TokenPair,
     }
@@ -459,20 +626,6 @@ mod tests {
         let token_pair = actix_web::test::read_body_json::<TokenPair, _>(otp_res).await;
         let access_token = token_pair.access_token.to_string();
 
-        let get_user_res = test::call_service(
-            &app,
-            test::TestRequest::get()
-                .uri("/api/user/get")
-                .insert_header(("authorization", format!("bearer {access_token}")))
-                .to_request(),
-        )
-        .await;
-
-        let get_user_res_body =
-            String::from_utf8(actix_web::test::read_body(get_user_res).await.to_vec()).unwrap();
-
-        let user = serde_json::from_str::<OutputUserPrivate>(get_user_res_body.as_str()).unwrap();
-
         let category0 = InputCategory {
             id: 0,
             name: format!("First Random Category {user_number}"),
@@ -522,7 +675,6 @@ mod tests {
         let budget = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
 
         UserAndBudgetWithAuthTokens {
-            user,
             budget,
             token_pair,
         }
@@ -887,7 +1039,7 @@ mod tests {
     // }
 
     // #[actix_rt::test]
-    // async fn test_delete_invitation() {
+    // async fn test_retract_invitation() {
     //     todo!();
     // }
 

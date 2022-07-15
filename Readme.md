@@ -417,17 +417,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Implement budget sharing (add/remove user from budget db utils are already in place)
 
-* There is a CVE in a dependency for the `argonautica` crate. Remove `argonautica` and call the C library directly.
-
-* Make sure DB VARCHAR(256) is large enough to hold tokens of any size
+* To ensure user is in budget or budget share event, etc, don't make db query. Just filter db items by id AND the user ID and return not found if nothing comes back
 
 * Editing budget shouldn't allow for changing categories. Handle that in separate endpoint
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
   - Perhaps no deletion is necessary for categories until budget is deleted
   
-  - Don't accept non-standard chars in email or password fields (like `\a`)
-
 * Get web app running
 * Figure out how to do timezone-aware dates
 * Create delete handlers (and db::utils) for user, budget, and entry
