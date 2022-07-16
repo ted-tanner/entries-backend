@@ -1,7 +1,9 @@
 use actix_web::web;
 use chrono::NaiveDate;
 use diesel::associations::GroupedBy;
-use diesel::{dsl, sql_query, BelongingToDsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
+};
 use uuid::Uuid;
 
 use crate::definitions::*;
@@ -314,34 +316,48 @@ pub fn invite_user(
 pub fn delete_invitation(
     db_connection: &DbConnection,
     invitation_id: Uuid,
+    sharer_user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(budget_share_events.find(invitation_id)).execute(db_connection)
+    diesel::delete(
+        budget_share_events
+            .find(invitation_id)
+            .filter(budget_share_event_fields::sharer_user_id.eq(sharer_user_id)),
+    )
+    .execute(db_connection)
 }
 
 pub fn mark_invitation_accepted(
     db_connection: &DbConnection,
     invitation_id: Uuid,
+    recipient_user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::update(budget_share_events.find(invitation_id))
-        .set((
-            budget_share_event_fields::accepted.eq(true),
-            budget_share_event_fields::accepted_declined_timestamp
-                .eq(chrono::Utc::now().naive_utc()),
-        ))
-        .execute(db_connection)
+    diesel::update(
+        budget_share_events
+            .find(invitation_id)
+            .filter(budget_share_event_fields::recipient_user_id.eq(recipient_user_id)),
+    )
+    .set((
+        budget_share_event_fields::accepted.eq(true),
+        budget_share_event_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+    ))
+    .execute(db_connection)
 }
 
 pub fn mark_invitation_declined(
     db_connection: &DbConnection,
     invitation_id: Uuid,
+    recipient_user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::update(budget_share_events.find(invitation_id))
-        .set((
-            budget_share_event_fields::accepted.eq(false),
-            budget_share_event_fields::accepted_declined_timestamp
-                .eq(chrono::Utc::now().naive_utc()),
-        ))
-        .execute(db_connection)
+    diesel::update(
+        budget_share_events
+            .find(invitation_id)
+            .filter(budget_share_event_fields::recipient_user_id.eq(recipient_user_id)),
+    )
+    .set((
+        budget_share_event_fields::accepted.eq(false),
+        budget_share_event_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+    ))
+    .execute(db_connection)
 }
 
 pub fn get_all_pending_invitations_for_user(
@@ -369,9 +385,15 @@ pub fn get_all_pending_invitations_made_by_user(
 pub fn get_invitation(
     db_connection: &DbConnection,
     invitation_id: Uuid,
+    user_id: Uuid,
 ) -> Result<BudgetShareEvent, diesel::result::Error> {
     budget_share_events
         .find(invitation_id)
+        .filter(
+            budget_share_event_fields::sharer_user_id
+                .eq(user_id)
+                .or(budget_share_event_fields::recipient_user_id.eq(user_id)),
+        )
         .first::<BudgetShareEvent>(db_connection)
 }
 
@@ -404,6 +426,22 @@ pub fn remove_user(
             .filter(user_budget_fields::budget_id.eq(budget_id)),
     )
     .execute(db_connection)
+}
+
+pub fn count_users_remaining_in_budget(
+    db_connection: &DbConnection,
+    budget_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    user_budgets
+        .filter(user_budget_fields::budget_id.eq(budget_id))
+        .execute(db_connection)
+}
+
+pub fn delete_budget(
+    db_connection: &DbConnection,
+    budget_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(budgets.find(budget_id)).execute(db_connection)
 }
 
 pub fn create_entry(
@@ -713,7 +751,12 @@ mod tests {
 
         assert_eq!(created_budget_share_events.len(), 1);
 
-        delete_invitation(&db_connection, created_budget_share_events[0].id).unwrap();
+        delete_invitation(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user1.id,
+        )
+        .unwrap();
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
@@ -753,7 +796,12 @@ mod tests {
 
         assert_eq!(created_budget_share_events.len(), 1);
 
-        mark_invitation_accepted(&db_connection, created_budget_share_events[0].id).unwrap();
+        mark_invitation_accepted(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user2.id,
+        )
+        .unwrap();
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
@@ -818,7 +866,12 @@ mod tests {
 
         assert_eq!(created_budget_share_events.len(), 1);
 
-        mark_invitation_declined(&db_connection, created_budget_share_events[0].id).unwrap();
+        mark_invitation_declined(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user2.id,
+        )
+        .unwrap();
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
@@ -910,7 +963,7 @@ mod tests {
         assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
-        mark_invitation_accepted(&db_connection, share_events[0].id).unwrap();
+        mark_invitation_accepted(&db_connection, share_events[0].id, created_user2.id).unwrap();
 
         let share_events =
             get_all_pending_invitations_for_user(&db_connection, created_user2.id).unwrap();
@@ -982,7 +1035,7 @@ mod tests {
         assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
-        mark_invitation_declined(&db_connection, share_events[0].id).unwrap();
+        mark_invitation_declined(&db_connection, share_events[0].id, created_user2.id).unwrap();
 
         let share_events =
             get_all_pending_invitations_made_by_user(&db_connection, created_user1.id).unwrap();
@@ -1027,10 +1080,35 @@ mod tests {
 
         assert_eq!(created_budget_share_events.len(), 1);
 
-        mark_invitation_accepted(&db_connection, created_budget_share_events[0].id).unwrap();
+        mark_invitation_accepted(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user2.id,
+        )
+        .unwrap();
 
-        let share_event =
-            get_invitation(&db_connection, created_budget_share_events[0].id).unwrap();
+        let share_event = get_invitation(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        assert_eq!(share_event.recipient_user_id, created_user2.id);
+        assert_eq!(share_event.sharer_user_id, created_user1.id);
+        assert_eq!(share_event.budget_id, budget.id);
+        assert_eq!(share_event.accepted, true);
+
+        assert!(share_event.share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_event.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.share_timestamp);
+
+        let share_event = get_invitation(
+            &db_connection,
+            created_budget_share_events[0].id,
+            created_user2.id,
+        )
+        .unwrap();
 
         assert_eq!(share_event.recipient_user_id, created_user2.id);
         assert_eq!(share_event.sharer_user_id, created_user1.id);
@@ -1217,6 +1295,51 @@ mod tests {
         assert!(budget_ids_for_user1.contains(&budget1.id));
         assert!(budget_ids_for_user1.contains(&budget2.id));
         assert_eq!(budget1_for_user2.id, budget1.id);
+    }
+
+    #[actix_rt::test]
+    async fn test_count_users_remaining_in_budget() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user_and_budget1 = generate_user_and_budget(&db_connection).unwrap();
+        let created_user_and_budget2 = generate_user_and_budget(&db_connection).unwrap();
+
+        let created_user1 = created_user_and_budget1.user.clone();
+        let created_user2 = created_user_and_budget2.user.clone();
+
+        let budget = created_user_and_budget1.budget.clone();
+
+        let budget_user_count = count_users_remaining_in_budget(&db_connection, budget.id).unwrap();
+        assert_eq!(budget_user_count, 1);
+
+        add_user(&db_connection, budget.id, created_user2.id).unwrap();
+
+        let budget_user_count = count_users_remaining_in_budget(&db_connection, budget.id).unwrap();
+        assert_eq!(budget_user_count, 2);
+
+        remove_user(&db_connection, budget.id, created_user2.id).unwrap();
+
+        let budget_user_count = count_users_remaining_in_budget(&db_connection, budget.id).unwrap();
+        assert_eq!(budget_user_count, 1);
+
+        remove_user(&db_connection, budget.id, created_user1.id).unwrap();
+
+        let budget_user_count = count_users_remaining_in_budget(&db_connection, budget.id).unwrap();
+        assert_eq!(budget_user_count, 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_delete_budget() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_budget = created_user_and_budget.budget;
+
+        delete_budget(&db_connection, created_budget.id).unwrap();
+
+        assert!(get_budget_by_id(&db_connection, created_budget.id).is_err());
     }
 
     #[actix_rt::test]

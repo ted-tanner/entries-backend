@@ -272,60 +272,33 @@ pub async fn retract_invitation(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     invitation_id: web::Json<InputBudgetShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_copy = db_thread_pool.clone();
-    let share_event_id_copy = invitation_id.clone().share_event_id;
-    
     match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::get_invitation(
+        db::budget::delete_invitation(
             &db_connection,
             invitation_id.share_event_id,
+            auth_user_claims.0.uid,
         )
     })
     .await?
     {
-        Ok(inv) => {
-            if inv.sharer_user_id != auth_user_claims.0.uid {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            }
-            
-            ()
-        },
+        Ok(_) => (),
         Err(e) => match e {
             diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            },
+                return Err(ServerError::NotFound(Some(
+                    "No share event with provided ID",
+                )));
+            }
             _ => {
                 error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to find budget",
+                    "Failed to delete invitation",
                 )));
             }
         },
-    }
-
-    match web::block(move || {
-        let db_connection = db_thread_pool_copy
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::delete_invitation(
-            &db_connection,
-            share_event_id_copy,
-        )
-    })
-        .await?
-    {
-        Ok(_) => (),
-        Err(e) => {
-            error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
-                "Failed to delete invitation",
-            )));
-        }
     }
 
     Ok(HttpResponse::Ok().finish())
@@ -337,60 +310,33 @@ pub async fn accept_invitation(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     invitation_id: web::Json<InputBudgetShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_copy = db_thread_pool.clone();
-    let share_event_id_copy = invitation_id.clone().share_event_id;
-    
     match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::get_invitation(
+        db::budget::mark_invitation_accepted(
             &db_connection,
             invitation_id.share_event_id,
+            auth_user_claims.0.uid,
         )
     })
     .await?
     {
-        Ok(inv) => {
-            if inv.recipient_user_id != auth_user_claims.0.uid {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            }
-            
-            ()
-        },
+        Ok(_) => (),
         Err(e) => match e {
             diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            },
+                return Err(ServerError::NotFound(Some(
+                    "No share event with provided ID",
+                )));
+            }
             _ => {
                 error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to find budget",
+                    "Failed to accept invitation",
                 )));
             }
         },
-    }
-
-    match web::block(move || {
-        let db_connection = db_thread_pool_copy
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::mark_invitation_accepted(
-            &db_connection,
-            share_event_id_copy,
-        )
-    })
-        .await?
-    {
-        Ok(_) => (),
-        Err(e) => {
-            error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
-                "Failed to accept invitation",
-            )));
-        }
     }
 
     Ok(HttpResponse::Ok().finish())
@@ -402,10 +348,107 @@ pub async fn decline_invitation(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     invitation_id: web::Json<InputBudgetShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_copy = db_thread_pool.clone();
-    let share_event_id_copy = invitation_id.clone().share_event_id;
-    
     match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::mark_invitation_declined(
+            &db_connection,
+            invitation_id.share_event_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "No share event with provided ID",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to decline invitation",
+                )));
+            }
+        },
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn get_all_pending_invitations_for_user(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let invites = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::get_all_pending_invitations_for_user(&db_connection, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No share events for user")));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find invitations",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(invites))
+}
+
+// TODO: Test
+pub async fn get_all_pending_invitations_made_by_user(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let invites = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::get_all_pending_invitations_made_by_user(&db_connection, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No share events made by user")));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find invitations",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(invites))
+}
+
+// TODO: Test
+pub async fn get_invitation(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    invitation_id: web::Json<InputBudgetShareEventId>,
+) -> Result<HttpResponse, ServerError> {
+    let invite = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
@@ -413,89 +456,103 @@ pub async fn decline_invitation(
         db::budget::get_invitation(
             &db_connection,
             invitation_id.share_event_id,
+            auth_user_claims.0.uid,
         )
     })
     .await?
     {
-        Ok(inv) => {
-            if inv.recipient_user_id != auth_user_claims.0.uid {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            }
-            
-            ()
-        },
+        Ok(_) => (),
         Err(e) => match e {
             diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No share event with provided ID")));
-            },
+                return Err(ServerError::NotFound(Some("Share event not found")));
+            }
             _ => {
                 error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to find budget",
+                    "Failed to find invitations",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(invite))
+}
+
+// TODO: Test (also test deletion of budgetb
+pub async fn remove_budget(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    budget_id: web::Json<Uuid>,
+) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_copy = db_thread_pool.clone();
+    let db_thread_pool_second_copy = db_thread_pool.clone();
+
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::budget::remove_user(&db_connection, budget_id.0, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "User budget association not found",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to remove association with budget",
                 )));
             }
         },
     }
 
-    match web::block(move || {
+    // TODO: Perhaps user shouldn't have to wait for this (make it non-blocking)
+    let remaining_users_in_budget = match web::block(move || {
         let db_connection = db_thread_pool_copy
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::mark_invitation_declined(
-            &db_connection,
-            share_event_id_copy,
-        )
+        db::budget::count_users_remaining_in_budget(&db_connection, budget_id.0)
     })
-        .await?
+    .await?
     {
-        Ok(_) => (),
-        Err(e) => {
-            error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
-                "Failed to accept invitation",
-            )));
-        }
+        Ok(c) => c,
+        Err(e) => match e {
+            _ => {
+                error!(
+                    "Failed to see how many users left in budget with ID '{}': {}",
+                    budget_id.0, e
+                );
+                10
+            }
+        },
+    };
+
+    if remaining_users_in_budget == 0 {
+        match web::block(move || {
+            let db_connection = db_thread_pool_second_copy
+                .get()
+                .expect("Failed to access database thread pool");
+
+            db::budget::delete_budget(&db_connection, budget_id.0)
+        })
+        .await?
+        {
+            Ok(_) => (),
+            Err(e) => match e {
+                _ => error!("Failed to delete budget with ID '{}': {}", budget_id.0, e),
+            },
+        };
     }
 
     Ok(HttpResponse::Ok().finish())
 }
-
-// // TODO: Test
-// pub async fn get_all_pending_invitations_for_user(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
-
-// // TODO: Test
-// pub async fn get_all_pending_invitations_made_by_user(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
-
-// // TODO: Test
-// pub async fn get_invitation(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     invitation_id: web::Json<InputBudgetShareEventId>,
-// ) -> Result<HttpResponse, ServerError> {
-//     todo!();
-// }
-
-// // TODO: Test
-// pub async fn remove_budget(
-//     db_thread_pool: web::Data<DbThreadPool>,
-//     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-//     budget_id: web::Json<Uuid>,
-// ) -> Result<HttpResponse, ServerError> {
-//     // TODO: Delete relationship if not last user in budget. Otherwise, delete budget
-//     // entirely
-//     todo!();
-// }
 
 #[inline]
 async fn ensure_user_in_budget(
@@ -674,10 +731,7 @@ mod tests {
 
         let budget = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
 
-        UserAndBudgetWithAuthTokens {
-            budget,
-            token_pair,
-        }
+        UserAndBudgetWithAuthTokens { budget, token_pair }
     }
 
     #[actix_rt::test]
@@ -885,7 +939,7 @@ mod tests {
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
         let budget_before_edit = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
-        
+
         let edit_budget = InputEditBudget {
             id: budget_before_edit.id.clone(),
             name: format!("Test Budget user after edit"),
@@ -915,8 +969,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(&budget_after_edit.name, &budget_before_edit.name);
-        assert_eq!(&budget_after_edit.description, &budget_before_edit.description);
-        assert_eq!(&budget_after_edit.start_date, &budget_before_edit.start_date);
+        assert_eq!(
+            &budget_after_edit.description,
+            &budget_before_edit.description
+        );
+        assert_eq!(
+            &budget_after_edit.start_date,
+            &budget_before_edit.start_date
+        );
         assert_eq!(&budget_after_edit.end_date, &budget_before_edit.end_date);
     }
 
@@ -935,7 +995,7 @@ mod tests {
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
         let budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
-        
+
         let entry0 = InputEntry {
             budget_id: budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
@@ -1034,12 +1094,27 @@ mod tests {
     // }
 
     // #[actix_rt::test]
+    // async fn test_cannot_accept_invites_for_another_user() {
+    //     todo!();
+    // }
+
+    // #[actix_rt::test]
     // async fn test_invite_user_and_decline() {
     //     todo!();
     // }
 
     // #[actix_rt::test]
+    // async fn test_cannot_decline_invites_for_another_user() {
+    //     todo!();
+    // }
+
+    // #[actix_rt::test]
     // async fn test_retract_invitation() {
+    //     todo!();
+    // }
+
+    // #[actix_rt::test]
+    // async fn test_cannot_retract_invites_made_by__another_user() {
     //     todo!();
     // }
 
@@ -1055,6 +1130,7 @@ mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_invitation() {
+    //     // TODO: Test that both the inviter and the invitee can get the invitation, but not another user
     //     todo!();
     // }
 
@@ -1074,7 +1150,7 @@ mod tests {
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
         let budget_categories = created_budget.categories.clone();
-        
+
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
@@ -1189,7 +1265,7 @@ mod tests {
                 .configure(services::api::configure),
         )
         .await;
-        
+
         let created_user_and_budget =
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
         let created_budget0 = created_user_and_budget.budget.clone();
@@ -1212,9 +1288,7 @@ mod tests {
 
         let new_budget1 = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(
                 2022,
@@ -1415,7 +1489,9 @@ mod tests {
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
-        diesel::delete(budgets.find(created_budget.id)).execute(&db_thread_pool.get().unwrap()).unwrap();
+        diesel::delete(budgets.find(created_budget.id))
+            .execute(&db_thread_pool.get().unwrap())
+            .unwrap();
 
         let category0 = InputCategory {
             id: 0,
@@ -1435,9 +1511,7 @@ mod tests {
 
         let too_early_budget = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(2022, 3, 14),
             end_date: NaiveDate::from_ymd(2022, 3, 30),
@@ -1465,9 +1539,7 @@ mod tests {
 
         let in_range_budget0 = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(2022, 3, 12),
             end_date: NaiveDate::from_ymd(2022, 4, 18),
@@ -1495,9 +1567,7 @@ mod tests {
 
         let in_range_budget1 = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(2022, 4, 8),
             end_date: NaiveDate::from_ymd(2022, 4, 10),
@@ -1525,9 +1595,7 @@ mod tests {
 
         let in_range_budget2 = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(2022, 4, 9),
             end_date: NaiveDate::from_ymd(2022, 5, 6),
@@ -1555,9 +1623,7 @@ mod tests {
 
         let too_late_budget = InputBudget {
             name: format!("Test Budget user"),
-            description: Some(format!(
-                "This is a description of Test Budget user.",
-            )),
+            description: Some(format!("This is a description of Test Budget user.",)),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(2022, 4, 22),
             end_date: NaiveDate::from_ymd(2022, 4, 30),
@@ -1915,8 +1981,11 @@ mod tests {
 
         let created_unauth_user_and_budget =
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-        let unauth_user_access_token = created_unauth_user_and_budget.token_pair.access_token.clone();
-        
+        let unauth_user_access_token = created_unauth_user_and_budget
+            .token_pair
+            .access_token
+            .clone();
+
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
