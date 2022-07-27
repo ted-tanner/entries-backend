@@ -2,7 +2,8 @@ use actix_web::web;
 use chrono::NaiveDate;
 use diesel::associations::GroupedBy;
 use diesel::{
-    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
+    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
+    RunQueryDsl,
 };
 use uuid::Uuid;
 
@@ -27,8 +28,20 @@ use crate::schema::user_budgets::dsl::user_budgets;
 pub fn get_budget_by_id(
     db_connection: &DbConnection,
     budget_id: Uuid,
+    user_id: Uuid,
 ) -> Result<OutputBudget, diesel::result::Error> {
-    let budget = budgets.find(budget_id).first::<Budget>(db_connection)?;
+    let mut loaded_budgets = budgets
+        .select(budget_fields::all_columns)
+        .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
+        .filter(budget_fields::id.eq(budget_id))
+        .filter(user_budget_fields::user_id.eq(user_id))
+        .load::<Budget>(db_connection)?;
+
+    if loaded_budgets.len() != 1 {
+        return Err(diesel::result::Error::NotFound);
+    }
+
+    let budget = loaded_budgets.remove(0);
 
     let loaded_categories = Category::belonging_to(&budget)
         .order(category_fields::id.asc())
@@ -274,18 +287,25 @@ pub fn create_budget(
     Ok(output_budget)
 }
 
+// TEST handlers using this don't work on zother users' budgets
 pub fn edit_budget(
     db_connection: &DbConnection,
     edited_budget_data: &web::Json<InputEditBudget>,
+    user_id: Uuid,
 ) -> Result<(), diesel::result::Error> {
-    match dsl::update(budgets.filter(budget_fields::id.eq(edited_budget_data.id)))
-        .set((
-            budget_fields::name.eq(&edited_budget_data.name),
-            budget_fields::description.eq(&edited_budget_data.description),
-            budget_fields::start_date.eq(&edited_budget_data.start_date),
-            budget_fields::end_date.eq(&edited_budget_data.end_date),
-        ))
-        .execute(db_connection)
+    match dsl::update(
+        budgets
+            .left_join(user_budgets.on(user_budget_fields::budget_id.eq(edited_budget_data.id)))
+            .filter(user_budget_fields::user_id.eq(user_id))
+            .filter(budget_fields::id.eq(edited_budget_data.id)),
+    )
+    .set((
+        budget_fields::name.eq(&edited_budget_data.name),
+        budget_fields::description.eq(&edited_budget_data.description),
+        budget_fields::start_date.eq(&edited_budget_data.start_date),
+        budget_fields::end_date.eq(&edited_budget_data.end_date),
+    ))
+    .execute(db_connection)
     {
         Ok(_) => Ok(()),
         Err(e) => Err(e),
@@ -1335,11 +1355,12 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
         let created_budget = created_user_and_budget.budget;
 
         delete_budget(&db_connection, created_budget.id).unwrap();
 
-        assert!(get_budget_by_id(&db_connection, created_budget.id).is_err());
+        assert!(get_budget_by_id(&db_connection, created_budget.id, created_user.id).is_err());
     }
 
     #[actix_rt::test]
@@ -1348,6 +1369,7 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
         let budget_before = created_user_and_budget.budget.clone();
 
         let budget_edits = InputEditBudget {
@@ -1361,7 +1383,8 @@ mod tests {
         let budget_edits_json = web::Json(budget_edits.clone());
         edit_budget(&db_connection, &budget_edits_json).unwrap();
 
-        let budget_after = get_budget_by_id(&db_connection, budget_before.id).unwrap();
+        let budget_after =
+            get_budget_by_id(&db_connection, budget_before.id, created_user.id).unwrap();
 
         assert_eq!(&budget_after.name, &budget_before.name);
         assert_eq!(&budget_after.start_date, &budget_before.start_date);
@@ -1395,6 +1418,7 @@ mod tests {
         let db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
         let budget_before = created_user_and_budget.budget.clone();
 
         let budget_edits = InputEditBudget {
@@ -1416,7 +1440,8 @@ mod tests {
         let budget_edits_json = web::Json(budget_edits.clone());
         edit_budget(&db_connection, &budget_edits_json).unwrap();
 
-        let budget_after = get_budget_by_id(&db_connection, budget_before.id).unwrap();
+        let budget_after =
+            get_budget_by_id(&db_connection, budget_before.id, created_user.id).unwrap();
 
         assert_eq!(&budget_after.name, &budget_edits.name);
         assert_eq!(&budget_after.description, &budget_edits.description);
@@ -1479,7 +1504,8 @@ mod tests {
         assert_eq!(entry.category, new_entry.category);
         assert_eq!(entry.note, new_entry.note);
 
-        let fetched_budget = get_budget_by_id(&db_connection, created_budget.id).unwrap();
+        let fetched_budget =
+            get_budget_by_id(&db_connection, created_budget.id, created_user.id).unwrap();
 
         assert!(fetched_budget.latest_entry_time > created_budget.latest_entry_time);
         assert_eq!(fetched_budget.entries.len(), 1);
@@ -1534,7 +1560,8 @@ mod tests {
         create_entry(&db_connection, &entry0_json, created_user.id).unwrap();
         create_entry(&db_connection, &entry1_json, created_user.id).unwrap();
 
-        let fetched_budget = get_budget_by_id(&db_connection, created_budget.id).unwrap();
+        let fetched_budget =
+            get_budget_by_id(&db_connection, created_budget.id, created_user.id).unwrap();
 
         assert_eq!(fetched_budget.id, created_budget.id);
         assert_eq!(fetched_budget.is_shared, created_budget.is_shared);

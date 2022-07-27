@@ -16,20 +16,11 @@ pub async fn get(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_id: web::Json<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id_clone = budget_id.budget_id;
-
-    ensure_user_in_budget(
-        db_thread_pool.clone(),
-        auth_user_claims.0.uid,
-        budget_id_clone,
-    )
-    .await?;
-
     let budget = match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::get_budget_by_id(&db_connection, budget_id.budget_id)
+        db::budget::get_budget_by_id(&db_connection, budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -169,14 +160,13 @@ pub async fn edit(
     }
 
     let budget_id = budget_data.id.clone();
-    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
 
     web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::edit_budget(&db_connection, &budget_data)
+        db::budget::edit_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
@@ -601,6 +591,7 @@ mod tests {
     use diesel::prelude::*;
     use rand::prelude::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     use crate::definitions::*;
     use crate::env;
@@ -620,6 +611,7 @@ mod tests {
 
     pub struct UserAndBudgetWithAuthTokens {
         budget: OutputBudget,
+        user_id: Uuid,
         token_pair: TokenPair,
     }
 
@@ -731,7 +723,11 @@ mod tests {
 
         let budget = serde_json::from_str::<OutputBudget>(create_budget_res_body.as_str()).unwrap();
 
-        UserAndBudgetWithAuthTokens { budget, token_pair }
+        UserAndBudgetWithAuthTokens {
+            budget,
+            user_id,
+            token_pair,
+        }
     }
 
     #[actix_rt::test]
@@ -887,6 +883,7 @@ mod tests {
 
         let created_user_and_budget =
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_id = created_user_and_budget.user_id;
         let budget_before_edit = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -915,6 +912,7 @@ mod tests {
         let budget_after_edit = db::budget::get_budget_by_id(
             &db_thread_pool.get().unwrap(),
             budget_before_edit.id.clone(),
+            created_user_id,
         )
         .unwrap();
 
@@ -937,6 +935,7 @@ mod tests {
 
         let created_user_and_budget =
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_id = created_user_and_budget.user_id;
         let budget_before_edit = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -965,6 +964,7 @@ mod tests {
         let budget_after_edit = db::budget::get_budget_by_id(
             &db_thread_pool.get().unwrap(),
             budget_before_edit.id.clone(),
+            created_user_id,
         )
         .unwrap();
 
