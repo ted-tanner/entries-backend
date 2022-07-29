@@ -4,8 +4,15 @@ extern crate bindgen;
 
 use std::path::PathBuf;
 
-fn main() {
+fn main() {    
     let out_dir = std::env::var("OUT_DIR").unwrap();
+
+    let supports_simd = if cfg!(target_arch = "x86_64") { true } else { false };
+    let simd_src_file = if supports_simd {
+        "libraries/phc-winner-argon2/src/opt.c"
+    } else {
+        "libraries/phc-winner-argon2/src/ref.c"
+    };
 
     let src = [
         "libraries/phc-winner-argon2/src/argon2.c",
@@ -13,7 +20,7 @@ fn main() {
         "libraries/phc-winner-argon2/src/blake2/blake2b.c",
         "libraries/phc-winner-argon2/src/thread.c",
         "libraries/phc-winner-argon2/src/encoding.c",
-        "libraries/phc-winner-argon2/src/opt.c",
+        simd_src_file,
     ];
 
     let mut builder = cc::Build::new();
@@ -22,13 +29,16 @@ fn main() {
         .static_flag(true)
         .files(src.iter())
         .include("libraries/phc-winner-argon2/include")
+        .warnings(false)
         .flag("-std=c89")
         .flag("-pthread");
 
+    if supports_simd {
+        build.flag_if_supported("-march=native");
+    }
+
     build.compile("argon2");
 
-    // println!("cargo:rustc-link-search={}", out_dir);
-    // println!("cargo:rustc-link-lib=static=argon2");
     println!("cargo:rerun-if-changed=libraries/argon2_bindings.h");
 
     // The bindgen::Builder is the main entry point
