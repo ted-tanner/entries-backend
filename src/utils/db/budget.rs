@@ -5,6 +5,7 @@ use diesel::{
     dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
     RunQueryDsl,
 };
+use diesel::sql_types::{Date, Nullable, Text, Timestamp, VarChar};
 use uuid::Uuid;
 
 use crate::definitions::*;
@@ -158,7 +159,7 @@ pub fn get_all_budgets_for_user_between_dates(
         .into_iter();
 
     let mut output_budgets = Vec::new();
-
+    
     for budget in loaded_budgets.into_iter() {
         let output_budget = OutputBudget {
             id: budget.id,
@@ -287,29 +288,30 @@ pub fn create_budget(
     Ok(output_budget)
 }
 
-// TEST handlers using this don't work on zother users' budgets
+// TODO: Test start_date cannot be after end_date
 pub fn edit_budget(
     db_connection: &DbConnection,
     edited_budget_data: &web::Json<InputEditBudget>,
     user_id: Uuid,
-) -> Result<(), diesel::result::Error> {
-    match dsl::update(
-        budgets
-            .left_join(user_budgets.on(user_budget_fields::budget_id.eq(edited_budget_data.id)))
-            .filter(user_budget_fields::user_id.eq(user_id))
-            .filter(budget_fields::id.eq(edited_budget_data.id)),
-    )
-    .set((
-        budget_fields::name.eq(&edited_budget_data.name),
-        budget_fields::description.eq(&edited_budget_data.description),
-        budget_fields::start_date.eq(&edited_budget_data.start_date),
-        budget_fields::end_date.eq(&edited_budget_data.end_date),
-    ))
-    .execute(db_connection)
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    }
+) -> Result<usize, diesel::result::Error> {
+    diesel::sql_query("UPDATE budgets as b \
+                       SET b.modified_timestamp = ?, \
+                       b.name = ?, \
+                       b.description = ?, \
+                       b.start_date = ?, \
+                       b.end_date = ? \
+                       FROM user_budgets as ub \
+                       WHERE ub.user_id = ? \
+                       AND b.id = ub.budget_id \
+                       AND b.id = ?")
+        .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
+        .bind::<VarChar, _>(&edited_budget_data.name)
+        .bind::<Nullable<Text>, _>(&edited_budget_data.description)
+        .bind::<Date, _>(&edited_budget_data.start_date)
+        .bind::<Date, _>(&edited_budget_data.end_date)
+        .bind::<diesel::pg::types::sql_types::Uuid, _>(user_id)
+        .bind::<diesel::pg::types::sql_types::Uuid, _>(&edited_budget_data.id)
+        .execute(db_connection)
 }
 
 pub fn invite_user(

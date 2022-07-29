@@ -1,5 +1,6 @@
 use actix_web::web;
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::sql_types::{Date, Timestamp, VarChar};
 use uuid::Uuid;
 
 use crate::definitions::*;
@@ -56,19 +57,21 @@ pub fn edit_user(
     db_connection: &DbConnection,
     user_id: Uuid,
     edited_user_data: &web::Json<InputEditUser>,
-) -> Result<(), diesel::result::Error> {
-    match dsl::update(users.filter(user_fields::id.eq(user_id)))
-        .set((
-            user_fields::first_name.eq(&edited_user_data.first_name),
-            user_fields::last_name.eq(&edited_user_data.last_name),
-            user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
-            user_fields::currency.eq(&edited_user_data.currency),
-        ))
+) -> Result<usize, diesel::result::Error> {
+    diesel::sql_query("UPDATE users \
+                       SET modified_timestamp = ?, \
+                       first_name = ?, \
+                       last_name = ?, \
+                       date_of_birth = ?, \
+                       currency = ? \
+                       FROM users WHERE id = ?")
+        .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
+        .bind::<VarChar, _>(&edited_user_data.first_name)
+        .bind::<VarChar, _>(&edited_user_data.last_name)
+        .bind::<Date, _>(&edited_user_data.date_of_birth)
+        .bind::<VarChar, _>(&edited_user_data.currency)
+        .bind::<diesel::pg::types::sql_types::Uuid, _>(user_id)
         .execute(db_connection)
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    }
 }
 
 pub fn change_password(

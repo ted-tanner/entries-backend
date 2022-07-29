@@ -148,6 +148,7 @@ pub async fn create(
     Ok(HttpResponse::Created().json(new_budget))
 }
 
+// TODO: TEST cannot edit another user's budget
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
@@ -158,8 +159,6 @@ pub async fn edit(
             "End date cannot come before start date",
         )));
     }
-
-    let budget_id = budget_data.id.clone();
 
     web::block(move || {
         let db_connection = db_thread_pool
