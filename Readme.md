@@ -33,7 +33,7 @@
 
     [Download PostgreSQL here](https://www.postgresql.org/download/)
 
-    For macOS, don't install PostgreSQL via Homebrew. There are some issues with the Homebrew installation (since version 12) that can cause Postgres to stop working.
+    For macOS, don't install PostgreSQL via Homebrew. There are some issues with the Homebrew installation (since version 12) that can cause Postgres to stop working. On Linux, you may also need to install the libpq-dev package from `apt`.
 
 2. Redis (6.2.6)
 
@@ -90,7 +90,8 @@ If the `createdb` command fails, do the following:
 3. Now, create a role for your machine user account.
 
     ```
-    CREATE ROLE username WITH createdb LOGIN PASSWORD '[password]';
+    CREATE ROLE [username] WITH createdb LOGIN PASSWORD '[password]';
+    ALTER USER [username] WITH createrole;
     ```
 
 4. Verify the new role has been created in the PostgreSQL CLI.
