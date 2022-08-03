@@ -1,11 +1,11 @@
 use actix_web::web;
 use chrono::NaiveDate;
 use diesel::associations::GroupedBy;
+use diesel::sql_types::{Date, Nullable, Text, Timestamp, VarChar};
 use diesel::{
     dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
     RunQueryDsl,
 };
-use diesel::sql_types::{Date, Nullable, Text, Timestamp, VarChar};
 use uuid::Uuid;
 
 use crate::definitions::*;
@@ -74,17 +74,14 @@ pub fn get_all_budgets_for_user(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed token.
-    //
-    // BEWARE of using this function when the user_id comes as input directly from the client.
-    let query = format!(
-        "SELECT budgets.* FROM user_budgets, budgets \
-         WHERE user_budgets.user_id = '{user_id}' \
-         AND user_budgets.budget_id = budgets.id \
-	 ORDER BY budgets.start_date"
-    );
+    let query = "SELECT budgets.* FROM user_budgets, budgets \
+                 WHERE user_budgets.user_id = '?' \
+                 AND user_budgets.budget_id = budgets.id \
+	         ORDER BY budgets.start_date";
 
-    let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
+    let loaded_budgets = sql_query(query)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
         .order(category_fields::id.asc())
         .load::<Category>(db_connection)?
@@ -131,22 +128,18 @@ pub fn get_all_budgets_for_user_between_dates(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because the user_id comes from a signed token and the
-    // dates are type-checked when they are deserialized.
-    //
-    // BEWARE of using this function when either the user_id or the dates come as input directly
-    // from the client.
+    let query = "SELECT budgets.* FROM user_budgets, budgets \
+                 WHERE user_budgets.user_id = '?' \
+                 AND user_budgets.budget_id = budgets.id \
+                 AND budgets.end_date >= '?' \
+                 AND budgets.start_date <= '?' \
+                 ORDER BY budgets.start_date";
 
-    let query = format!(
-        "SELECT budgets.* FROM user_budgets, budgets \
-         WHERE user_budgets.user_id = '{user_id}' \
-         AND user_budgets.budget_id = budgets.id \
-         AND budgets.end_date >= '{start_date}' \
-         AND budgets.start_date <= '{end_date}' \
-         ORDER BY budgets.start_date"
-    );
-
-    let loaded_budgets = sql_query(&query).load::<Budget>(db_connection)?;
+    let loaded_budgets = sql_query(query)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .bind::<diesel::sql_types::Date, _>(start_date)
+        .bind::<diesel::sql_types::Date, _>(end_date)
+        .load::<Budget>(db_connection)?;
     let mut loaded_categories = Category::belonging_to(&loaded_budgets)
         .order(category_fields::id.asc())
         .load::<Category>(db_connection)?
@@ -159,7 +152,7 @@ pub fn get_all_budgets_for_user_between_dates(
         .into_iter();
 
     let mut output_budgets = Vec::new();
-    
+
     for budget in loaded_budgets.into_iter() {
         let output_budget = OutputBudget {
             id: budget.id,
@@ -294,7 +287,8 @@ pub fn edit_budget(
     edited_budget_data: &web::Json<InputEditBudget>,
     user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::sql_query("UPDATE budgets as b \
+    diesel::sql_query(
+        "UPDATE budgets as b \
                        SET b.modified_timestamp = ?, \
                        b.name = ?, \
                        b.description = ?, \
@@ -303,15 +297,16 @@ pub fn edit_budget(
                        FROM user_budgets as ub \
                        WHERE ub.user_id = ? \
                        AND b.id = ub.budget_id \
-                       AND b.id = ?")
-        .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
-        .bind::<VarChar, _>(&edited_budget_data.name)
-        .bind::<Nullable<Text>, _>(&edited_budget_data.description)
-        .bind::<Date, _>(&edited_budget_data.start_date)
-        .bind::<Date, _>(&edited_budget_data.end_date)
-        .bind::<diesel::pg::types::sql_types::Uuid, _>(user_id)
-        .bind::<diesel::pg::types::sql_types::Uuid, _>(&edited_budget_data.id)
-        .execute(db_connection)
+                       AND b.id = ?",
+    )
+    .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
+    .bind::<VarChar, _>(&edited_budget_data.name)
+    .bind::<Nullable<Text>, _>(&edited_budget_data.description)
+    .bind::<Date, _>(&edited_budget_data.start_date)
+    .bind::<Date, _>(&edited_budget_data.end_date)
+    .bind::<diesel::pg::types::sql_types::Uuid, _>(user_id)
+    .bind::<diesel::pg::types::sql_types::Uuid, _>(&edited_budget_data.id)
+    .execute(db_connection)
 }
 
 pub fn invite_user(

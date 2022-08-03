@@ -29,14 +29,12 @@ pub fn clear_all_expired_refresh_tokens(
 pub fn clear_otp_verification_count(
     db_connection: &DbConnection,
 ) -> Result<usize, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because it takes no input from the client.
     diesel::sql_query("TRUNCATE otp_attempts").execute(db_connection)
 }
 
 pub fn clear_password_attempt_count(
     db_connection: &DbConnection,
 ) -> Result<usize, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because it takes no input from the client.
     diesel::sql_query("TRUNCATE password_attempts").execute(db_connection)
 }
 
@@ -50,20 +48,18 @@ pub fn get_and_increment_otp_verification_count(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because the input (user_id) comes from a signed token.
-    //
-    // BEWARE of using this function when the user_id comes as input directly from the client.
-    let query = format!(
-        "INSERT INTO otp_attempts \
-         (user_id, attempt_count) \
-         VALUES ('{user_id}', 1) \
-         ON CONFLICT (user_id) DO UPDATE \
-         SET attempt_count = otp_attempts.attempt_count + 1 \
-         WHERE otp_attempts.user_id = '{user_id}' \
-         RETURNING otp_attempts.attempt_count"
-    );
+    let query = "INSERT INTO otp_attempts \
+                 (user_id, attempt_count) \
+                 VALUES ('?', 1) \
+                 ON CONFLICT (user_id) DO UPDATE \
+                 SET attempt_count = otp_attempts.attempt_count + 1 \
+                 WHERE otp_attempts.user_id = '?' \
+                 RETURNING otp_attempts.attempt_count";
 
-    let db_resp = diesel::sql_query(&query).load::<AttemptCount>(db_connection)?;
+    let db_resp = diesel::sql_query(query)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .load::<AttemptCount>(db_connection)?;
 
     Ok(db_resp[0].attempt_count)
 }
@@ -72,20 +68,18 @@ pub fn get_and_increment_password_attempt_count(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
-    // The use of this raw(ish) query is safe because the input (user_id) comes from the database.
-    //
-    // BEWARE of using this function when the user_id comes as input directly from the client.
-    let query = format!(
-        "INSERT INTO password_attempts \
-         (user_id, attempt_count) \
-         VALUES ('{user_id}', 1) \
-         ON CONFLICT (user_id) DO UPDATE \
-         SET attempt_count = password_attempts.attempt_count + 1 \
-         WHERE password_attempts.user_id = '{user_id}' \
-         RETURNING password_attempts.attempt_count"
-    );
+    let query = "INSERT INTO password_attempts \
+                 (user_id, attempt_count) \
+                 VALUES ('?', 1) \
+                 ON CONFLICT (user_id) DO UPDATE \
+                 SET attempt_count = password_attempts.attempt_count + 1 \
+                 WHERE password_attempts.user_id = '?' \
+                 RETURNING password_attempts.attempt_count";
 
-    let db_resp = diesel::sql_query(&query).load::<AttemptCount>(db_connection)?;
+    let db_resp = diesel::sql_query(query)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .load::<AttemptCount>(db_connection)?;
 
     Ok(db_resp[0].attempt_count)
 }
