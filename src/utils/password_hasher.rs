@@ -489,6 +489,11 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
     let mut is_valid = 0u8;
 
     // Do bitwise comparison to prevent timing attacks (entire length of string must be compared
+
+    if decoded_hash.len() != hashed_password.hash.len() || decoded_hash.len() == 0 {
+        return false;
+    }
+    
     for i in 0..decoded_hash.len() {
         is_valid |= decoded_hash[i] ^ hashed_password.hash[i];
     }

@@ -416,8 +416,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Enforce `budget.start_date < budget.end_date` as a SQL constraint
-* Use binds on `sql_query`s
 * Fix tests that no longer compile 
 * Test edit budget
 * Implement budget sharing (add/remove user from budget db utils are already in place)
