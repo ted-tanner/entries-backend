@@ -17,7 +17,7 @@ CREATE TABLE budgets (
     description TEXT,
 
     start_date DATE NOT NULL,
-    end_date DATE NOT NULL CHECK(end_date > start_date),
+    end_date DATE NOT NULL CHECK(end_date >= start_date),
 
     latest_entry_time TIMESTAMP NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,

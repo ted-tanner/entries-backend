@@ -416,8 +416,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Fix tests that no longer compile 
-* Test edit budget
+* Test untested functions (you get a warnign about them being unused when compiling tests)
 * Implement budget sharing (add/remove user from budget db utils are already in place)
 
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation

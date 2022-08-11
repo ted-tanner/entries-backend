@@ -281,7 +281,6 @@ pub fn create_budget(
     Ok(output_budget)
 }
 
-// TODO: Test start_date cannot be after end_date
 pub fn edit_budget(
     db_connection: &DbConnection,
     edited_budget_data: &web::Json<InputEditBudget>,
@@ -501,7 +500,7 @@ mod tests {
     use super::*;
 
     use actix_web::web;
-    use chrono::NaiveDate;
+    use chrono::{Duration, NaiveDate};
     use diesel::ExpressionMethods;
     use rand::prelude::*;
 
@@ -1463,6 +1462,29 @@ mod tests {
                 budget_before.categories[i].color
             );
         }
+    }
+
+    #[actix_rt::test]
+    async fn test_edit_budget_start_date_cannot_be_after_end_date() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user_and_budget = generate_user_and_budget(&db_connection).unwrap();
+        let created_user = created_user_and_budget.user.clone();
+        let budget_before = created_user_and_budget.budget.clone();
+
+        let budget_edits = InputEditBudget {
+            id: budget_before.id.clone(),
+            name: budget_before.name.clone(),
+            description: budget_before.description.clone(),
+            start_date: budget_before.end_date.clone() + Duration::days(1),
+            end_date: budget_before.end_date.clone(),
+        };
+
+        let budget_edits_json = web::Json(budget_edits.clone());
+        let edit_result = edit_budget(&db_connection, &budget_edits_json, created_user.id);
+
+        assert!(edit_result.is_err());
     }
 
     #[actix_rt::test]

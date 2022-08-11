@@ -148,7 +148,6 @@ pub async fn create(
     Ok(HttpResponse::Created().json(new_budget))
 }
 
-// TODO: TEST cannot edit another user's budget
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
@@ -160,19 +159,25 @@ pub async fn edit(
         )));
     }
 
-    web::block(move || {
+    match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::budget::edit_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
-    })
-    .await
-    .map(|_| HttpResponse::Ok().finish())
-    .map_err(|e| {
-        error!("{}", e);
-        ServerError::DatabaseTransactionError(Some("Failed to edit budget"))
-    })
+    }).await? {
+        Ok(count) => {
+            if count == 0 {
+                Err(ServerError::NotFound(Some("Budget not found or no changes were made")))
+            } else {
+                Ok(HttpResponse::Ok().finish())
+            }
+        },
+        Err(e) => {
+            error!("{}", e);
+            Err(ServerError::DatabaseTransactionError(Some("Failed to edit budget")))
+        },
+    }
 }
 
 pub async fn add_entry(
@@ -543,7 +548,6 @@ pub async fn remove_budget(
     Ok(HttpResponse::Ok().finish())
 }
 
-#[inline]
 async fn ensure_user_in_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     user_id: Uuid,
@@ -919,6 +923,62 @@ mod tests {
         assert_eq!(&budget_after_edit.description, &edit_budget.description);
         assert_eq!(&budget_after_edit.start_date, &edit_budget.start_date);
         assert_eq!(&budget_after_edit.end_date, &edit_budget.end_date);
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_edit_budget_of_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user_and_budget1 =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_id = created_user_and_budget1.user_id;
+
+        let created_user_and_budget2 =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        
+        let budget_before_edit = created_user_and_budget1.budget.clone();
+        let access_token = created_user_and_budget2.token_pair.access_token.clone();
+
+        let edit_budget = InputEditBudget {
+            id: budget_before_edit.id.clone(),
+            name: format!("Test Budget user after edit"),
+            description: budget_before_edit.description.clone(),
+            start_date: budget_before_edit.start_date.clone(),
+            end_date: NaiveDate::from_ymd(
+                2024,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/edit")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {access_token}")))
+            .set_json(&edit_budget)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let budget_after_edit = db::budget::get_budget_by_id(
+            &db_thread_pool.get().unwrap(),
+            budget_before_edit.id.clone(),
+            created_user1_id,
+        )
+        .unwrap();
+
+        assert_eq!(&budget_after_edit.name, &budget_before_edit.name);
+        assert_eq!(&budget_after_edit.description, &budget_before_edit.description);
+        assert_eq!(&budget_after_edit.start_date, &budget_before_edit.start_date);
+        assert_eq!(&budget_after_edit.end_date, &budget_before_edit.end_date);
     }
 
     #[actix_rt::test]
