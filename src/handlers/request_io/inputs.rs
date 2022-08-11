@@ -29,6 +29,7 @@ pub struct InputBudgetId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetShareEventId {
     pub share_event_id: Uuid,
+    pub budget_id: Uuid,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -421,6 +421,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 
+* Get POST vs GET vs PUT vs DELETE rest methods in order
+
 * Editing budget shouldn't allow for changing categories. Handle that in separate endpoint
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
