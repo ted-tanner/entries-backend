@@ -493,7 +493,7 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
     if decoded_hash.len() != hashed_password.hash.len() || decoded_hash.len() == 0 {
         return false;
     }
-    
+
     for i in 0..decoded_hash.len() {
         is_valid |= decoded_hash[i] ^ hashed_password.hash[i];
     }

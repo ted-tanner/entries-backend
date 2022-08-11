@@ -1,4 +1,4 @@
-use diesel::{QueryableByName, Insertable, Queryable};
+use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
 
 use crate::models::user::User;

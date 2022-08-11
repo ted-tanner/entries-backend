@@ -50,7 +50,7 @@ pub fn get_and_increment_otp_verification_count(
                  SET attempt_count = otp_attempts.attempt_count + 1 \
                  WHERE otp_attempts.user_id = $1 \
                  RETURNING *";
-    
+
     let db_resp = diesel::sql_query(query)
         .bind::<diesel::sql_types::Uuid, _>(user_id)
         .load::<OtpAttempts>(db_connection)?;

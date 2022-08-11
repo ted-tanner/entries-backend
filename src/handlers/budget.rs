@@ -165,18 +165,24 @@ pub async fn edit(
             .expect("Failed to access database thread pool");
 
         db::budget::edit_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
-    }).await? {
+    })
+    .await?
+    {
         Ok(count) => {
             if count == 0 {
-                Err(ServerError::NotFound(Some("Budget not found or no changes were made")))
+                Err(ServerError::NotFound(Some(
+                    "Budget not found or no changes were made",
+                )))
             } else {
                 Ok(HttpResponse::Ok().finish())
             }
-        },
+        }
         Err(e) => {
             error!("{}", e);
-            Err(ServerError::DatabaseTransactionError(Some("Failed to edit budget")))
-        },
+            Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to edit budget",
+            )))
+        }
     }
 }
 
@@ -942,7 +948,7 @@ mod tests {
 
         let created_user_and_budget2 =
             create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-        
+
         let budget_before_edit = created_user_and_budget1.budget.clone();
         let access_token = created_user_and_budget2.token_pair.access_token.clone();
 
@@ -976,8 +982,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(&budget_after_edit.name, &budget_before_edit.name);
-        assert_eq!(&budget_after_edit.description, &budget_before_edit.description);
-        assert_eq!(&budget_after_edit.start_date, &budget_before_edit.start_date);
+        assert_eq!(
+            &budget_after_edit.description,
+            &budget_before_edit.description
+        );
+        assert_eq!(
+            &budget_after_edit.start_date,
+            &budget_before_edit.start_date
+        );
         assert_eq!(&budget_after_edit.end_date, &budget_before_edit.end_date);
     }
 
