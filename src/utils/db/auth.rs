@@ -1,9 +1,10 @@
-use diesel::sql_types::SmallInt;
-use diesel::{ExpressionMethods, QueryDsl, QueryableByName, RunQueryDsl};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::definitions::*;
+use crate::models::otp_attempts::OtpAttempts;
+use crate::models::password_attempts::PasswordAttempts;
 use crate::schema::blacklisted_tokens as token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
@@ -38,28 +39,21 @@ pub fn clear_password_attempt_count(
     diesel::sql_query("TRUNCATE password_attempts").execute(db_connection)
 }
 
-#[derive(QueryableByName)]
-struct AttemptCount {
-    #[sql_type = "SmallInt"]
-    attempt_count: i16,
-}
-
 pub fn get_and_increment_otp_verification_count(
     db_connection: &DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
     let query = "INSERT INTO otp_attempts \
-                 (user_id, attempt_count) \
-                 VALUES ('?', 1) \
+                 (id, user_id, attempt_count) \
+                 VALUES (DEFAULT, $1, 1) \
                  ON CONFLICT (user_id) DO UPDATE \
                  SET attempt_count = otp_attempts.attempt_count + 1 \
-                 WHERE otp_attempts.user_id = '?' \
-                 RETURNING otp_attempts.attempt_count";
-
+                 WHERE otp_attempts.user_id = $1 \
+                 RETURNING *";
+    
     let db_resp = diesel::sql_query(query)
         .bind::<diesel::sql_types::Uuid, _>(user_id)
-        .bind::<diesel::sql_types::Uuid, _>(user_id)
-        .load::<AttemptCount>(db_connection)?;
+        .load::<OtpAttempts>(db_connection)?;
 
     Ok(db_resp[0].attempt_count)
 }
@@ -70,16 +64,15 @@ pub fn get_and_increment_password_attempt_count(
 ) -> Result<i16, diesel::result::Error> {
     let query = "INSERT INTO password_attempts \
                  (user_id, attempt_count) \
-                 VALUES ('?', 1) \
+                 VALUES ($1, 1) \
                  ON CONFLICT (user_id) DO UPDATE \
                  SET attempt_count = password_attempts.attempt_count + 1 \
-                 WHERE password_attempts.user_id = '?' \
-                 RETURNING password_attempts.attempt_count";
+                 WHERE password_attempts.user_id = $1 \
+                 RETURNING *";
 
     let db_resp = diesel::sql_query(query)
         .bind::<diesel::sql_types::Uuid, _>(user_id)
-        .bind::<diesel::sql_types::Uuid, _>(user_id)
-        .load::<AttemptCount>(db_connection)?;
+        .load::<PasswordAttempts>(db_connection)?;
 
     Ok(db_resp[0].attempt_count)
 }
@@ -98,7 +91,9 @@ mod tests {
     use crate::handlers::request_io::InputUser;
     use crate::models::blacklisted_token::NewBlacklistedToken;
     use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
+    use crate::schema::otp_attempts as otp_attempts_fields;
     use crate::schema::otp_attempts::dsl::otp_attempts;
+    use crate::schema::password_attempts as password_attempts_fields;
     use crate::schema::password_attempts::dsl::password_attempts;
     use crate::utils::auth_token;
     use crate::utils::db::user;
@@ -243,15 +238,6 @@ mod tests {
         assert_eq!(current_count, 3);
     }
 
-    #[allow(dead_code)]
-    #[derive(Queryable, QueryableByName)]
-    struct AttemptsField {
-        #[sql_type = "Uuid"]
-        user_id: Uuid,
-        #[sql_type = "SmallInt"]
-        attempt_count: i16,
-    }
-
     #[ignore]
     #[actix_rt::test]
     async fn test_clear_otp_verification_count() {
@@ -287,8 +273,8 @@ mod tests {
         // Ensure rows are in the table before clearing
         for user_id in user_ids.clone() {
             let user_otp_attempts = otp_attempts
-                .find(user_id)
-                .first::<AttemptsField>(&db_connection);
+                .filter(otp_attempts_fields::user_id.eq(user_id))
+                .first::<OtpAttempts>(&db_connection);
             assert!(!user_otp_attempts.is_err());
         }
 
@@ -297,8 +283,8 @@ mod tests {
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_otp_attempts = otp_attempts
-                .find(user_id)
-                .first::<AttemptsField>(&db_connection);
+                .filter(otp_attempts_fields::user_id.eq(user_id))
+                .first::<OtpAttempts>(&db_connection);
             assert!(user_otp_attempts.is_err());
         }
     }
@@ -338,8 +324,8 @@ mod tests {
         // Ensure rows are in the table before clearing
         for user_id in user_ids.clone() {
             let user_pass_attempts = password_attempts
-                .find(user_id)
-                .first::<AttemptsField>(&db_connection);
+                .filter(password_attempts_fields::user_id.eq(user_id))
+                .first::<PasswordAttempts>(&db_connection);
             assert!(!user_pass_attempts.is_err());
         }
 
@@ -348,8 +334,8 @@ mod tests {
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_pass_attempts = password_attempts
-                .find(user_id)
-                .first::<AttemptsField>(&db_connection);
+                .filter(password_attempts_fields::user_id.eq(user_id))
+                .first::<PasswordAttempts>(&db_connection);
             assert!(user_pass_attempts.is_err());
         }
     }

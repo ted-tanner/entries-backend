@@ -119,12 +119,14 @@ CREATE TABLE entry_comment_reactions (
 );
 
 CREATE TABLE otp_attempts (
-    user_id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL,
     attempt_count SMALLINT NOT NULL
 );
 
 CREATE TABLE password_attempts (
-    user_id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL,
     attempt_count SMALLINT NOT NULL
 );
 

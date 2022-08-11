@@ -114,14 +114,16 @@ table! {
 }
 
 table! {
-    otp_attempts (user_id) {
+    otp_attempts (id) {
+        id -> Int4,
         user_id -> Uuid,
         attempt_count -> Int2,
     }
 }
 
 table! {
-    password_attempts (user_id) {
+    password_attempts (id) {
+        id -> Int4,
         user_id -> Uuid,
         attempt_count -> Int2,
     }

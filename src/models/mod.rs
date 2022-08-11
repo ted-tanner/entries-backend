@@ -3,5 +3,7 @@ pub mod budget;
 pub mod budget_share_event;
 pub mod category;
 pub mod entry;
+pub mod otp_attempts;
+pub mod password_attempts;
 pub mod user;
 pub mod user_budget;

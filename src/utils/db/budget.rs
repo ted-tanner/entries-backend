@@ -75,7 +75,7 @@ pub fn get_all_budgets_for_user(
     user_id: Uuid,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
     let query = "SELECT budgets.* FROM user_budgets, budgets \
-                 WHERE user_budgets.user_id = '?' \
+                 WHERE user_budgets.user_id = $1 \
                  AND user_budgets.budget_id = budgets.id \
 	         ORDER BY budgets.start_date";
 
@@ -129,10 +129,10 @@ pub fn get_all_budgets_for_user_between_dates(
     end_date: NaiveDate,
 ) -> Result<Vec<OutputBudget>, diesel::result::Error> {
     let query = "SELECT budgets.* FROM user_budgets, budgets \
-                 WHERE user_budgets.user_id = '?' \
+                 WHERE user_budgets.user_id = $1 \
                  AND user_budgets.budget_id = budgets.id \
-                 AND budgets.end_date >= '?' \
-                 AND budgets.start_date <= '?' \
+                 AND budgets.end_date >= $2 \
+                 AND budgets.start_date <= $3 \
                  ORDER BY budgets.start_date";
 
     let loaded_budgets = sql_query(query)
@@ -288,16 +288,16 @@ pub fn edit_budget(
     user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
     diesel::sql_query(
-        "UPDATE budgets as b \
-                       SET b.modified_timestamp = ?, \
-                       b.name = ?, \
-                       b.description = ?, \
-                       b.start_date = ?, \
-                       b.end_date = ? \
-                       FROM user_budgets as ub \
-                       WHERE ub.user_id = ? \
-                       AND b.id = ub.budget_id \
-                       AND b.id = ?",
+        "UPDATE budgets AS b \
+         SET modified_timestamp = $1, \
+         name = $2, \
+         description = $3, \
+         start_date = $4, \
+         end_date = $5 \
+         FROM user_budgets AS ub \
+         WHERE ub.user_id = $6 \
+         AND b.id = ub.budget_id \
+         AND b.id = $7",
     )
     .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
     .bind::<VarChar, _>(&edited_budget_data.name)
@@ -1378,7 +1378,7 @@ mod tests {
         };
 
         let budget_edits_json = web::Json(budget_edits.clone());
-        edit_budget(&db_connection, &budget_edits_json).unwrap();
+        edit_budget(&db_connection, &budget_edits_json, created_user.id).unwrap();
 
         let budget_after =
             get_budget_by_id(&db_connection, budget_before.id, created_user.id).unwrap();
@@ -1435,7 +1435,7 @@ mod tests {
         };
 
         let budget_edits_json = web::Json(budget_edits.clone());
-        edit_budget(&db_connection, &budget_edits_json).unwrap();
+        edit_budget(&db_connection, &budget_edits_json, created_user.id).unwrap();
 
         let budget_after =
             get_budget_by_id(&db_connection, budget_before.id, created_user.id).unwrap();
