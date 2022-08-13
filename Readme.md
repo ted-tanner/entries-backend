@@ -416,46 +416,56 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Implement budget sharing (add/remove user from budget db utils are already in place)
+*By 8/19*
+
 * Test untested functions (you get a warning about them being unused when compiling tests)
+* Get POST vs GET vs PUT vs DELETE rest methods in order
+* Figure out how to do timezone-aware dates
+
+*By 9/2*
+
+* Implement budget sharing (add/remove user from budget db utils are already in place)
+
+*By 9/16*
 
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
-
-* Get POST vs GET vs PUT vs DELETE rest methods in order
-
-* Editing budget shouldn't allow for changing categories. Handle that in separate endpoint
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
   - Perhaps no deletion is necessary for categories until budget is deleted
   
-* Get web app running
-* Figure out how to do timezone-aware dates
-* Create delete handlers (and db::utils) for user, budget, and entry
+*By 9/30*
+
+* Create delete handlers (and db::utils) for user and entry
   - Create a deletion record in the database when a user deletes their account and set the `is_deleted` field to true for the user
   - Create a cron job that periodically goest through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 
   - Don't have the cron job delete users if the request is less than 24 hours old
   - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
   - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
   - Upon requesting deletion, let the user know they can cancel the request within the next 24 hours in account settings after signing in again. Place the button to restore in a clear-to-see place in account settings
-* Create edit handlers (and db::utils) for user, budget, and entry
+
+*By 10/14*
+
+* Create edit handlers (and db::utils) for user and entry
+
+*By 10/28* 
+ 
 * Get email delivery set up
   * OTP
   * Forgot Password
 * Forgot password endpoint
+ 
+*By 11/11*
+
+* Account for deleted users when doing things like creating a `budget_share_event`, adding to a budget, sending buddy request, accepting buddy request, etc
 * Verify SQL injection is not possible with any endpoint
 
-### Do It Later
+*By 11/23*
 
-* Remove references on db_connection (I think these are `Arc`s, so just let them be copied).
-* `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`)
-* Account for deleted users when doing things like creating a `budget_share_event`, adding to a budget, sending buddy request, accepting buddy request, etc
-* Use `UPDATE` REST method for update
-* Don't make two `db_connection`s in one handler. Get two references to the same connection. The references rather than the connection will get moved into `web::block`
-* Clean up tests by pulling some of the repetetive stuff (e.g. creating users, creating budgets, etc.) into functions
-* Create integer error codes in an enum (EXPIRED, INVALID, INCORRECT_FORMAT, etc.)
-* Pool Redis connections
-* Clean up `main()`
-* Use more string slices to avoid extra allocations when creating structs
-* Create a method of encrypting data in the database
-* Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once
+* Pass db_thread_pool to db utils instead of trying to obtain db_connections in the handler 
+* `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`). Instead, pass fields as params
 * Move `cron` crate into `utils`
+* Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
+  
+### Do it later
+
+* Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
