@@ -465,6 +465,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`). Instead, pass fields as params
 * Move `cron` crate into `utils`
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
+* Security check endpoints: make sure users can't access other users' data
   
 ### Do it later
 

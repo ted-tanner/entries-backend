@@ -283,7 +283,11 @@ pub async fn retract_invitation(
     })
     .await?
     {
-        Ok(_) => (),
+        Ok(count) => {
+            if count == 0 {
+                return Err(ServerError::NotFound(Some("No share event belonging to user with provided ID")));
+            }
+        },
         Err(e) => match e {
             diesel::result::Error::NotFound => {
                 return Err(ServerError::NotFound(Some(
@@ -422,7 +426,7 @@ pub async fn get_all_pending_invitations_for_user(
     })
     .await?
     {
-        Ok(_) => (),
+        Ok(invites) => invites,
         Err(e) => match e {
             diesel::result::Error::NotFound => {
                 return Err(ServerError::NotFound(Some("No share events for user")));
@@ -452,7 +456,7 @@ pub async fn get_all_pending_invitations_made_by_user(
     })
     .await?
     {
-        Ok(_) => (),
+        Ok(invites) => invites,
         Err(e) => match e {
             diesel::result::Error::NotFound => {
                 return Err(ServerError::NotFound(Some("No share events made by user")));
@@ -504,7 +508,6 @@ pub async fn get_invitation(
     Ok(HttpResponse::Ok().json(invite))
 }
 
-// TODO: Test (also test deletion of budgetb
 pub async fn remove_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
@@ -1780,21 +1783,307 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
+    
+    #[actix_rt::test]
+    async fn test_retract_invitation() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+        
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
 
-    // #[actix_rt::test]
-    // async fn test_retract_invitation() {
-    //     todo!();
-    // }
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_budget = created_user1_and_budget.budget;
 
-    // #[actix_rt::test]
-    // async fn test_cannot_retract_invites_made_by_another_user() {
-    //     todo!();
-    // }
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
 
-    // #[actix_rt::test]
-    // async fn test_get_all_invitations_for_user() {
-    //     todo!();
-    // }
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+
+        let invitation_info = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+
+        let invite_id = InputBudgetShareEventId {
+            share_event_id: share_events[0].id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/retract_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_retract_invites_made_by_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+        
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_budget = created_user1_and_budget.budget;
+
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+
+        let created_user3_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+        let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
+
+        let invitation_info = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+
+        let invite_id = InputBudgetShareEventId {
+            share_event_id: share_events[0].id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/retract_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/retract_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/retract_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_get_all_invitations_for_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_budget1 = created_user1_and_budget.budget;
+        let created_user1_id = created_user1_and_budget.user_id;
+        
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+
+        let category0 = InputCategory {
+            id: 0,
+            name: format!("First Random Category for user1_budget2"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#ff11ee"),
+        };
+
+        let category1 = InputCategory {
+            id: 1,
+            name: format!("Second Random Category user1_budget2"),
+            limit_cents: rand::thread_rng().gen_range(100..500),
+            color: String::from("#112233"),
+        };
+
+        let budget_categories = vec![category0, category1];
+
+        let new_budget = InputBudget {
+            name: format!("Test Budget #2"),
+            description: Some(format!(
+                "This is a description of Test Budget #2.",
+            )),
+            categories: budget_categories.clone(),
+            start_date: NaiveDate::from_ymd(
+                2021,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            end_date: NaiveDate::from_ymd(
+                2023,
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+        };
+
+        let create_budget_req = test::TestRequest::post()
+            .uri("/api/budget/create")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&new_budget)
+            .to_request();
+
+        let create_budget_resp = test::call_service(&app, create_budget_req).await;
+        let create_budget_resp_body =
+            String::from_utf8(actix_web::test::read_body(create_budget_resp).await.to_vec())
+                .unwrap();
+
+        let created_user1_budget2 = serde_json::from_str::<OutputBudget>(create_budget_resp_body.as_str()).unwrap();
+
+        let invitation_info_budget1 = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget1.id,
+        };
+
+        let invitation_info_budget2 = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget2.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info_budget1)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info_budget2)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get_all_pending_invitations_for_user")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&created_user2_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+
+        println!("{resp_body}");
+        
+        let invitations = serde_json::from_str::<Vec<BudgetShareEvent>>(resp_body.as_str()).unwrap();
+        
+        assert_eq!(invitations.len(), 2);
+
+        let budget1_invitation = &invitations[0];
+        let budget2_invitation = &invitations[1];
+
+        assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
+        assert_eq!(budget1_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
+        assert_eq!(budget1_invitation.accepted, false);
+        assert!(budget1_invitation.accepted_declined_timestamp.is_none());
+
+        assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
+        assert_eq!(budget2_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
+        assert_eq!(budget2_invitation.accepted, false);
+        assert!(budget2_invitation.accepted_declined_timestamp.is_none());
+    }
 
     // #[actix_rt::test]
     // async fn test_get_all_invitations_made_by_user() {
