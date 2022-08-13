@@ -1223,7 +1223,132 @@ mod tests {
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
             .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        let instant_after_share = chrono::Utc::now().naive_utc();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let input_budget_id = InputBudgetId {
+            budget_id: created_user1_budget.id,
+        };
+        
+        let invite_id = InputBudgetShareEventId {
+            share_event_id: share_events[0].id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/accept_invitation")
+            .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, true);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_some());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_accept_invites_for_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_id = created_user1_and_budget.user_id;
+        let created_user1_budget = created_user1_and_budget.budget;
+
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+
+        let created_user3_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+        let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
+
+        let invitation_info = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let instant_before_share = chrono::Utc::now().naive_utc();
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
             .set_json(&invitation_info)
             .to_request();
 
@@ -1270,6 +1395,16 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
         let invite_id = InputBudgetShareEventId {
             share_event_id: share_events[0].id,
             budget_id: created_user1_budget.id,
@@ -1279,6 +1414,16 @@ mod tests {
             .uri("/api/budget/accept_invitation")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/accept_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
             .set_json(&invite_id)
             .to_request();
 
@@ -1318,22 +1463,323 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 
-    // #[actix_rt::test]
-    // async fn test_cannot_accept_invites_for_another_user() {
-    //     todo!();
-    // }
+    #[actix_rt::test]
+    async fn test_invite_user_and_decline() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+        
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
 
-    // #[actix_rt::test]
-    // async fn test_invite_user_and_decline() {
-    //     todo!();
-    // }
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_id = created_user1_and_budget.user_id;
+        let created_user1_budget = created_user1_and_budget.budget;
 
-    // #[actix_rt::test]
-    // async fn test_cannot_decline_invites_for_another_user() {
-    //     todo!();
-    // }
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+
+        let invitation_info = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let instant_before_share = chrono::Utc::now().naive_utc();
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        let instant_after_share = chrono::Utc::now().naive_utc();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let input_budget_id = InputBudgetId {
+            budget_id: created_user1_budget.id,
+        };
+        
+        let invite_id = InputBudgetShareEventId {
+            share_event_id: share_events[0].id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/decline_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_some());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_decline_invites_for_another_user() {
+                let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_id = created_user1_and_budget.user_id;
+        let created_user1_budget = created_user1_and_budget.budget;
+
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+
+        let created_user3_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+        let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
+
+        let invitation_info = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let instant_before_share = chrono::Utc::now().naive_utc();
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        let instant_after_share = chrono::Utc::now().naive_utc();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let input_budget_id = InputBudgetId {
+            budget_id: created_user1_budget.id,
+        };
+        
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let invite_id = InputBudgetShareEventId {
+            share_event_id: share_events[0].id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/decline_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/decline_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/decline_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].accepted, false);
+
+        assert!(share_events[0].accepted_declined_timestamp.is_some());
+        assert!(share_events[0].share_timestamp > instant_before_share);
+        assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .set_json(&input_budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
 
     // #[actix_rt::test]
     // async fn test_retract_invitation() {
