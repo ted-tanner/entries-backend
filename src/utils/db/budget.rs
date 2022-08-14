@@ -346,7 +346,7 @@ pub fn mark_invitation_accepted(
     db_connection: &DbConnection,
     invitation_id: Uuid,
     recipient_user_id: Uuid,
-) -> Result<usize, diesel::result::Error> {
+) -> Result<BudgetShareEvent, diesel::result::Error> {
     diesel::update(
         budget_share_events
             .find(invitation_id)
@@ -356,7 +356,7 @@ pub fn mark_invitation_accepted(
         budget_share_event_fields::accepted.eq(true),
         budget_share_event_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
     ))
-    .execute(db_connection)
+    .get_result(db_connection)
 }
 
 pub fn mark_invitation_declined(
@@ -812,13 +812,15 @@ mod tests {
 
         assert_eq!(created_budget_share_events.len(), 1);
 
-        mark_invitation_accepted(
+        let returned_budget_share_event = mark_invitation_accepted(
             &db_connection,
             created_budget_share_events[0].id,
             created_user2.id,
         )
         .unwrap();
 
+        assert_eq!(returned_budget_share_event.budget_id, budget.id);
+        
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
             .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
