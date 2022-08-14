@@ -507,17 +507,20 @@ pub async fn get_invitation(
 pub async fn remove_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    budget_id: web::Json<Uuid>,
+    budget_id: web::Json<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_copy = db_thread_pool.clone();
-    let db_thread_pool_second_copy = db_thread_pool.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
+    let db_thread_pool_second_clone = db_thread_pool.clone();
+
+    let budget_id_clone = budget_id.clone();
+    let budget_id_second_clone = budget_id.clone();
 
     match web::block(move || {
         let db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::remove_user(&db_connection, budget_id.0, auth_user_claims.0.uid)
+        db::budget::remove_user(&db_connection, budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -541,11 +544,11 @@ pub async fn remove_budget(
     //       already been removed from the budget, so the handler can return without finishing
     //       deleting the budget
     let remaining_users_in_budget = match web::block(move || {
-        let db_connection = db_thread_pool_copy
+        let db_connection = db_thread_pool_clone
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::count_users_remaining_in_budget(&db_connection, budget_id.0)
+        db::budget::count_users_remaining_in_budget(&db_connection, budget_id_clone.budget_id)
     })
     .await?
     {
@@ -554,7 +557,7 @@ pub async fn remove_budget(
             _ => {
                 error!(
                     "Failed to see how many users left in budget with ID '{}': {}",
-                    budget_id.0, e
+                    budget_id_clone.budget_id, e
                 );
                 10
             }
@@ -563,17 +566,17 @@ pub async fn remove_budget(
 
     if remaining_users_in_budget == 0 {
         match web::block(move || {
-            let db_connection = db_thread_pool_second_copy
+            let db_connection = db_thread_pool_second_clone
                 .get()
                 .expect("Failed to access database thread pool");
 
-            db::budget::delete_budget(&db_connection, budget_id.0)
+            db::budget::delete_budget(&db_connection, budget_id_second_clone.budget_id)
         })
         .await?
         {
             Ok(_) => (),
             Err(e) => match e {
-                _ => error!("Failed to delete budget with ID '{}': {}", budget_id.0, e),
+                _ => error!("Failed to delete budget with ID '{}': {}", budget_id_second_clone.budget_id, e),
             },
         };
     }
@@ -640,11 +643,14 @@ mod tests {
     use crate::models::budget_share_event::BudgetShareEvent;
     use crate::models::category::Category;
     use crate::models::entry::Entry;
+    use crate::models::user_budget::UserBudget;
     use crate::schema::budgets as budget_fields;
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::budget_share_events as budget_share_event_fields;
     use crate::schema::budget_share_events::dsl::budget_share_events;
     use crate::schema::entries as entry_fields;
+    use crate::schema::user_budgets as user_budget_fields;
+    use crate::schema::user_budgets::dsl::user_budgets;
     use crate::services;
     use crate::utils::auth_token::TokenClaims;
     use crate::utils::{db, otp};
@@ -1279,6 +1285,15 @@ mod tests {
         assert!(share_events[0].share_timestamp > instant_before_share);
         assert!(share_events[0].share_timestamp < instant_after_share);
 
+        let budget_association = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
+            .first::<UserBudget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(budget_association.user_id, created_user2_id);
+        assert_eq!(budget_association.budget_id, created_user1_budget.id);
+
         let req = test::TestRequest::post()
             .uri("/api/budget/get")
             .insert_header(("content-type", "application/json"))
@@ -1572,6 +1587,13 @@ mod tests {
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].share_timestamp > instant_before_share);
         assert!(share_events[0].share_timestamp < instant_after_share);
+
+        let budget_association = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
+            .first::<UserBudget>(&db_connection);
+
+        assert!(budget_association.is_err());
 
         let req = test::TestRequest::post()
             .uri("/api/budget/get")
@@ -2290,7 +2312,7 @@ mod tests {
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
             .set_json(&invite_id)
             .to_request();
-
+ 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
@@ -2316,10 +2338,122 @@ mod tests {
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 
-    // #[actix_rt::test]
-    // async fn test_remove_user() {
-    //     todo!();
-    // }
+    #[actix_rt::test]
+    async fn test_remove_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_budget = created_user1_and_budget.budget;
+
+        let created_user2_and_budget =
+            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_id = created_user2_and_budget.user_id;
+        
+        let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
+        let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
+
+        let invitation_info_budget = UserInvitationToBudget {
+            invitee_user_id: created_user2_id,
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info_budget)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        
+        let invite_id = InputShareEventId {
+            share_event_id: share_events[0].id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/accept_invitation")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&invite_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let budget_association = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
+            .first::<UserBudget>(&db_connection)
+            .unwrap();
+
+        assert_eq!(budget_association.user_id, created_user2_id);
+        assert_eq!(budget_association.budget_id, created_user1_budget.id);
+
+        let budget_id = InputBudgetId {
+            budget_id: created_user1_budget.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/remove_budget")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1); // Share event still exists
+
+        let budget_association = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
+            .first::<UserBudget>(&db_connection);
+
+        assert!(budget_association.is_err());
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .set_json(&budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/get")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&budget_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+    }
 
     // #[actix_rt::test]
     // async fn test_remove_last_user_deletes_budget() {

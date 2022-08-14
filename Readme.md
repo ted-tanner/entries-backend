@@ -470,4 +470,4 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do it later
 
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
-* In `utils::db::remove_budget(...)`,
+* In `utils::db::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget
