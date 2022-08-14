@@ -820,7 +820,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(returned_budget_share_event.budget_id, budget.id);
-        
+
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
             .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
