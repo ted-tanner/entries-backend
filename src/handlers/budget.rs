@@ -14,7 +14,7 @@ use crate::utils::db;
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    budget_id: web::Json<InputBudgetId>,
+    budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let budget = match web::block(move || {
         let db_connection = db_thread_pool
@@ -81,7 +81,7 @@ pub async fn get_all(
 pub async fn get_all_between_dates(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    date_range: web::Json<InputDateRange>,
+    date_range: web::Query<InputDateRange>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let db_connection = db_thread_pool
@@ -268,7 +268,7 @@ pub async fn invite_user(
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Json<InputShareEventId>,
+    invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let db_connection = db_thread_pool
@@ -311,7 +311,7 @@ pub async fn retract_invitation(
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Json<InputShareEventId>,
+    invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     let db_thread_pool_ref = db_thread_pool.clone();
     let share_event_id = invitation_id.share_event_id;
@@ -365,7 +365,7 @@ pub async fn accept_invitation(
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Json<InputShareEventId>,
+    invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let db_connection = db_thread_pool
@@ -468,7 +468,7 @@ pub async fn get_all_pending_invitations_made_by_user(
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Json<InputShareEventId>,
+    invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
         let db_connection = db_thread_pool
@@ -503,13 +503,13 @@ pub async fn get_invitation(
 pub async fn remove_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    budget_id: web::Json<InputBudgetId>,
+    budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let db_thread_pool_clone = db_thread_pool.clone();
     let db_thread_pool_second_clone = db_thread_pool.clone();
 
-    let budget_id_clone = budget_id.clone();
-    let budget_id_second_clone = budget_id.clone();
+    let budget_id_clone = budget_id.0.clone();
+    let budget_id_second_clone = budget_id.0.clone();
 
     let rows_affected_count = match web::block(move || {
         let db_connection = db_thread_pool
@@ -950,7 +950,7 @@ mod tests {
             ),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/budget/edit")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
@@ -1006,7 +1006,7 @@ mod tests {
             ),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/budget/edit")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
@@ -1064,7 +1064,7 @@ mod tests {
             ),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/budget/edit")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
@@ -1163,11 +1163,13 @@ mod tests {
             budget_id: budget.id,
         };
 
-        let fetched_budget_req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let fetched_budget_req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(budget_id)
             .to_request();
 
         let fetched_budget_resp = test::call_service(&app, fetched_budget_req).await;
@@ -1266,11 +1268,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1299,21 +1303,25 @@ mod tests {
         assert_eq!(budget_association.user_id, created_user2_id);
         assert_eq!(budget_association.budget_id, created_user1_budget.id);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1405,21 +1413,25 @@ mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1429,31 +1441,37 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1473,31 +1491,37 @@ mod tests {
         assert!(share_events[0].share_timestamp > instant_before_share);
         assert!(share_events[0].share_timestamp < instant_after_share);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1532,7 +1556,7 @@ mod tests {
             invitee_user_id: created_user2_id,
             budget_id: created_user1_budget.id,
         };
- 
+
         let instant_before_share = chrono::Utc::now().naive_utc();
 
         let req = test::TestRequest::post()
@@ -1569,11 +1593,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/decline_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/decline_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1600,21 +1626,25 @@ mod tests {
 
         assert!(budget_association.is_err());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1706,21 +1736,25 @@ mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1730,31 +1764,37 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/decline_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/decline_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/decline_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/decline_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/decline_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/decline_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1774,31 +1814,37 @@ mod tests {
         assert!(share_events[0].share_timestamp > instant_before_share);
         assert!(share_events[0].share_timestamp < instant_after_share);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&input_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1853,11 +1899,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/retract_invitation")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/retract_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1924,21 +1972,25 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/retract_invitation")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/retract_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/retract_invitation")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/retract_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -1951,11 +2003,13 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/retract_invitation")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/retract_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2072,11 +2126,10 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::get()
             .uri("/api/budget/get_all_pending_invitations_for_user")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&created_user2_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2206,11 +2259,10 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::get()
             .uri("/api/budget/get_all_pending_invitations_made_by_user")
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&created_user2_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2296,11 +2348,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get_invitation")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2317,11 +2371,13 @@ mod tests {
         assert!(invitation.share_timestamp > instant_before_share);
         assert!(invitation.share_timestamp < instant_after_share);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get_invitation")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2338,11 +2394,13 @@ mod tests {
         assert!(invitation.share_timestamp > instant_before_share);
         assert!(invitation.share_timestamp < instant_after_share);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get_invitation")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2399,11 +2457,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2422,11 +2482,13 @@ mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2438,7 +2500,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(share_events.len(), 1); // Share event still exists
-        
+
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user1_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
@@ -2453,21 +2515,25 @@ mod tests {
 
         assert!(budget_association.is_ok());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2525,11 +2591,13 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2548,11 +2616,13 @@ mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2564,11 +2634,13 @@ mod tests {
 
         assert!(budget.is_ok());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2587,7 +2659,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(share_events.len(), 0);
-        
+
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user1_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
@@ -2608,21 +2680,25 @@ mod tests {
 
         assert!(budget.is_err());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2632,11 +2708,13 @@ mod tests {
             budget_id: created_user2_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                budget_user2_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_user2_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2655,11 +2733,13 @@ mod tests {
 
         assert!(budget.is_err());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_user2_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_user2_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2720,27 +2800,31 @@ mod tests {
             share_event_id: share_events[0].id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/accept_invitation")
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&invite_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
-        
+
         let budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
         };
 
         let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&budget_id)
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
@@ -2750,21 +2834,25 @@ mod tests {
 
         assert!(budget.is_ok());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
-            .set_json(&budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2775,10 +2863,12 @@ mod tests {
         };
 
         let req = test::TestRequest::post()
-            .uri("/api/budget/remove_budget")
+            .uri(&format!(
+                "/api/budget/remove_budget?budget_id={}",
+                user3_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
-            .set_json(&user3_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2790,11 +2880,13 @@ mod tests {
 
         assert!(budget.is_ok());
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                user3_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
-            .set_json(&user3_budget_id)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2868,11 +2960,13 @@ mod tests {
             budget_id: created_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(input_budget_id)
             .to_request();
 
         let res = test::call_service(&app, req).await;
@@ -3552,10 +3646,13 @@ mod tests {
             end_date: NaiveDate::from_ymd(2022, 4, 12),
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get_all_between_dates")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get_all_between_dates?start_date={}&end_date={}",
+                date_range.start_date.to_string(),
+                date_range.end_date.to_string(),
+            ))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(&date_range)
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -3703,14 +3800,16 @@ mod tests {
             budget_id: created_budget.id,
         };
 
-        let unauth_get_req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let unauth_get_req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header((
                 "authorization",
                 format!("bearer {unauth_user_access_token}"),
             ))
-            .set_json(input_budget_id)
             .to_request();
 
         let unauth_get_res = test::call_service(&app, unauth_get_req).await;
@@ -3740,11 +3839,13 @@ mod tests {
             budget_id: created_budget.id,
         };
 
-        let req = test::TestRequest::post()
-            .uri("/api/budget/get")
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/budget/get?budget_id={}",
+                input_budget_id.budget_id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {access_token}")))
-            .set_json(input_budget_id)
             .to_request();
 
         let res = test::call_service(&app, req).await;

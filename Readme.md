@@ -418,8 +418,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 8/19*
 
-* Test untested functions (you get a warning about them being unused when compiling tests)
-* Get POST vs GET vs PUT vs DELETE rest methods in order
+* Get POST vs GET vs PUT vs DELETE rest methods in order (use query params for get requests)
 * Figure out how to do timezone-aware dates
 
 *By 9/2*
