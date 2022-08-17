@@ -371,7 +371,7 @@ mod tests {
             currency: String::from("DOP"),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/user/edit")
             .insert_header((
                 "authorization",
@@ -629,7 +629,7 @@ mod tests {
             new_password: String::from("s$B5Pl@KC7t92&a!jZ3Gx"),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("content-type", "application/json"))
             .insert_header((
@@ -726,7 +726,7 @@ mod tests {
             new_password: String::from("s$B5Pl@KC7t92&a!jZ3Gx"),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("content-type", "application/json"))
             .insert_header((
@@ -823,7 +823,7 @@ mod tests {
             new_password: String::from("Password1234"),
         };
 
-        let req = test::TestRequest::post()
+        let req = test::TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("content-type", "application/json"))
             .insert_header((
