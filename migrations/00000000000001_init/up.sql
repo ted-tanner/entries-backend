@@ -5,6 +5,28 @@ CREATE TABLE blacklisted_tokens (
     token_expiration_time BIGINT NOT NULL
 );
 
+CREATE TABLE buddy_relationships (
+    id SERIAL PRIMARY KEY,
+    created_timestamp TIMESTAMP NOT NULL,
+    user1_id UUID NOT NULL,
+    user2_id UUID NOT NULL,
+    UNIQUE (user1_id, user2_id)
+);
+
+CREATE TABLE buddy_requests (
+    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    
+    recipient_user_id UUID NOT NULL,
+    sender_user_id UUID NOT NULL,
+    
+    accepted BOOLEAN NOT NULL,
+    created_timestamp TIMESTAMP NOT NULL,
+    accepted_declined_timestamp TIMESTAMP,
+    
+    UNIQUE (recipient_user_id, sender_user_id),
+    CHECK (recipient_user_id != sender_user_id)
+);
+
 CREATE TABLE budgets (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     is_shared BOOLEAN NOT NULL,
@@ -181,6 +203,10 @@ CREATE TABLE user_notifications (
 -- Foreign keys
 
 ALTER TABLE blacklisted_tokens ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE buddy_relationships ADD CONSTRAINT user1_key FOREIGN KEY(user1_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE buddy_relationships ADD CONSTRAINT user2_key FOREIGN KEY(user2_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE buddy_requests ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE buddy_requests ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_comments ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

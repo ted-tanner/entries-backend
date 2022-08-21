@@ -1,10 +1,16 @@
 use actix_web::web;
-use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
 use crate::handlers::request_io::{InputEditUser, InputUser};
+use crate::models::buddy_relationship::NewBuddyRelationship;
+use crate::models::buddy_request::{NewBuddyRequest, BuddyRequest};
 use crate::models::user::{NewUser, User};
+use crate::schema::buddy_relationships as buddy_relationship_fields;
+use crate::schema::buddy_relationships::dsl::buddy_relationships;
+use crate::schema::buddy_requests as buddy_request_fields;
+use crate::schema::buddy_requests::dsl::buddy_requests;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 use crate::utils::password_hasher;
@@ -83,6 +89,151 @@ pub fn change_password(
         Err(e) => Err(e),
     }
 }
+
+// TODO: Test
+pub fn send_buddy_request(
+    db_connection: &DbConnection,
+    recipient_user_id: Uuid,
+    sender_user_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    let request = NewBuddyRequest {
+        id: Uuid::new_v4(),
+        recipient_user_id,
+        sender_user_id,
+        accepted: false,
+        created_timestamp: chrono::Utc::now().naive_utc(),
+        accepted_declined_timestamp: None,
+    };
+
+    dsl::insert_into(buddy_requests)
+        .values(&request)
+        .execute(db_connection)
+}
+
+// TODO: Test
+pub fn delete_buddy_request(
+    db_connection: &DbConnection,
+    request_id: Uuid,
+    sender_user_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(
+        buddy_requests
+            .find(request_id)
+            .filter(buddy_request_fields::sender_user_id.eq(sender_user_id)),
+    )
+    .execute(db_connection)
+}
+
+// TODO: Test
+pub fn mark_buddy_request_accepted(
+    db_connection: &DbConnection,
+    request_id: Uuid,
+    recipient_user_id: Uuid,
+) -> Result<BuddyRequest, diesel::result::Error> {
+    diesel::update(
+        buddy_requests
+            .find(request_id)
+            .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
+    )
+    .set((
+        buddy_request_fields::accepted.eq(true),
+        buddy_request_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+    ))
+    .get_result(db_connection)
+}
+
+// TODO: Test
+pub fn mark_buddy_request_declined(
+    db_connection: &DbConnection,
+    request_id: Uuid,
+    recipient_user_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(
+        buddy_requests
+            .find(request_id)
+            .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
+    )
+    .set((
+        buddy_request_fields::accepted.eq(false),
+        buddy_request_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+    ))
+    .execute(db_connection)
+}
+
+// TODO: Test
+pub fn get_all_pending_buddy_requests_for_user(
+    db_connection: &DbConnection,
+    user_id: Uuid,
+) -> Result<Vec<BuddyRequest>, diesel::result::Error> {
+    buddy_requests
+        .filter(buddy_request_fields::recipient_user_id.eq(user_id))
+        .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
+        .order(buddy_request_fields::created_timestamp.asc())
+        .load::<BuddyRequest>(db_connection)
+}
+
+// TODO: Test
+pub fn get_all_pending_buddy_requests_made_by_user(
+    db_connection: &DbConnection,
+    user_id: Uuid,
+) -> Result<Vec<BuddyRequest>, diesel::result::Error> {
+    buddy_requests
+        .filter(buddy_request_fields::sender_user_id.eq(user_id))
+        .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
+        .order(buddy_request_fields::created_timestamp.asc())
+        .load::<BuddyRequest>(db_connection)
+}
+
+// TODO: Test
+pub fn get_buddy_request(
+    db_connection: &DbConnection,
+    request_id: Uuid,
+    user_id: Uuid,
+) -> Result<BuddyRequest, diesel::result::Error> {
+    buddy_requests
+        .find(request_id)
+        .filter(
+            buddy_request_fields::sender_user_id
+                .eq(user_id)
+                .or(buddy_request_fields::recipient_user_id.eq(user_id)),
+        )
+        .first::<BuddyRequest>(db_connection)
+}
+
+// TODO: Test
+pub fn create_buddy_relationship(
+    db_connection: &DbConnection,
+    user1_id: Uuid,
+    user2_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    let current_time = chrono::Utc::now().naive_utc();
+
+    let relationship = NewBuddyRelationship {
+        created_timestamp: current_time,
+        user1_id,
+        user2_id,
+    };
+
+    dsl::insert_into(buddy_relationships)
+        .values(&relationship)
+        .execute(db_connection)
+}
+
+// TODO: Test
+pub fn delete_buddy_relationship(
+    db_connection: &DbConnection,
+    user1_id: Uuid,
+    user2_id: Uuid,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(
+        buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(user1_id))
+            .filter(buddy_relationship_fields::user2_id.eq(user2_id)),
+    )
+    .execute(db_connection)
+}
+
+// TODO: Get buddies
 
 #[cfg(test)]
 mod tests {

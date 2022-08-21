@@ -8,6 +8,26 @@ table! {
 }
 
 table! {
+    buddy_relationships (id) {
+        id -> Int4,
+        created_timestamp -> Timestamp,
+        user1_id -> Uuid,
+        user2_id -> Uuid,
+    }
+}
+
+table! {
+    buddy_requests (id) {
+        id -> Uuid,
+        recipient_user_id -> Uuid,
+        sender_user_id -> Uuid,
+        accepted -> Bool,
+        created_timestamp -> Timestamp,
+        accepted_declined_timestamp -> Nullable<Timestamp>,
+    }
+}
+
+table! {
     budget_comment_reactions (id) {
         id -> Uuid,
         comment_id -> Uuid,
@@ -175,6 +195,8 @@ joinable!(entry_comments -> entries (entry_id));
 
 allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
+    buddy_relationships,
+    buddy_requests,
     budget_comment_reactions,
     budget_comments,
     budget_share_events,

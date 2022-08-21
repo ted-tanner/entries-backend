@@ -1,4 +1,6 @@
 pub mod blacklisted_token;
+pub mod buddy_relationship;
+pub mod buddy_request;
 pub mod budget;
 pub mod budget_share_event;
 pub mod category;
