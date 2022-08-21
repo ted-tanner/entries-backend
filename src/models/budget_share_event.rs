@@ -10,12 +10,12 @@ pub struct BudgetShareEvent {
     pub id: uuid::Uuid,
 
     pub recipient_user_id: uuid::Uuid,
-    pub sharer_user_id: uuid::Uuid,
+    pub sender_user_id: uuid::Uuid,
 
     pub budget_id: uuid::Uuid,
     pub accepted: bool,
 
-    pub share_timestamp: NaiveDateTime,
+    pub created_timestamp: NaiveDateTime,
     pub accepted_declined_timestamp: Option<NaiveDateTime>,
 }
 
@@ -25,11 +25,11 @@ pub struct NewBudgetShareEvent {
     pub id: uuid::Uuid,
 
     pub recipient_user_id: uuid::Uuid,
-    pub sharer_user_id: uuid::Uuid,
+    pub sender_user_id: uuid::Uuid,
 
     pub budget_id: uuid::Uuid,
     pub accepted: bool,
 
-    pub share_timestamp: NaiveDateTime,
+    pub created_timestamp: NaiveDateTime,
     pub accepted_declined_timestamp: Option<NaiveDateTime>,
 }

@@ -416,14 +416,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-*By 8/19*
-
-* Get POST vs GET vs PUT vs DELETE rest methods in order (use query params for get requests)
-* Figure out how to do timezone-aware dates
-
 *By 9/2*
 
-* Implement budget sharing (add/remove user from budget db utils are already in place)
+* Implement user buddy system
 
 *By 9/16*
 
@@ -431,6 +426,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
   - Perhaps no deletion is necessary for categories until budget is deleted
+  - Move `request_io` module to `utils`
   
 *By 9/30*
 
@@ -458,15 +454,25 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Account for deleted users when doing things like creating a `budget_share_event`, adding to a budget, sending buddy request, accepting buddy request, etc
 * Verify SQL injection is not possible with any endpoint
 
-*By 11/23*
+*By 11/25*
 
 * Pass db_thread_pool to db utils instead of trying to obtain db_connections in the handler 
 * `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`). Instead, pass fields as params
 * Move `cron` crate into `utils`
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Security check endpoints: make sure users can't access other users' data
-  
+
+*By 12/9*
+
+* User notifications
+
 ### Do it later
 
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
 * In `utils::db::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget
+* OTP attempts, password attempts, and blacklisted tokens can be moved to Redis
+* Comments
+
+### Note on timezones
+
+* Budget and entry dates are fixed. The timezone the user in is not relevant; the budgets will always end according to the date for the user.

@@ -35,10 +35,10 @@ table! {
     budget_share_events (id) {
         id -> Uuid,
         recipient_user_id -> Uuid,
-        sharer_user_id -> Uuid,
+        sender_user_id -> Uuid,
         budget_id -> Uuid,
         accepted -> Bool,
-        share_timestamp -> Timestamp,
+        created_timestamp -> Timestamp,
         accepted_declined_timestamp -> Nullable<Timestamp>,
     }
 }

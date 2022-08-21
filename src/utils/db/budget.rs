@@ -311,16 +311,16 @@ pub fn edit_budget(
 pub fn invite_user(
     db_connection: &DbConnection,
     budget_id: Uuid,
-    invitee_user_id: Uuid,
-    sharer_user_id: Uuid,
+    recipient_user_id: Uuid,
+    sender_user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
     let budget_share_event = NewBudgetShareEvent {
         id: Uuid::new_v4(),
-        recipient_user_id: invitee_user_id,
-        sharer_user_id,
+        recipient_user_id: recipient_user_id,
+        sender_user_id,
         budget_id,
         accepted: false,
-        share_timestamp: chrono::Utc::now().naive_utc(),
+        created_timestamp: chrono::Utc::now().naive_utc(),
         accepted_declined_timestamp: None,
     };
 
@@ -332,12 +332,12 @@ pub fn invite_user(
 pub fn delete_invitation(
     db_connection: &DbConnection,
     invitation_id: Uuid,
-    sharer_user_id: Uuid,
+    sender_user_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(
         budget_share_events
             .find(invitation_id)
-            .filter(budget_share_event_fields::sharer_user_id.eq(sharer_user_id)),
+            .filter(budget_share_event_fields::sender_user_id.eq(sender_user_id)),
     )
     .execute(db_connection)
 }
@@ -383,7 +383,7 @@ pub fn get_all_pending_invitations_for_user(
     budget_share_events
         .filter(budget_share_event_fields::recipient_user_id.eq(user_id))
         .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-        .order(budget_share_event_fields::share_timestamp.asc())
+        .order(budget_share_event_fields::created_timestamp.asc())
         .load::<BudgetShareEvent>(db_connection)
 }
 
@@ -392,9 +392,9 @@ pub fn get_all_pending_invitations_made_by_user(
     user_id: Uuid,
 ) -> Result<Vec<BudgetShareEvent>, diesel::result::Error> {
     budget_share_events
-        .filter(budget_share_event_fields::sharer_user_id.eq(user_id))
+        .filter(budget_share_event_fields::sender_user_id.eq(user_id))
         .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-        .order(budget_share_event_fields::share_timestamp.asc())
+        .order(budget_share_event_fields::created_timestamp.asc())
         .load::<BudgetShareEvent>(db_connection)
 }
 
@@ -406,7 +406,7 @@ pub fn get_invitation(
     budget_share_events
         .find(invitation_id)
         .filter(
-            budget_share_event_fields::sharer_user_id
+            budget_share_event_fields::sender_user_id
                 .eq(user_id)
                 .or(budget_share_event_fields::recipient_user_id.eq(user_id)),
         )
@@ -699,7 +699,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -715,7 +715,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -726,13 +726,13 @@ mod tests {
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sharer_user_id,
+            created_budget_share_events[0].sender_user_id,
             created_user1.id
         );
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert_eq!(created_budget_share_events[0].accepted, false);
 
-        assert!(created_budget_share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert_eq!(
             created_budget_share_events[0].accepted_declined_timestamp,
             None
@@ -761,7 +761,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -776,7 +776,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -806,7 +806,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -823,7 +823,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -834,13 +834,13 @@ mod tests {
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sharer_user_id,
+            created_budget_share_events[0].sender_user_id,
             created_user1.id
         );
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert_eq!(created_budget_share_events[0].accepted, true);
 
-        assert!(created_budget_share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(
             created_budget_share_events[0]
                 .accepted_declined_timestamp
@@ -851,7 +851,7 @@ mod tests {
             created_budget_share_events[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                > created_budget_share_events[0].share_timestamp
+                > created_budget_share_events[0].created_timestamp
         );
     }
 
@@ -878,7 +878,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -893,7 +893,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -904,13 +904,13 @@ mod tests {
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sharer_user_id,
+            created_budget_share_events[0].sender_user_id,
             created_user1.id
         );
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert_eq!(created_budget_share_events[0].accepted, false);
 
-        assert!(created_budget_share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(
             created_budget_share_events[0]
                 .accepted_declined_timestamp
@@ -921,7 +921,7 @@ mod tests {
             created_budget_share_events[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                > created_budget_share_events[0].share_timestamp
+                > created_budget_share_events[0].created_timestamp
         );
     }
 
@@ -966,19 +966,19 @@ mod tests {
         assert_eq!(share_events.len(), 2);
 
         assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[0].sender_user_id, created_user1.id);
         assert_eq!(share_events[0].budget_id, budget1.id);
         assert_eq!(share_events[0].accepted, false);
 
-        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(share_events[1].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[1].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[1].sender_user_id, created_user1.id);
         assert_eq!(share_events[1].budget_id, budget2.id);
         assert_eq!(share_events[1].accepted, false);
 
-        assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
         mark_invitation_accepted(&db_connection, share_events[0].id, created_user2.id).unwrap();
@@ -989,11 +989,11 @@ mod tests {
         assert_eq!(share_events.len(), 1);
 
         assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[0].sender_user_id, created_user1.id);
         assert_eq!(share_events[0].budget_id, budget2.id);
         assert_eq!(share_events[0].accepted, false);
 
-        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
@@ -1038,19 +1038,19 @@ mod tests {
         assert_eq!(share_events.len(), 2);
 
         assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[0].sender_user_id, created_user1.id);
         assert_eq!(share_events[0].budget_id, budget1.id);
         assert_eq!(share_events[0].accepted, false);
 
-        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(share_events[1].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[1].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[1].sender_user_id, created_user1.id);
         assert_eq!(share_events[1].budget_id, budget2.id);
         assert_eq!(share_events[1].accepted, false);
 
-        assert!(share_events[1].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
         mark_invitation_declined(&db_connection, share_events[0].id, created_user2.id).unwrap();
@@ -1061,11 +1061,11 @@ mod tests {
         assert_eq!(share_events.len(), 1);
 
         assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1.id);
+        assert_eq!(share_events[0].sender_user_id, created_user1.id);
         assert_eq!(share_events[0].budget_id, budget2.id);
         assert_eq!(share_events[0].accepted, false);
 
-        assert!(share_events[0].share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
@@ -1092,7 +1092,7 @@ mod tests {
 
         let created_budget_share_events = budget_share_events
             .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sharer_user_id.eq(created_user1.id))
+            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
 
@@ -1113,13 +1113,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(share_event.recipient_user_id, created_user2.id);
-        assert_eq!(share_event.sharer_user_id, created_user1.id);
+        assert_eq!(share_event.sender_user_id, created_user1.id);
         assert_eq!(share_event.budget_id, budget.id);
         assert_eq!(share_event.accepted, true);
 
-        assert!(share_event.share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_event.created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_event.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
-        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.share_timestamp);
+        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
 
         let share_event = get_invitation(
             &db_connection,
@@ -1129,13 +1129,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(share_event.recipient_user_id, created_user2.id);
-        assert_eq!(share_event.sharer_user_id, created_user1.id);
+        assert_eq!(share_event.sender_user_id, created_user1.id);
         assert_eq!(share_event.budget_id, budget.id);
         assert_eq!(share_event.accepted, true);
 
-        assert!(share_event.share_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_event.created_timestamp < chrono::Utc::now().naive_utc());
         assert!(share_event.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
-        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.share_timestamp);
+        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
     }
 
     #[actix_rt::test]

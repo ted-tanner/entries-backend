@@ -6,7 +6,7 @@ ALTER TABLE budget_comments DROP CONSTRAINT budget_key;
 ALTER TABLE budget_comment_reactions DROP CONSTRAINT user_key;
 ALTER TABLE budget_comment_reactions DROP CONSTRAINT comment_key;
 ALTER TABLE budget_share_events DROP CONSTRAINT recipient_key;
-ALTER TABLE budget_share_events DROP CONSTRAINT sharer_key;
+ALTER TABLE budget_share_events DROP CONSTRAINT sender_key;
 ALTER TABLE budget_share_events DROP CONSTRAINT budget_key;
 ALTER TABLE categories DROP CONSTRAINT budget_key;
 ALTER TABLE entries DROP CONSTRAINT user_key;
@@ -18,7 +18,6 @@ ALTER TABLE entry_comment_reactions DROP CONSTRAINT comment_key;
 ALTER TABLE otp_attempts DROP CONSTRAINT user_key;
 ALTER TABLE password_attempts DROP CONSTRAINT user_key;
 ALTER TABLE user_notifications DROP CONSTRAINT user_key;
-
 ALTER TABLE user_budgets DROP CONSTRAINT user_key;
 ALTER TABLE user_budgets DROP CONSTRAINT budget_key;
 ALTER TABLE user_budgets DROP CONSTRAINT ub_only_one_association;

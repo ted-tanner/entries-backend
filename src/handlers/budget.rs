@@ -1253,12 +1253,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1287,12 +1287,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, true);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -1402,12 +1402,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1484,12 +1484,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, true);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
@@ -1578,12 +1578,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1612,12 +1612,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -1725,12 +1725,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1807,12 +1807,12 @@ mod tests {
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sharer_user_id, created_user1_id);
+        assert_eq!(share_events[0].sender_user_id, created_user1_id);
         assert_eq!(share_events[0].accepted, false);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].share_timestamp > instant_before_share);
-        assert!(share_events[0].share_timestamp < instant_after_share);
+        assert!(share_events[0].created_timestamp > instant_before_share);
+        assert!(share_events[0].created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
@@ -2145,13 +2145,13 @@ mod tests {
         let budget2_invitation = &invitations[1];
 
         assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
-        assert_eq!(budget1_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
         assert_eq!(budget1_invitation.accepted, false);
         assert!(budget1_invitation.accepted_declined_timestamp.is_none());
 
         assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
-        assert_eq!(budget2_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
         assert_eq!(budget2_invitation.accepted, false);
         assert!(budget2_invitation.accepted_declined_timestamp.is_none());
@@ -2278,13 +2278,13 @@ mod tests {
         let budget2_invitation = &invitations[1];
 
         assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
-        assert_eq!(budget1_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
         assert_eq!(budget1_invitation.accepted, false);
         assert!(budget1_invitation.accepted_declined_timestamp.is_none());
 
         assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
-        assert_eq!(budget2_invitation.sharer_user_id, created_user1_id);
+        assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
         assert_eq!(budget2_invitation.accepted, false);
         assert!(budget2_invitation.accepted_declined_timestamp.is_none());
@@ -2364,12 +2364,12 @@ mod tests {
         let invitation = serde_json::from_str::<BudgetShareEvent>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
-        assert_eq!(invitation.sharer_user_id, created_user1_id);
+        assert_eq!(invitation.sender_user_id, created_user1_id);
         assert_eq!(invitation.accepted, false);
 
         assert!(invitation.accepted_declined_timestamp.is_none());
-        assert!(invitation.share_timestamp > instant_before_share);
-        assert!(invitation.share_timestamp < instant_after_share);
+        assert!(invitation.created_timestamp > instant_before_share);
+        assert!(invitation.created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
@@ -2387,12 +2387,12 @@ mod tests {
         let invitation = serde_json::from_str::<BudgetShareEvent>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
-        assert_eq!(invitation.sharer_user_id, created_user1_id);
+        assert_eq!(invitation.sender_user_id, created_user1_id);
         assert_eq!(invitation.accepted, false);
 
         assert!(invitation.accepted_declined_timestamp.is_none());
-        assert!(invitation.share_timestamp > instant_before_share);
-        assert!(invitation.share_timestamp < instant_after_share);
+        assert!(invitation.created_timestamp > instant_before_share);
+        assert!(invitation.created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
