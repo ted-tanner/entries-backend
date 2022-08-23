@@ -419,6 +419,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 9/2*
 
 * Implement user buddy system
+* Get another user by ID when an optional query param is passed to `/api/user/get`
 
 *By 9/16*
 
@@ -471,7 +472,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
 * In `utils::db::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget
 * OTP attempts, password attempts, and blacklisted tokens can be moved to Redis
-* Comments
+* Comments (budget comments, entry comments, etc.)
+* Publicly export models (so imports look like this `use crate::models::BuddyRequest;` rather than `use crate::models::buddy_request::BuddyRequest;`
 
 ### Note on timezones
 

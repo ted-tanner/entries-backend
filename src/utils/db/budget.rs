@@ -496,7 +496,7 @@ pub fn create_entry(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     use actix_web::web;
@@ -520,6 +520,7 @@ mod tests {
     use crate::schema::user_budgets as user_budget_fields;
     use crate::schema::user_budgets::dsl::user_budgets;
     use crate::utils::db::user;
+    use crate::utils::db::user::tests::generate_user;
 
     pub struct UserAndBudget {
         user: User,
@@ -529,33 +530,19 @@ mod tests {
     pub fn generate_user_and_budget(
         db_connection: &DbConnection,
     ) -> Result<UserAndBudget, diesel::result::Error> {
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", user_number),
-            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
-            first_name: format!("Test-{}", user_number),
-            last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
-
-        let new_user_json = web::Json(new_user);
-        let created_user = user::create_user(db_connection, &new_user_json)?;
+        let budget_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let created_user = generate_user(db_connection)?;
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category {user_number}"),
+            name: format!("First Random Category {budget_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category {user_number}"),
+            name: format!("Second Random Category {budget_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
@@ -563,9 +550,9 @@ mod tests {
         let budget_categories = vec![category0, category1];
 
         let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
+            name: format!("Test Budget {budget_number}"),
             description: Some(format!(
-                "This is a description of Test Budget {user_number}.",
+                "This is a description of Test Budget {budget_number}.",
             )),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(

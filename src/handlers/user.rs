@@ -12,6 +12,7 @@ use crate::middleware;
 use crate::utils::db;
 use crate::utils::{auth_token, otp, password_hasher, validators};
 
+// TODO: Get another user by ID when an optional query param is passed
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,

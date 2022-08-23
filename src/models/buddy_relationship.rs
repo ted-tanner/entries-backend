@@ -9,7 +9,7 @@ use crate::schema::buddy_relationships;
 #[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable)]
 #[belongs_to(User, foreign_key = "user1_id")]
 // Diesel does not support multiple foreign keys to a single table
-// #[belongs_to(User, foreign_key = "user2_id")] 
+// #[belongs_to(User, foreign_key = "user2_id")]
 #[table_name = "buddy_relationships"]
 pub struct BuddyRelationship {
     pub id: i32,

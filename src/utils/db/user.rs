@@ -1,11 +1,11 @@
 use actix_web::web;
-use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::definitions::*;
 use crate::handlers::request_io::{InputEditUser, InputUser};
 use crate::models::buddy_relationship::NewBuddyRelationship;
-use crate::models::buddy_request::{NewBuddyRequest, BuddyRequest};
+use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
@@ -90,7 +90,6 @@ pub fn change_password(
     }
 }
 
-// TODO: Test
 pub fn send_buddy_request(
     db_connection: &DbConnection,
     recipient_user_id: Uuid,
@@ -110,7 +109,6 @@ pub fn send_buddy_request(
         .execute(db_connection)
 }
 
-// TODO: Test
 pub fn delete_buddy_request(
     db_connection: &DbConnection,
     request_id: Uuid,
@@ -124,7 +122,6 @@ pub fn delete_buddy_request(
     .execute(db_connection)
 }
 
-// TODO: Test
 pub fn mark_buddy_request_accepted(
     db_connection: &DbConnection,
     request_id: Uuid,
@@ -142,7 +139,6 @@ pub fn mark_buddy_request_accepted(
     .get_result(db_connection)
 }
 
-// TODO: Test
 pub fn mark_buddy_request_declined(
     db_connection: &DbConnection,
     request_id: Uuid,
@@ -233,16 +229,52 @@ pub fn delete_buddy_relationship(
     .execute(db_connection)
 }
 
-// TODO: Get buddies
+// TODO: Test
+pub fn get_buddies(
+    db_connection: &DbConnection,
+    user_id: Uuid,
+) -> Result<Vec<User>, diesel::result::Error> {
+    let query = "SELECT u.* FROM users AS u, buddy_relationships AS br \
+                 WHERE (br.user1_id = $1 AND u.id = br.user2_id) \
+                 OR (br.user2_id = $1 AND u.id = br.user1_id) \
+                 ORDER BY br.created_timestamp";
+
+    sql_query(query)
+        .bind::<diesel::sql_types::Uuid, _>(user_id)
+        .load(db_connection)
+}
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     use chrono::NaiveDate;
     use rand::prelude::*;
 
     use crate::env;
+    use crate::models::buddy_relationship::BuddyRelationship;
+    use crate::models::buddy_request::BuddyRequest;
+    use crate::schema::buddy_requests as buddy_request_fields;
+    use crate::schema::buddy_requests::dsl::buddy_requests;
+
+    pub fn generate_user(db_connection: &DbConnection) -> Result<User, diesel::result::Error> {
+        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", user_number),
+            password: String::from("g&eWi3#oIKDW%cTu*5*2"),
+            first_name: format!("Test-{}", user_number),
+            last_name: format!("User-{}", user_number),
+            date_of_birth: NaiveDate::from_ymd(
+                rand::thread_rng().gen_range(1950..=2020),
+                rand::thread_rng().gen_range(1..=12),
+                rand::thread_rng().gen_range(1..=28),
+            ),
+            currency: String::from("USD"),
+        };
+
+        let new_user_json = web::Json(new_user);
+        create_user(db_connection, &new_user_json)
+    }
 
     #[actix_rt::test]
     async fn test_create_user() {
@@ -494,5 +526,250 @@ mod tests {
             UPDATED_PASSWORD,
             &updated_password_saved_hash
         ));
+    }
+    
+    #[actix_rt::test]
+    async fn test_send_buddy_request() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        send_buddy_request(
+            &db_connection,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.id
+        );
+
+        assert_eq!(created_buddy_requests[0].accepted, false);
+
+        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert_eq!(
+            created_buddy_requests[0].accepted_declined_timestamp,
+            None
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_delete_buddy_request() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        send_buddy_request(
+            &db_connection,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        delete_buddy_request(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user1.id,
+        )
+            .unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+    }
+    
+    #[actix_rt::test]
+    async fn test_mark_buddy_request_accepted() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        send_buddy_request(
+            &db_connection,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let returned_buddy_request = mark_buddy_request_accepted(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user2.id,
+        )
+        .unwrap();
+
+        assert_eq!(returned_buddy_request.recipient_user_id, created_user2.id);
+        assert_eq!(returned_buddy_request.sender_user_id, created_user1.id);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.id
+        );
+
+        assert_eq!(created_buddy_requests[0].accepted, true);
+
+        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(
+            created_buddy_requests[0]
+                .accepted_declined_timestamp
+                .unwrap()
+                < chrono::Utc::now().naive_utc()
+        );
+        assert!(
+            created_buddy_requests[0]
+                .accepted_declined_timestamp
+                .unwrap()
+                > created_buddy_requests[0].created_timestamp
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_mark_buddy_request_declined() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        send_buddy_request(
+            &db_connection,
+            created_user2.id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let returned_buddy_request_count = mark_buddy_request_declined(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user2.id,
+        )
+        .unwrap();
+
+        assert_eq!(returned_buddy_request_count, 1);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+        
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.id
+        );
+
+        assert_eq!(created_buddy_requests[0].accepted, false);
+
+        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(
+            created_buddy_requests[0]
+                .accepted_declined_timestamp
+                .unwrap()
+                < chrono::Utc::now().naive_utc()
+        );
+        assert!(
+            created_buddy_requests[0]
+                .accepted_declined_timestamp
+                .unwrap()
+                > created_buddy_requests[0].created_timestamp
+        );
     }
 }
