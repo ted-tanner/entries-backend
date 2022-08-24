@@ -22,6 +22,11 @@ pub struct InputUserId {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputBuddyRequestId {
+    pub buddy_request_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
 }
@@ -77,24 +82,24 @@ pub struct InputEditUser {
     pub currency: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RefreshToken {
     pub token: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SigninTokenOtpPair {
     pub signin_token: String,
     pub otp: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CurrentAndNewPasswordPair {
     pub current_password: String,
     pub new_password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategory {
     pub id: i16,
     pub name: String,
@@ -102,7 +107,7 @@ pub struct InputCategory {
     pub color: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
     pub name: String,
     pub description: Option<String>,
@@ -111,7 +116,7 @@ pub struct InputBudget {
     pub end_date: NaiveDate,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
     pub id: Uuid,
     pub name: String,
@@ -120,13 +125,13 @@ pub struct InputEditBudget {
     pub end_date: NaiveDate,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UserInvitationToBudget {
     pub invitee_user_id: Uuid,
     pub budget_id: Uuid,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntry {
     pub budget_id: Uuid,
     pub amount_cents: i64,

@@ -6,7 +6,8 @@ use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::handlers::request_io::{
-    CurrentAndNewPasswordPair, InputEditUser, InputUser, OutputUserPrivate, SigninToken,
+    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputUser, InputUserId,
+    OutputUserPrivate, SigninToken,
 };
 use crate::middleware;
 use crate::utils::db;
@@ -59,6 +60,8 @@ pub async fn get(
 
     Ok(HttpResponse::Ok().json(output_user))
 }
+
+// TODO: Get another user by email
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -234,6 +237,357 @@ pub async fn change_password(
         error!("{}", e);
         ServerError::DatabaseTransactionError(Some("Failed to update password"))
     })
+}
+
+// TODO: Test
+pub async fn send_buddy_request(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    other_user_id: web::Json<InputUserId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::send_buddy_request(
+            &db_connection,
+            other_user_id.user_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                return Err(ServerError::InvalidFormat(None));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to create buddy request",
+                )));
+            }
+        },
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn retract_buddy_request(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    request_id: web::Query<InputBuddyRequestId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::delete_buddy_request(
+            &db_connection,
+            request_id.buddy_request_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(count) => {
+            if count == 0 {
+                return Err(ServerError::NotFound(Some(
+                    "No buddy request with provided ID was made by user",
+                )));
+            }
+        }
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "No buddy request with provided ID",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to delete request",
+                )));
+            }
+        },
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn accept_buddy_request(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    request_id: web::Query<InputBuddyRequestId>,
+) -> Result<HttpResponse, ServerError> {
+    let db_thread_pool_ref = db_thread_pool.clone();
+    let request_id = request_id.buddy_request_id;
+
+    let buddy_request_data = match web::block(move || {
+        let db_connection = db_thread_pool_ref
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::mark_buddy_request_accepted(&db_connection, request_id, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(req_data) => req_data,
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "No buddy request with provided ID",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to accept buddy request",
+                )));
+            }
+        },
+    };
+
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::create_buddy_relationship(
+            &db_connection,
+            buddy_request_data.sender_user_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to accept buddy request",
+            )));
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn decline_buddy_request(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    request_id: web::Query<InputBuddyRequestId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::mark_buddy_request_declined(
+            &db_connection,
+            request_id.buddy_request_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(count) => {
+            if count == 0 {
+                return Err(ServerError::UserUnauthorized(Some(
+                    "User not authorized to decline buddy request",
+                )));
+            }
+        }
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "No buddy request with provided ID",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to decline buddy request",
+                )));
+            }
+        },
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn get_all_pending_buddy_requests_for_user(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let requests = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::get_all_pending_buddy_requests_for_user(&db_connection, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(reqs) => reqs,
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("No buddy requests for user")));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find buddy requests",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(requests))
+}
+
+// TODO: Test
+pub async fn get_all_pending_buddy_requests_made_by_user(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let requests = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::get_all_pending_buddy_requests_made_by_user(
+            &db_connection,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(reqs) => reqs,
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some(
+                    "No buddy requests made by user",
+                )));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find buddy requests",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(requests))
+}
+
+// TODO: Test
+pub async fn get_buddy_request(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    request_id: web::Query<InputBuddyRequestId>,
+) -> Result<HttpResponse, ServerError> {
+    let request = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::get_buddy_request(
+            &db_connection,
+            request_id.buddy_request_id,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(req) => req,
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("Buddy request not found")));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find buddy request",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(request))
+}
+
+// TODO: Test
+pub async fn delete_buddy_relationship(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    other_user_id: web::Query<InputUserId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::delete_buddy_relationship(
+            &db_connection,
+            auth_user_claims.0.uid,
+            other_user_id.user_id,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::NotFound(Some("Buddy relationship not found")));
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to delete buddy relationship",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+// TODO: Test
+pub async fn get_buddies(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let buddies = match web::block(move || {
+        let db_connection = db_thread_pool
+            .get()
+            .expect("Failed to access database thread pool");
+
+        db::user::get_buddies(&db_connection, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to find buddies for user",
+                )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(buddies))
 }
 
 #[cfg(test)]
