@@ -156,7 +156,6 @@ pub fn mark_buddy_request_declined(
     .execute(db_connection)
 }
 
-// TODO: Test
 pub fn get_all_pending_buddy_requests_for_user(
     db_connection: &DbConnection,
     user_id: Uuid,
@@ -168,7 +167,6 @@ pub fn get_all_pending_buddy_requests_for_user(
         .load::<BuddyRequest>(db_connection)
 }
 
-// TODO: Test
 pub fn get_all_pending_buddy_requests_made_by_user(
     db_connection: &DbConnection,
     user_id: Uuid,
@@ -180,7 +178,6 @@ pub fn get_all_pending_buddy_requests_made_by_user(
         .load::<BuddyRequest>(db_connection)
 }
 
-// TODO: Test
 pub fn get_buddy_request(
     db_connection: &DbConnection,
     request_id: Uuid,
@@ -196,7 +193,6 @@ pub fn get_buddy_request(
         .first::<BuddyRequest>(db_connection)
 }
 
-// TODO: Test
 pub fn create_buddy_relationship(
     db_connection: &DbConnection,
     user1_id: Uuid,
@@ -215,21 +211,24 @@ pub fn create_buddy_relationship(
         .execute(db_connection)
 }
 
-// TODO: Test
 pub fn delete_buddy_relationship(
     db_connection: &DbConnection,
     user1_id: Uuid,
     user2_id: Uuid,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(
-        buddy_relationships
-            .filter(buddy_relationship_fields::user1_id.eq(user1_id))
-            .filter(buddy_relationship_fields::user2_id.eq(user2_id)),
+        buddy_relationships.filter(
+            buddy_relationship_fields::user1_id
+                .eq(user1_id)
+                .and(buddy_relationship_fields::user2_id.eq(user2_id))
+                .or(buddy_relationship_fields::user1_id
+                    .eq(user2_id)
+                    .and(buddy_relationship_fields::user2_id.eq(user1_id))),
+        ),
     )
     .execute(db_connection)
 }
 
-// TODO: Test
 pub fn get_buddies(
     db_connection: &DbConnection,
     user_id: Uuid,
@@ -527,7 +526,7 @@ pub mod tests {
             &updated_password_saved_hash
         ));
     }
-    
+
     #[actix_rt::test]
     async fn test_send_buddy_request() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
@@ -544,12 +543,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
 
-        send_buddy_request(
-            &db_connection,
-            created_user2.id,
-            created_user1.id,
-        )
-        .unwrap();
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
@@ -563,18 +557,12 @@ pub mod tests {
             created_buddy_requests[0].recipient_user_id,
             created_user2.id
         );
-        assert_eq!(
-            created_buddy_requests[0].sender_user_id,
-            created_user1.id
-        );
+        assert_eq!(created_buddy_requests[0].sender_user_id, created_user1.id);
 
         assert_eq!(created_buddy_requests[0].accepted, false);
 
         assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
-        assert_eq!(
-            created_buddy_requests[0].accepted_declined_timestamp,
-            None
-        );
+        assert_eq!(created_buddy_requests[0].accepted_declined_timestamp, None);
     }
 
     #[actix_rt::test]
@@ -593,12 +581,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
 
-        send_buddy_request(
-            &db_connection,
-            created_user2.id,
-            created_user1.id,
-        )
-        .unwrap();
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
@@ -613,7 +596,7 @@ pub mod tests {
             created_buddy_requests[0].id,
             created_user1.id,
         )
-            .unwrap();
+        .unwrap();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
@@ -623,7 +606,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
     }
-    
+
     #[actix_rt::test]
     async fn test_mark_buddy_request_accepted() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
@@ -640,12 +623,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
 
-        send_buddy_request(
-            &db_connection,
-            created_user2.id,
-            created_user1.id,
-        )
-        .unwrap();
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
@@ -677,10 +655,7 @@ pub mod tests {
             created_buddy_requests[0].recipient_user_id,
             created_user2.id
         );
-        assert_eq!(
-            created_buddy_requests[0].sender_user_id,
-            created_user1.id
-        );
+        assert_eq!(created_buddy_requests[0].sender_user_id, created_user1.id);
 
         assert_eq!(created_buddy_requests[0].accepted, true);
 
@@ -715,12 +690,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
 
-        send_buddy_request(
-            &db_connection,
-            created_user2.id,
-            created_user1.id,
-        )
-        .unwrap();
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
@@ -744,17 +714,14 @@ pub mod tests {
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
             .load::<BuddyRequest>(&db_connection)
             .unwrap();
-        
+
         assert_eq!(created_buddy_requests.len(), 1);
 
         assert_eq!(
             created_buddy_requests[0].recipient_user_id,
             created_user2.id
         );
-        assert_eq!(
-            created_buddy_requests[0].sender_user_id,
-            created_user1.id
-        );
+        assert_eq!(created_buddy_requests[0].sender_user_id, created_user1.id);
 
         assert_eq!(created_buddy_requests[0].accepted, false);
 
@@ -771,5 +738,334 @@ pub mod tests {
                 .unwrap()
                 > created_buddy_requests[0].created_timestamp
         );
+    }
+
+    #[actix_rt::test]
+    async fn test_get_all_pending_buddy_requests_for_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+        let created_user3 = generate_user(&db_connection).unwrap();
+
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
+
+        send_buddy_request(&db_connection, created_user2.id, created_user3.id).unwrap();
+
+        let requests =
+            get_all_pending_buddy_requests_for_user(&db_connection, created_user1.id).unwrap();
+
+        assert_eq!(requests.len(), 0);
+
+        let requests =
+            get_all_pending_buddy_requests_for_user(&db_connection, created_user3.id).unwrap();
+
+        assert_eq!(requests.len(), 0);
+
+        let requests =
+            get_all_pending_buddy_requests_for_user(&db_connection, created_user2.id).unwrap();
+
+        assert_eq!(requests.len(), 2);
+
+        assert_eq!(requests[0].recipient_user_id, created_user2.id);
+        assert_eq!(requests[0].sender_user_id, created_user1.id);
+        assert_eq!(requests[0].accepted, false);
+
+        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].accepted_declined_timestamp.is_none());
+
+        assert_eq!(requests[1].recipient_user_id, created_user2.id);
+        assert_eq!(requests[1].sender_user_id, created_user3.id);
+        assert_eq!(requests[1].accepted, false);
+
+        assert!(requests[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[1].accepted_declined_timestamp.is_none());
+
+        mark_buddy_request_accepted(&db_connection, requests[0].id, created_user2.id).unwrap();
+
+        let requests =
+            get_all_pending_buddy_requests_for_user(&db_connection, created_user2.id).unwrap();
+
+        assert_eq!(requests.len(), 1);
+
+        assert_eq!(requests[0].recipient_user_id, created_user2.id);
+        assert_eq!(requests[0].sender_user_id, created_user3.id);
+        assert_eq!(requests[0].accepted, false);
+
+        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].accepted_declined_timestamp.is_none());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_all_pending_buddy_requests_made_by_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+        let created_user3 = generate_user(&db_connection).unwrap();
+
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
+
+        send_buddy_request(&db_connection, created_user3.id, created_user1.id).unwrap();
+
+        let requests =
+            get_all_pending_buddy_requests_made_by_user(&db_connection, created_user2.id).unwrap();
+
+        assert_eq!(requests.len(), 0);
+
+        let requests =
+            get_all_pending_buddy_requests_made_by_user(&db_connection, created_user3.id).unwrap();
+
+        assert_eq!(requests.len(), 0);
+
+        let requests =
+            get_all_pending_buddy_requests_made_by_user(&db_connection, created_user1.id).unwrap();
+
+        assert_eq!(requests.len(), 2);
+
+        assert_eq!(requests[0].recipient_user_id, created_user2.id);
+        assert_eq!(requests[0].sender_user_id, created_user1.id);
+        assert_eq!(requests[0].accepted, false);
+
+        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].accepted_declined_timestamp.is_none());
+
+        assert_eq!(requests[1].recipient_user_id, created_user3.id);
+        assert_eq!(requests[1].sender_user_id, created_user1.id);
+        assert_eq!(requests[1].accepted, false);
+
+        assert!(requests[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[1].accepted_declined_timestamp.is_none());
+
+        mark_buddy_request_accepted(&db_connection, requests[0].id, created_user2.id).unwrap();
+
+        let requests =
+            get_all_pending_buddy_requests_made_by_user(&db_connection, created_user1.id).unwrap();
+
+        assert_eq!(requests.len(), 1);
+
+        assert_eq!(requests[0].recipient_user_id, created_user3.id);
+        assert_eq!(requests[0].sender_user_id, created_user1.id);
+        assert_eq!(requests[0].accepted, false);
+
+        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].accepted_declined_timestamp.is_none());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_buddy_request() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        send_buddy_request(&db_connection, created_user2.id, created_user1.id).unwrap();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        mark_buddy_request_accepted(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user2.id,
+        )
+        .unwrap();
+
+        let request = get_buddy_request(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user1.id,
+        )
+        .unwrap();
+
+        assert_eq!(request.recipient_user_id, created_user2.id);
+        assert_eq!(request.sender_user_id, created_user1.id);
+        assert_eq!(request.accepted, true);
+
+        assert!(request.created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(request.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(request.accepted_declined_timestamp.unwrap() > request.created_timestamp);
+
+        let request = get_buddy_request(
+            &db_connection,
+            created_buddy_requests[0].id,
+            created_user2.id,
+        )
+        .unwrap();
+
+        assert_eq!(request.recipient_user_id, created_user2.id);
+        assert_eq!(request.sender_user_id, created_user1.id);
+        assert_eq!(request.accepted, true);
+
+        assert!(request.created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(request.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(request.accepted_declined_timestamp.unwrap() > request.created_timestamp);
+    }
+
+    #[actix_rt::test]
+    async fn test_create_buddy_relationship() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_user3 = generate_user(&db_connection).unwrap();
+        let created_user4 = generate_user(&db_connection).unwrap();
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 0);
+        assert_eq!(buddy_relationships34.len(), 0);
+
+        create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap();
+        create_buddy_relationship(&db_connection, created_user4.id, created_user3.id).unwrap();
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user2_id.eq(created_user3.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 1);
+        assert_eq!(buddy_relationships34.len(), 1);
+
+        assert!(buddy_relationships12[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(buddy_relationships34[0].created_timestamp < chrono::Utc::now().naive_utc());
+    }
+
+    #[actix_rt::test]
+    async fn test_delete_buddy_relationship() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        let created_user3 = generate_user(&db_connection).unwrap();
+        let created_user4 = generate_user(&db_connection).unwrap();
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 0);
+        assert_eq!(buddy_relationships34.len(), 0);
+
+        create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap();
+        create_buddy_relationship(&db_connection, created_user4.id, created_user3.id).unwrap();
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user2_id.eq(created_user3.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 1);
+        assert_eq!(buddy_relationships34.len(), 1);
+
+        let affected_row_count =
+            delete_buddy_relationship(&db_connection, created_user2.id, created_user1.id).unwrap();
+        assert_eq!(affected_row_count, 1);
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user2_id.eq(created_user3.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 0);
+        assert_eq!(buddy_relationships34.len(), 1);
+
+        let affected_row_count =
+            delete_buddy_relationship(&db_connection, created_user4.id, created_user3.id).unwrap();
+        assert_eq!(affected_row_count, 1);
+
+        let buddy_relationships12 = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        let buddy_relationships34 = buddy_relationships
+            .filter(buddy_relationship_fields::user2_id.eq(created_user3.id))
+            .load::<BuddyRelationship>(&db_connection)
+            .unwrap();
+
+        assert_eq!(buddy_relationships12.len(), 0);
+        assert_eq!(buddy_relationships34.len(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_get_buddies() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+        let created_user3 = generate_user(&db_connection).unwrap();
+        let created_user4 = generate_user(&db_connection).unwrap();
+
+        create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap();
+        create_buddy_relationship(&db_connection, created_user1.id, created_user3.id).unwrap();
+        create_buddy_relationship(&db_connection, created_user1.id, created_user4.id).unwrap();
+        create_buddy_relationship(&db_connection, created_user3.id, created_user4.id).unwrap();
+
+        let user1_buddies = get_buddies(&db_connection, created_user1.id).unwrap();
+        let user2_buddies = get_buddies(&db_connection, created_user2.id).unwrap();
+        let user3_buddies = get_buddies(&db_connection, created_user3.id).unwrap();
+        let user4_buddies = get_buddies(&db_connection, created_user4.id).unwrap();
+
+        assert_eq!(user1_buddies.len(), 3);
+        assert_eq!(user2_buddies.len(), 1);
+        assert_eq!(user3_buddies.len(), 2);
+        assert_eq!(user4_buddies.len(), 2);
+
+        assert_eq!(user1_buddies[0].id, created_user2.id);
+        assert_eq!(user1_buddies[1].id, created_user3.id);
+        assert_eq!(user1_buddies[2].id, created_user4.id);
+
+        assert_eq!(user2_buddies[0].id, created_user1.id);
+
+        assert_eq!(user3_buddies[0].id, created_user1.id);
+        assert_eq!(user3_buddies[1].id, created_user4.id);
+
+        assert_eq!(user4_buddies[0].id, created_user1.id);
+        assert_eq!(user4_buddies[1].id, created_user3.id);
+
+        create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap_err();
     }
 }
