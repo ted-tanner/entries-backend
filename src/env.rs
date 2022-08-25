@@ -15,6 +15,7 @@ pub struct Conf {
 #[derive(Deserialize, Serialize)]
 pub struct Connections {
     pub database_uri: String,
+    pub max_db_connections: u32,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -119,6 +120,7 @@ pub mod testing {
 
     lazy_static! {
         pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
+            .max_size(crate::env::CONF.connections.max_db_connections)
             .build(ConnectionManager::<PgConnection>::new(
                 crate::env::CONF.connections.database_uri.as_str()
             ))

@@ -113,9 +113,22 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Connecting to database...");
 
+    // To prevent resource starvation, max connections must be at least as large as the number of
+    // actix workers,
+    let db_max_connections = if env::CONF.workers.actix_workers
+        > env::CONF.connections.max_db_connections as usize
+    {
+        env::CONF.workers.actix_workers as u32
+    } else {
+        env::CONF.connections.max_db_connections
+    };
+
     let db_connection_manager =
         ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
-    let db_thread_pool = match r2d2::Pool::builder().build(db_connection_manager) {
+    let db_thread_pool = match r2d2::Pool::builder()
+        .max_size(db_max_connections)
+        .build(db_connection_manager)
+    {
         Ok(c) => c,
         Err(_) => {
             eprintln!("Failed to connect to database");
