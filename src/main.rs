@@ -115,13 +115,12 @@ async fn main() -> std::io::Result<()> {
 
     // To prevent resource starvation, max connections must be at least as large as the number of
     // actix workers,
-    let db_max_connections = if env::CONF.workers.actix_workers
-        > env::CONF.connections.max_db_connections as usize
-    {
-        env::CONF.workers.actix_workers as u32
-    } else {
-        env::CONF.connections.max_db_connections
-    };
+    let db_max_connections =
+        if env::CONF.workers.actix_workers > env::CONF.connections.max_db_connections as usize {
+            env::CONF.workers.actix_workers as u32
+        } else {
+            env::CONF.connections.max_db_connections
+        };
 
     let db_connection_manager =
         ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
