@@ -243,6 +243,24 @@ pub fn get_buddies(
         .load(db_connection)
 }
 
+pub fn check_are_buddies(
+    db_connection: &DbConnection,
+    user1_id: Uuid,
+    user2_id: Uuid,
+) -> Result<bool, diesel::result::Error> {
+    diesel::dsl::select(diesel::dsl::exists(
+        buddy_relationships.filter(
+            buddy_relationship_fields::user1_id
+                .eq(user1_id)
+                .and(buddy_relationship_fields::user2_id.eq(user2_id))
+                .or(buddy_relationship_fields::user1_id
+                    .eq(user2_id)
+                    .and(buddy_relationship_fields::user2_id.eq(user1_id))),
+        ),
+    ))
+    .get_result(db_connection)
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -927,7 +945,7 @@ pub mod tests {
             .unwrap();
 
         let buddy_relationships34 = buddy_relationships
-            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
+            .filter(buddy_relationship_fields::user1_id.eq(created_user4.id))
             .load::<BuddyRelationship>(&db_connection)
             .unwrap();
 
@@ -1067,5 +1085,22 @@ pub mod tests {
         assert_eq!(user4_buddies[1].id, created_user3.id);
 
         create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap_err();
+    }
+
+    #[actix_rt::test]
+    async fn test_check_are_buddies() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let created_user1 = generate_user(&db_connection).unwrap();
+        let created_user2 = generate_user(&db_connection).unwrap();
+
+        assert!(!check_are_buddies(&db_connection, created_user1.id, created_user2.id).unwrap());
+        assert!(!check_are_buddies(&db_connection, created_user2.id, created_user1.id).unwrap());
+
+        create_buddy_relationship(&db_connection, created_user1.id, created_user2.id).unwrap();
+
+        assert!(check_are_buddies(&db_connection, created_user1.id, created_user2.id).unwrap());
+        assert!(check_are_buddies(&db_connection, created_user2.id, created_user1.id).unwrap());
     }
 }

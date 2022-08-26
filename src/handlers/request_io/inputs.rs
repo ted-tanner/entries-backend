@@ -22,6 +22,11 @@ pub struct InputUserId {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputOptionalUserId {
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBuddyRequestId {
     pub buddy_request_id: Uuid,
 }

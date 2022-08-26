@@ -628,7 +628,7 @@ async fn ensure_user_in_budget(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use actix_web::web::Data;
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
@@ -637,13 +637,13 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
-    use crate::definitions::*;
     use crate::env;
     use crate::handlers::request_io::{
         InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
         InputShareEventId, InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
         UserInvitationToBudget,
     };
+    use crate::handlers::user::tests::create_user_and_sign_in;
     use crate::models::budget::Budget;
     use crate::models::budget_share_event::BudgetShareEvent;
     use crate::models::category::Category;
@@ -660,82 +660,37 @@ mod tests {
     use crate::utils::auth_token::TokenClaims;
     use crate::utils::{db, otp};
 
+    #[derive(Clone)]
     pub struct UserAndBudgetWithAuthTokens {
-        budget: OutputBudget,
-        user_id: Uuid,
-        token_pair: TokenPair,
+        pub budget: OutputBudget,
+        pub user_id: Uuid,
+        pub token_pair: TokenPair,
     }
 
-    pub async fn create_user_and_budget_and_sign_in(
-        db_thread_pool: DbThreadPool,
-    ) -> UserAndBudgetWithAuthTokens {
+    pub async fn create_user_and_budget_and_sign_in() -> UserAndBudgetWithAuthTokens {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
-        let new_user = InputUser {
-            email: format!("test_user{}@test.com", &user_number),
-            password: String::from("tNmUV%9$khHK2TqOLw*%W"),
-            first_name: format!("Test-{}", &user_number),
-            last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            ),
-            currency: String::from("USD"),
-        };
+        let user_and_tokens = create_user_and_sign_in().await;
+        let user_id = &user_and_tokens.user.id;
+        let access_token = &user_and_tokens.token_pair.access_token;
 
-        let create_user_res = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri("/api/user/create")
-                .insert_header(("content-type", "application/json"))
-                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
-                .to_request(),
-        )
-        .await;
-
-        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
-        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
-            .unwrap()
-            .uid;
-
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
-
-        let token_and_otp = SigninTokenOtpPair {
-            signin_token: signin_token.signin_token,
-            otp: otp.to_string(),
-        };
-
-        let otp_req = test::TestRequest::post()
-            .uri("/api/auth/verify_otp_for_signin")
-            .insert_header(("content-type", "application/json"))
-            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
-            .to_request();
-
-        let otp_res = test::call_service(&app, otp_req).await;
-        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(otp_res).await;
-        let access_token = token_pair.access_token.to_string();
+        let rand_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category {user_number}"),
+            name: format!("First Random Category {rand_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category {user_number}"),
+            name: format!("Second Random Category {rand_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
@@ -743,9 +698,9 @@ mod tests {
         let budget_categories = vec![category0, category1];
 
         let new_budget = InputBudget {
-            name: format!("Test Budget {user_number}"),
+            name: format!("Test Budget {rand_number}"),
             description: Some(format!(
-                "This is a description of Test Budget {user_number}.",
+                "This is a description of Test Budget {rand_number}.",
             )),
             categories: budget_categories.clone(),
             start_date: NaiveDate::from_ymd(
@@ -776,8 +731,8 @@ mod tests {
 
         UserAndBudgetWithAuthTokens {
             budget,
-            user_id,
-            token_pair,
+            user_id: *user_id,
+            token_pair: user_and_tokens.token_pair,
         }
     }
 
@@ -932,8 +887,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user_id = created_user_and_budget.user_id;
         let budget_before_edit = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
@@ -984,12 +938,10 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget1 =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget1 = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user_and_budget1.user_id;
 
-        let created_user_and_budget2 =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget2 = create_user_and_budget_and_sign_in().await;
 
         let budget_before_edit = created_user_and_budget1.budget.clone();
         let access_token = created_user_and_budget2.token_pair.access_token.clone();
@@ -1046,8 +998,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user_id = created_user_and_budget.user_id;
         let budget_before_edit = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
@@ -1104,8 +1055,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -1215,13 +1165,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user1_and_budget.user_id;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -1244,12 +1192,12 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
+        let instant_after_share = chrono::Utc::now().naive_utc();
+
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
             .load::<BudgetShareEvent>(&db_connection)
             .unwrap();
-
-        let instant_after_share = chrono::Utc::now().naive_utc();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
@@ -1259,6 +1207,7 @@ mod tests {
         assert!(share_events[0].accepted_declined_timestamp.is_none());
         assert!(share_events[0].created_timestamp > instant_before_share);
         assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1293,6 +1242,7 @@ mod tests {
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].created_timestamp > instant_before_share);
         assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(!share_events[0].accepted_declined_timestamp.is_none());
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -1340,17 +1290,14 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user1_and_budget.user_id;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
-        let created_user3_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user3_and_budget = create_user_and_budget_and_sign_in().await;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
         let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
@@ -1540,13 +1487,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user1_and_budget.user_id;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -1663,17 +1608,14 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user1_and_budget.user_id;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
-        let created_user3_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user3_and_budget = create_user_and_budget_and_sign_in().await;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
         let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
@@ -1863,12 +1805,10 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -1931,16 +1871,13 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
-        let created_user3_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user3_and_budget = create_user_and_budget_and_sign_in().await;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
         let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
@@ -2034,13 +1971,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget1 = created_user1_and_budget.budget;
         let created_user1_id = created_user1_and_budget.user_id;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2168,13 +2103,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget1 = created_user1_and_budget.budget;
         let created_user1_id = created_user1_and_budget.user_id;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2302,17 +2235,14 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget = created_user1_and_budget.budget;
         let created_user1_id = created_user1_and_budget.user_id;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
-        let created_user3_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user3_and_budget = create_user_and_budget_and_sign_in().await;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
         let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
@@ -2419,13 +2349,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget = created_user1_and_budget.budget;
         let created_user1_id = created_user1_and_budget.user_id;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2552,13 +2480,11 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_id = created_user1_and_budget.user_id;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
         let created_user2_budget = created_user2_and_budget.budget;
 
@@ -2758,16 +2684,13 @@ mod tests {
         )
         .await;
 
-        let created_user1_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user1_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user1_budget = created_user1_and_budget.budget;
 
-        let created_user2_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user2_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user2_id = created_user2_and_budget.user_id;
 
-        let created_user3_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user3_and_budget = create_user_and_budget_and_sign_in().await;
         let created_user3_budget = created_user3_and_budget.budget;
 
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2904,8 +2827,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
         let budget_categories = created_budget.categories.clone();
@@ -3027,8 +2949,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_budget0 = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -3245,8 +3166,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -3723,8 +3643,7 @@ mod tests {
         )
         .await;
 
-        let created_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_user_and_budget = create_user_and_budget_and_sign_in().await;
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -3743,8 +3662,7 @@ mod tests {
             color: created_budget.categories[1].color.clone(),
         });
 
-        let created_unauth_user_and_budget =
-            create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+        let created_unauth_user_and_budget = create_user_and_budget_and_sign_in().await;
         let unauth_user_access_token = created_unauth_user_and_budget
             .token_pair
             .access_token

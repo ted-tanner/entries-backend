@@ -25,6 +25,7 @@ toml = "0.5"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 
 [dev-dependencies]
+actix-http = "3.2"
 actix-rt = "2.5"
 
 [build-dependencies]

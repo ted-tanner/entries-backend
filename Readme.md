@@ -173,9 +173,9 @@ The configuration settings from `budgetapp.toml` are documented below:
 
   The URI used to connect to Postgres, including the database name, username, and password.
 
-* `redis_uri`
+* `max_connection_pool_size`
 
-  The URI used to connect to Redis.
+  The maximum size of the thread pool of database connections. This value must be at least as high as the configured number of `actix_workers` to prevent resource starvation.
 
 ### Hashing
 
@@ -419,6 +419,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 9/2*
 
 * Implement user buddy system
+* Get all buddies
 * Get another user by ID when an optional query param is passed to `/api/user/get`
 * Get another user by email
 

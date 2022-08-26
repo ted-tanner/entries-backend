@@ -2,7 +2,7 @@
 
 [connections]
 database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
-max_db_connections = 12
+max_db_connections = 48
 
 [hashing]
 hash_iterations = 2
