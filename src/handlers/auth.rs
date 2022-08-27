@@ -405,7 +405,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -469,7 +469,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -519,7 +519,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -580,7 +580,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -679,7 +679,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -779,7 +779,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -867,7 +867,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -933,7 +933,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1010,7 +1010,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1087,7 +1087,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1163,7 +1163,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1261,7 +1261,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1335,7 +1335,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1409,7 +1409,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
@@ -1490,7 +1490,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),

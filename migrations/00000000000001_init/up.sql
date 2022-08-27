@@ -109,7 +109,7 @@ CREATE TABLE entries (
 
     amount_cents BIGINT NOT NULL,
     date DATE NOT NULL,
-    name VARCHAR(25),
+    name VARCHAR(60),
     category SMALLINT,
     note TEXT,
 

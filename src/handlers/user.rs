@@ -55,7 +55,7 @@ pub async fn get(
 
     if is_another_user_requesting && user_id != auth_user_claims.0.uid {
         let mut are_buddies = false;
-        
+
         if input_user_id.is_buddy.is_some() && input_user_id.is_buddy.unwrap() {
             are_buddies = match web::block(move || {
                 db::user::check_are_buddies(
@@ -64,7 +64,7 @@ pub async fn get(
                     auth_user_claims.0.uid,
                 )
             })
-                .await?
+            .await?
             {
                 Ok(buddies) => buddies,
                 Err(e) => match e {
@@ -122,7 +122,7 @@ pub async fn get(
 
     Ok(HttpResponse::Ok().json(output_user))
 }
- 
+
 // TODO: Get another user by email
 
 pub async fn create(
@@ -696,7 +696,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -762,7 +762,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -812,7 +812,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
@@ -918,7 +918,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let new_user = InputUser {
             email: format!("test_user{}test.com", &user_number),
@@ -954,7 +954,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -990,7 +990,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
@@ -1075,7 +1075,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
@@ -1263,7 +1263,10 @@ pub mod tests {
         assert_eq!(&new_user.currency, &user_from_res.currency);
 
         let req = test::TestRequest::get()
-            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", &other_user.user.id))
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                &other_user.user.id
+            ))
             .insert_header(("authorization", format!("bearer {access_token}").as_str()))
             .to_request();
 
@@ -1294,7 +1297,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -1391,7 +1394,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -1488,7 +1491,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
@@ -1684,7 +1687,10 @@ pub mod tests {
         assert_eq!(buddy_relationship.user2_id, created_user2.user.id);
 
         let req = test::TestRequest::get()
-            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", created_user1.user.id))
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
             .to_request();
@@ -1701,7 +1707,10 @@ pub mod tests {
         assert_eq!(user_from_resp.last_name, created_user1.user.last_name);
 
         let req = test::TestRequest::get()
-            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", created_user2.user.id))
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user2.user.id
+            ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
             .to_request();

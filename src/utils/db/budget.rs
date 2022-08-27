@@ -530,7 +530,7 @@ pub mod tests {
     pub fn generate_user_and_budget(
         db_connection: &DbConnection,
     ) -> Result<UserAndBudget, diesel::result::Error> {
-        let budget_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let budget_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let created_user = generate_user(db_connection)?;
 
         let category0 = InputCategory {
@@ -581,7 +581,7 @@ pub mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", user_number),
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),
@@ -1802,7 +1802,7 @@ pub mod tests {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
         let db_connection = db_thread_pool.get().unwrap();
 
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", user_number),
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),

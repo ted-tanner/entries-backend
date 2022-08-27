@@ -275,7 +275,7 @@ pub mod tests {
     use crate::schema::buddy_requests::dsl::buddy_requests;
 
     pub fn generate_user(db_connection: &DbConnection) -> Result<User, diesel::result::Error> {
-        let user_number = rand::thread_rng().gen_range::<u32, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", user_number),
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),
@@ -300,7 +300,7 @@ pub mod tests {
 
         const PASSWORD: &str = "X$KC3%s&L91m!bVA*@Iu";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -337,7 +337,7 @@ pub mod tests {
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let user_email = format!("test_user{}@test.com", &user_number);
         let new_user = InputUser {
             email: user_email.clone(),
@@ -372,7 +372,7 @@ pub mod tests {
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -406,7 +406,7 @@ pub mod tests {
 
         const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -452,7 +452,7 @@ pub mod tests {
 
         const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: PASSWORD.to_string(),
@@ -502,7 +502,7 @@ pub mod tests {
         const ORIGINAL_PASSWORD: &str = "Eq&6T@Vyz54O%DoX$";
         const UPDATED_PASSWORD: &str = "P*%OaTMaMl^Uzft^$82Qn";
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: ORIGINAL_PASSWORD.to_string(),

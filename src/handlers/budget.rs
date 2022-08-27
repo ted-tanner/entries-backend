@@ -686,7 +686,7 @@ pub mod tests {
         let user_id = &user_and_tokens.user.id;
         let access_token = &user_and_tokens.token_pair.access_token;
 
-        let rand_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let rand_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let category0 = InputCategory {
             id: 0,
@@ -754,7 +754,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(10_000_000..100_000_000);
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
