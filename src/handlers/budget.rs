@@ -226,6 +226,13 @@ pub async fn invite_user(
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let inviting_user_id = auth_user_claims.0.uid.clone();
+
+    if invitation_info.invitee_user_id == inviting_user_id {
+        return Err(ServerError::InputRejected(Some(
+            "Inviter and invitee have the same ID",
+        )));
+    }
+
     ensure_user_in_budget(
         db_thread_pool.clone(),
         inviting_user_id,
@@ -1318,7 +1325,7 @@ pub mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -1636,7 +1643,7 @@ pub mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")

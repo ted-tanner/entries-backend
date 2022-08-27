@@ -20,7 +20,7 @@ pub async fn get(
     input_user_id: web::Query<InputOptionalUserId>,
 ) -> Result<HttpResponse, ServerError> {
     let is_another_user_requesting = input_user_id.user_id.is_some();
-    
+
     let user_id = if is_another_user_requesting {
         input_user_id.user_id.unwrap()
     } else {
@@ -53,22 +53,30 @@ pub async fn get(
         },
     };
 
-    if is_another_user_requesting {
-        let are_buddies = match web::block(move || {
-            db::user::check_are_buddies(&db_connection2, input_user_id.user_id.unwrap(), auth_user_claims.0.uid)
-        })
-        .await?
-        {
-            Ok(buddies) => buddies,
-            Err(e) => match e {
-                _ => {
-                    error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(
-                        "Failed to get user data",
-                    )));
-                }
-            },
-        };
+    if is_another_user_requesting && user_id != auth_user_claims.0.uid {
+        let mut are_buddies = false;
+        
+        if input_user_id.is_buddy.is_some() && input_user_id.is_buddy.unwrap() {
+            are_buddies = match web::block(move || {
+                db::user::check_are_buddies(
+                    &db_connection2,
+                    input_user_id.user_id.unwrap(),
+                    auth_user_claims.0.uid,
+                )
+            })
+                .await?
+            {
+                Ok(buddies) => buddies,
+                Err(e) => match e {
+                    _ => {
+                        error!("{}", e);
+                        return Err(ServerError::DatabaseTransactionError(Some(
+                            "Failed to get user data",
+                        )));
+                    }
+                },
+            };
+        }
 
         if !are_buddies {
             let output_user = OutputUserPublic {
@@ -97,7 +105,7 @@ pub async fn get(
 
         return Ok(HttpResponse::Ok().json(output_user));
     }
-    
+
     let output_user = OutputUserPrivate {
         id: user.id,
         is_active: user.is_active,
@@ -114,7 +122,7 @@ pub async fn get(
 
     Ok(HttpResponse::Ok().json(output_user))
 }
-
+ 
 // TODO: Get another user by email
 
 pub async fn create(
@@ -299,6 +307,12 @@ pub async fn send_buddy_request(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     other_user_id: web::Json<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
+    if other_user_id.user_id == auth_user_claims.0.uid {
+        return Err(ServerError::InputRejected(Some(
+            "Requester and recipient have the same ID",
+        )));
+    }
+
     match web::block(move || {
         let db_connection = db_thread_pool
             .get()
@@ -656,8 +670,11 @@ pub mod tests {
 
     use crate::env;
     use crate::handlers::request_io::{SigninTokenOtpPair, TokenPair};
+    use crate::models::buddy_relationship::BuddyRelationship;
     use crate::models::buddy_request::BuddyRequest;
     use crate::models::user::User;
+    use crate::schema::buddy_relationships as buddy_relationship_fields;
+    use crate::schema::buddy_relationships::dsl::buddy_relationships;
     use crate::schema::buddy_requests as buddy_request_fields;
     use crate::schema::buddy_requests::dsl::buddy_requests;
     use crate::schema::users as user_fields;
@@ -1133,14 +1150,34 @@ pub mod tests {
         assert_eq!(&new_user.last_name, &user_from_res.last_name);
         assert_eq!(&new_user.currency, &user_from_res.currency);
 
-        let input_user_id = InputUserId {
-            user_id
-        };
-        
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", user_id))
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token).as_str(),
+            ))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        // Returs public rather than private info if not buddies
+        serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
+        serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap_err();
+        let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
+
+        assert_eq!(&user_id, &user_from_res.id);
+
+        let input_user_id = InputUserId { user_id };
+
         let req = test::TestRequest::post()
             .uri("/api/user/send_buddy_request")
             .insert_header(("content-type", "application/json"))
-            .insert_header(("authorization", format!("bearer {}", &other_user.token_pair.access_token)))
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token),
+            ))
             .set_json(&input_user_id)
             .to_request();
 
@@ -1164,7 +1201,7 @@ pub mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
-        
+
         let req = test::TestRequest::get()
             .uri(&format!("/api/user/get?user_id={}", user_id))
             .insert_header((
@@ -1178,7 +1215,45 @@ pub mod tests {
 
         let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
         serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
-        let user_from_res = serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap_err();
+        let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
+
+        assert_eq!(&user_id, &user_from_res.id);
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=false", user_id))
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token).as_str(),
+            ))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        // Returs public rather than private info if not buddies
+        serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
+        serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap_err();
+        let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
+
+        assert_eq!(&user_id, &user_from_res.id);
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", user_id))
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token).as_str(),
+            ))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
+        let user_from_res =
+            serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
 
         assert_eq!(&user_id, &user_from_res.id);
         assert!(user_from_res.is_active);
@@ -1188,11 +1263,8 @@ pub mod tests {
         assert_eq!(&new_user.currency, &user_from_res.currency);
 
         let req = test::TestRequest::get()
-            .uri(&format!("/api/user/get?user_id={}", &other_user.user.id))
-            .insert_header((
-                "authorization",
-                format!("bearer {access_token}").as_str(),
-            ))
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", &other_user.user.id))
+            .insert_header(("authorization", format!("bearer {access_token}").as_str()))
             .to_request();
 
         let res = test::call_service(&app, req).await;
@@ -1200,7 +1272,8 @@ pub mod tests {
 
         let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
         serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
-        let user_from_res = serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
+        let user_from_res =
+            serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
 
         assert_eq!(&other_user.user.id, &user_from_res.id);
         assert!(user_from_res.is_active);
@@ -1501,120 +1574,149 @@ pub mod tests {
         ));
     }
 
-    // #[actix_rt::test]
-    // async fn test_send_buddy_request_and_accept() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    #[actix_rt::test]
+    async fn test_send_buddy_request_and_accept() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
 
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
 
-    //     let created_user1 = create_user_and_sign_in().await;
-    //     let created_user2 = create_user_and_sign_in().await;
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
 
-    //     let user1_access_token = created_user1.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2.token_pair.access_token.clone();
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
 
-    //     let other_user_id = InputUserId {
-    //         user_id: created_user1.user.id.clone(),
-    //     };
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id.clone(),
+        };
 
-    //     let instant_before_request = chrono::Utc::now().naive_utc();
+        let instant_before_request = chrono::Utc::now().naive_utc();
 
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/user/send_buddy_request")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&other_user_id)
-    //         .to_request();
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
 
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
 
-    //     let instant_after_request = chrono::Utc::now().naive_utc();
+        let instant_after_request = chrono::Utc::now().naive_utc();
 
-    //     let created_buddy_requests = buddy_requests
-    //         .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
-    //         .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
-    //         .load::<BuddyRequest>(&db_connection)
-    //         .unwrap();
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
 
-    //     assert_eq!(created_buddy_requests.len(), 1);
-    //     assert_eq!(created_buddy_requests[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(created_buddy_requests[0].sender_user_id, created_user1_id);
-    //     assert_eq!(created_buddy_requests[0].accepted, false);
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.user.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.user.id
+        );
+        assert_eq!(created_buddy_requests[0].accepted, false);
 
-    //     assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
-    //     assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
-    //     assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
-    //     assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
+        assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
+        assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
 
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/user/accept_buddy_request?share_event_id={}",
-    //             created_buddy_requests[0].id,
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/accept_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
 
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
 
-    //     let created_buddy_requests = buddy_requests
-    //         .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
-    //         .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
-    //         .load::<BuddyRequest>(&db_connection)
-    //         .unwrap();
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
 
-    //     assert_eq!(created_buddy_requests.len(), 1);
-    //     assert_eq!(created_buddy_requests[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(created_buddy_requests[0].sender_user_id, created_user1_id);
-    //     assert_eq!(created_buddy_requests[0].accepted, true);
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.user.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.user.id
+        );
+        assert_eq!(created_buddy_requests[0].accepted, true);
 
-    //     assert!(created_buddy_requests[0].accepted_declined_timestamp.is_some());
-    //     assert!(created_buddy_requests[0].created_timestamp > instant_before_share);
-    //     assert!(created_buddy_requests[0].created_timestamp < instant_after_share);
-    //     assert!(!created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_some());
+        assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
+        assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
+        assert!(!created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
 
-    //     let buddy_relationship = buddy_relationships
-    //         .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
-    //         .filter(buddy_relationship_fields::user2_id.eq(created_user2.id))
-    //         .first::<BuddyRelationship>(&db_connection)
-    //         .unwrap();
+        let buddy_relationship = buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.user.id))
+            .filter(buddy_relationship_fields::user2_id.eq(created_user2.user.id))
+            .first::<BuddyRelationship>(&db_connection)
+            .unwrap();
 
-    //     assert_eq!(buddy_relationship.user1_id, created_user1.user.id);
-    //     assert_eq!(buddy_relationship.user2_id, created_user2.user.id);
+        assert_eq!(buddy_relationship.user1_id, created_user1.user.id);
+        assert_eq!(buddy_relationship.user2_id, created_user2.user.id);
 
-    //     // TODO: Implement get buddy
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/user/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", created_user1.user.id))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
 
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
 
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        let user_from_resp =
+            serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap();
 
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-    // }
+        assert_eq!(user_from_resp.id, created_user1.user.id);
+        assert_eq!(user_from_resp.first_name, created_user1.user.first_name);
+        assert_eq!(user_from_resp.last_name, created_user1.user.last_name);
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/user/get?user_id={}&is_buddy=true", created_user2.user.id))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        let user_from_resp =
+            serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap();
+
+        assert_eq!(user_from_resp.id, created_user2.user.id);
+        assert_eq!(user_from_resp.first_name, created_user2.user.first_name);
+        assert_eq!(user_from_resp.last_name, created_user2.user.last_name);
+    }
 
     // #[actix_rt::test]
     // async fn test_cannot_accept_invites_for_another_user() {
