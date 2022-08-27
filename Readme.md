@@ -424,7 +424,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 9/16*
 
-* To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
   - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
   - Perhaps no deletion is necessary for categories until budget is deleted
@@ -475,6 +474,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * OTP attempts, password attempts, and blacklisted tokens can be moved to Redis
 * Comments (budget comments, entry comments, etc.)
 * Publicly export models (so imports look like this `use crate::models::BuddyRequest;` rather than `use crate::models::buddy_request::BuddyRequest;`
+* To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 
 ### Note on timezones
 
