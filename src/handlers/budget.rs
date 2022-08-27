@@ -389,8 +389,8 @@ pub async fn decline_invitation(
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::UserUnauthorized(Some(
-                    "User not authorized to decline invitation",
+                return Err(ServerError::NotFound(Some(
+                    "No share event with provided ID",
                 )));
             }
         }
@@ -1407,6 +1407,15 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].accepted, false);
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
+
         let req = test::TestRequest::put()
             .uri(&format!(
                 "/api/budget/accept_invitation?share_event_id={}",
@@ -1418,6 +1427,15 @@ pub mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].accepted, false);
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
@@ -1723,7 +1741,16 @@ pub mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].accepted, false);
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
@@ -1735,7 +1762,16 @@ pub mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let share_events = budget_share_events
+            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareEvent>(&db_connection)
+            .unwrap();
+
+        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_events[0].accepted, false);
+        assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(

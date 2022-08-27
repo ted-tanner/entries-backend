@@ -468,8 +468,8 @@ pub async fn decline_buddy_request(
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::UserUnauthorized(Some(
-                    "User not authorized to decline buddy request",
+                return Err(ServerError::NotFound(Some(
+                    "No buddy request with provided ID",
                 )));
             }
         }
@@ -1727,529 +1727,406 @@ pub mod tests {
         assert_eq!(user_from_resp.last_name, created_user2.user.last_name);
     }
 
-    // #[actix_rt::test]
-    // async fn test_cannot_accept_invites_for_another_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
-
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
-
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_id = created_user1_and_budget.user_id;
-    //     let created_user1_budget = created_user1_and_budget.budget;
-
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
-
-    //     let created_user3_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
-    //     let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
-
-    //     let invitation_info = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let instant_before_share = chrono::Utc::now().naive_utc();
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     let instant_after_share = chrono::Utc::now().naive_utc();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, false);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_none());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let input_budget_id = InputBudgetId {
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let invite_id = InputShareEventId {
-    //         share_event_id: share_events[0].id,
-    //     };
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/accept_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/accept_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/accept_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, true);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_some());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-    // }
-
-    // #[actix_rt::test]
-    // async fn test_invite_user_and_decline() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
-
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
-
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_id = created_user1_and_budget.user_id;
-    //     let created_user1_budget = created_user1_and_budget.budget;
-
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
-
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
-
-    //     let invitation_info = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let instant_before_share = chrono::Utc::now().naive_utc();
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     let instant_after_share = chrono::Utc::now().naive_utc();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, false);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_none());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let input_budget_id = InputBudgetId {
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let invite_id = InputShareEventId {
-    //         share_event_id: share_events[0].id,
-    //     };
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/decline_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, false);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_some());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let budget_association = user_budgets
-    //         .filter(user_budget_fields::user_id.eq(created_user2_id))
-    //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection);
-
-    //     assert!(budget_association.is_err());
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-    // }
-
-    // #[actix_rt::test]
-    // async fn test_cannot_decline_invites_for_another_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
-
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
-
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_id = created_user1_and_budget.user_id;
-    //     let created_user1_budget = created_user1_and_budget.budget;
-
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
-
-    //     let created_user3_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
-    //     let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
-
-    //     let invitation_info = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let instant_before_share = chrono::Utc::now().naive_utc();
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     let instant_after_share = chrono::Utc::now().naive_utc();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, false);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_none());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let input_budget_id = InputBudgetId {
-    //         budget_id: created_user1_budget.id,
-    //     };
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let invite_id = InputShareEventId {
-    //         share_event_id: share_events[0].id,
-    //     };
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/decline_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/decline_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::UNAUTHORIZED);
-
-    //     let req = test::TestRequest::put()
-    //         .uri(&format!(
-    //             "/api/budget/decline_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 1);
-    //     assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-    //     assert_eq!(share_events[0].sender_user_id, created_user1_id);
-    //     assert_eq!(share_events[0].accepted, false);
-
-    //     assert!(share_events[0].accepted_declined_timestamp.is_some());
-    //     assert!(share_events[0].created_timestamp > instant_before_share);
-    //     assert!(share_events[0].created_timestamp < instant_after_share);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let req = test::TestRequest::get()
-    //         .uri(&format!(
-    //             "/api/budget/get?budget_id={}",
-    //             input_budget_id.budget_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-    // }
-
+    #[actix_rt::test]
+    async fn test_cannot_accept_buddy_requests_for_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
+        let created_user3 = create_user_and_sign_in().await;
+
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
+        let user3_access_token = created_user3.token_pair.access_token.clone();
+
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id.clone(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/accept_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(!created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/accept_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(!created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/accept_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_some());
+        assert!(created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn test_send_buddy_request_and_decline() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
+
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
+
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id.clone(),
+        };
+
+        let instant_before_request = chrono::Utc::now().naive_utc();
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let instant_after_request = chrono::Utc::now().naive_utc();
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.user.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.user.id
+        );
+        assert_eq!(created_buddy_requests[0].accepted, false);
+
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
+        assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
+        assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/decline_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert_eq!(
+            created_buddy_requests[0].recipient_user_id,
+            created_user2.user.id
+        );
+        assert_eq!(
+            created_buddy_requests[0].sender_user_id,
+            created_user1.user.id
+        );
+        assert_eq!(created_buddy_requests[0].accepted, false);
+
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_some());
+        assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
+        assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
+        assert!(!created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
+
+        buddy_relationships
+            .filter(buddy_relationship_fields::user1_id.eq(created_user1.user.id))
+            .filter(buddy_relationship_fields::user2_id.eq(created_user2.user.id))
+            .first::<BuddyRelationship>(&db_connection)
+            .unwrap_err();
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_decline_buddy_requests_for_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
+        let created_user3 = create_user_and_sign_in().await;
+
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
+        let user3_access_token = created_user3.token_pair.access_token.clone();
+
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id.clone(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/decline_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(!created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/decline_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(!created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/user/decline_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_some());
+        assert!(!created_buddy_requests[0].accepted);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+    }
+    
     // #[actix_rt::test]
     // async fn test_retract_invitation() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
