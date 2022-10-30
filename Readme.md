@@ -421,6 +421,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Implement user buddy system
 * Get all buddies
 * Get another user by email
+* Get rid of `.expect()`s. Instead, pass errors up the stack and log them.
+* Use a file logger, like log4rs, to log to a file and stdout
 
 *By 9/16*
 
