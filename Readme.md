@@ -418,11 +418,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 9/2*
 
+* ServerErrors should allow any string as a message rather than just 'static strings. Improve server error logging. Perhaps just pass the messages up the chain and log them at the top rather than logging them in the handlers themselves
 * Implement user buddy system
 * Get all buddies
 * Get another user by email
 * Get rid of `.expect()`s. Instead, pass errors up the stack and log them.
 * Use a file logger, like log4rs, to log to a file and stdout
+* The password attempts and OTP attempts need an expiration. The last attempt time should be saved and if it was X amount of time in he past, the user is allowed to sign in again. This prevents a failed cron job from preventing people from signing in
 
 *By 9/16*
 
@@ -478,7 +480,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Publicly export models (so imports look like this `use crate::models::BuddyRequest;` rather than `use crate::models::buddy_request::BuddyRequest;`
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 * Reject accept/decline budget shares and buddy requests if already accepted or declined
-* The password attempts and OTP attempts need an expiration. The last attempt time should be saved and if it was X amount of time in he past, the user is allowed to sign in again. This prevents a failed cron job from preventing people from signing in
+* Admin console
 
 ### Note on timezones
 
