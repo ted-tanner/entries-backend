@@ -418,6 +418,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 9/2*
 
+* Consider replacing diesel with sqlx
 * Separate cron job runner and migrations runner into separate binary crates in the `bin` directory
 * ServerErrors should allow any string as a message rather than just 'static strings. Improve server error logging. Perhaps just pass the messages up the chain and log them at the top rather than logging them in the handlers themselves
 * Implement user buddy system
