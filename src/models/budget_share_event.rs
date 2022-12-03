@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::schema::budget_share_events;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[table_name = "budget_share_events"]
+#[diesel(table_name = budget_share_events)]
 pub struct BudgetShareEvent {
     pub id: uuid::Uuid,
 
@@ -20,7 +20,7 @@ pub struct BudgetShareEvent {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "budget_share_events"]
+#[diesel(table_name = budget_share_events)]
 pub struct NewBudgetShareEvent {
     pub id: uuid::Uuid,
 

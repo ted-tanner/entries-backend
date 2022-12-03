@@ -5,8 +5,8 @@ use crate::models::user::User;
 use crate::schema::password_attempts;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable, QueryableByName)]
-#[table_name = "password_attempts"]
-#[belongs_to(User, foreign_key = "user_id")]
+#[diesel(table_name = password_attempts)]
+#[diesel(belongs_to(User, foreign_key = user_id))]
 pub struct PasswordAttempts {
     pub id: i32,
     pub user_id: uuid::Uuid,
@@ -14,7 +14,7 @@ pub struct PasswordAttempts {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "password_attempts"]
+#[diesel(table_name = password_attempts)]
 pub struct NewPasswordAttempts {
     pub user_id: uuid::Uuid,
     pub attempt_count: i16,

@@ -9,7 +9,7 @@ use crate::schema::blacklisted_tokens as token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
 pub fn clear_all_expired_refresh_tokens(
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
 ) -> Result<usize, diesel::result::Error> {
     // Add two minutes to current time to prevent slight clock differences/inaccuracies from
     // opening a window for an attacker to use an expired refresh token
@@ -28,19 +28,19 @@ pub fn clear_all_expired_refresh_tokens(
 }
 
 pub fn clear_otp_verification_count(
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
 ) -> Result<usize, diesel::result::Error> {
     diesel::sql_query("TRUNCATE otp_attempts").execute(db_connection)
 }
 
 pub fn clear_password_attempt_count(
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
 ) -> Result<usize, diesel::result::Error> {
     diesel::sql_query("TRUNCATE password_attempts").execute(db_connection)
 }
 
 pub fn get_and_increment_otp_verification_count(
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
     let query = "INSERT INTO otp_attempts \
@@ -59,7 +59,7 @@ pub fn get_and_increment_otp_verification_count(
 }
 
 pub fn get_and_increment_password_attempt_count(
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
     user_id: Uuid,
 ) -> Result<i16, diesel::result::Error> {
     let query = "INSERT INTO password_attempts \
@@ -101,7 +101,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_clear_all_expired_refresh_tokens() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -110,16 +110,17 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
-        user::create_user(&db_connection, &Json(new_user.clone())).unwrap();
-        let user_id = user::get_user_by_email(&db_connection, &new_user.email)
+        user::create_user(&mut db_connection, &Json(new_user.clone())).unwrap();
+        let user_id = user::get_user_by_email(&mut db_connection, &new_user.email)
             .unwrap()
             .id;
 
@@ -152,26 +153,29 @@ mod tests {
 
         dsl::insert_into(blacklisted_tokens)
             .values(&expired_blacklisted)
-            .execute(&db_connection)
+            .execute(&mut db_connection)
             .unwrap();
         dsl::insert_into(blacklisted_tokens)
             .values(&unexpired_blacklisted)
-            .execute(&db_connection)
+            .execute(&mut db_connection)
             .unwrap();
 
-        assert!(clear_all_expired_refresh_tokens(&db_connection).unwrap() >= 1);
+        assert!(clear_all_expired_refresh_tokens(&mut db_connection).unwrap() >= 1);
 
+        assert!(!auth_token::is_on_blacklist(
+            &pretend_expired_token.to_string(),
+            &mut db_connection
+        )
+        .unwrap());
         assert!(
-            !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &db_connection)
-                .unwrap()
+            auth_token::is_on_blacklist(&unexpired_token.to_string(), &mut db_connection).unwrap()
         );
-        assert!(auth_token::is_on_blacklist(&unexpired_token.to_string(), &db_connection).unwrap());
     }
 
     #[actix_rt::test]
     async fn test_get_and_increment_otp_verification_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -180,33 +184,34 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
-        let user = user::create_user(&db_connection, &Json(new_user.clone())).unwrap();
+        let user = user::create_user(&mut db_connection, &Json(new_user)).unwrap();
 
         let current_count =
-            get_and_increment_otp_verification_count(&db_connection, user.id).unwrap();
+            get_and_increment_otp_verification_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 1);
 
         let current_count =
-            get_and_increment_otp_verification_count(&db_connection, user.id).unwrap();
+            get_and_increment_otp_verification_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 2);
 
         let current_count =
-            get_and_increment_otp_verification_count(&db_connection, user.id).unwrap();
+            get_and_increment_otp_verification_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 3);
     }
 
     #[actix_rt::test]
     async fn test_get_and_increment_password_attempt_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -215,26 +220,27 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
-        let user = user::create_user(&db_connection, &Json(new_user.clone())).unwrap();
+        let user = user::create_user(&mut db_connection, &Json(new_user)).unwrap();
 
         let current_count =
-            get_and_increment_password_attempt_count(&db_connection, user.id).unwrap();
+            get_and_increment_password_attempt_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 1);
 
         let current_count =
-            get_and_increment_password_attempt_count(&db_connection, user.id).unwrap();
+            get_and_increment_password_attempt_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 2);
 
         let current_count =
-            get_and_increment_password_attempt_count(&db_connection, user.id).unwrap();
+            get_and_increment_password_attempt_count(&mut db_connection, user.id).unwrap();
         assert_eq!(current_count, 3);
     }
 
@@ -242,7 +248,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_clear_otp_verification_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let mut user_ids = Vec::new();
 
@@ -254,19 +260,20 @@ mod tests {
                 password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
                 first_name: format!("Test-{}", &user_number),
                 last_name: format!("User-{}", &user_number),
-                date_of_birth: NaiveDate::from_ymd(
+                date_of_birth: NaiveDate::from_ymd_opt(
                     rand::thread_rng().gen_range(1950..=2020),
                     rand::thread_rng().gen_range(1..=12),
                     rand::thread_rng().gen_range(1..=28),
-                ),
+                )
+                .unwrap(),
                 currency: String::from("USD"),
             };
 
-            let user = user::create_user(&db_connection, &Json(new_user.clone())).unwrap();
+            let user = user::create_user(&mut db_connection, &Json(new_user.clone())).unwrap();
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                get_and_increment_otp_verification_count(&db_connection, user.id).unwrap();
+                get_and_increment_otp_verification_count(&mut db_connection, user.id).unwrap();
             }
         }
 
@@ -274,17 +281,17 @@ mod tests {
         for user_id in user_ids.clone() {
             let user_otp_attempts = otp_attempts
                 .filter(otp_attempts_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&db_connection);
-            assert!(!user_otp_attempts.is_err());
+                .first::<OtpAttempts>(&mut db_connection);
+            assert!(user_otp_attempts.is_ok());
         }
 
-        clear_otp_verification_count(&db_connection).unwrap();
+        clear_otp_verification_count(&mut db_connection).unwrap();
 
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_otp_attempts = otp_attempts
                 .filter(otp_attempts_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&db_connection);
+                .first::<OtpAttempts>(&mut db_connection);
             assert!(user_otp_attempts.is_err());
         }
     }
@@ -293,7 +300,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_clear_password_attempt_count() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let mut user_ids = Vec::new();
 
@@ -305,19 +312,20 @@ mod tests {
                 password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
                 first_name: format!("Test-{}", &user_number),
                 last_name: format!("User-{}", &user_number),
-                date_of_birth: NaiveDate::from_ymd(
+                date_of_birth: NaiveDate::from_ymd_opt(
                     rand::thread_rng().gen_range(1950..=2020),
                     rand::thread_rng().gen_range(1..=12),
                     rand::thread_rng().gen_range(1..=28),
-                ),
+                )
+                .unwrap(),
                 currency: String::from("USD"),
             };
 
-            let user = user::create_user(&db_connection, &Json(new_user.clone())).unwrap();
+            let user = user::create_user(&mut db_connection, &Json(new_user.clone())).unwrap();
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                get_and_increment_password_attempt_count(&db_connection, user.id).unwrap();
+                get_and_increment_password_attempt_count(&mut db_connection, user.id).unwrap();
             }
         }
 
@@ -325,17 +333,17 @@ mod tests {
         for user_id in user_ids.clone() {
             let user_pass_attempts = password_attempts
                 .filter(password_attempts_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&db_connection);
-            assert!(!user_pass_attempts.is_err());
+                .first::<PasswordAttempts>(&mut db_connection);
+            assert!(user_pass_attempts.is_ok());
         }
 
-        clear_password_attempt_count(&db_connection).unwrap();
+        clear_password_attempt_count(&mut db_connection).unwrap();
 
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_pass_attempts = password_attempts
                 .filter(password_attempts_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&db_connection);
+                .first::<PasswordAttempts>(&mut db_connection);
             assert!(user_pass_attempts.is_err());
         }
     }

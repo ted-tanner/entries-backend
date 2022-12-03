@@ -369,7 +369,7 @@ impl TokenizedHash {
 
 impl BinaryHash {
     #[inline]
-    pub fn to_hash_string(self) -> String {
+    pub fn into_hash_string(self) -> String {
         let b64_salt = base64::encode_config(self.salt, base64::STANDARD_NO_PAD);
         let b64_hash = base64::encode_config(self.hash, base64::STANDARD_NO_PAD);
         format!(
@@ -387,30 +387,30 @@ pub fn hash_password(password: &str) -> String {
         .fill(&mut salt)
         .expect("Failed to generate secure random numbers for hashing salt");
 
-    let mut hashing_key_mut = env::CONF.keys.hashing_key.clone();
+    let hashing_key_mut = &env::CONF.keys.hashing_key;
 
     hash_argon2id(
         password,
-        unsafe { hashing_key_mut.as_bytes_mut() },
-        &mut salt[..],
+        hashing_key_mut.as_bytes(),
+        &salt[..],
         u32::try_from(env::CONF.hashing.hash_length).expect("Hash length is too big"),
         env::CONF.hashing.hash_iterations,
         env::CONF.hashing.hash_mem_size_kib,
         env::CONF.hashing.hash_lanes,
     )
-    .to_hash_string()
+    .into_hash_string()
 }
 
 #[inline]
 pub fn verify_hash(password: &str, hash: &str) -> bool {
-    let mut hashing_key_mut = env::CONF.keys.hashing_key.clone();
-    verify_argon2id(password, hash, unsafe { hashing_key_mut.as_bytes_mut() })
+    let hashing_key_mut = &env::CONF.keys.hashing_key;
+    verify_argon2id(password, hash, hashing_key_mut.as_bytes())
 }
 
 pub fn hash_argon2id(
     password: &str,
-    key: &mut [u8],
-    salt: &mut [u8],
+    key: &[u8],
+    salt: &[u8],
     hash_len: u32,
     iterations: u32,
     memory_kib: u32,
@@ -424,15 +424,15 @@ pub fn hash_argon2id(
         outlen: u32::try_from(hash_buffer.len()).expect("Password hash is too long"),
         pwd: unsafe { password_mut.as_bytes_mut().as_mut_ptr() },
         pwdlen: u32::try_from(password_mut.len()).expect("Password is too long"),
-        salt: salt.as_mut_ptr(),
+        salt: salt.as_ptr() as *mut _,
         saltlen: u32::try_from(salt.len()).expect("Password salt is too long"),
-        secret: key.as_mut_ptr(),
+        secret: key.as_ptr() as *mut _,
         secretlen: u32::try_from(key.len()).expect("Key is too long"),
         ad: std::ptr::null_mut(),
         adlen: 0,
         t_cost: iterations,
         m_cost: memory_kib,
-        lanes: lanes,
+        lanes,
         threads: lanes,
         version: Argon2_version_ARGON2_VERSION_13,
         allocate_cbk: None,
@@ -444,21 +444,21 @@ pub fn hash_argon2id(
 
     if result != Argon2_ErrorCodes_ARGON2_OK {
         panic!("Failed to hash password: {}", unsafe {
-            CStr::from_ptr(argon2_error_message(result)).to_string_lossy()
+            std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
         });
     }
 
     BinaryHash {
         v: 19,
-        memory_kib: memory_kib,
-        iterations: iterations,
-        lanes: lanes,
+        memory_kib,
+        iterations,
+        lanes,
         salt: Vec::from(salt),
-        hash: Vec::from(hash_buffer),
+        hash: hash_buffer,
     }
 }
 
-pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
+pub fn verify_argon2id(password: &str, hash: &str, key: &[u8]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
         Err(_) => {
@@ -467,7 +467,7 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
         }
     };
 
-    let mut decoded_salt = base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD)
+    let decoded_salt = base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD)
         .expect("Failed to decode salt");
     let decoded_hash = base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD)
         .expect("Failed to decode hash");
@@ -475,7 +475,7 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
     let hashed_password = hash_argon2id(
         password,
         key,
-        &mut decoded_salt[..],
+        &decoded_salt[..],
         decoded_hash.len().try_into().expect("Hash is too long"),
         tokenized_hash.iterations,
         tokenized_hash.memory_kib,
@@ -488,17 +488,17 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &mut [u8]) -> bool {
 
     let mut is_valid = 0u8;
 
-    // Do bitwise comparison to prevent timing attacks (entire length of string must be compared
-
-    if decoded_hash.len() != hashed_password.hash.len() || decoded_hash.len() == 0 {
+    if decoded_hash.len() != hashed_password.hash.len() || decoded_hash.is_empty() {
         return false;
     }
 
-    for i in 0..decoded_hash.len() {
-        is_valid |= decoded_hash[i] ^ hashed_password.hash[i];
+    // Do bitwise comparison to prevent timing attacks (entire length of string must be
+    // compared)
+    for (i, decoded_hash_byte) in decoded_hash.iter().enumerate() {
+        is_valid |= decoded_hash_byte ^ hashed_password.hash[i];
     }
 
-    return is_valid == 0;
+    is_valid == 0
 }
 
 #[cfg(test)]
@@ -506,7 +506,7 @@ mod tests {
     use super::*;
 
     #[actix_rt::test]
-    async fn test_binary_hash_to_hash_string() {
+    async fn test_binary_hash_into_hash_string() {
         let hash = BinaryHash {
             v: 19,
             memory_kib: 128,
@@ -521,7 +521,7 @@ mod tests {
             .to_vec(),
         };
 
-        assert_eq!(hash.to_hash_string(),
+        assert_eq!(hash.into_hash_string(),
                    String::from(
                        "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$ypJ3pKxN4aWGkwMv0TOb08OIzwrfK1SZWy64vyTLKo8"
                    ));
@@ -680,7 +680,7 @@ mod tests {
         let password = "@Pa$$20rd-Test";
         let hash = hash_password(password);
 
-        assert!(!hash.contains(&password));
+        assert!(!hash.contains(password));
     }
 
     #[actix_rt::test]

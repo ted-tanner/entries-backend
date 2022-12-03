@@ -7,11 +7,8 @@ use std::path::PathBuf;
 fn main() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
-    let supports_simd = if cfg!(target_arch = "x86_64") {
-        true
-    } else {
-        false
-    };
+    let supports_simd = cfg!(target_arch = "x86_64");
+
     let simd_src_file = if supports_simd {
         "libraries/phc-winner-argon2/src/opt.c"
     } else {

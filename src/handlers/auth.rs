@@ -27,11 +27,11 @@ pub async fn sign_in(
     let db_thread_pool_copy = db_thread_pool.clone();
 
     let user = match web::block(move || {
-        let db_connection = db_thread_pool_copy
+        let mut db_connection = db_thread_pool_copy
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::get_user_by_email(&db_connection, &credentials.email)
+        db::user::get_user_by_email(&mut db_connection, &credentials.email)
     })
     .await?
     {
@@ -40,10 +40,10 @@ pub async fn sign_in(
     };
 
     let attempts = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::auth::get_and_increment_password_attempt_count(&db_connection, user.id)
+        db::auth::get_and_increment_password_attempt_count(&mut db_connection, user.id)
     })
     .await?
     {
@@ -142,10 +142,10 @@ pub async fn verify_otp_for_signin(
         };
 
     let attempts = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::auth::get_and_increment_otp_verification_count(&db_connection, token_claims.uid)
+        db::auth::get_and_increment_otp_verification_count(&mut db_connection, token_claims.uid)
     })
     .await?
     {
@@ -239,11 +239,11 @@ pub async fn refresh_tokens(
     let refresh_token = token.0.token.clone();
 
     let claims = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        auth_token::validate_refresh_token(token.0.token.as_str(), &db_connection)
+        auth_token::validate_refresh_token(token.0.token.as_str(), &mut db_connection)
     })
     .await?
     {
@@ -273,7 +273,7 @@ pub async fn refresh_tokens(
     match web::block(move || {
         auth_token::blacklist_token(
             refresh_token.as_str(),
-            &db_thread_pool_pointer_copy
+            &mut db_thread_pool_pointer_copy
                 .get()
                 .expect("Failed to access database thread pool"),
         )
@@ -322,11 +322,11 @@ pub async fn logout(
     let refresh_token_copy = refresh_token.token.clone();
 
     let refresh_token_claims = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        auth_token::validate_refresh_token(&refresh_token_copy, &db_connection)
+        auth_token::validate_refresh_token(&refresh_token_copy, &mut db_connection)
     })
     .await?
     {
@@ -362,7 +362,7 @@ pub async fn logout(
     match web::block(move || {
         auth_token::blacklist_token(
             refresh_token.0.token.as_str(),
-            &db_thread_pool_pointer_copy
+            &mut db_thread_pool_pointer_copy
                 .get()
                 .expect("Failed to access database thread pool"),
         )
@@ -411,11 +411,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -475,11 +476,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -525,11 +527,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -586,11 +589,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -652,7 +656,7 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         assert_eq!(
             auth_token::validate_access_token(&access_token)
@@ -661,7 +665,7 @@ mod tests {
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -685,11 +689,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -752,7 +757,7 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         assert_eq!(
             auth_token::validate_access_token(&access_token)
@@ -761,7 +766,7 @@ mod tests {
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -785,11 +790,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -873,11 +879,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -939,11 +946,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1016,11 +1024,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1093,11 +1102,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1169,15 +1179,16 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let create_user_res = test::call_service(
             &app,
@@ -1235,7 +1246,9 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        assert!(auth_token::is_on_blacklist(&refresh_token_payload.token, &db_connection).unwrap());
+        assert!(
+            auth_token::is_on_blacklist(&refresh_token_payload.token, &mut db_connection).unwrap()
+        );
         assert_eq!(
             auth_token::validate_access_token(&access_token)
                 .unwrap()
@@ -1243,7 +1256,7 @@ mod tests {
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &db_connection)
+            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
                 .unwrap()
                 .uid,
             user_id
@@ -1267,11 +1280,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1341,11 +1355,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1415,11 +1430,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1475,8 +1491,8 @@ mod tests {
         let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let db_connection = db_thread_pool.get().unwrap();
-        assert!(auth_token::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
+        let mut db_connection = db_thread_pool.get().unwrap();
+        assert!(auth_token::is_on_blacklist(&logout_payload.token, &mut db_connection).unwrap());
     }
 
     #[actix_rt::test]
@@ -1496,11 +1512,12 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1556,7 +1573,7 @@ mod tests {
         let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let db_connection = db_thread_pool.get().unwrap();
-        assert!(!auth_token::is_on_blacklist(&logout_payload.token, &db_connection).unwrap());
+        let mut db_connection = db_thread_pool.get().unwrap();
+        assert!(!auth_token::is_on_blacklist(&logout_payload.token, &mut db_connection).unwrap());
     }
 }

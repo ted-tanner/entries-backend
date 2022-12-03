@@ -416,6 +416,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Make cron jobs their own thing
+* Get rid of panics
+* Double check all unsafe code
+* Finish tests in users handler
+
 *By 9/2*
 
 * Consider replacing diesel with sqlx

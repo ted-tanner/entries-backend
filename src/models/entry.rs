@@ -7,9 +7,9 @@ use crate::models::user::User;
 use crate::schema::entries;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
-#[belongs_to(User, foreign_key = "user_id")]
-#[belongs_to(Budget, foreign_key = "budget_id")]
-#[table_name = "entries"]
+#[diesel(belongs_to(User, foreign_key = user_id))]
+#[diesel(belongs_to(Budget, foreign_key = budget_id))]
+#[diesel(table_name = entries)]
 pub struct Entry {
     pub id: uuid::Uuid,
     pub budget_id: uuid::Uuid,
@@ -28,7 +28,7 @@ pub struct Entry {
 }
 
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "entries"]
+#[diesel(table_name = entries)]
 pub struct NewEntry<'a> {
     pub id: uuid::Uuid,
     pub budget_id: uuid::Uuid,

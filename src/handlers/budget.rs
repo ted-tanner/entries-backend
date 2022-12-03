@@ -17,10 +17,14 @@ pub async fn get(
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let budget = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::get_budget_by_id(&db_connection, budget_id.budget_id, auth_user_claims.0.uid)
+        db::budget::get_budget_by_id(
+            &mut db_connection,
+            budget_id.budget_id,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -50,10 +54,10 @@ pub async fn get_all(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::get_all_budgets_for_user(&db_connection, auth_user_claims.0.uid)
+        db::budget::get_all_budgets_for_user(&mut db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -84,11 +88,11 @@ pub async fn get_all_between_dates(
     date_range: web::Query<InputDateRange>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
         db::budget::get_all_budgets_for_user_between_dates(
-            &db_connection,
+            &mut db_connection,
             auth_user_claims.0.uid,
             date_range.start_date,
             date_range.end_date,
@@ -123,10 +127,10 @@ pub async fn create(
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
+        db::budget::create_budget(&mut db_connection, &budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -160,11 +164,11 @@ pub async fn edit(
     }
 
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::edit_budget(&db_connection, &budget_data, auth_user_claims.0.uid)
+        db::budget::edit_budget(&mut db_connection, &budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -195,10 +199,10 @@ pub async fn add_entry(
     ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
 
     let new_entry = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        db::budget::create_entry(&db_connection, &entry_data, auth_user_claims.0.uid)
+        db::budget::create_entry(&mut db_connection, &entry_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -225,7 +229,7 @@ pub async fn invite_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    let inviting_user_id = auth_user_claims.0.uid.clone();
+    let inviting_user_id = auth_user_claims.0.uid;
 
     if invitation_info.invitee_user_id == inviting_user_id {
         return Err(ServerError::InputRejected(Some(
@@ -236,17 +240,17 @@ pub async fn invite_user(
     ensure_user_in_budget(
         db_thread_pool.clone(),
         inviting_user_id,
-        invitation_info.budget_id.clone(),
+        invitation_info.budget_id,
     )
     .await?;
 
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::budget::invite_user(
-            &db_connection,
+            &mut db_connection,
             invitation_info.budget_id,
             invitation_info.invitee_user_id,
             inviting_user_id,
@@ -278,12 +282,12 @@ pub async fn retract_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::budget::delete_invitation(
-            &db_connection,
+            &mut db_connection,
             invitation_id.share_event_id,
             auth_user_claims.0.uid,
         )
@@ -324,11 +328,15 @@ pub async fn accept_invitation(
     let share_event_id = invitation_id.share_event_id;
 
     let budget_id = match web::block(move || {
-        let db_connection = db_thread_pool_ref
+        let mut db_connection = db_thread_pool_ref
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::mark_invitation_accepted(&db_connection, share_event_id, auth_user_claims.0.uid)
+        db::budget::mark_invitation_accepted(
+            &mut db_connection,
+            share_event_id,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -349,11 +357,11 @@ pub async fn accept_invitation(
     };
 
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::add_user(&db_connection, budget_id, auth_user_claims.0.uid)
+        db::budget::add_user(&mut db_connection, budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -375,12 +383,12 @@ pub async fn decline_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::budget::mark_invitation_declined(
-            &db_connection,
+            &mut db_connection,
             invitation_id.share_event_id,
             auth_user_claims.0.uid,
         )
@@ -417,11 +425,11 @@ pub async fn get_all_pending_invitations_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::get_all_pending_invitations_for_user(&db_connection, auth_user_claims.0.uid)
+        db::budget::get_all_pending_invitations_for_user(&mut db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -447,11 +455,14 @@ pub async fn get_all_pending_invitations_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::get_all_pending_invitations_made_by_user(&db_connection, auth_user_claims.0.uid)
+        db::budget::get_all_pending_invitations_made_by_user(
+            &mut db_connection,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -478,12 +489,12 @@ pub async fn get_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::budget::get_invitation(
-            &db_connection,
+            &mut db_connection,
             invitation_id.share_event_id,
             auth_user_claims.0.uid,
         )
@@ -519,11 +530,15 @@ pub async fn remove_budget(
     let budget_id_second_clone = budget_id.0.clone();
 
     let rows_affected_count = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::remove_user(&db_connection, budget_id.budget_id, auth_user_claims.0.uid)
+        db::budget::remove_user(
+            &mut db_connection,
+            budget_id.budget_id,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -553,43 +568,41 @@ pub async fn remove_budget(
     //       already been removed from the budget, so the handler can return without finishing
     //       deleting the budget
     let remaining_users_in_budget = match web::block(move || {
-        let db_connection = db_thread_pool_clone
+        let mut db_connection = db_thread_pool_clone
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::count_users_remaining_in_budget(&db_connection, budget_id_clone.budget_id)
+        db::budget::count_users_remaining_in_budget(&mut db_connection, budget_id_clone.budget_id)
     })
     .await?
     {
         Ok(c) => c,
-        Err(e) => match e {
-            _ => {
-                error!(
-                    "Failed to see how many users left in budget with ID '{}': {}",
-                    budget_id_clone.budget_id, e
-                );
-                10
-            }
-        },
+        Err(e) => {
+            error!(
+                "Failed to get count of how many users are left in budget with ID '{}': {}",
+                budget_id_clone.budget_id, e
+            );
+            10
+        }
     };
 
     if remaining_users_in_budget == 0 {
         match web::block(move || {
-            let db_connection = db_thread_pool_second_clone
+            let mut db_connection = db_thread_pool_second_clone
                 .get()
                 .expect("Failed to access database thread pool");
 
-            db::budget::delete_budget(&db_connection, budget_id_second_clone.budget_id)
+            db::budget::delete_budget(&mut db_connection, budget_id_second_clone.budget_id)
         })
         .await?
         {
             Ok(_) => (),
-            Err(e) => match e {
-                _ => error!(
+            Err(e) => {
+                error!(
                     "Failed to delete budget with ID '{}': {}",
                     budget_id_second_clone.budget_id, e
-                ),
-            },
+                );
+            }
         };
     }
 
@@ -602,11 +615,11 @@ async fn ensure_user_in_budget(
     budget_id: Uuid,
 ) -> Result<(), ServerError> {
     let is_user_in_budget = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::budget::check_user_in_budget(&db_connection, user_id, budget_id)
+        db::budget::check_user_in_budget(&mut db_connection, user_id, budget_id)
     })
     .await?
     {
@@ -710,16 +723,18 @@ pub mod tests {
                 "This is a description of Test Budget {rand_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
+            start_date: NaiveDate::from_ymd_opt(
                 2021,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
+            )
+            .unwrap(),
+            end_date: NaiveDate::from_ymd_opt(
                 2023,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -760,11 +775,12 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -826,16 +842,18 @@ pub mod tests {
                 "This is a description of Test Budget {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
+            start_date: NaiveDate::from_ymd_opt(
                 2021,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
+            )
+            .unwrap(),
+            end_date: NaiveDate::from_ymd_opt(
                 2023,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let req = test::TestRequest::post()
@@ -848,20 +866,20 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_budget = budgets
             .filter(budget_fields::name.eq(&new_budget.name))
             .filter(budget_fields::start_date.eq(&new_budget.start_date))
-            .first::<Budget>(&db_connection)
+            .first::<Budget>(&mut db_connection)
             .unwrap();
 
         let created_categories = Category::belonging_to(&created_budget)
-            .load::<Category>(&db_connection)
+            .load::<Category>(&mut db_connection)
             .unwrap();
 
         let created_entries = Entry::belonging_to(&created_budget)
-            .load::<Entry>(&db_connection)
+            .load::<Entry>(&mut db_connection)
             .unwrap();
 
         assert_eq!(&new_budget.name, &created_budget.name);
@@ -871,8 +889,7 @@ pub mod tests {
 
         assert!(created_entries.is_empty());
 
-        for i in 0..created_categories.len() {
-            let created_cat = &created_categories[i];
+        for (i, created_cat) in created_categories.iter().enumerate() {
             let new_cat = &new_budget.categories[i];
 
             assert_eq!(created_cat.budget_id, created_budget.id);
@@ -900,15 +917,16 @@ pub mod tests {
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
         let edit_budget = InputEditBudget {
-            id: budget_before_edit.id.clone(),
-            name: format!("Test Budget user after edit"),
+            id: budget_before_edit.id,
+            name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
-            start_date: budget_before_edit.start_date.clone(),
-            end_date: NaiveDate::from_ymd(
+            start_date: budget_before_edit.start_date,
+            end_date: NaiveDate::from_ymd_opt(
                 2024,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let req = test::TestRequest::put()
@@ -922,8 +940,8 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
 
         let budget_after_edit = db::budget::get_budget_by_id(
-            &db_thread_pool.get().unwrap(),
-            budget_before_edit.id.clone(),
+            &mut db_thread_pool.get().unwrap(),
+            budget_before_edit.id,
             created_user_id,
         )
         .unwrap();
@@ -954,15 +972,16 @@ pub mod tests {
         let access_token = created_user_and_budget2.token_pair.access_token.clone();
 
         let edit_budget = InputEditBudget {
-            id: budget_before_edit.id.clone(),
-            name: format!("Test Budget user after edit"),
+            id: budget_before_edit.id,
+            name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
-            start_date: budget_before_edit.start_date.clone(),
-            end_date: NaiveDate::from_ymd(
+            start_date: budget_before_edit.start_date,
+            end_date: NaiveDate::from_ymd_opt(
                 2024,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let req = test::TestRequest::put()
@@ -976,8 +995,8 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
         let budget_after_edit = db::budget::get_budget_by_id(
-            &db_thread_pool.get().unwrap(),
-            budget_before_edit.id.clone(),
+            &mut db_thread_pool.get().unwrap(),
+            budget_before_edit.id,
             created_user1_id,
         )
         .unwrap();
@@ -1011,15 +1030,16 @@ pub mod tests {
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
         let edit_budget = InputEditBudget {
-            id: budget_before_edit.id.clone(),
-            name: format!("Test Budget user after edit"),
+            id: budget_before_edit.id,
+            name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
-            start_date: budget_before_edit.start_date.clone(),
-            end_date: NaiveDate::from_ymd(
+            start_date: budget_before_edit.start_date,
+            end_date: NaiveDate::from_ymd_opt(
                 2019,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let req = test::TestRequest::put()
@@ -1033,8 +1053,8 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
 
         let budget_after_edit = db::budget::get_budget_by_id(
-            &db_thread_pool.get().unwrap(),
-            budget_before_edit.id.clone(),
+            &mut db_thread_pool.get().unwrap(),
+            budget_before_edit.id,
             created_user_id,
         )
         .unwrap();
@@ -1069,12 +1089,13 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 0 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -1082,11 +1103,12 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -1114,7 +1136,7 @@ pub mod tests {
         let resp1 = test::call_service(&app, req1).await;
         assert_eq!(resp1.status(), http::StatusCode::CREATED);
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let budget_id = InputBudgetId {
             budget_id: budget.id,
@@ -1142,12 +1164,12 @@ pub mod tests {
 
         let created_budget = budgets
             .find(budget.id)
-            .first::<Budget>(&db_connection)
+            .first::<Budget>(&mut db_connection)
             .unwrap();
 
         let created_entries = Entry::belonging_to(&created_budget)
             .order(entry_fields::date.asc())
-            .load::<Entry>(&db_connection)
+            .load::<Entry>(&mut db_connection)
             .unwrap();
 
         for i in 0..created_entries.len() {
@@ -1163,7 +1185,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_invite_user_and_accept() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1203,13 +1225,13 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1238,23 +1260,23 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, true);
+        assert!(share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].created_timestamp > instant_before_share);
         assert!(share_events[0].created_timestamp < instant_after_share);
-        assert!(!share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_events[0].accepted_declined_timestamp.is_some());
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection)
+            .first::<UserBudget>(&mut db_connection)
             .unwrap();
 
         assert_eq!(budget_association.user_id, created_user2_id);
@@ -1288,7 +1310,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_accept_invites_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1349,7 +1371,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = chrono::Utc::now().naive_utc();
@@ -1357,7 +1379,7 @@ pub mod tests {
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1409,11 +1431,11 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
@@ -1430,11 +1452,11 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
@@ -1451,13 +1473,13 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, true);
+        assert!(share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1503,7 +1525,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_invite_user_and_decline() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1541,7 +1563,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = chrono::Utc::now().naive_utc();
@@ -1549,7 +1571,7 @@ pub mod tests {
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1577,13 +1599,13 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1592,7 +1614,7 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
@@ -1624,7 +1646,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_decline_invites_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1685,7 +1707,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = chrono::Utc::now().naive_utc();
@@ -1693,7 +1715,7 @@ pub mod tests {
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_none());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1745,11 +1767,11 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
@@ -1766,11 +1788,11 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
@@ -1787,13 +1809,13 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
         assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert_eq!(share_events[0].accepted, false);
+        assert!(!share_events[0].accepted);
 
         assert!(share_events[0].accepted_declined_timestamp.is_some());
         assert!(share_events[0].created_timestamp > instant_before_share);
@@ -1839,7 +1861,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_retract_invitation() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1873,7 +1895,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -1896,7 +1918,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 0);
@@ -1905,7 +1927,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_retract_invites_made_by_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1943,7 +1965,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -1978,7 +2000,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -1997,7 +2019,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 0);
@@ -2026,14 +2048,14 @@ pub mod tests {
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category for user1_budget2"),
+            name: "First Random Category for user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category user1_budget2"),
+            name: "Second Random Category user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
@@ -2041,19 +2063,21 @@ pub mod tests {
         let budget_categories = vec![category0, category1];
 
         let new_budget = InputBudget {
-            name: format!("Test Budget #2"),
-            description: Some(format!("This is a description of Test Budget #2.",)),
+            name: "Test Budget #2".to_string(),
+            description: Some("This is a description of Test Budget #2.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
+            start_date: NaiveDate::from_ymd_opt(
                 2021,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
+            )
+            .unwrap(),
+            end_date: NaiveDate::from_ymd_opt(
                 2023,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -2125,13 +2149,13 @@ pub mod tests {
         assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
         assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
-        assert_eq!(budget1_invitation.accepted, false);
+        assert!(!budget1_invitation.accepted);
         assert!(budget1_invitation.accepted_declined_timestamp.is_none());
 
         assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
         assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
-        assert_eq!(budget2_invitation.accepted, false);
+        assert!(!budget2_invitation.accepted);
         assert!(budget2_invitation.accepted_declined_timestamp.is_none());
     }
 
@@ -2157,14 +2181,14 @@ pub mod tests {
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category for user1_budget2"),
+            name: "First Random Category for user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category user1_budget2"),
+            name: "Second Random Category user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
@@ -2172,19 +2196,21 @@ pub mod tests {
         let budget_categories = vec![category0, category1];
 
         let new_budget = InputBudget {
-            name: format!("Test Budget #2"),
-            description: Some(format!("This is a description of Test Budget #2.",)),
+            name: "Test Budget #2".to_string(),
+            description: Some("This is a description of Test Budget #2.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
+            start_date: NaiveDate::from_ymd_opt(
                 2021,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
+            )
+            .unwrap(),
+            end_date: NaiveDate::from_ymd_opt(
                 2023,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -2256,20 +2282,20 @@ pub mod tests {
         assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
         assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
-        assert_eq!(budget1_invitation.accepted, false);
+        assert!(!budget1_invitation.accepted);
         assert!(budget1_invitation.accepted_declined_timestamp.is_none());
 
         assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
         assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
         assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
-        assert_eq!(budget2_invitation.accepted, false);
+        assert!(!budget2_invitation.accepted);
         assert!(budget2_invitation.accepted_declined_timestamp.is_none());
     }
 
     #[actix_rt::test]
     async fn test_get_invitation() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -2312,7 +2338,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -2338,7 +2364,7 @@ pub mod tests {
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
         assert_eq!(invitation.sender_user_id, created_user1_id);
-        assert_eq!(invitation.accepted, false);
+        assert!(!invitation.accepted);
 
         assert!(invitation.accepted_declined_timestamp.is_none());
         assert!(invitation.created_timestamp > instant_before_share);
@@ -2361,7 +2387,7 @@ pub mod tests {
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
         assert_eq!(invitation.sender_user_id, created_user1_id);
-        assert_eq!(invitation.accepted, false);
+        assert!(!invitation.accepted);
 
         assert!(invitation.accepted_declined_timestamp.is_none());
         assert!(invitation.created_timestamp > instant_before_share);
@@ -2383,7 +2409,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_remove_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -2419,7 +2445,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -2443,7 +2469,7 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection)
+            .first::<UserBudget>(&mut db_connection)
             .unwrap();
 
         assert_eq!(budget_association.user_id, created_user2_id);
@@ -2467,7 +2493,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1); // Share event still exists
@@ -2475,14 +2501,14 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user1_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_ok());
 
@@ -2514,7 +2540,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_remove_last_user_deletes_budget() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -2551,7 +2577,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -2575,7 +2601,7 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection)
+            .first::<UserBudget>(&mut db_connection)
             .unwrap();
 
         assert_eq!(budget_association.user_id, created_user2_id);
@@ -2599,7 +2625,7 @@ pub mod tests {
 
         let budget = budgets
             .find(created_user1_budget.id)
-            .load::<Budget>(&db_connection);
+            .load::<Budget>(&mut db_connection);
 
         assert!(budget.is_ok());
 
@@ -2617,14 +2643,14 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 0);
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user2_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 0);
@@ -2632,20 +2658,20 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user1_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
         let budget = budgets
             .find(created_user1_budget.id)
-            .get_result::<Budget>(&db_connection);
+            .get_result::<Budget>(&mut db_connection);
 
         assert!(budget.is_err());
 
@@ -2692,13 +2718,13 @@ pub mod tests {
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user2_budget.id))
-            .first::<UserBudget>(&db_connection);
+            .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
         let budget = budgets
             .find(created_user2_budget.id)
-            .get_result::<Budget>(&db_connection);
+            .get_result::<Budget>(&mut db_connection);
 
         assert!(budget.is_err());
 
@@ -2718,7 +2744,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_delete_budget_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -2757,7 +2783,7 @@ pub mod tests {
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&db_connection)
+            .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
         assert_eq!(share_events.len(), 1);
@@ -2796,7 +2822,7 @@ pub mod tests {
 
         let budget = budgets
             .find(created_user1_budget.id)
-            .load::<Budget>(&db_connection);
+            .load::<Budget>(&mut db_connection);
 
         assert!(budget.is_ok());
 
@@ -2842,7 +2868,7 @@ pub mod tests {
 
         let budget = budgets
             .find(created_user3_budget.id)
-            .load::<Budget>(&db_connection);
+            .load::<Budget>(&mut db_connection);
 
         assert!(budget.is_ok());
 
@@ -2878,12 +2904,13 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 0 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -2891,11 +2918,12 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -2957,8 +2985,7 @@ pub mod tests {
         assert!(!budget.categories.is_empty());
         assert_eq!(budget.categories.len(), created_budget.categories.len());
 
-        for i in 0..budget_categories.len() {
-            let fetched_cat = &budget.categories[i];
+        for (i, fetched_cat) in budget_categories.iter().enumerate() {
             let created_cat = &created_budget.categories[i];
 
             assert_eq!(fetched_cat.pk, created_cat.pk);
@@ -2969,15 +2996,12 @@ pub mod tests {
             assert_eq!(fetched_cat.color, created_cat.color);
         }
 
-        for i in 0..created_entries.len() {
-            assert_eq!(
-                budget.entries[i].amount_cents,
-                created_entries[i].amount_cents
-            );
-            assert_eq!(budget.entries[i].date, created_entries[i].date);
-            assert_eq!(budget.entries[i].name, created_entries[i].name);
-            assert_eq!(budget.entries[i].category, created_entries[i].category);
-            assert_eq!(budget.entries[i].note, created_entries[i].note);
+        for (i, created_entry) in created_entries.iter().enumerate() {
+            assert_eq!(budget.entries[i].amount_cents, created_entry.amount_cents);
+            assert_eq!(budget.entries[i].date, created_entry.date);
+            assert_eq!(budget.entries[i].name, created_entry.name);
+            assert_eq!(budget.entries[i].category, created_entry.category);
+            assert_eq!(budget.entries[i].note, created_entry.note);
         }
     }
 
@@ -2996,35 +3020,37 @@ pub mod tests {
         let created_budget0 = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
-        let mut budget_categories = Vec::new();
-        budget_categories.push(InputCategory {
-            id: created_budget0.categories[0].id,
-            name: created_budget0.categories[0].name.clone(),
-            limit_cents: created_budget0.categories[0].limit_cents,
-            color: created_budget0.categories[0].color.clone(),
-        });
-
-        budget_categories.push(InputCategory {
-            id: created_budget0.categories[1].id,
-            name: created_budget0.categories[1].name.clone(),
-            limit_cents: created_budget0.categories[1].limit_cents,
-            color: created_budget0.categories[1].color.clone(),
-        });
+        let budget_categories = vec![
+            InputCategory {
+                id: created_budget0.categories[0].id,
+                name: created_budget0.categories[0].name.clone(),
+                limit_cents: created_budget0.categories[0].limit_cents,
+                color: created_budget0.categories[0].color.clone(),
+            },
+            InputCategory {
+                id: created_budget0.categories[1].id,
+                name: created_budget0.categories[1].name.clone(),
+                limit_cents: created_budget0.categories[1].limit_cents,
+                color: created_budget0.categories[1].color.clone(),
+            },
+        ];
 
         let new_budget1 = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(
+            start_date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            end_date: NaiveDate::from_ymd(
+            )
+            .unwrap(),
+            end_date: NaiveDate::from_ymd_opt(
                 2023,
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
         };
 
         let create_budget1_req = test::TestRequest::post()
@@ -3050,12 +3076,13 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 0 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3063,11 +3090,12 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3076,12 +3104,13 @@ pub mod tests {
         let entry2 = InputEntry {
             budget_id: created_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 2 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3089,11 +3118,12 @@ pub mod tests {
         let entry3 = InputEntry {
             budget_id: created_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3214,19 +3244,19 @@ pub mod tests {
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
         diesel::delete(budgets.find(created_budget.id))
-            .execute(&db_thread_pool.get().unwrap())
+            .execute(&mut db_thread_pool.get().unwrap())
             .unwrap();
 
         let category0 = InputCategory {
             id: 0,
-            name: format!("First Random Category user"),
+            name: "First Random Category user".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
             id: 1,
-            name: format!("Second Random Category user"),
+            name: "Second Random Category user".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
         };
@@ -3234,11 +3264,11 @@ pub mod tests {
         let budget_categories = vec![category0.clone(), category1.clone()];
 
         let too_early_budget = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 3, 14),
-            end_date: NaiveDate::from_ymd(2022, 3, 30),
+            start_date: NaiveDate::from_ymd_opt(2022, 3, 14).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 3, 30).unwrap(),
         };
 
         let create_too_early_budget_req = test::TestRequest::post()
@@ -3262,11 +3292,11 @@ pub mod tests {
                 .unwrap();
 
         let in_range_budget0 = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 3, 12),
-            end_date: NaiveDate::from_ymd(2022, 4, 18),
+            start_date: NaiveDate::from_ymd_opt(2022, 3, 12).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 4, 18).unwrap(),
         };
 
         let create_in_range_budget0_req = test::TestRequest::post()
@@ -3290,11 +3320,11 @@ pub mod tests {
                 .unwrap();
 
         let in_range_budget1 = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 4, 8),
-            end_date: NaiveDate::from_ymd(2022, 4, 10),
+            start_date: NaiveDate::from_ymd_opt(2022, 4, 8).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 4, 10).unwrap(),
         };
 
         let create_in_range_budget1_req = test::TestRequest::post()
@@ -3318,11 +3348,11 @@ pub mod tests {
                 .unwrap();
 
         let in_range_budget2 = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 4, 9),
-            end_date: NaiveDate::from_ymd(2022, 5, 6),
+            start_date: NaiveDate::from_ymd_opt(2022, 4, 9).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 5, 6).unwrap(),
         };
 
         let create_in_range_budget2_req = test::TestRequest::post()
@@ -3346,11 +3376,11 @@ pub mod tests {
                 .unwrap();
 
         let too_late_budget = InputBudget {
-            name: format!("Test Budget user"),
-            description: Some(format!("This is a description of Test Budget user.",)),
+            name: "Test Budget user".to_string(),
+            description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd(2022, 4, 22),
-            end_date: NaiveDate::from_ymd(2022, 4, 30),
+            start_date: NaiveDate::from_ymd_opt(2022, 4, 22).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 4, 30).unwrap(),
         };
 
         let create_too_late_budget_req = test::TestRequest::post()
@@ -3381,12 +3411,13 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_too_early_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 0 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3394,11 +3425,12 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_too_early_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3407,12 +3439,13 @@ pub mod tests {
         let entry2 = InputEntry {
             budget_id: created_in_range_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 2 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3420,11 +3453,12 @@ pub mod tests {
         let entry3 = InputEntry {
             budget_id: created_in_range_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3433,12 +3467,13 @@ pub mod tests {
         let entry4 = InputEntry {
             budget_id: created_in_range_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 2 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3446,11 +3481,12 @@ pub mod tests {
         let entry5 = InputEntry {
             budget_id: created_in_range_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3459,12 +3495,13 @@ pub mod tests {
         let entry6 = InputEntry {
             budget_id: created_in_range_budget2.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 2 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3472,11 +3509,12 @@ pub mod tests {
         let entry7 = InputEntry {
             budget_id: created_in_range_budget2.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3485,12 +3523,13 @@ pub mod tests {
         let entry8 = InputEntry {
             budget_id: created_too_late_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 2 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3498,11 +3537,12 @@ pub mod tests {
         let entry9 = InputEntry {
             budget_id: created_too_late_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3605,15 +3645,14 @@ pub mod tests {
         test::call_service(&app, entry9_req).await;
 
         let date_range = InputDateRange {
-            start_date: NaiveDate::from_ymd(2022, 4, 6),
-            end_date: NaiveDate::from_ymd(2022, 4, 12),
+            start_date: NaiveDate::from_ymd_opt(2022, 4, 6).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2022, 4, 12).unwrap(),
         };
 
         let req = test::TestRequest::get()
             .uri(&format!(
                 "/api/budget/get_all_between_dates?start_date={}&end_date={}",
-                date_range.start_date.to_string(),
-                date_range.end_date.to_string(),
+                date_range.start_date, date_range.end_date,
             ))
             .insert_header(("authorization", format!("bearer {access_token}")))
             .to_request();
@@ -3690,20 +3729,20 @@ pub mod tests {
         let created_budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
-        let mut budget_categories = Vec::new();
-        budget_categories.push(InputCategory {
-            id: created_budget.categories[0].id,
-            name: created_budget.categories[0].name.clone(),
-            limit_cents: created_budget.categories[0].limit_cents,
-            color: created_budget.categories[0].color.clone(),
-        });
-
-        budget_categories.push(InputCategory {
-            id: created_budget.categories[1].id,
-            name: created_budget.categories[1].name.clone(),
-            limit_cents: created_budget.categories[1].limit_cents,
-            color: created_budget.categories[1].color.clone(),
-        });
+        let budget_categories = vec![
+            InputCategory {
+                id: created_budget.categories[0].id,
+                name: created_budget.categories[0].name.clone(),
+                limit_cents: created_budget.categories[0].limit_cents,
+                color: created_budget.categories[0].color.clone(),
+            },
+            InputCategory {
+                id: created_budget.categories[1].id,
+                name: created_budget.categories[1].name.clone(),
+                limit_cents: created_budget.categories[1].limit_cents,
+                color: created_budget.categories[1].color.clone(),
+            },
+        ];
 
         let created_unauth_user_and_budget = create_user_and_budget_and_sign_in().await;
         let unauth_user_access_token = created_unauth_user_and_budget
@@ -3714,12 +3753,13 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(1..=6),
                 rand::thread_rng().gen_range(1..=28),
-            ),
-            name: Some(format!("Test Entry 0 for user")),
+            )
+            .unwrap(),
+            name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
         };
@@ -3727,11 +3767,12 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd(
+            date: NaiveDate::from_ymd_opt(
                 2022,
                 rand::thread_rng().gen_range(7..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             name: None,
             category: None,
             note: None,
@@ -3844,15 +3885,12 @@ pub mod tests {
             assert_eq!(fetched_cat.color, created_cat.color);
         }
 
-        for i in 0..created_entries.len() {
-            assert_eq!(
-                budget.entries[i].amount_cents,
-                created_entries[i].amount_cents
-            );
-            assert_eq!(budget.entries[i].date, created_entries[i].date);
-            assert_eq!(budget.entries[i].name, created_entries[i].name);
-            assert_eq!(budget.entries[i].category, created_entries[i].category);
-            assert_eq!(budget.entries[i].note, created_entries[i].note);
+        for (i, created_entry) in created_entries.iter().enumerate() {
+            assert_eq!(budget.entries[i].amount_cents, created_entry.amount_cents);
+            assert_eq!(budget.entries[i].date, created_entry.date);
+            assert_eq!(budget.entries[i].name, created_entry.name);
+            assert_eq!(budget.entries[i].category, created_entry.category);
+            assert_eq!(budget.entries[i].note, created_entry.note);
         }
     }
 }

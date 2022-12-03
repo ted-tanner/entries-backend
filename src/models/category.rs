@@ -6,8 +6,8 @@ use crate::models::budget::Budget;
 use crate::schema::categories;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
-#[belongs_to(Budget, foreign_key = "budget_id")]
-#[table_name = "categories"]
+#[diesel(belongs_to(Budget, foreign_key = budget_id))]
+#[diesel(table_name = categories)]
 pub struct Category {
     pub pk: i32,
     pub budget_id: uuid::Uuid,
@@ -21,7 +21,7 @@ pub struct Category {
 }
 
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "categories"]
+#[diesel(table_name = categories)]
 pub struct NewCategory<'a> {
     pub budget_id: uuid::Uuid,
     pub is_deleted: bool,

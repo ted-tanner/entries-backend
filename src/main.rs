@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate diesel;
 #[macro_use]
-extern crate diesel_migrations;
-#[macro_use]
 extern crate lazy_static;
 
 use actix_web::middleware::Logger;
@@ -24,13 +22,10 @@ mod schema;
 mod services;
 mod utils;
 
-diesel_migrations::embed_migrations!();
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mut ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let mut port = 9000u16;
-    let mut run_migrations = false;
     let mut schedule_cron_jobs = false;
 
     let mut args = std::env::args();
@@ -88,11 +83,6 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
-            "--run-migrations" => {
-                run_migrations = true;
-
-                continue;
-            }
             "--schedule-cron-jobs" => {
                 schedule_cron_jobs = true;
 
@@ -137,18 +127,6 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    if run_migrations {
-        log::info!("Running migrations...");
-
-        let db_connection = &db_thread_pool
-            .get()
-            .expect("Failed to get thread for connecting to db");
-        match embedded_migrations::run_with_output(db_connection, &mut std::io::stdout()) {
-            Ok(_) => log::info!("Migrations run successfully"),
-            Err(e) => log::error!("Error running migrations: {}", e.to_string()),
-        }
-    }
-
     // Declaring a vec of job runners here to give it the same lifetime as the HTTP server
     let mut runners = Vec::new();
 
@@ -156,11 +134,11 @@ async fn main() -> std::io::Result<()> {
         let db_thread_pool_ref = db_thread_pool.clone();
 
         let clear_otp_verification_count_job = move || {
-            let db_connection = db_thread_pool_ref
+            let mut db_connection = db_thread_pool_ref
                 .get()
                 .expect("Failed to get thread for connecting to db");
 
-            if utils::db::auth::clear_otp_verification_count(&db_connection).is_err() {
+            if utils::db::auth::clear_otp_verification_count(&mut db_connection).is_err() {
                 return Err(cron::CronJobError::JobFailure(Some(
                     "Failed to clear recent OTP verfications",
                 )));
@@ -172,11 +150,11 @@ async fn main() -> std::io::Result<()> {
         let db_thread_pool_ref = db_thread_pool.clone();
 
         let clear_password_attempt_count_job = move || {
-            let db_connection = db_thread_pool_ref
+            let mut db_connection = db_thread_pool_ref
                 .get()
                 .expect("Failed to get thread for connecting to db");
 
-            if utils::db::auth::clear_password_attempt_count(&db_connection).is_err() {
+            if utils::db::auth::clear_password_attempt_count(&mut db_connection).is_err() {
                 return Err(cron::CronJobError::JobFailure(Some(
                     "Failed to clear recent password attempts",
                 )));
@@ -188,11 +166,11 @@ async fn main() -> std::io::Result<()> {
         let db_thread_pool_ref = db_thread_pool.clone();
 
         let clear_expired_blacklisted_tokens_job = move || {
-            let db_connection = db_thread_pool_ref
+            let mut db_connection = db_thread_pool_ref
                 .get()
                 .expect("Failed to get thread for connecting to db");
 
-            if utils::db::auth::clear_all_expired_refresh_tokens(&db_connection).is_err() {
+            if utils::db::auth::clear_all_expired_refresh_tokens(&mut db_connection).is_err() {
                 return Err(cron::CronJobError::JobFailure(Some(
                     "Failed to clear expired refresh tokens",
                 )));
@@ -237,7 +215,7 @@ async fn main() -> std::io::Result<()> {
         runners.push(password_attempts_reset_runner);
     }
 
-    let server = HttpServer::new(move || {
+    HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
             .configure(services::api::configure)
@@ -247,12 +225,13 @@ async fn main() -> std::io::Result<()> {
     .workers(env::CONF.workers.actix_workers)
     .bind(base_addr)?
     .run()
-    .await;
+    .await?;
 
-    // Log something so th runners vec doesn't get optimized away
+    // Log something so the runners vec doesn't get optimized away. This won't actually be
+    // reached.
     for _ in runners {
         log::info!("Shutting down cron job runner...");
     }
 
-    return server;
+    Ok(())
 }

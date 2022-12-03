@@ -73,11 +73,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -127,11 +128,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -165,11 +167,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -183,7 +186,7 @@ mod tests {
         .unwrap();
 
         let req = test::TestRequest::get()
-            .insert_header(("authorization", (&token.to_string()).to_string()))
+            .insert_header(("authorization", token.to_string()))
             .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
@@ -205,11 +208,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -244,11 +248,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -288,11 +293,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,

@@ -66,7 +66,7 @@ pub fn validate_strong_password(
 
     let lowercase_password = password.to_lowercase();
 
-    if lowercase_password.contains(&env::APP_NAME.to_lowercase().replace(" ", ""))
+    if lowercase_password.contains(&env::APP_NAME.to_lowercase().replace(' ', ""))
         || lowercase_password.contains(&env::APP_NAME.to_lowercase())
     {
         return Validity::Invalid("Password must not contain the name of the app.");
@@ -117,7 +117,8 @@ pub fn validate_strong_password(
 
     if !contains_punct {
         return Validity::Invalid(
-            "Password must contain at least one of the following: ! ? @ $ % - & + # * ( ) \" ' , . / : ; < = > [ \\ ] ^ _ { | } ~"
+            "Password must contain at least one of the following: ! ? @ \
+             $ % - & + # * ( ) \" ' , . / : ; < = > [ \\ ] ^ _ { | } ~",
         );
     }
 
@@ -149,7 +150,7 @@ pub fn validate_strong_password(
         }
     }
 
-    if COMMON_PASSWORDS_SET.contains(&password) {
+    if COMMON_PASSWORDS_SET.contains(password) {
         return Validity::Invalid(
             "Your password is too common. It was found on an online list of the 1,000,000 most commonly used passwords."
         );
@@ -214,11 +215,12 @@ mod tests {
         const FIRST_NAME: &str = "Arnold";
         const LAST_NAME: &str = "Schwarzenegger";
 
-        let date_of_birth = NaiveDate::from_ymd(
+        let date_of_birth = NaiveDate::from_ymd_opt(
             rand::thread_rng().gen_range(1940..=1990),
             rand::thread_rng().gen_range(1..=12),
             rand::thread_rng().gen_range(1..=28),
-        );
+        )
+        .unwrap();
 
         let mut password = String::new();
 
@@ -243,7 +245,7 @@ mod tests {
         );
 
         // Contains app name without space
-        password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME).replace(" ", "") + "&45D";
+        password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME).replace(' ', "") + "&45D";
         assert!(
             !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
                 .is_valid()

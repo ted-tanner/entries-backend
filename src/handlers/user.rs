@@ -27,31 +27,32 @@ pub async fn get(
         auth_user_claims.0.uid
     };
 
-    let db_connection = db_thread_pool
+    let mut db_connection = db_thread_pool
         .get()
         .expect("Failed to access database thread pool");
-    let db_connection2 = db_thread_pool
+    let mut db_connection2 = db_thread_pool
         .get()
         .expect("Failed to access database thread pool");
 
-    let user = match web::block(move || db::user::get_user_by_id(&db_connection, user_id)).await? {
-        Ok(u) => u,
-        Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
-                return Err(ServerError::InvalidFormat(None))
-            }
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::AccessForbidden(Some("No user with ID")))
-            }
-            _ => {
-                error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to get user data",
-                )));
-            }
-        },
-    };
+    let user =
+        match web::block(move || db::user::get_user_by_id(&mut db_connection, user_id)).await? {
+            Ok(u) => u,
+            Err(e) => match e {
+                diesel::result::Error::InvalidCString(_)
+                | diesel::result::Error::DeserializationError(_) => {
+                    return Err(ServerError::InvalidFormat(None))
+                }
+                diesel::result::Error::NotFound => {
+                    return Err(ServerError::AccessForbidden(Some("No user with ID")))
+                }
+                _ => {
+                    error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(
+                        "Failed to get user data",
+                    )));
+                }
+            },
+        };
 
     if is_another_user_requesting && user_id != auth_user_claims.0.uid {
         let mut are_buddies = false;
@@ -59,7 +60,7 @@ pub async fn get(
         if input_user_id.is_buddy.is_some() && input_user_id.is_buddy.unwrap() {
             are_buddies = match web::block(move || {
                 db::user::check_are_buddies(
-                    &db_connection2,
+                    &mut db_connection2,
                     input_user_id.user_id.unwrap(),
                     auth_user_claims.0.uid,
                 )
@@ -67,14 +68,12 @@ pub async fn get(
             .await?
             {
                 Ok(buddies) => buddies,
-                Err(e) => match e {
-                    _ => {
-                        error!("{}", e);
-                        return Err(ServerError::DatabaseTransactionError(Some(
-                            "Failed to get user data",
-                        )));
-                    }
-                },
+                Err(e) => {
+                    error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(
+                        "Failed to get user data",
+                    )));
+                }
             };
         }
 
@@ -138,11 +137,11 @@ pub async fn create(
     }
 
     let user = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::create_user(&db_connection, &user_data)
+        db::user::create_user(&mut db_connection, &user_data)
     })
     .await?
     {
@@ -221,11 +220,11 @@ pub async fn edit(
     user_data: web::Json<InputEditUser>,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::edit_user(&db_connection, auth_user_claims.0.uid, &user_data)
+        db::user::edit_user(&mut db_connection, auth_user_claims.0.uid, &user_data)
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
@@ -243,11 +242,11 @@ pub async fn change_password(
     let db_thread_pool_pointer_copy = db_thread_pool.clone();
 
     let user = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::get_user_by_id(&db_connection, auth_user_claims.0.uid)
+        db::user::get_user_by_id(&mut db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -283,12 +282,12 @@ pub async fn change_password(
     };
 
     web::block(move || {
-        let db_connection = db_thread_pool_pointer_copy
+        let mut db_connection = db_thread_pool_pointer_copy
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::change_password(
-            &db_connection,
+            &mut db_connection,
             auth_user_claims.0.uid,
             &password_pair.new_password,
         )
@@ -314,12 +313,12 @@ pub async fn send_buddy_request(
     }
 
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::send_buddy_request(
-            &db_connection,
+            &mut db_connection,
             other_user_id.user_id,
             auth_user_claims.0.uid,
         )
@@ -351,12 +350,12 @@ pub async fn retract_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::delete_buddy_request(
-            &db_connection,
+            &mut db_connection,
             request_id.buddy_request_id,
             auth_user_claims.0.uid,
         )
@@ -398,11 +397,15 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
 
     let buddy_request_data = match web::block(move || {
-        let db_connection = db_thread_pool_ref
+        let mut db_connection = db_thread_pool_ref
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::mark_buddy_request_accepted(&db_connection, request_id, auth_user_claims.0.uid)
+        db::user::mark_buddy_request_accepted(
+            &mut db_connection,
+            request_id,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -423,12 +426,12 @@ pub async fn accept_buddy_request(
     };
 
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::create_buddy_relationship(
-            &db_connection,
+            &mut db_connection,
             buddy_request_data.sender_user_id,
             auth_user_claims.0.uid,
         )
@@ -454,12 +457,12 @@ pub async fn decline_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::mark_buddy_request_declined(
-            &db_connection,
+            &mut db_connection,
             request_id.buddy_request_id,
             auth_user_claims.0.uid,
         )
@@ -497,11 +500,14 @@ pub async fn get_all_pending_buddy_requests_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::get_all_pending_buddy_requests_for_user(&db_connection, auth_user_claims.0.uid)
+        db::user::get_all_pending_buddy_requests_for_user(
+            &mut db_connection,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -528,12 +534,12 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::get_all_pending_buddy_requests_made_by_user(
-            &db_connection,
+            &mut db_connection,
             auth_user_claims.0.uid,
         )
     })
@@ -565,12 +571,12 @@ pub async fn get_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     let request = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::get_buddy_request(
-            &db_connection,
+            &mut db_connection,
             request_id.buddy_request_id,
             auth_user_claims.0.uid,
         )
@@ -601,12 +607,12 @@ pub async fn delete_buddy_relationship(
     other_user_id: web::Query<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
         db::user::delete_buddy_relationship(
-            &db_connection,
+            &mut db_connection,
             auth_user_claims.0.uid,
             other_user_id.user_id,
         )
@@ -636,23 +642,21 @@ pub async fn get_buddies(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let buddies = match web::block(move || {
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
-        db::user::get_buddies(&db_connection, auth_user_claims.0.uid)
+        db::user::get_buddies(&mut db_connection, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
-        Err(e) => match e {
-            _ => {
-                error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
-                    "Failed to find buddies for user",
-                )));
-            }
-        },
+        Err(e) => {
+            error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(
+                "Failed to find buddies for user",
+            )));
+        }
     };
 
     Ok(HttpResponse::Ok().json(buddies))
@@ -702,11 +706,12 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -725,8 +730,8 @@ pub mod tests {
             .unwrap()
             .uid;
 
-        let db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
-        let user = db::user::get_user_by_id(&db_connection, user_id).unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
+        let user = db::user::get_user_by_id(&mut db_connection, user_id).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -769,11 +774,12 @@ pub mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -786,11 +792,11 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user = users
             .filter(user_fields::email.eq(&new_user.email.to_lowercase()))
-            .first::<User>(&db_connection)
+            .first::<User>(&mut db_connection)
             .unwrap();
 
         assert_eq!(&new_user.email, &created_user.email);
@@ -818,11 +824,12 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -865,7 +872,7 @@ pub mod tests {
         let edited_user = InputEditUser {
             first_name: format!("Test-{}-edited", &user_number),
             last_name: new_user.last_name.clone(),
-            date_of_birth: new_user.date_of_birth.clone(),
+            date_of_birth: new_user.date_of_birth,
             currency: String::from("DOP"),
         };
 
@@ -925,11 +932,12 @@ pub mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -961,11 +969,12 @@ pub mod tests {
             password: String::from("Password1234"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -996,11 +1005,12 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1064,7 +1074,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_get_with_query_param() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
 
@@ -1081,11 +1091,12 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1187,7 +1198,7 @@ pub mod tests {
         let created_buddy_request = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(user_id))
             .filter(buddy_request_fields::sender_user_id.eq(&other_user.user.id))
-            .first::<BuddyRequest>(&db_connection)
+            .first::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         let req = test::TestRequest::put()
@@ -1303,11 +1314,12 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1366,10 +1378,10 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
+        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
             .unwrap()
             .password_hash;
 
@@ -1400,11 +1412,12 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1463,10 +1476,10 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
+        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
             .unwrap()
             .password_hash;
 
@@ -1497,11 +1510,12 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: String::from("USD"),
         };
 
@@ -1560,10 +1574,10 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 
-        let db_connection = db_thread_pool
+        let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&db_connection, user_id)
+        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
             .unwrap()
             .password_hash;
 
@@ -1580,7 +1594,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_send_buddy_request_and_accept() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1596,7 +1610,7 @@ pub mod tests {
         let user2_access_token = created_user2.token_pair.access_token.clone();
 
         let other_user_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let instant_before_request = chrono::Utc::now().naive_utc();
@@ -1616,7 +1630,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -1628,7 +1642,7 @@ pub mod tests {
             created_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(created_buddy_requests[0].accepted, false);
+        assert!(!created_buddy_requests[0].accepted);
 
         assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
@@ -1654,7 +1668,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -1666,21 +1680,21 @@ pub mod tests {
             created_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(created_buddy_requests[0].accepted, true);
+        assert!(created_buddy_requests[0].accepted);
 
         assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
             .is_some());
         assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
         assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
-        assert!(!created_buddy_requests[0]
+        assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
-            .is_none());
+            .is_some());
 
         let buddy_relationship = buddy_relationships
             .filter(buddy_relationship_fields::user1_id.eq(created_user1.user.id))
             .filter(buddy_relationship_fields::user2_id.eq(created_user2.user.id))
-            .first::<BuddyRelationship>(&db_connection)
+            .first::<BuddyRelationship>(&mut db_connection)
             .unwrap();
 
         assert_eq!(buddy_relationship.user1_id, created_user1.user.id);
@@ -1730,7 +1744,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_accept_buddy_requests_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1748,7 +1762,7 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -1764,7 +1778,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -1784,11 +1798,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
         assert!(!created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::put()
@@ -1806,11 +1822,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
         assert!(!created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::get()
@@ -1843,11 +1861,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_some());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_some());
         assert!(created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::get()
@@ -1869,7 +1889,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_send_buddy_request_and_decline() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -1885,7 +1905,7 @@ pub mod tests {
         let user2_access_token = created_user2.token_pair.access_token.clone();
 
         let other_user_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let instant_before_request = chrono::Utc::now().naive_utc();
@@ -1905,7 +1925,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -1917,7 +1937,7 @@ pub mod tests {
             created_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(created_buddy_requests[0].accepted, false);
+        assert!(!created_buddy_requests[0].accepted);
 
         assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
@@ -1943,7 +1963,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -1955,21 +1975,21 @@ pub mod tests {
             created_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(created_buddy_requests[0].accepted, false);
+        assert!(!created_buddy_requests[0].accepted);
 
         assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
             .is_some());
         assert!(created_buddy_requests[0].created_timestamp > instant_before_request);
         assert!(created_buddy_requests[0].created_timestamp < instant_after_request);
-        assert!(!created_buddy_requests[0]
+        assert!(created_buddy_requests[0]
             .accepted_declined_timestamp
-            .is_none());
+            .is_some());
 
         buddy_relationships
             .filter(buddy_relationship_fields::user1_id.eq(created_user1.user.id))
             .filter(buddy_relationship_fields::user2_id.eq(created_user2.user.id))
-            .first::<BuddyRelationship>(&db_connection)
+            .first::<BuddyRelationship>(&mut db_connection)
             .unwrap_err();
 
         let req = test::TestRequest::get()
@@ -1991,7 +2011,7 @@ pub mod tests {
     #[actix_rt::test]
     async fn test_cannot_decline_buddy_requests_for_another_user() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
             App::new()
@@ -2009,7 +2029,7 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -2025,7 +2045,7 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
@@ -2045,11 +2065,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
         assert!(!created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::put()
@@ -2067,11 +2089,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_none());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_none());
         assert!(!created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::get()
@@ -2104,11 +2128,13 @@ pub mod tests {
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
             .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
-            .load::<BuddyRequest>(&db_connection)
+            .load::<BuddyRequest>(&mut db_connection)
             .unwrap();
 
         assert_eq!(created_buddy_requests.len(), 1);
-        assert!(created_buddy_requests[0].accepted_declined_timestamp.is_some());
+        assert!(created_buddy_requests[0]
+            .accepted_declined_timestamp
+            .is_some());
         assert!(!created_buddy_requests[0].accepted);
 
         let req = test::TestRequest::get()
@@ -2126,11 +2152,219 @@ pub mod tests {
         let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
         serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
     }
-    
+
+    #[actix_rt::test]
+    async fn test_retract_buddy_request() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let mut db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
+
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
+
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/user/retract_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+    }
+
+    #[actix_rt::test]
+    async fn test_cannot_retract_buddy_request_for_another_user() {
+        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let mut db_connection = db_thread_pool.get().unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(db_thread_pool.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let created_user1 = create_user_and_sign_in().await;
+        let created_user2 = create_user_and_sign_in().await;
+        let created_user3 = create_user_and_sign_in().await;
+
+        let user1_access_token = created_user1.token_pair.access_token.clone();
+        let user2_access_token = created_user2.token_pair.access_token.clone();
+        let user3_access_token = created_user3.token_pair.access_token.clone();
+
+        let other_user_id = InputUserId {
+            user_id: created_user2.user.id,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let request_id = created_buddy_requests[0].id;
+
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/user/retract_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/user/retract_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user3_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 1);
+
+        let req = test::TestRequest::delete()
+            .uri(&format!(
+                "/api/user/retract_buddy_request?buddy_request_id={}",
+                created_buddy_requests[0].id,
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let created_buddy_requests = buddy_requests
+            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
+            .filter(buddy_request_fields::sender_user_id.eq(created_user1.user.id))
+            .load::<BuddyRequest>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(created_buddy_requests.len(), 0);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/accept_buddy_request?buddy_request_id={}",
+                request_id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/user/get?user_id={}&is_buddy=true",
+                created_user1.user.id
+            ))
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+        serde_json::from_str::<OutputUserForBuddies>(resp_body.as_str()).unwrap_err();
+    }
+
     // #[actix_rt::test]
-    // async fn test_retract_invitation() {
+    // async fn test_get_all_pending_buddy_requests_for_user() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
@@ -2139,299 +2373,127 @@ pub mod tests {
     //     )
     //     .await;
 
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_budget = created_user1_and_budget.budget;
+    //     let created_user1 = create_user_and_sign_in().await;
+    //     let created_user2 = create_user_and_sign_in().await;
+    //     let created_user3 = create_user_and_sign_in().await;
 
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
+    //     let user1_access_token = created_user1.token_pair.access_token.clone();
+    //     let user2_access_token = created_user2.token_pair.access_token.clone();
+    //     let user3_access_token = created_user3.token_pair.access_token.clone();
 
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-
-    //     let invitation_info = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget.id,
+    //     let other_user_id = InputUserId {
+    //         user_id: created_user3.user.id.clone(),
     //     };
 
     //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
+    //         .uri("/api/user/send_buddy_request")
     //         .insert_header(("content-type", "application/json"))
     //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info)
+    //         .set_json(&other_user_id)
     //         .to_request();
 
     //     let resp = test::call_service(&app, req).await;
     //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 1);
-
-    //     let invite_id = InputShareEventId {
-    //         share_event_id: share_events[0].id,
-    //     };
-
-    //     let req = test::TestRequest::delete()
-    //         .uri(&format!(
-    //             "/api/budget/retract_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 0);
-    // }
-
-    // #[actix_rt::test]
-    // async fn test_cannot_retract_invites_made_by_another_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
-
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
-
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_budget = created_user1_and_budget.budget;
-
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
-
-    //     let created_user3_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
-    //     let user3_access_token = created_user3_and_budget.token_pair.access_token.clone();
-
-    //     let invitation_info = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget.id,
-    //     };
 
     //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 1);
-
-    //     let invite_id = InputShareEventId {
-    //         share_event_id: share_events[0].id,
-    //     };
-
-    //     let req = test::TestRequest::delete()
-    //         .uri(&format!(
-    //             "/api/budget/retract_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
+    //         .uri("/api/user/send_buddy_request")
     //         .insert_header(("content-type", "application/json"))
     //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
+    //         .set_json(&other_user_id)
     //         .to_request();
 
     //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    //     assert_eq!(resp.status(), http::StatusCode::OK);
 
-    //     let req = test::TestRequest::delete()
-    //         .uri(&format!(
-    //             "/api/budget/retract_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //     let created_buddy_requests = buddy_requests
+    //         .filter(buddy_request_fields::recipient_user_id.eq(created_user3.user.id))
+    //         .load::<BuddyRequest>(&mut db_connection)
     //         .unwrap();
 
-    //     assert_eq!(share_events.len(), 1);
-
-    //     let req = test::TestRequest::delete()
-    //         .uri(&format!(
-    //             "/api/budget/retract_invitation?share_event_id={}",
-    //             invite_id.share_event_id
-    //         ))
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let share_events = budget_share_events
-    //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
-    //         .unwrap();
-
-    //     assert_eq!(share_events.len(), 0);
-    // }
-
-    // #[actix_rt::test]
-    // async fn test_get_all_invitations_for_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-
-    //     let app = test::init_service(
-    //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
-    //             .configure(services::api::configure),
-    //     )
-    //     .await;
-
-    //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user1_budget1 = created_user1_and_budget.budget;
-    //     let created_user1_id = created_user1_and_budget.user_id;
-
-    //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
-    //     let created_user2_id = created_user2_and_budget.user_id;
-
-    //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
-    //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
-
-    //     let category0 = InputCategory {
-    //         id: 0,
-    //         name: format!("First Random Category for user1_budget2"),
-    //         limit_cents: rand::thread_rng().gen_range(100..500),
-    //         color: String::from("#ff11ee"),
-    //     };
-
-    //     let category1 = InputCategory {
-    //         id: 1,
-    //         name: format!("Second Random Category user1_budget2"),
-    //         limit_cents: rand::thread_rng().gen_range(100..500),
-    //         color: String::from("#112233"),
-    //     };
-
-    //     let budget_categories = vec![category0, category1];
-
-    //     let new_budget = InputBudget {
-    //         name: format!("Test Budget #2"),
-    //         description: Some(format!("This is a description of Test Budget #2.",)),
-    //         categories: budget_categories.clone(),
-    //         start_date: NaiveDate::from_ymd(
-    //             2021,
-    //             rand::thread_rng().gen_range(1..=12),
-    //             rand::thread_rng().gen_range(1..=28),
-    //         ),
-    //         end_date: NaiveDate::from_ymd(
-    //             2023,
-    //             rand::thread_rng().gen_range(1..=12),
-    //             rand::thread_rng().gen_range(1..=28),
-    //         ),
-    //     };
-
-    //     let create_budget_req = test::TestRequest::post()
-    //         .uri("/api/budget/create")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&new_budget)
-    //         .to_request();
-
-    //     let create_budget_resp = test::call_service(&app, create_budget_req).await;
-    //     let create_budget_resp_body = String::from_utf8(
-    //         actix_web::test::read_body(create_budget_resp)
-    //             .await
-    //             .to_vec(),
-    //     )
-    //     .unwrap();
-
-    //     let created_user1_budget2 =
-    //         serde_json::from_str::<OutputBudget>(create_budget_resp_body.as_str()).unwrap();
-
-    //     let invitation_info_budget1 = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget1.id,
-    //     };
-
-    //     let invitation_info_budget2 = UserInvitationToBudget {
-    //         invitee_user_id: created_user2_id,
-    //         budget_id: created_user1_budget2.id,
-    //     };
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info_budget1)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
-
-    //     let req = test::TestRequest::post()
-    //         .uri("/api/budget/invite")
-    //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user1_access_token}")))
-    //         .set_json(&invitation_info_budget2)
-    //         .to_request();
-
-    //     let resp = test::call_service(&app, req).await;
-    //     assert_eq!(resp.status(), http::StatusCode::OK);
+    //     assert_eq!(created_buddy_requests.len(), 2);
 
     //     let req = test::TestRequest::get()
-    //         .uri("/api/budget/get_all_pending_invitations_for_user")
+    //         .uri("/api/user/get_all_pending_buddy_requests_for_user")
     //         .insert_header(("content-type", "application/json"))
-    //         .insert_header(("authorization", format!("bearer {user2_access_token}")))
+    //         .insert_header(("authorization", format!("bearer {user3_access_token}")))
     //         .to_request();
 
     //     let resp = test::call_service(&app, req).await;
     //     assert_eq!(resp.status(), http::StatusCode::OK);
 
     //     let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
-    //     let invitations =
-    //         serde_json::from_str::<Vec<BudgetShareEvent>>(resp_body.as_str()).unwrap();
+    //     let found_buddy_requests =
+    //         serde_json::from_str::<Vec<BuddyRequest>>(resp_body.as_str()).unwrap();
 
-    //     assert_eq!(invitations.len(), 2);
+    //     assert_eq!(found_buddy_requests.len(), 2);
 
-    //     let budget1_invitation = &invitations[0];
-    //     let budget2_invitation = &invitations[1];
+    // assert_eq!(found_buddy_requests[0]
 
-    //     assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
-    //     assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
-    //     assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
-    //     assert_eq!(budget1_invitation.accepted, false);
-    //     assert!(budget1_invitation.accepted_declined_timestamp.is_none());
+    // let created_user1_budget2 =
+    //     serde_json::from_str::<OutputBudget>(create_budget_resp_body.as_str()).unwrap();
 
-    //     assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
-    //     assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
-    //     assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
-    //     assert_eq!(budget2_invitation.accepted, false);
-    //     assert!(budget2_invitation.accepted_declined_timestamp.is_none());
+    // let invitation_info_budget1 = UserInvitationToBudget {
+    //     invitee_user_id: created_user2_id,
+    //     budget_id: created_user1_budget1.id,
+    // };
+
+    // let invitation_info_budget2 = UserInvitationToBudget {
+    //     invitee_user_id: created_user2_id,
+    //     budget_id: created_user1_budget2.id,
+    // };
+
+    // let req = test::TestRequest::post()
+    //     .uri("/api/budget/invite")
+    //     .insert_header(("content-type", "application/json"))
+    //     .insert_header(("authorization", format!("bearer {user1_access_token}")))
+    //     .set_json(&invitation_info_budget1)
+    //     .to_request();
+
+    // let resp = test::call_service(&app, req).await;
+    // assert_eq!(resp.status(), http::StatusCode::OK);
+
+    // let req = test::TestRequest::post()
+    //     .uri("/api/budget/invite")
+    //     .insert_header(("content-type", "application/json"))
+    //     .insert_header(("authorization", format!("bearer {user1_access_token}")))
+    //     .set_json(&invitation_info_budget2)
+    //     .to_request();
+
+    // let resp = test::call_service(&app, req).await;
+    // assert_eq!(resp.status(), http::StatusCode::OK);
+
+    // let req = test::TestRequest::get()
+    //     .uri("/api/budget/get_all_pending_invitations_for_user")
+    //     .insert_header(("content-type", "application/json"))
+    //     .insert_header(("authorization", format!("bearer {user2_access_token}")))
+    //     .to_request();
+
+    // let resp = test::call_service(&app, req).await;
+    // assert_eq!(resp.status(), http::StatusCode::OK);
+
+    // let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
+    // let invitations =
+    //     serde_json::from_str::<Vec<BudgetShareEvent>>(resp_body.as_str()).unwrap();
+
+    // assert_eq!(invitations.len(), 2);
+
+    // let budget1_invitation = &invitations[0];
+    // let budget2_invitation = &invitations[1];
+
+    // assert_eq!(budget1_invitation.recipient_user_id, created_user2_id);
+    // assert_eq!(budget1_invitation.sender_user_id, created_user1_id);
+    // assert_eq!(budget1_invitation.budget_id, created_user1_budget1.id);
+    // assert_eq!(budget1_invitation.accepted, false);
+    // assert!(budget1_invitation.accepted_declined_timestamp.is_none());
+
+    // assert_eq!(budget2_invitation.recipient_user_id, created_user2_id);
+    // assert_eq!(budget2_invitation.sender_user_id, created_user1_id);
+    // assert_eq!(budget2_invitation.budget_id, created_user1_budget2.id);
+    // assert_eq!(budget2_invitation.accepted, false);
+    // assert!(budget2_invitation.accepted_declined_timestamp.is_none());
     // }
+
+    // TODO
 
     // #[actix_rt::test]
     // async fn test_get_all_invitations_made_by_user() {
@@ -2475,7 +2537,7 @@ pub mod tests {
     //         name: format!("Test Budget #2"),
     //         description: Some(format!("This is a description of Test Budget #2.",)),
     //         categories: budget_categories.clone(),
-    //         start_date: NaiveDate::from_ymd(
+    //         start_date: NaiveDate::from_ymd_opt(
     //             2021,
     //             rand::thread_rng().gen_range(1..=12),
     //             rand::thread_rng().gen_range(1..=28),
@@ -2569,7 +2631,7 @@ pub mod tests {
     // #[actix_rt::test]
     // async fn test_get_invitation() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
@@ -2615,7 +2677,7 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 1);
@@ -2686,7 +2748,7 @@ pub mod tests {
     // #[actix_rt::test]
     // async fn test_remove_user() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
@@ -2724,7 +2786,7 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 1);
@@ -2748,7 +2810,7 @@ pub mod tests {
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user2_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection)
+    //         .first::<UserBudget>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(budget_association.user_id, created_user2_id);
@@ -2772,7 +2834,7 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 1); // Share event still exists
@@ -2780,14 +2842,14 @@ pub mod tests {
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user1_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection);
+    //         .first::<UserBudget>(&mut db_connection);
 
     //     assert!(budget_association.is_err());
 
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user2_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection);
+    //         .first::<UserBudget>(&mut db_connection);
 
     //     assert!(budget_association.is_ok());
 
@@ -2819,7 +2881,7 @@ pub mod tests {
     // #[actix_rt::test]
     // async fn test_remove_last_user_deletes_budget() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
@@ -2858,7 +2920,7 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 1);
@@ -2882,7 +2944,7 @@ pub mod tests {
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user2_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection)
+    //         .first::<UserBudget>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(budget_association.user_id, created_user2_id);
@@ -2906,7 +2968,7 @@ pub mod tests {
 
     //     let budget = budgets
     //         .find(created_user1_budget.id)
-    //         .load::<Budget>(&db_connection);
+    //         .load::<Budget>(&mut db_connection);
 
     //     assert!(budget.is_ok());
 
@@ -2924,14 +2986,14 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 0);
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user2_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 0);
@@ -2939,20 +3001,20 @@ pub mod tests {
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user1_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection);
+    //         .first::<UserBudget>(&mut db_connection);
 
     //     assert!(budget_association.is_err());
 
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user2_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
-    //         .first::<UserBudget>(&db_connection);
+    //         .first::<UserBudget>(&mut db_connection);
 
     //     assert!(budget_association.is_err());
 
     //     let budget = budgets
     //         .find(created_user1_budget.id)
-    //         .get_result::<Budget>(&db_connection);
+    //         .get_result::<Budget>(&mut db_connection);
 
     //     assert!(budget.is_err());
 
@@ -2999,13 +3061,13 @@ pub mod tests {
     //     let budget_association = user_budgets
     //         .filter(user_budget_fields::user_id.eq(created_user2_id))
     //         .filter(user_budget_fields::budget_id.eq(created_user2_budget.id))
-    //         .first::<UserBudget>(&db_connection);
+    //         .first::<UserBudget>(&mut db_connection);
 
     //     assert!(budget_association.is_err());
 
     //     let budget = budgets
     //         .find(created_user2_budget.id)
-    //         .get_result::<Budget>(&db_connection);
+    //         .get_result::<Budget>(&mut db_connection);
 
     //     assert!(budget.is_err());
 
@@ -3025,7 +3087,7 @@ pub mod tests {
     // #[actix_rt::test]
     // async fn test_cannot_delete_budget_for_another_user() {
     //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-    //     let db_connection = db_thread_pool.get().unwrap();
+    //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
@@ -3067,7 +3129,7 @@ pub mod tests {
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-    //         .load::<BudgetShareEvent>(&db_connection)
+    //         .load::<BudgetShareEvent>(&mut db_connection)
     //         .unwrap();
 
     //     assert_eq!(share_events.len(), 1);
@@ -3106,7 +3168,7 @@ pub mod tests {
 
     //     let budget = budgets
     //         .find(created_user1_budget.id)
-    //         .load::<Budget>(&db_connection);
+    //         .load::<Budget>(&mut db_connection);
 
     //     assert!(budget.is_ok());
 
@@ -3152,7 +3214,7 @@ pub mod tests {
 
     //     let budget = budgets
     //         .find(created_user3_budget.id)
-    //         .load::<Budget>(&db_connection);
+    //         .load::<Budget>(&mut db_connection);
 
     //     assert!(budget.is_ok());
 

@@ -13,8 +13,6 @@ use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
-// TODO: This module needs to be refactored for clarity and performace
-
 #[derive(Debug)]
 pub enum TokenError {
     DatabaseError(diesel::result::Error),
@@ -33,7 +31,7 @@ impl fmt::Display for TokenError {
         match self {
             TokenError::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
             TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
-            _ => write!(f, "Error: {}", self),
+            _ => write!(f, "Unknown TokenError"),
         }
     }
 }
@@ -90,7 +88,7 @@ pub struct TokenParams<'a> {
     pub user_currency: &'a str,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,    // Expiration in time since UNIX epoch
     pub uid: Uuid,   // User ID
@@ -131,7 +129,7 @@ impl TokenClaims {
 
         let mut mac =
             Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
-        mac.update(&claims_json_str.as_bytes());
+        mac.update(claims_json_str.as_bytes());
 
         match mac.verify_slice(&hash) {
             Ok(_) => Ok(claims),
@@ -143,34 +141,30 @@ impl TokenClaims {
         Ok(TokenClaims::token_to_claims_and_hash(token)?.0)
     }
 
-    fn token_to_claims_and_hash<'a>(
-        token: &'a str,
-    ) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
+    fn token_to_claims_and_hash(token: &str) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
         let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
         let token_str = String::from_utf8_lossy(&decoded_token);
-        let mut split_token = token_str.split('|').peekable();
+        let mut split_token = token_str.split('|');
 
-        let mut claims_json_str = String::with_capacity(256);
-        let mut hash_str = String::with_capacity(92);
-        while let Some(part) = split_token.next() {
-            if split_token.peek().is_none() {
-                hash_str.push_str(part);
-            } else {
-                claims_json_str.push_str(part);
+        let hash_str = match split_token.next_back() {
+            Some(h) => h,
+            None => {
+                return Err(TokenError::TokenInvalid);
             }
-        }
+        };
 
-        let claims = match serde_json::from_str::<TokenClaims>(&claims_json_str) {
-            Ok(c) => c,
+        let hash = match hex::decode(hash_str) {
+            Ok(h) => h,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
-        let hash = match hex::decode(&hash_str) {
-            Ok(h) => h,
+        let claims_json_str = split_token.collect::<String>();
+        let claims = match serde_json::from_str::<TokenClaims>(&claims_json_str) {
+            Ok(c) => c,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
@@ -285,7 +279,7 @@ pub fn validate_access_token(token: &str) -> Result<TokenClaims, TokenError> {
 #[inline]
 pub fn validate_refresh_token(
     token: &str,
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
 ) -> Result<TokenClaims, TokenError> {
     if is_on_blacklist(token, db_connection)? {
         return Err(TokenError::TokenBlacklisted);
@@ -319,7 +313,7 @@ fn validate_token(token: &str, token_type: TokenType) -> Result<TokenClaims, Tok
 
 pub fn blacklist_token(
     token: &str,
-    db_connection: &DbConnection,
+    db_connection: &mut DbConnection,
 ) -> Result<BlacklistedToken, TokenError> {
     let decoded_token = TokenClaims::from_token_without_validation(token)?;
 
@@ -344,11 +338,10 @@ pub fn blacklist_token(
     }
 }
 
-pub fn is_on_blacklist(token: &str, db_connection: &DbConnection) -> Result<bool, TokenError> {
+pub fn is_on_blacklist(token: &str, db_connection: &mut DbConnection) -> Result<bool, TokenError> {
     match blacklisted_tokens
         .filter(blacklisted_token_fields::token.eq(token))
-        .limit(1)
-        .get_result::<BlacklistedToken>(db_connection)
+        .first::<BlacklistedToken>(db_connection)
     {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
@@ -369,7 +362,7 @@ mod tests {
         let claims = TokenClaims {
             exp: 123456789,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -378,7 +371,7 @@ mod tests {
         let claims_different = TokenClaims {
             exp: 123456788,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -395,13 +388,10 @@ mod tests {
         let decoded_token =
             base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD).unwrap();
         let token_str = String::from_utf8_lossy(&decoded_token);
-        let split_token = token_str.split('|').collect::<Vec<_>>();
+        let mut split_token = token_str.split('|');
+        split_token.next_back();
 
-        let mut claims_json_str = String::new();
-        for i in 0..(split_token.len() - 1) {
-            claims_json_str.push_str(split_token[i]);
-        }
-
+        let claims_json_str = split_token.collect::<String>();
         let decoded_claims = serde_json::from_str::<TokenClaims>(claims_json_str.as_str()).unwrap();
 
         assert_eq!(decoded_claims.exp, claims.exp);
@@ -417,7 +407,7 @@ mod tests {
         let claims = TokenClaims {
             exp: u64::MAX,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -446,7 +436,7 @@ mod tests {
         let claims = TokenClaims {
             exp: u64::MAX,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -471,7 +461,7 @@ mod tests {
         let claims = TokenClaims {
             exp: 1657076995,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -496,7 +486,7 @@ mod tests {
         let claims = TokenClaims {
             exp: 1657076995,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: format!("Testing_tokens@example.com"),
+            eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
             slt: 10000,
@@ -527,11 +517,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -579,11 +570,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -631,11 +623,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -683,11 +676,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -754,11 +748,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -861,11 +856,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -901,7 +897,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_validate_refresh_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -915,11 +911,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -945,13 +942,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            validate_refresh_token(&refresh_token.token, &db_connection)
+            validate_refresh_token(&refresh_token.token, &mut db_connection)
                 .unwrap()
                 .uid,
             user_id
         );
-        assert!(validate_refresh_token(&access_token.token, &db_connection).is_err());
-        assert!(validate_refresh_token(&signin_token.token, &db_connection).is_err());
+        assert!(validate_refresh_token(&access_token.token, &mut db_connection).is_err());
+        assert!(validate_refresh_token(&signin_token.token, &mut db_connection).is_err());
     }
 
     #[actix_rt::test]
@@ -968,11 +965,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1019,11 +1017,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1082,11 +1081,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1130,11 +1130,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1187,7 +1188,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_blacklist_token() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -1201,11 +1202,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1213,7 +1215,7 @@ mod tests {
 
         dsl::insert_into(users)
             .values(&new_user)
-            .execute(&db_connection)
+            .execute(&mut db_connection)
             .unwrap();
 
         let refresh_token = generate_refresh_token(TokenParams {
@@ -1223,7 +1225,7 @@ mod tests {
         })
         .unwrap();
 
-        let blacklist_token = blacklist_token(&refresh_token.token, &db_connection).unwrap();
+        let blacklist_token = blacklist_token(&refresh_token.token, &mut db_connection).unwrap();
 
         assert_eq!(&blacklist_token.token, &refresh_token.token);
         assert!(
@@ -1236,14 +1238,14 @@ mod tests {
 
         blacklisted_tokens
             .filter(blacklisted_token_fields::token.eq(&refresh_token.token))
-            .get_result::<BlacklistedToken>(&db_connection)
+            .get_result::<BlacklistedToken>(&mut db_connection)
             .unwrap();
     }
 
     #[actix_rt::test]
     async fn test_is_token_on_blacklist() {
         let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -1257,11 +1259,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1269,7 +1272,7 @@ mod tests {
 
         dsl::insert_into(users)
             .values(&new_user)
-            .execute(&db_connection)
+            .execute(&mut db_connection)
             .unwrap();
 
         let refresh_token = generate_refresh_token(TokenParams {
@@ -1279,11 +1282,11 @@ mod tests {
         })
         .unwrap();
 
-        assert!(!is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
+        assert!(!is_on_blacklist(&refresh_token.token, &mut db_connection).unwrap());
 
-        blacklist_token(&refresh_token.token, &db_connection).unwrap();
+        blacklist_token(&refresh_token.token, &mut db_connection).unwrap();
 
-        assert!(is_on_blacklist(&refresh_token.token, &db_connection).unwrap());
+        assert!(is_on_blacklist(&refresh_token.token, &mut db_connection).unwrap());
     }
 
     #[actix_rt::test]
@@ -1300,11 +1303,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1336,11 +1340,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -1372,11 +1377,12 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd(
+            date_of_birth: NaiveDate::from_ymd_opt(
                 rand::thread_rng().gen_range(1950..=2020),
                 rand::thread_rng().gen_range(1..=12),
                 rand::thread_rng().gen_range(1..=28),
-            ),
+            )
+            .unwrap(),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,

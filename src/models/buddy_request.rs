@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::schema::buddy_requests;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[table_name = "buddy_requests"]
+#[diesel(table_name = buddy_requests)]
 pub struct BuddyRequest {
     pub id: uuid::Uuid,
 
@@ -19,7 +19,7 @@ pub struct BuddyRequest {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "buddy_requests"]
+#[diesel(table_name = buddy_requests)]
 pub struct NewBuddyRequest {
     pub id: uuid::Uuid,
 

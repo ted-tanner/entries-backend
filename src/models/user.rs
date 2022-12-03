@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::users;
 
-#[derive(
-    Clone, Debug, Serialize, Deserialize, Associations, Identifiable, Queryable, QueryableByName,
-)]
-#[table_name = "users"]
+#[derive(Clone, Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
+#[diesel(table_name = users)]
 pub struct User {
     pub id: uuid::Uuid,
     pub password_hash: String,
@@ -27,7 +25,7 @@ pub struct User {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "users"]
+#[diesel(table_name = users)]
 pub struct NewUser<'a> {
     pub id: uuid::Uuid,
     pub password_hash: &'a str,

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::budgets;
 
-#[derive(Debug, Serialize, Deserialize, Associations, Identifiable, Queryable, QueryableByName)]
-#[table_name = "budgets"]
+#[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
+#[diesel(table_name = budgets)]
 pub struct Budget {
     pub id: uuid::Uuid,
     pub is_shared: bool,
@@ -24,7 +24,7 @@ pub struct Budget {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "budgets"]
+#[diesel(table_name = budgets)]
 pub struct NewBudget<'a> {
     pub id: uuid::Uuid,
     pub is_shared: bool,
