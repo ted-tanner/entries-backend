@@ -1,32 +1,12 @@
-[package]
-name = "budgetapp-server"
-authors = ["Tanner Davies <tanner.e.davies@gmail.com>"]
+[workspace]
+
+members = [
+    "budgetapp-server",
+    "budgetapp-utils",
+    "budgetapp-cron",
+]
+
+[workspace.package]
+authors = ["Tanner Davies"]
 version = "0.1.0"
 edition = "2021"
-
-[dependencies]
-actix-web = "4.2"
-base64 = "0.13"
-chrono = { version = "0.4", features = ["serde"] }
-diesel = { version = "2.0", features = ["postgres", "uuid", "r2d2", "chrono"] }
-env_logger = "0.10"
-futures = "0.3"
-hex = "0.4"
-hmac = "0.12"
-lazy_static = "1.4"
-log = "0.4"
-rand = "0.8"
-ring = "0.16"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.10"
-toml = "0.5"
-uuid = { version = "1.2", features = ["serde", "v4"] }
-
-[dev-dependencies]
-actix-http = "3.2"
-actix-rt = "2.7"
-
-[build-dependencies]
-bindgen = "0.63"
-cc = { version = "1.0", features = ["parallel"] }
