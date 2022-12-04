@@ -1,16 +1,16 @@
-use actix_web::{web, HttpResponse};
-use log::error;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::definitions::*;
-use crate::env;
-use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{
+use budgetapp_utils::db::DbThreadPool;
+use budgetapp_utils::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
+use budgetapp_utils::{auth_token, db, otp, password_hasher};
+
+use actix_web::{web, HttpResponse};
+use log::error;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use crate::env;
+use crate::handlers::error::ServerError;
 use crate::middleware;
-use crate::utils::db;
-use crate::utils::{auth_token, otp, password_hasher};
 
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -22,16 +22,12 @@ pub async fn sign_in(
         return Err(ServerError::InvalidFormat(Some("Invalid email address")));
     }
 
-    let password = credentials.password.clone();
-
-    let db_thread_pool_copy = db_thread_pool.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
+    let user_email = credentials.email.clone();
 
     let user = match web::block(move || {
-        let mut db_connection = db_thread_pool_copy
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_user_by_email(&mut db_connection, &credentials.email)
+        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        user_dao.get_user_by_email(user_email)
     })
     .await?
     {
@@ -40,10 +36,8 @@ pub async fn sign_in(
     };
 
     let attempts = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::auth::get_and_increment_password_attempt_count(&mut db_connection, user.id)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.get_and_increment_password_attempt_count(user.id)
     })
     .await?
     {
@@ -62,15 +56,25 @@ pub async fn sign_in(
         )));
     }
 
-    let does_password_match_hash =
-        web::block(move || password_hasher::verify_hash(&password, &user.password_hash)).await?;
+    let does_password_match_hash = web::block(move || {
+        password_hasher::verify_hash(
+            &credentials.password,
+            &user.password_hash,
+            &*env::CONF.keys.hashing_key.as_bytes(),
+        )
+    })
+    .await?;
 
     if does_password_match_hash {
-        let signin_token = auth_token::generate_signin_token(auth_token::TokenParams {
-            user_id: &user.id,
-            user_email: &user.email,
-            user_currency: &user.currency,
-        });
+        let signin_token = auth_token::generate_signin_token(
+            &auth_token::TokenParams {
+                user_id: &user.id,
+                user_email: &user.email,
+                user_currency: &user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            &*env::CONF.keys.token_signing_key.as_bytes(),
+        );
 
         let signin_token = match signin_token {
             Ok(signin_token) => signin_token,
@@ -98,6 +102,8 @@ pub async fn sign_in(
         let otp = match otp::generate_otp(
             user.id,
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            &*env::CONF.keys.otp_key.as_bytes(),
         ) {
             Ok(p) => p,
             Err(e) => {
@@ -119,33 +125,35 @@ pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let token_claims =
-        match web::block(move || auth_token::validate_signin_token(&otp_and_token.0.signin_token))
-            .await?
-        {
-            Ok(t) => t,
-            Err(e) => match e {
-                auth_token::TokenError::TokenInvalid => {
-                    return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
-                }
-                auth_token::TokenError::TokenExpired => {
-                    return Err(ServerError::UserUnauthorized(Some("Token has expired")))
-                }
-                auth_token::TokenError::WrongTokenType => {
-                    return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
-                }
-                e => {
-                    error!("{}", e);
-                    return Err(ServerError::InternalError(Some("Error verifying token")));
-                }
-            },
-        };
+    let token_claims = match web::block(move || {
+        auth_token::validate_signin_token(
+            &otp_and_token.0.signin_token,
+            &*env::CONF.keys.token_signing_key.as_bytes(),
+        )
+    })
+    .await?
+    {
+        Ok(t) => t,
+        Err(e) => match e {
+            auth_token::TokenError::TokenInvalid => {
+                return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+            }
+            auth_token::TokenError::TokenExpired => {
+                return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+            }
+            auth_token::TokenError::WrongTokenType => {
+                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+            }
+            e => {
+                error!("{}", e);
+                return Err(ServerError::InternalError(Some("Error verifying token")));
+            }
+        },
+    };
 
     let attempts = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::auth::get_and_increment_otp_verification_count(&mut db_connection, token_claims.uid)
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.get_and_increment_otp_verification_count(token_claims.uid)
     })
     .await?
     {
@@ -172,7 +180,13 @@ pub async fn verify_otp_for_signin(
             .expect("Failed to fetch system time")
             .as_secs();
 
-        let mut is_valid = otp::verify_otp(otp, token_claims.uid, current_time)?;
+        let mut is_valid = otp::verify_otp(
+            otp,
+            token_claims.uid,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            &*env::CONF.keys.otp_key.as_bytes(),
+        )?;
 
         // A future code gets sent to the user, so check a current and future code
         if !is_valid {
@@ -180,6 +194,8 @@ pub async fn verify_otp_for_signin(
                 otp,
                 token_claims.uid,
                 current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+                Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+                &*env::CONF.keys.otp_key.as_bytes(),
             )?;
         }
 
@@ -207,11 +223,17 @@ pub async fn verify_otp_for_signin(
     if !is_valid {
         return Err(ServerError::UserUnauthorized(Some("Incorrect passcode")));
     }
-    let token_pair = auth_token::generate_token_pair(auth_token::TokenParams {
-        user_id: &token_claims.uid,
-        user_email: &token_claims.eml,
-        user_currency: &token_claims.cur,
-    });
+
+    let token_pair = auth_token::generate_token_pair(
+        &auth_token::TokenParams {
+            user_id: &token_claims.uid,
+            user_email: &token_claims.eml,
+            user_currency: &token_claims.cur,
+        },
+        Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+        Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
+        &*env::CONF.keys.token_signing_key.as_bytes(),
+    );
 
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
@@ -235,15 +257,12 @@ pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_pointer_copy = db_thread_pool.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
     let refresh_token = token.0.token.clone();
 
     let claims = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        auth_token::validate_refresh_token(token.0.token.as_str(), &mut db_connection)
+        let auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
+        auth_token::validate_refresh_token(token.0.token.as_str(), &mut auth_dao)
     })
     .await?
     {
@@ -270,12 +289,13 @@ pub async fn refresh_tokens(
         },
     };
 
+    // TODO: Make it so users don't have to wait for this
     match web::block(move || {
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_token::blacklist_token(
             refresh_token.as_str(),
-            &mut db_thread_pool_pointer_copy
-                .get()
-                .expect("Failed to access database thread pool"),
+            &*env::CONF.keys.token_signing_key.as_bytes(),
+            &mut auth_dao,
         )
     })
     .await?
@@ -289,11 +309,16 @@ pub async fn refresh_tokens(
         }
     }
 
-    let token_pair = auth_token::generate_token_pair(auth_token::TokenParams {
-        user_id: &claims.uid,
-        user_email: &claims.eml,
-        user_currency: &claims.cur,
-    });
+    let token_pair = auth_token::generate_token_pair(
+        &auth_token::TokenParams {
+            user_id: &claims.uid,
+            user_email: &claims.eml,
+            user_currency: &claims.cur,
+        },
+        Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+        Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
+        &*env::CONF.keys.token_signing_key.as_bytes(),
+    );
 
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
@@ -318,15 +343,12 @@ pub async fn logout(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_pointer_copy = db_thread_pool.clone();
-    let refresh_token_copy = refresh_token.token.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
+    let refresh_token_clone = refresh_token.token.clone();
 
     let refresh_token_claims = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        auth_token::validate_refresh_token(&refresh_token_copy, &mut db_connection)
+        let auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
+        auth_token::validate_refresh_token(&refresh_token_clone, &mut auth_dao)
     })
     .await?
     {
@@ -360,12 +382,8 @@ pub async fn logout(
     }
 
     match web::block(move || {
-        auth_token::blacklist_token(
-            refresh_token.0.token.as_str(),
-            &mut db_thread_pool_pointer_copy
-                .get()
-                .expect("Failed to access database thread pool"),
-        )
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_token::blacklist_token(refresh_token.0.token.as_str(), &mut auth_dao)
     })
     .await
     {

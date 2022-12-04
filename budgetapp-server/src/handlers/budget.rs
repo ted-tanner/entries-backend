@@ -1,15 +1,15 @@
+use budgetapp_utils::request_io::{
+    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareEventId,
+    OutputBudget, UserInvitationToBudget,
+};
+use budgetapp_utils::{db, db::DbThreadPool};
+
 use actix_web::{web, HttpResponse};
 use log::error;
 use uuid::Uuid;
 
-use crate::definitions::DbThreadPool;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareEventId,
-    OutputBudget, UserInvitationToBudget,
-};
 use crate::middleware;
-use crate::utils::db;
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -17,14 +17,8 @@ pub async fn get(
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let budget = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::budget::get_budget_by_id(
-            &mut db_connection,
-            budget_id.budget_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_budget_by_id(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -54,10 +48,8 @@ pub async fn get_all(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::budget::get_all_budgets_for_user(&mut db_connection, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_all_budgets_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -88,11 +80,8 @@ pub async fn get_all_between_dates(
     date_range: web::Query<InputDateRange>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::budget::get_all_budgets_for_user_between_dates(
-            &mut db_connection,
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_all_budgets_for_user_between_dates(
             auth_user_claims.0.uid,
             date_range.start_date,
             date_range.end_date,
@@ -127,10 +116,8 @@ pub async fn create(
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::budget::create_budget(&mut db_connection, &budget_data, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.create_budget(&budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -164,11 +151,8 @@ pub async fn edit(
     }
 
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::edit_budget(&mut db_connection, &budget_data, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.edit_budget(&budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -196,13 +180,11 @@ pub async fn add_entry(
     entry_data: web::Json<InputEntry>,
 ) -> Result<HttpResponse, ServerError> {
     let budget_id = entry_data.budget_id;
-    ensure_user_in_budget(db_thread_pool.clone(), auth_user_claims.0.uid, budget_id).await?;
+    ensure_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
 
     let new_entry = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        db::budget::create_entry(&mut db_connection, &entry_data, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.create_entry(&entry_data, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -237,20 +219,11 @@ pub async fn invite_user(
         )));
     }
 
-    ensure_user_in_budget(
-        db_thread_pool.clone(),
-        inviting_user_id,
-        invitation_info.budget_id,
-    )
-    .await?;
+    ensure_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id).await?;
 
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::invite_user(
-            &mut db_connection,
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.invite_user(
             invitation_info.budget_id,
             invitation_info.invitee_user_id,
             inviting_user_id,
@@ -282,15 +255,8 @@ pub async fn retract_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::delete_invitation(
-            &mut db_connection,
-            invitation_id.share_event_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.delete_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -328,15 +294,8 @@ pub async fn accept_invitation(
     let share_event_id = invitation_id.share_event_id;
 
     let budget_id = match web::block(move || {
-        let mut db_connection = db_thread_pool_ref
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::mark_invitation_accepted(
-            &mut db_connection,
-            share_event_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+        budget_dao.mark_invitation_accepted(share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -357,11 +316,8 @@ pub async fn accept_invitation(
     };
 
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::add_user(&mut db_connection, budget_id, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.add_user(budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -383,15 +339,8 @@ pub async fn decline_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::mark_invitation_declined(
-            &mut db_connection,
-            invitation_id.share_event_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.mark_invitation_declined(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -425,11 +374,8 @@ pub async fn get_all_pending_invitations_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::get_all_pending_invitations_for_user(&mut db_connection, auth_user_claims.0.uid)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_all_pending_invitations_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -455,14 +401,8 @@ pub async fn get_all_pending_invitations_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::get_all_pending_invitations_made_by_user(
-            &mut db_connection,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_all_pending_invitations_made_by_user(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -489,15 +429,8 @@ pub async fn get_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::get_invitation(
-            &mut db_connection,
-            invitation_id.share_event_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -530,15 +463,8 @@ pub async fn remove_budget(
     let budget_id_second_clone = budget_id.0.clone();
 
     let rows_affected_count = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::remove_user(
-            &mut db_connection,
-            budget_id.budget_id,
-            auth_user_claims.0.uid,
-        )
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.remove_user(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -568,11 +494,8 @@ pub async fn remove_budget(
     //       already been removed from the budget, so the handler can return without finishing
     //       deleting the budget
     let remaining_users_in_budget = match web::block(move || {
-        let mut db_connection = db_thread_pool_clone
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::count_users_remaining_in_budget(&mut db_connection, budget_id_clone.budget_id)
+        let budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
+        budget_dao.count_users_remaining_in_budget(budget_id_clone.budget_id)
     })
     .await?
     {
@@ -588,11 +511,8 @@ pub async fn remove_budget(
 
     if remaining_users_in_budget == 0 {
         match web::block(move || {
-            let mut db_connection = db_thread_pool_second_clone
-                .get()
-                .expect("Failed to access database thread pool");
-
-            db::budget::delete_budget(&mut db_connection, budget_id_second_clone.budget_id)
+            let budget_dao = db::budget::Dao::new(&db_thread_pool_second_clone);
+            budget_dao.delete_budget(budget_id_second_clone.budget_id)
         })
         .await?
         {
@@ -610,16 +530,13 @@ pub async fn remove_budget(
 }
 
 async fn ensure_user_in_budget(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_thread_pool: &DbThreadPool,
     user_id: Uuid,
     budget_id: Uuid,
 ) -> Result<(), ServerError> {
     let is_user_in_budget = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::budget::check_user_in_budget(&mut db_connection, user_id, budget_id)
+        let budget_dao = db::budget::Dao::new(db_thread_pool);
+        budget_dao.check_user_in_budget(user_id, budget_id)
     })
     .await?
     {

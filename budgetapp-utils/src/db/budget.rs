@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
 
-use crate::db::{DaoError, DataAccessor, DbConnection, DbThreadPool};
+use crate::db::{DaoError, DbConnection, DbThreadPool};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::budget_share_event::{BudgetShareEvent, NewBudgetShareEvent};
 use crate::models::category::{Category, NewCategory};
@@ -32,16 +32,14 @@ pub struct Dao {
     db_thread_pool: DbThreadPool,
 }
 
-impl DataAccessor for Dao {
-    fn new(db_thread_pool: DbThreadPool) -> Self {
+impl Dao {
+    pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {
             db_connection: None,
-            db_thread_pool,
+            db_thread_pool: db_thread_pool.clone(),
         }
     }
-}
 
-impl Dao {
     fn get_connection(&mut self) -> Result<Rc<RefCell<DbConnection>>, DaoError> {
         if let Some(conn) = &self.db_connection {
             Ok(Rc::clone(conn))
@@ -585,7 +583,7 @@ pub mod tests {
         };
 
         let created_budget =
-            Dao::new(db_thread_pool.clone()).create_budget(&new_budget, created_user.id)?;
+            Dao::new(&db_thread_pool).create_budget(&new_budget, created_user.id)?;
 
         Ok(UserAndBudget {
             user: created_user,
@@ -596,7 +594,7 @@ pub mod tests {
     #[test]
     fn test_create_budget() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
@@ -621,7 +619,7 @@ pub mod tests {
             hash_lanes: 2,
         };
 
-        let created_user = user::Dao::new(db_thread_pool.clone())
+        let created_user = user::Dao::new(&db_thread_pool)
             .create_user(
                 &new_user,
                 &hash_params,
@@ -707,7 +705,7 @@ pub mod tests {
     #[test]
     fn test_invite_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -758,7 +756,7 @@ pub mod tests {
     #[test]
     fn test_delete_invitation() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -794,7 +792,7 @@ pub mod tests {
     #[test]
     fn test_mark_invitation_accepted() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -859,7 +857,7 @@ pub mod tests {
     #[test]
     fn test_mark_invitation_declined() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -921,7 +919,7 @@ pub mod tests {
     #[test]
     fn test_get_all_pending_invitations_for_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
         let created_user_and_budget2 = generate_user_and_budget().unwrap();
@@ -987,7 +985,7 @@ pub mod tests {
     #[test]
     fn test_get_all_pending_invitations_made_by_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
         let created_user_and_budget2 = generate_user_and_budget().unwrap();
@@ -1053,7 +1051,7 @@ pub mod tests {
     #[test]
     fn test_get_invitation() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -1108,7 +1106,7 @@ pub mod tests {
     #[test]
     fn test_add_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -1204,7 +1202,7 @@ pub mod tests {
     #[test]
     fn test_remove_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
@@ -1285,7 +1283,7 @@ pub mod tests {
     #[test]
     fn test_count_users_remaining_in_budget() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget1 = generate_user_and_budget().unwrap();
         let created_user_and_budget2 = generate_user_and_budget().unwrap();
@@ -1317,7 +1315,7 @@ pub mod tests {
     #[test]
     fn test_delete_budget() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1333,7 +1331,7 @@ pub mod tests {
     #[test]
     fn test_edit_budget_one_field() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1382,7 +1380,7 @@ pub mod tests {
     #[test]
     fn test_edit_budget_all_fields() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1440,7 +1438,7 @@ pub mod tests {
     #[test]
     fn test_edit_budget_start_date_cannot_be_after_end_date() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1462,7 +1460,7 @@ pub mod tests {
     #[test]
     fn test_create_entry() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
@@ -1514,7 +1512,7 @@ pub mod tests {
     #[test]
     fn test_get_budget_by_id() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1611,7 +1609,7 @@ pub mod tests {
     #[test]
     fn test_get_all_budgets_for_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
@@ -1651,11 +1649,10 @@ pub mod tests {
             .unwrap(),
         };
 
-        let mut created_budgets = Vec::new();
-
-        created_budgets.push(dao.create_budget(&new_budget1, created_user.id).unwrap());
-
-        created_budgets.push(budget0);
+        let created_budgets = vec![
+            dao.create_budget(&new_budget1, created_user.id).unwrap(),
+            budget0,
+        ];
 
         let entry0 = InputEntry {
             budget_id: created_budgets[0].id,
@@ -1785,7 +1782,7 @@ pub mod tests {
     #[test]
     fn test_get_all_budgets_for_user_between_dates() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(db_thread_pool.clone());
+        let mut dao = Dao::new(&db_thread_pool);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let new_user = InputUser {
@@ -1810,7 +1807,7 @@ pub mod tests {
             hash_lanes: 2,
         };
 
-        let created_user = user::Dao::new(db_thread_pool.clone())
+        let created_user = user::Dao::new(&db_thread_pool)
             .create_user(
                 &new_user,
                 &hash_params,

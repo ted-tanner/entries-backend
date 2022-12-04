@@ -9,10 +9,6 @@ pub mod user;
 pub type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 pub type DbConnection = PooledConnection<ConnectionManager<PgConnection>>;
 
-pub trait DataAccessor {
-    fn new(db_thread_pool: DbThreadPool) -> Self;
-}
-
 #[derive(Debug)]
 pub enum DaoError {
     DbThreadPoolFailure(r2d2::Error),

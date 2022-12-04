@@ -12,15 +12,10 @@ use env_logger::Env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
-mod cron;
-mod definitions;
 mod env;
 mod handlers;
 mod middleware;
-mod models;
-mod schema;
 mod services;
-mod utils;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -83,11 +78,6 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
-            "--schedule-cron-jobs" => {
-                schedule_cron_jobs = true;
-
-                continue;
-            }
             a => {
                 eprintln!("Invalid argument: {}", &a);
                 std::process::exit(1);
@@ -101,7 +91,9 @@ async fn main() -> std::io::Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let cpu_count = num_cpus::get().try_into().expect("Failed to represent CPU count");
+    let cpu_count = num_cpus::get()
+        .try_into()
+        .expect("Failed to represent CPU count");
 
     let actix_workers = if let Some(count) = env::CONF.workers.actix_workers {
         count
@@ -140,94 +132,6 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    // Declaring a vec of job runners here to give it the same lifetime as the HTTP server
-    let mut runners = Vec::new();
-
-    if schedule_cron_jobs {
-        let db_thread_pool_ref = db_thread_pool.clone();
-
-        let clear_otp_verification_count_job = move || {
-            let mut db_connection = db_thread_pool_ref
-                .get()
-                .expect("Failed to get thread for connecting to db");
-
-            if utils::db::auth::clear_otp_verification_count(&mut db_connection).is_err() {
-                return Err(cron::CronJobError::JobFailure(Some(
-                    "Failed to clear recent OTP verfications",
-                )));
-            }
-
-            Ok(())
-        };
-
-        let db_thread_pool_ref = db_thread_pool.clone();
-
-        let clear_password_attempt_count_job = move || {
-            let mut db_connection = db_thread_pool_ref
-                .get()
-                .expect("Failed to get thread for connecting to db");
-
-            if utils::db::auth::clear_password_attempt_count(&mut db_connection).is_err() {
-                return Err(cron::CronJobError::JobFailure(Some(
-                    "Failed to clear recent password attempts",
-                )));
-            }
-
-            Ok(())
-        };
-
-        let db_thread_pool_ref = db_thread_pool.clone();
-
-        let clear_expired_blacklisted_tokens_job = move || {
-            let mut db_connection = db_thread_pool_ref
-                .get()
-                .expect("Failed to get thread for connecting to db");
-
-            if utils::db::auth::clear_all_expired_refresh_tokens(&mut db_connection).is_err() {
-                return Err(cron::CronJobError::JobFailure(Some(
-                    "Failed to clear expired refresh tokens",
-                )));
-            }
-
-            Ok(())
-        };
-
-        const SECONDS_IN_DAY: u64 = 86_400;
-        let long_lifetime_runner =
-            cron::Runner::with_granularity(Duration::from_secs(SECONDS_IN_DAY));
-
-        let otp_attempts_reset_runner = cron::Runner::with_granularity(Duration::from_secs(
-            TryInto::<u64>::try_into(env::CONF.security.otp_attempts_reset_mins)
-                .expect("Invalid otp_attempts_reset_mins config")
-                * 60,
-        ));
-
-        let password_attempts_reset_runner = cron::Runner::with_granularity(Duration::from_secs(
-            TryInto::<u64>::try_into(env::CONF.security.password_attempts_reset_mins)
-                .expect("Invalid password_attempts_reset_mins config")
-                * 60,
-        ));
-
-        long_lifetime_runner.add_job(
-            clear_expired_blacklisted_tokens_job,
-            String::from("Clear expired blacklisted refresh tokens"),
-        );
-
-        otp_attempts_reset_runner.add_job(
-            clear_otp_verification_count_job,
-            String::from("Clear OTP Verificaiton"),
-        );
-
-        password_attempts_reset_runner.add_job(
-            clear_password_attempt_count_job,
-            String::from("Clear Password Attemps"),
-        );
-
-        runners.push(long_lifetime_runner);
-        runners.push(otp_attempts_reset_runner);
-        runners.push(password_attempts_reset_runner);
-    }
-
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
@@ -238,13 +142,5 @@ async fn main() -> std::io::Result<()> {
     .workers(actix_workers)
     .bind(base_addr)?
     .run()
-    .await?;
-
-    // Log something so the runners vec doesn't get optimized away. This won't actually be
-    // reached.
-    for _ in runners {
-        log::info!("Shutting down cron job runner...");
-    }
-
-    Ok(())
+    .await?
 }

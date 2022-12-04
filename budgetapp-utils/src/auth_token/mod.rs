@@ -354,7 +354,6 @@ mod tests {
     use chrono::NaiveDate;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 
-    use crate::db::DataAccessor;
     use crate::models::blacklisted_token::BlacklistedToken;
     use crate::models::user::NewUser;
     use crate::schema::blacklisted_tokens as blacklisted_token_fields;
@@ -998,7 +997,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(db_thread_pool.clone());
+        let mut dao = AuthDao::new(&db_thread_pool);
 
         assert_eq!(
             validate_refresh_token(
@@ -1390,7 +1389,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(db_thread_pool.clone());
+        let mut dao = AuthDao::new(&db_thread_pool);
         blacklist_token(&refresh_token.token, &mut dao).unwrap();
 
         // Should panic if none are found
@@ -1444,7 +1443,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(db_thread_pool.clone());
+        let mut dao = AuthDao::new(&db_thread_pool);
         assert!(!is_on_blacklist(&refresh_token.token, &mut dao).unwrap());
 
         blacklist_token(&refresh_token.token, &mut dao).unwrap();

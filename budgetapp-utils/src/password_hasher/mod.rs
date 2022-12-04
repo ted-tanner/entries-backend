@@ -426,14 +426,13 @@ pub fn hash_argon2id(
     memory_kib: u32,
     lanes: u32,
 ) -> BinaryHash {
-    let mut password_mut = String::from(password);
     let mut hash_buffer = vec![0u8; usize::try_from(hash_len).expect("Invalid hash length")];
 
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),
         outlen: u32::try_from(hash_buffer.len()).expect("Password hash is too long"),
-        pwd: unsafe { password_mut.as_bytes_mut().as_mut_ptr() },
-        pwdlen: u32::try_from(password_mut.len()).expect("Password is too long"),
+        pwd: password.as_bytes() as *const _ as *mut _,
+        pwdlen: u32::try_from(password.len()).expect("Password is too long"),
         salt: salt.as_ptr() as *mut _,
         saltlen: u32::try_from(salt.len()).expect("Password salt is too long"),
         secret: key.as_ptr() as *mut _,

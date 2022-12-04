@@ -1,8 +1,8 @@
+use budgetapp_utils::auth_token;
+
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
-
-use crate::utils::auth_token;
 
 #[derive(Debug)]
 pub struct AuthorizedUserClaims(pub auth_token::TokenClaims);
@@ -52,12 +52,12 @@ impl FromRequest for AuthorizedUserClaims {
 mod tests {
     use super::*;
 
+    use budgetapp_utils::models::user::NewUser;
+
     use actix_web::test;
     use chrono::NaiveDate;
     use rand::prelude::*;
     use uuid::Uuid;
-
-    use crate::models::user::NewUser;
 
     #[actix_rt::test]
     async fn test_auth_token_user_auth_middleware() {

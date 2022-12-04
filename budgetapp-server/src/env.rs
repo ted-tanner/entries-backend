@@ -85,20 +85,6 @@ fn build_conf() -> Conf {
     }
 }
 
-pub mod password {
-    use crate::utils::common_password_set::CommonPasswordSet;
-
-    lazy_static! {
-        pub static ref COMMON_PASSWORDS_FILE_PATH: &'static str = "./assets/common-passwords.txt";
-        pub static ref COMMON_PASSWORDS_SET: CommonPasswordSet = CommonPasswordSet::generate();
-    }
-
-    pub fn initialize() {
-        let _ = *COMMON_PASSWORDS_FILE_PATH;
-        let _ = *COMMON_PASSWORDS_SET;
-    }
-}
-
 #[cfg(test)]
 pub mod testing {
     use crate::definitions::*;
@@ -132,6 +118,5 @@ pub fn initialize() {
         std::process::exit(1);
     }
 
-    password::initialize();
     rand::initialize();
 }

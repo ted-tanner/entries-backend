@@ -3,8 +3,6 @@ pub mod budget;
 pub mod index;
 pub mod user;
 
-pub mod request_io;
-
 pub mod error {
     use actix_web::http::{header, StatusCode};
     use actix_web::{HttpResponse, HttpResponseBuilder};

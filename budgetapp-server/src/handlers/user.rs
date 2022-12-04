@@ -1,17 +1,17 @@
+use budgetapp_utils::db::DbThreadPool;
+use budgetapp_utils::request_io::{
+    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
+    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
+};
+use budgetapp_utils::{auth_token, db, otp, password_hasher};
+
 use actix_web::{web, HttpResponse};
 use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::definitions::DbThreadPool;
 use crate::env;
 use crate::handlers::error::ServerError;
-use crate::handlers::request_io::{
-    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
-    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
-};
 use crate::middleware;
-use crate::utils::db;
-use crate::utils::{auth_token, otp, password_hasher, validators};
 
 // TODO: Test when query param is some
 pub async fn get(
@@ -27,43 +27,39 @@ pub async fn get(
         auth_user_claims.0.uid
     };
 
-    let mut db_connection = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
-    let mut db_connection2 = db_thread_pool
-        .get()
-        .expect("Failed to access database thread pool");
+    let db_thread_pool_clone = db_thread_pool.clone();
 
-    let user =
-        match web::block(move || db::user::get_user_by_id(&mut db_connection, user_id)).await? {
-            Ok(u) => u,
-            Err(e) => match e {
-                diesel::result::Error::InvalidCString(_)
-                | diesel::result::Error::DeserializationError(_) => {
-                    return Err(ServerError::InvalidFormat(None))
-                }
-                diesel::result::Error::NotFound => {
-                    return Err(ServerError::AccessForbidden(Some("No user with ID")))
-                }
-                _ => {
-                    error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(
-                        "Failed to get user data",
-                    )));
-                }
-            },
-        };
+    let user = match web::block(move || {
+        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        user_dao.get_user_by_id(user_id)
+    })
+    .await?
+    {
+        Ok(u) => u,
+        Err(e) => match e {
+            diesel::result::Error::InvalidCString(_)
+            | diesel::result::Error::DeserializationError(_) => {
+                return Err(ServerError::InvalidFormat(None))
+            }
+            diesel::result::Error::NotFound => {
+                return Err(ServerError::AccessForbidden(Some("No user with ID")))
+            }
+            _ => {
+                error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(
+                    "Failed to get user data",
+                )));
+            }
+        },
+    };
 
     if is_another_user_requesting && user_id != auth_user_claims.0.uid {
         let mut are_buddies = false;
 
         if input_user_id.is_buddy.is_some() && input_user_id.is_buddy.unwrap() {
             are_buddies = match web::block(move || {
-                db::user::check_are_buddies(
-                    &mut db_connection2,
-                    input_user_id.user_id.unwrap(),
-                    auth_user_claims.0.uid,
-                )
+                let user_dao = db::user::Dao::new(&db_thread_pool);
+                user_dao.check_are_buddies(input_user_id.user_id.unwrap(), auth_user_claims.0.uid)
             })
             .await?
             {
@@ -137,11 +133,8 @@ pub async fn create(
     }
 
     let user = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::create_user(&mut db_connection, &user_data)
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.create_user(&user_data)
     })
     .await?
     {
@@ -220,11 +213,8 @@ pub async fn edit(
     user_data: web::Json<InputEditUser>,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::edit_user(&mut db_connection, auth_user_claims.0.uid, &user_data)
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.edit_user(auth_user_claims.0.uid, &user_data)
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
@@ -239,14 +229,11 @@ pub async fn change_password(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_pointer_copy = db_thread_pool.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
 
     let user = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_user_by_id(&mut db_connection, auth_user_claims.0.uid)
+        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        user_dao.get_user_by_id(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -259,9 +246,14 @@ pub async fn change_password(
 
     let current_password = password_pair.current_password.clone();
 
-    let does_password_match_hash =
-        web::block(move || password_hasher::verify_hash(&current_password, &user.password_hash))
-            .await?;
+    let does_password_match_hash = web::block(move || {
+        password_hasher::verify_hash(
+            &current_password,
+            &user.password_hash,
+            &*env::CONF.keys.hashing_key.as_bytes(),
+        )
+    })
+    .await?;
 
     if !does_password_match_hash {
         return Err(ServerError::UserUnauthorized(Some(
@@ -282,14 +274,21 @@ pub async fn change_password(
     };
 
     web::block(move || {
-        let mut db_connection = db_thread_pool_pointer_copy
-            .get()
-            .expect("Failed to access database thread pool");
+        let user_dao = db::user::Dao::new(&db_thread_pool);
 
-        db::user::change_password(
-            &mut db_connection,
+        let hashing_params = password_hasher::HashingParams {
+            salt_len: env::CONF.hashing.salt_length_bytes,
+            hash_len: env::CONF.hashing.hash_length,
+            hash_iterations: env::CONF.hashing.hash_iterations,
+            hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
+            hash_lanes: env::CONF.hashing.hash_lanes,
+        };
+
+        user_dao.change_password(
             auth_user_claims.0.uid,
             &password_pair.new_password,
+            &hashing_params,
+            &*env::CONF.keys.hashing_key.as_bytes(),
         )
     })
     .await
@@ -313,15 +312,8 @@ pub async fn send_buddy_request(
     }
 
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::send_buddy_request(
-            &mut db_connection,
-            other_user_id.user_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.send_buddy_request(other_user_id.user_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -350,15 +342,8 @@ pub async fn retract_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::delete_buddy_request(
-            &mut db_connection,
-            request_id.buddy_request_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.delete_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -393,19 +378,12 @@ pub async fn accept_buddy_request(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_ref = db_thread_pool.clone();
+    let db_thread_pool_clone = db_thread_pool.clone();
     let request_id = request_id.buddy_request_id;
 
     let buddy_request_data = match web::block(move || {
-        let mut db_connection = db_thread_pool_ref
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::mark_buddy_request_accepted(
-            &mut db_connection,
-            request_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        user_dao.mark_buddy_request_accepted(request_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -426,15 +404,9 @@ pub async fn accept_buddy_request(
     };
 
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::create_buddy_relationship(
-            &mut db_connection,
-            buddy_request_data.sender_user_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao
+            .create_buddy_relationship(buddy_request_data.sender_user_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -457,15 +429,8 @@ pub async fn decline_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::mark_buddy_request_declined(
-            &mut db_connection,
-            request_id.buddy_request_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.mark_buddy_request_declined(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -500,14 +465,8 @@ pub async fn get_all_pending_buddy_requests_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_all_pending_buddy_requests_for_user(
-            &mut db_connection,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_all_pending_buddy_requests_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -534,14 +493,8 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_all_pending_buddy_requests_made_by_user(
-            &mut db_connection,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_all_pending_buddy_requests_made_by_user(auth_user_claims.0.uid)
     })
     .await?
     {
@@ -571,15 +524,8 @@ pub async fn get_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     let request = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_buddy_request(
-            &mut db_connection,
-            request_id.buddy_request_id,
-            auth_user_claims.0.uid,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao::get_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -607,15 +553,8 @@ pub async fn delete_buddy_relationship(
     other_user_id: web::Query<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::delete_buddy_relationship(
-            &mut db_connection,
-            auth_user_claims.0.uid,
-            other_user_id.user_id,
-        )
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.delete_buddy_relationship(auth_user_claims.0.uid, other_user_id.user_id)
     })
     .await?
     {
@@ -642,11 +581,8 @@ pub async fn get_buddies(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let buddies = match web::block(move || {
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-
-        db::user::get_buddies(&mut db_connection, auth_user_claims.0.uid)
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao::get_buddies(auth_user_claims.0.uid)
     })
     .await?
     {

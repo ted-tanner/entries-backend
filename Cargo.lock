@@ -303,37 +303,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "budgetapp-cron"
+name = "budgetapp_cron"
 version = "0.1.0"
 
 [[package]]
-name = "budgetapp-server"
+name = "budgetapp_server"
 version = "0.1.0"
 dependencies = [
  "actix-http",
  "actix-rt",
  "actix-web",
- "base64",
+ "budgetapp_utils",
  "chrono",
  "diesel",
  "env_logger",
  "futures",
- "hex",
- "hmac",
  "lazy_static",
  "log",
- "num_cpus",
  "rand",
- "ring",
  "serde",
  "serde_json",
- "sha2",
  "toml",
  "uuid",
 ]
 
 [[package]]
-name = "budgetapp-utils"
+name = "budgetapp_utils"
 version = "0.1.0"
 dependencies = [
  "base64",
