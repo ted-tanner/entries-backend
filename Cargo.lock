@@ -336,14 +336,11 @@ dependencies = [
 name = "budgetapp-utils"
 version = "0.1.0"
 dependencies = [
- "actix-web",
  "base64",
  "bindgen",
  "cc",
  "chrono",
  "diesel",
- "env_logger",
- "futures",
  "hex",
  "hmac",
  "lazy_static",

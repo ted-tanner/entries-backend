@@ -2,7 +2,6 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::common_password_set::CommonPasswordSet;
 use crate::validators;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -70,19 +69,14 @@ impl InputUser {
         validators::validate_email_address(&self.email)
     }
 
-    pub fn validate_strong_password(
-        &self,
-        app_name: &str,
-        common_passwords: &CommonPasswordSet,
-    ) -> validators::Validity {
+    pub fn validate_strong_password(&self, min_password_len: usize) -> validators::Validity {
         validators::validate_strong_password(
             &self.password,
             &self.email,
             &self.first_name,
             &self.last_name,
             &self.date_of_birth,
-            app_name,
-            common_passwords,
+            min_password_len,
         )
     }
 }

@@ -6,8 +6,10 @@ extern crate lazy_static;
 mod argon2;
 mod schema;
 
+#[cfg(test)]
+mod test_env;
+
 pub mod auth_token;
-pub mod common_password_set;
 pub mod db;
 pub mod definitions;
 pub mod models;

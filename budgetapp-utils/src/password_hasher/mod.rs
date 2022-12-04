@@ -25,6 +25,7 @@ pub struct HashParams {
     pub salt_len: usize,
     pub hash_len: usize,
     pub hash_iterations: u32,
+    // hash_mem_size_kib must be a power of 2 and at least 128
     pub hash_mem_size_kib: u32,
     pub hash_lanes: u32,
 }
@@ -514,8 +515,8 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &[u8]) -> bool {
 mod tests {
     use super::*;
 
-    #[actix_rt::test]
-    async fn test_binary_hash_into_hash_string() {
+    #[test]
+    fn test_binary_hash_into_hash_string() {
         let hash = BinaryHash {
             v: 19,
             memory_kib: 128,
@@ -536,8 +537,8 @@ mod tests {
                    ));
     }
 
-    #[actix_rt::test]
-    async fn test_tokenized_hash_from_str() {
+    #[test]
+    fn test_tokenized_hash_from_str() {
         let tokenized_hash = TokenizedHash::from_str(
             "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
         )
@@ -599,8 +600,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_invalid_tokenized_hash_from_str() {
+    #[test]
+    fn test_invalid_tokenized_hash_from_str() {
         let tokenized_hash = TokenizedHash::from_str(
             "$argon2id$v=19$m=128,t=3,p=2,$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
         );
@@ -684,27 +685,71 @@ mod tests {
         assert!(tokenized_hash.is_err());
     }
 
-    #[actix_rt::test]
-    async fn test_hash_password() {
+    #[test]
+    fn test_hash_password() {
         let password = "@Pa$$20rd-Test";
-        let hash = hash_password(password);
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+        
+        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
 
         assert!(!hash.contains(password));
     }
 
-    #[actix_rt::test]
-    async fn test_verify_hash() {
+    #[test]
+    fn test_verify_hash() {
         let password = "@Pa$$20rd-Test";
-        let hash = hash_password(password);
 
-        assert!(verify_hash(password, &hash));
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+        
+        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
+
+        assert!(verify_hash(password, &hash, vec![30, 23, 4, 2, 3, 56, 56].as_slice()));
     }
 
-    #[actix_rt::test]
-    async fn test_verify_incorrect_password() {
+    #[test]
+    fn test_verify_incorrect_password() {
         let password = "@Pa$$20rd-Test";
-        let hash = hash_password(password);
 
-        assert!(!verify_hash("@pa$$20rd-Test", &hash));
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+        
+        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
+
+        assert!(!verify_hash("@pa$$20rd-Test", &hash, vec![30, 23, 4, 2, 3, 56, 56].as_slice()));
+    }
+
+    #[test]
+    fn test_verify_incorrect_key() {
+        let password = "@Pa$$20rd-Test";
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+        
+        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
+
+        assert!(!verify_hash(password, &hash, vec![30, 23, 4, 2, 4, 56, 56].as_slice()));
     }
 }

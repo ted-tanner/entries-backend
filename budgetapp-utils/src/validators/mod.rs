@@ -1,11 +1,9 @@
 use chrono::Datelike;
 
-use crate::common_password_set::CommonPasswordSet;
-
 #[derive(Debug)]
 pub enum Validity {
     Valid,
-    Invalid(&'static str),
+    Invalid(String),
 }
 
 impl Validity {
@@ -21,31 +19,35 @@ impl Validity {
 pub fn validate_email_address(email: &str) -> Validity {
     for c in email.chars() {
         if c == ' ' || !c.is_ascii() {
-            return Validity::Invalid("Email address cannot contain a space.");
+            return Validity::Invalid(String::from("Email address cannot contain a space."));
         }
     }
 
     if email.contains("@.") {
-        return Validity::Invalid("Domain name in email address cannot begin with a period.");
+        return Validity::Invalid(String::from(
+            "Domain name in email address cannot begin with a period.",
+        ));
     }
 
     let email = match email.split_once('@') {
         Some(s) => s,
-        None => return Validity::Invalid("Email address must contain an at symbol (@)."),
+        None => {
+            return Validity::Invalid(String::from("Email address must contain an at symbol (@)."))
+        }
     };
 
     if email.0.is_empty() || email.1.len() < 3 {
-        return Validity::Invalid("Email username or domain name is to short.");
+        return Validity::Invalid(String::from("Email username or domain name is to short."));
     }
 
     if email.1.contains('@') || !email.1.contains('.') {
-        return Validity::Invalid(
+        return Validity::Invalid(String::from(
             "Email address must have only one at symbol (@) and the domain must contain a period.",
-        );
+        ));
     }
 
     if email.1.ends_with('.') {
-        return Validity::Invalid("Email address cannot end with a period.");
+        return Validity::Invalid(String::from("Email address cannot end with a period."));
     }
 
     Validity::Valid
@@ -57,24 +59,21 @@ pub fn validate_strong_password(
     first_name: &str,
     last_name: &str,
     date_of_birth: &chrono::NaiveDate,
-    app_name: &str,
-    common_passwords: &CommonPasswordSet,
+    min_password_len: usize,
 ) -> Validity {
-    // 12 is hardcoded because the common-passwords list assumes 12-character-long passwords
-    if password.len() < 12 {
-        return Validity::Invalid("Password must be at least 12 characters long.");
+    if password.len() < min_password_len {
+        return Validity::Invalid(format!(
+            "Password must be at least {} characters long.",
+            min_password_len,
+        ));
     }
 
     let lowercase_password = password.to_lowercase();
 
-    if lowercase_password.contains(&app_name.to_lowercase().replace(' ', ""))
-        || lowercase_password.contains(&app_name.to_lowercase())
-    {
-        return Validity::Invalid("Password must not contain the name of the app.");
-    }
-
     if lowercase_password.contains("password") {
-        return Validity::Invalid("Password must not contain the word \"password.\"");
+        return Validity::Invalid(String::from(
+            "Password must not contain the word \"password.\"",
+        ));
     }
 
     let mut contains_lowercase = false;
@@ -105,39 +104,45 @@ pub fn validate_strong_password(
     }
 
     if !contains_lowercase {
-        return Validity::Invalid("Password must contain at least one lowercase letter.");
+        return Validity::Invalid(String::from(
+            "Password must contain at least one lowercase letter.",
+        ));
     }
 
     if !contains_uppercase {
-        return Validity::Invalid("Password must contain at least one uppercase letter.");
+        return Validity::Invalid(String::from(
+            "Password must contain at least one uppercase letter.",
+        ));
     }
 
     if !contains_number {
-        return Validity::Invalid("Password must contain at least one number.");
+        return Validity::Invalid(String::from("Password must contain at least one number."));
     }
 
     if !contains_punct {
-        return Validity::Invalid(
+        return Validity::Invalid(String::from(
             "Password must contain at least one of the following: ! ? @ \
              $ % - & + # * ( ) \" ' , . / : ; < = > [ \\ ] ^ _ { | } ~",
-        );
+        ));
     }
 
     if lowercase_password.contains(&first_name.to_lowercase()) {
-        return Validity::Invalid("Password must not contain your first name.");
+        return Validity::Invalid(String::from("Password must not contain your first name."));
     }
 
     if lowercase_password.contains(&last_name.to_lowercase()) {
-        return Validity::Invalid("Password must not contain your last name.");
+        return Validity::Invalid(String::from("Password must not contain your last name."));
     }
 
     let email_username = email.split_once('@').unwrap_or((email, "")).0;
     if lowercase_password.contains(&email_username.to_lowercase()) {
-        return Validity::Invalid("Password must not contain your email username.");
+        return Validity::Invalid(String::from(
+            "Password must not contain your email username.",
+        ));
     }
 
     if password.contains(&date_of_birth.year().to_string()) {
-        return Validity::Invalid("Password must not contain your birth year.");
+        return Validity::Invalid(String::from("Password must not contain your birth year."));
     }
 
     let current_year = chrono::Utc::now().year();
@@ -145,16 +150,10 @@ pub fn validate_strong_password(
 
     for year in nearby_year_range {
         if password.contains(&year.to_string()) {
-            return Validity::Invalid(
+            return Validity::Invalid(String::from(
                 "Password must not contain a current, recent, or upcoming year.",
-            );
+            ));
         }
-    }
-
-    if common_passwords.contains(password) {
-        return Validity::Invalid(
-            "Your password is too common. It was found on an online list of the 1,000,000 most commonly used passwords."
-        );
     }
 
     Validity::Valid
@@ -167,8 +166,8 @@ mod tests {
     use chrono::NaiveDate;
     use rand::prelude::*;
 
-    #[actix_rt::test]
-    async fn test_validate_email_address() {
+    #[test]
+    fn test_validate_email_address() {
         // Valid
         const NORMAL: &str = "test@example.com";
         const WITH_DOT_IN_USERNAME: &str = "test.me@example.com";
@@ -210,8 +209,8 @@ mod tests {
         assert!(!validate_email_address(DOT_LAST_CHAR).is_valid());
     }
 
-    #[actix_rt::test]
-    async fn test_validate_strong_password() {
+    #[test]
+    fn test_validate_strong_password() {
         const EMAIL: &str = "test_user@test.com";
         const FIRST_NAME: &str = "Arnold";
         const LAST_NAME: &str = "Schwarzenegger";
@@ -227,119 +226,98 @@ mod tests {
 
         // Empty
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Shorter than 12 chars
         password = String::from("Qo1aG@Qe!9z");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
-                .is_valid()
-        );
-
-        // Contains app name with space
-        password = String::from("&#AkG@Qe!^91z") + (*env::APP_NAME) + "&45D";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
-                .is_valid()
-        );
-
-        // Contains app name without space
-        password = String::from("&#AkG@Qe!^91z") + &(*env::APP_NAME).replace(' ', "") + "&45D";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains "password"
         password = String::from("sd@#$#324dDPaSsWOrd#$90");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // No uppercase
         password = String::from("axgwjq7byvbgzu&70@1$");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // No lowercase
         password = String::from("XLX%J!6&$SAUYII2*Q4J");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // No number
         password = String::from("Hf)y!GqmiB&#Agwa*qbQ");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // No ASCII special chars
         password = String::from("aqBA19jyuajjq3UvpYwp");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains user's first name
         password = String::from("yqTq8xAOJ$") + FIRST_NAME + "$d9";
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains user's last name
         password = String::from("8#@V2TT0or") + LAST_NAME + "HF^h3z";
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains username part of user's email
         password = String::from("Qh*r4qj8vD") + EMAIL.split_once('@').unwrap().0 + "3uX#F";
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains user's birth year
         password = String::from("8#@V2TT0") + &date_of_birth.year().to_string() + "or)HF^h3z";
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Contains current or recent year
         password = String::from("wn0iVR2q2021#QiubXb");
         assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
-                .is_valid()
-        );
-
-        // Common password
-        password = String::from("abcd!EFG!123");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Valid
         password = String::from("1&B3d^hJ37^9$YNA2sD9");
         assert!(
-            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
 
         // Valid
         password = String::from("HtbNUF4j&x92");
         assert!(
-            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth)
+            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
                 .is_valid()
         );
     }

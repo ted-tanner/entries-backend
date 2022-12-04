@@ -32,7 +32,7 @@ impl fmt::Display for TokenError {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum TokenType {
     Access,
     Refresh,
@@ -294,7 +294,7 @@ pub fn validate_refresh_token(
     signing_key: &[u8],
     auth_dao: &mut AuthDao,
 ) -> Result<TokenClaims, TokenError> {
-    if check_is_on_blacklist(token, auth_dao)? {
+    if is_on_blacklist(token, auth_dao)? {
         return Err(TokenError::TokenBlacklisted);
     }
 
@@ -340,7 +340,7 @@ pub fn blacklist_token(token: &str, dao: &mut AuthDao) -> Result<(), TokenError>
     }
 }
 
-pub fn check_is_on_blacklist(token: &str, dao: &mut AuthDao) -> Result<bool, TokenError> {
+pub fn is_on_blacklist(token: &str, dao: &mut AuthDao) -> Result<bool, TokenError> {
     match dao.check_is_token_on_blacklist(token) {
         Ok(o) => Ok(o),
         Err(e) => Err(TokenError::DatabaseError(e)),
@@ -352,12 +352,18 @@ mod tests {
     use super::*;
 
     use chrono::NaiveDate;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 
+    use crate::db::DataAccessor;
+    use crate::models::blacklisted_token::BlacklistedToken;
     use crate::models::user::NewUser;
+    use crate::schema::blacklisted_tokens as blacklisted_token_fields;
+    use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
     use crate::schema::users::dsl::users;
+    use crate::test_env;
 
-    #[actix_rt::test]
-    async fn test_create_token() {
+    #[test]
+    fn test_create_token() {
         let claims = TokenClaims {
             exp: 123456789,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
@@ -378,7 +384,7 @@ mod tests {
 
         let token = claims.create_token("thisIsAFakeKey".as_bytes());
         let token_different = claims_different.create_token("thisIsAFakeKey".as_bytes());
-        let expected_token = String::from("eyJleHAiOjEyMzQ1Njc4OSwidWlkIjoiNjdlNTUwNDQtMTBiMS00MjZmLTkyNDctYmI2ODBlNWZlMGM4IiwiZW1sIjoiVGVzdGluZ190b2tlbnNAZXhhbXBsZS5jb20iLCJjdXIiOiJVU0QiLCJ0eXAiOjAsInNsdCI6MTAwMDB9fDY0OWYyNDBkNzZiYzRhOThhMTYzMzc5Y2VhZTdhZDBkNzAwOTgwNWMzYzVlMDlmMzkyMjRjNmM5NGEzZGVlN2Q");
+        let expected_token = String::from("eyJleHAiOjEyMzQ1Njc4OSwidWlkIjoiNjdlNTUwNDQtMTBiMS00MjZmLTkyNDctYmI2ODBlNWZlMGM4IiwiZW1sIjoiVGVzdGluZ190b2tlbnNAZXhhbXBsZS5jb20iLCJjdXIiOiJVU0QiLCJ0eXAiOjAsInNsdCI6MTAwMDB9fGI2MTViNTcyZGEyYzUyODczMTliMTNiZmY1Yjg3YjE2MDU0NjNkNjM1NzBhMGE2M2M2ODFjNGM1ZDUyYTJhMzk");
 
         assert_eq!(token, expected_token);
         assert_ne!(token, token_different);
@@ -400,8 +406,8 @@ mod tests {
         assert_eq!(decoded_claims.slt, claims.slt);
     }
 
-    #[actix_rt::test]
-    async fn test_claims_from_token_with_validation() {
+    #[test]
+    fn test_claims_from_token_with_validation() {
         let claims = TokenClaims {
             exp: u64::MAX,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
@@ -429,8 +435,8 @@ mod tests {
         assert_eq!(decoded_claims.slt, claims.slt);
     }
 
-    #[actix_rt::test]
-    async fn test_token_validation_fails_with_wrong_key() {
+    #[test]
+    fn test_token_validation_fails_with_wrong_key() {
         let claims = TokenClaims {
             exp: u64::MAX,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
@@ -454,8 +460,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_token_validation_fails_when_expired() {
+    #[test]
+    fn test_token_validation_fails_when_expired() {
         let claims = TokenClaims {
             exp: 1657076995,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
@@ -479,8 +485,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_claims_from_token_without_validation() {
+    #[test]
+    fn test_claims_from_token_without_validation() {
         let claims = TokenClaims {
             exp: 1657076995,
             uid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
@@ -501,8 +507,8 @@ mod tests {
         assert_eq!(decoded_claims.slt, claims.slt);
     }
 
-    #[actix_rt::test]
-    async fn test_generate_access_token() {
+    #[test]
+    fn test_generate_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -526,18 +532,22 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
+        )
         .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
 
         let decoded_token =
             TokenClaims::from_token_with_validation(&token.token, "thisIsAFakeKey".as_bytes())
-                .unwrap();
+            .unwrap();
 
         assert_eq!(decoded_token.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_token.uid, user_id);
@@ -552,8 +562,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_generate_refresh_token() {
+    #[test]
+    fn test_generate_refresh_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -577,11 +587,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
+        )
         .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
@@ -603,8 +617,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_generate_signin_token() {
+    #[test]
+    fn test_generate_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -628,11 +642,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
+        )
         .unwrap();
 
         assert!(!token.token.contains(&user_id.to_string()));
@@ -654,8 +672,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_generate_token_pair() {
+    #[test]
+    fn test_generate_token_pair() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -679,11 +697,16 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = generate_token_pair(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = generate_token_pair(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
+        )
         .unwrap();
 
         assert!(!token.access_token.token.contains(&user_id.to_string()));
@@ -726,8 +749,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_generate_token() {
+    #[test]
+    fn test_generate_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -752,30 +775,36 @@ mod tests {
         };
 
         let access_token = generate_token(
-            TokenParams {
+            &TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
             },
             TokenType::Access,
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
         )
         .unwrap();
         let refresh_token = generate_token(
-            TokenParams {
+            &TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
             },
             TokenType::Refresh,
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
         )
         .unwrap();
         let signin_token = generate_token(
-            TokenParams {
+            &TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
                 user_currency: new_user.currency,
             },
             TokenType::SignIn,
+            Duration::from_secs(5),
+            "thisIsAFakeKey".as_bytes(),
         )
         .unwrap();
 
@@ -834,8 +863,8 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
-    async fn test_validate_access_token() {
+    #[test]
+    fn test_validate_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -859,37 +888,61 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert_eq!(
-            validate_access_token(&access_token.token).unwrap().uid,
+            validate_access_token(
+                &access_token.token,
+                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
-        assert!(validate_access_token(&refresh_token.token).is_err());
-        assert!(validate_access_token(&signin_token.token).is_err());
+        assert!(validate_access_token(
+            &refresh_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
+        assert!(validate_access_token(
+            &signin_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
     }
 
-    #[actix_rt::test]
-    async fn test_validate_refresh_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+    #[test]
+    fn test_validate_refresh_token() {
+        let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
 
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -914,37 +967,65 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 3, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
+        let mut dao = AuthDao::new(db_thread_pool.clone());
+
         assert_eq!(
-            validate_refresh_token(&refresh_token.token, &mut db_connection)
-                .unwrap()
-                .uid,
+            validate_refresh_token(
+                &refresh_token.token,
+                vec![32, 4, 23, 53, 75, 23, 3, 10, 11].as_slice(),
+                &mut dao
+            )
+            .unwrap()
+            .uid,
             user_id
         );
-        assert!(validate_refresh_token(&access_token.token, &mut db_connection).is_err());
-        assert!(validate_refresh_token(&signin_token.token, &mut db_connection).is_err());
+        assert!(validate_refresh_token(
+            &access_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+            &mut dao
+        )
+        .is_err());
+        assert!(validate_refresh_token(
+            &signin_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+            &mut dao
+        )
+        .is_err());
     }
 
-    #[actix_rt::test]
-    async fn test_validate_signin_token() {
+    #[test]
+    fn test_validate_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -968,35 +1049,60 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert_eq!(
-            validate_signin_token(&signin_token.token).unwrap().uid,
+            validate_signin_token(
+                &signin_token.token,
+                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
-        assert!(validate_signin_token(&access_token.token).is_err());
-        assert!(validate_signin_token(&refresh_token.token).is_err());
+        assert!(validate_signin_token(
+            &access_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11, 0].as_slice()
+        )
+        .is_err());
+        assert!(validate_signin_token(
+            &refresh_token.token,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
     }
 
-    #[actix_rt::test]
-    async fn test_validate_token() {
+    #[test]
+    fn test_validate_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1020,47 +1126,71 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert_eq!(
-            validate_token(&access_token.token, TokenType::Access)
-                .unwrap()
-                .uid,
+            validate_token(
+                &access_token.token,
+                TokenType::Access,
+                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
         assert_eq!(
-            validate_token(&refresh_token.token, TokenType::Refresh)
-                .unwrap()
-                .uid,
-            user_id
+            validate_token(
+                &refresh_token.token,
+                TokenType::Refresh,
+                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+            )
+            .unwrap()
+            .uid,
+            user_id,
         );
         assert_eq!(
-            validate_token(&signin_token.token, TokenType::SignIn)
-                .unwrap()
-                .uid,
-            user_id
+            validate_token(
+                &signin_token.token,
+                TokenType::SignIn,
+                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+            )
+            .unwrap()
+            .uid,
+            user_id,
         );
     }
 
-    #[actix_rt::test]
-    async fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
+    #[test]
+    fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1084,32 +1214,59 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
-        assert!(validate_token(&access_token.token, TokenType::SignIn).is_err());
-        assert!(validate_token(&refresh_token.token, TokenType::Access).is_err());
-        assert!(validate_token(&signin_token.token, TokenType::Refresh).is_err());
+        assert!(validate_token(
+            &access_token.token,
+            TokenType::SignIn,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
+        assert!(validate_token(
+            &refresh_token.token,
+            TokenType::Access,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
+        assert!(validate_token(
+            &signin_token.token,
+            TokenType::Refresh,
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice()
+        )
+        .is_err());
     }
 
-    #[actix_rt::test]
-    async fn test_read_claims() {
+    #[test]
+    fn test_read_claims() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1133,23 +1290,35 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         let access_token_claims =
@@ -1177,9 +1346,9 @@ mod tests {
         assert!(signin_token_claims.exp > current_time);
     }
 
-    #[actix_rt::test]
-    async fn test_blacklist_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    #[test]
+    fn test_blacklist_token() {
+        let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
@@ -1210,33 +1379,30 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
-        let blacklist_token = blacklist_token(&refresh_token.token, &mut db_connection).unwrap();
+        let mut dao = AuthDao::new(db_thread_pool.clone());
+        blacklist_token(&refresh_token.token, &mut dao).unwrap();
 
-        assert_eq!(&blacklist_token.token, &refresh_token.token);
-        assert!(
-            blacklist_token.token_expiration_time
-                > SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64
-        );
-
+        // Should panic if none are found
         blacklisted_tokens
             .filter(blacklisted_token_fields::token.eq(&refresh_token.token))
-            .get_result::<BlacklistedToken>(&mut db_connection)
+            .first::<BlacklistedToken>(&mut db_connection)
             .unwrap();
     }
 
-    #[actix_rt::test]
-    async fn test_is_token_on_blacklist() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    #[test]
+    fn test_is_token_on_blacklist() {
+        let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let user_id = Uuid::new_v4();
@@ -1267,22 +1433,26 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
-        assert!(!is_on_blacklist(&refresh_token.token, &mut db_connection).unwrap());
+        let mut dao = AuthDao::new(db_thread_pool.clone());
+        assert!(!is_on_blacklist(&refresh_token.token, &mut dao).unwrap());
 
-        blacklist_token(&refresh_token.token, &mut db_connection).unwrap();
-
-        assert!(is_on_blacklist(&refresh_token.token, &mut db_connection).unwrap());
+        blacklist_token(&refresh_token.token, &mut dao).unwrap();
+        assert!(is_on_blacklist(&refresh_token.token, &mut dao).unwrap());
     }
 
-    #[actix_rt::test]
-    async fn test_is_access_token() {
+    #[test]
+    fn test_is_access_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1306,11 +1476,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let access_token = generate_access_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let access_token = generate_access_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert!(access_token.is_access_token());
@@ -1318,8 +1492,8 @@ mod tests {
         assert!(!access_token.is_signin_token());
     }
 
-    #[actix_rt::test]
-    async fn test_is_refresh_token() {
+    #[test]
+    fn test_is_refresh_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1343,11 +1517,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let refresh_token = generate_refresh_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let refresh_token = generate_refresh_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert!(refresh_token.is_refresh_token());
@@ -1355,8 +1533,8 @@ mod tests {
         assert!(!refresh_token.is_signin_token());
     }
 
-    #[actix_rt::test]
-    async fn test_is_signin_token() {
+    #[test]
+    fn test_is_signin_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = chrono::Utc::now().naive_utc();
@@ -1380,11 +1558,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let signin_token = generate_signin_token(TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let signin_token = generate_signin_token(
+            &TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(5),
+            vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+        )
         .unwrap();
 
         assert!(signin_token.is_signin_token());

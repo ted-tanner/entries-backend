@@ -9,7 +9,7 @@ pub mod user;
 pub type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 pub type DbConnection = PooledConnection<ConnectionManager<PgConnection>>;
 
-trait DataAccessor {
+pub trait DataAccessor {
     fn new(db_thread_pool: DbThreadPool) -> Self;
 }
 

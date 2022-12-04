@@ -33,7 +33,8 @@ actix_workers = 12
 ###### Sample Production Configuration ######
 
 # [workers]
-# actix_workers = 3
+# actix_workers = 12
+# max_db_connections = 48
 
 # [connections]
 # database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
