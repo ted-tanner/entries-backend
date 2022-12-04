@@ -15,8 +15,6 @@ lazy_static! {
 fn build_conf() -> Conf {
     const CONF_FILE_PATH: &str = "test-conf.toml";
 
-    println!("PWD: {}", std::env::var("PWD").unwrap());
-
     let mut conf_file = File::open(CONF_FILE_PATH).unwrap_or_else(|_| {
         eprintln!("Expected configuration file at '{}'", CONF_FILE_PATH);
         std::process::exit(1);
