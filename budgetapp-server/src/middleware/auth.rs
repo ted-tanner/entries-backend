@@ -41,11 +41,13 @@ impl FromRequest for AuthorizedUserClaims {
             None => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        let claims =
-            match auth_token::validate_access_token(token, env::CONF.keys.token_signing_key.as_bytes()) {
-                Ok(c) => c,
-                Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
-            };
+        let claims = match auth_token::validate_access_token(
+            token,
+            env::CONF.keys.token_signing_key.as_bytes(),
+        ) {
+            Ok(c) => c,
+            Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
+        };
 
         future::ok(AuthorizedUserClaims(claims))
     }

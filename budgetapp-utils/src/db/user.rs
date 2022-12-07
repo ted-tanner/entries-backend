@@ -318,7 +318,7 @@ pub mod tests {
             hash_lanes: 2,
         };
 
-        Dao::new(&db_thread_pool).create_user(
+        Dao::new(db_thread_pool).create_user(
             &new_user,
             &hash_params,
             vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
@@ -328,7 +328,7 @@ pub mod tests {
     #[test]
     fn test_create_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         const PASSWORD: &str = "X$KC3%s&L91m!bVA*@Iu";
@@ -379,7 +379,7 @@ pub mod tests {
     #[test]
     fn test_get_user_by_email() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
@@ -427,7 +427,7 @@ pub mod tests {
     #[test]
     fn test_get_user_by_id() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         const PASSWORD: &str = "Uo^Z56o%f#@8Ub#I9D&f";
 
@@ -476,7 +476,7 @@ pub mod tests {
     #[test]
     fn test_edit_user_one_field() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
 
@@ -531,7 +531,7 @@ pub mod tests {
     #[test]
     fn test_edit_user_all_fields() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         const PASSWORD: &str = "C4R1pUr2E2fG5qKPT&&s";
 
@@ -590,7 +590,7 @@ pub mod tests {
     #[test]
     fn test_change_password() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         const ORIGINAL_PASSWORD: &str = "Eq&6T@Vyz54O%DoX$";
@@ -662,7 +662,7 @@ pub mod tests {
     #[test]
     fn test_send_buddy_request() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -702,7 +702,7 @@ pub mod tests {
     #[test]
     fn test_delete_buddy_request() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -742,7 +742,7 @@ pub mod tests {
     #[test]
     fn test_mark_buddy_request_accepted() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -808,7 +808,7 @@ pub mod tests {
     #[test]
     fn test_mark_buddy_request_declined() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -873,7 +873,7 @@ pub mod tests {
     #[test]
     fn test_get_all_pending_buddy_requests_for_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let created_user1 = generate_user().unwrap();
         let created_user2 = generate_user().unwrap();
@@ -936,7 +936,7 @@ pub mod tests {
     #[test]
     fn test_get_all_pending_buddy_requests_made_by_user() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let created_user1 = generate_user().unwrap();
         let created_user2 = generate_user().unwrap();
@@ -1000,7 +1000,7 @@ pub mod tests {
     #[test]
     fn test_get_buddy_request() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -1048,7 +1048,7 @@ pub mod tests {
     #[test]
     fn test_create_buddy_relationship() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -1095,7 +1095,7 @@ pub mod tests {
     #[test]
     fn test_delete_buddy_relationship() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let created_user1 = generate_user().unwrap();
@@ -1175,7 +1175,7 @@ pub mod tests {
     #[test]
     fn test_get_buddies() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let created_user1 = generate_user().unwrap();
         let created_user2 = generate_user().unwrap();
@@ -1220,7 +1220,7 @@ pub mod tests {
     #[test]
     fn test_check_are_buddies() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let created_user1 = generate_user().unwrap();
         let created_user2 = generate_user().unwrap();

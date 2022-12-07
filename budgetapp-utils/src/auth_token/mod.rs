@@ -997,7 +997,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(&db_thread_pool);
+        let mut dao = AuthDao::new(db_thread_pool);
 
         assert_eq!(
             validate_refresh_token(
@@ -1389,7 +1389,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(&db_thread_pool);
+        let mut dao = AuthDao::new(db_thread_pool);
         blacklist_token(&refresh_token.token, &mut dao).unwrap();
 
         // Should panic if none are found
@@ -1443,7 +1443,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut dao = AuthDao::new(&db_thread_pool);
+        let mut dao = AuthDao::new(db_thread_pool);
         assert!(!is_on_blacklist(&refresh_token.token, &mut dao).unwrap());
 
         blacklist_token(&refresh_token.token, &mut dao).unwrap();

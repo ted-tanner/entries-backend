@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_clear_all_expired_refresh_tokens() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -179,7 +179,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let mut user_dao = user::Dao::new(&db_thread_pool);
+        let mut user_dao = user::Dao::new(db_thread_pool);
 
         user_dao
             .create_user(
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_get_and_increment_otp_verification_count() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -274,7 +274,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let user = user::Dao::new(&db_thread_pool)
+        let user = user::Dao::new(db_thread_pool)
             .create_user(
                 &new_user,
                 &hash_params,
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn test_get_and_increment_password_attempt_count() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
@@ -327,7 +327,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let user = user::Dao::new(&db_thread_pool)
+        let user = user::Dao::new(db_thread_pool)
             .create_user(
                 &new_user,
                 &hash_params,
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn test_clear_otp_verification_count() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let mut user_ids = Vec::new();
 
@@ -384,7 +384,7 @@ mod tests {
                 hash_lanes: 2,
             };
 
-            let user = user::Dao::new(&db_thread_pool)
+            let user = user::Dao::new(db_thread_pool)
                 .create_user(
                     &new_user,
                     &hash_params,
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn test_clear_password_attempt_count() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
-        let mut dao = Dao::new(&db_thread_pool);
+        let mut dao = Dao::new(db_thread_pool);
 
         let mut user_ids = Vec::new();
 
@@ -454,7 +454,7 @@ mod tests {
                 hash_lanes: 2,
             };
 
-            let user = user::Dao::new(&db_thread_pool)
+            let user = user::Dao::new(db_thread_pool)
                 .create_user(
                     &new_user,
                     &hash_params,
