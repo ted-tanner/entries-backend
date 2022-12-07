@@ -18,14 +18,16 @@ token_signing_key = "3dn68OZo"
 
 [lifetimes]
 access_token_lifetime_mins = 8
-otp_lifetime_mins = 5
 refresh_token_lifetime_days = 28
+signin_token_lifetime_mins = 11
+otp_lifetime_mins = 5
 
 [security]
 otp_max_attempts = 8
 otp_attempts_reset_mins = 15
 password_max_attempts = 12
 password_attempts_reset_mins = 15
+password_min_len_chars = 12
 
 [workers]
 actix_workers = 12

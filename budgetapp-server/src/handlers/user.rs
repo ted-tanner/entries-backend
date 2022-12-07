@@ -1,13 +1,14 @@
-use budgetapp_utils::db::DbThreadPool;
+use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
     InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
 };
+use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpResponse};
 use log::error;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -30,25 +31,27 @@ pub async fn get(
     let db_thread_pool_clone = db_thread_pool.clone();
 
     let user = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.get_user_by_id(user_id)
     })
     .await?
     {
         Ok(u) => u,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None))
             }
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::AccessForbidden(Some("No user with ID")))
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::AccessForbidden(Some(String::from(
+                    "No user with ID",
+                ))))
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get user data",
-                )));
+                ))));
             }
         },
     };
@@ -58,7 +61,7 @@ pub async fn get(
 
         if input_user_id.is_buddy.is_some() && input_user_id.is_buddy.unwrap() {
             are_buddies = match web::block(move || {
-                let user_dao = db::user::Dao::new(&db_thread_pool);
+                let mut user_dao = db::user::Dao::new(&db_thread_pool);
                 user_dao.check_are_buddies(input_user_id.user_id.unwrap(), auth_user_claims.0.uid)
             })
             .await?
@@ -66,9 +69,9 @@ pub async fn get(
                 Ok(buddies) => buddies,
                 Err(e) => {
                     error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
                         "Failed to get user data",
-                    )));
+                    ))));
                 }
             };
         }
@@ -125,59 +128,73 @@ pub async fn create(
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
     if !user_data.0.validate_email_address().is_valid() {
-        return Err(ServerError::InvalidFormat(Some("Invalid email address")));
+        return Err(ServerError::InvalidFormat(Some(String::from(
+            "Invalid email address",
+        ))));
     }
 
-    if let validators::Validity::Invalid(msg) = user_data.0.validate_strong_password() {
+    if let Validity::Invalid(msg) = user_data
+        .0
+        .validate_strong_password(env::CONF.security.password_min_len_chars)
+    {
         return Err(ServerError::InputRejected(Some(msg)));
     }
 
     let user = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data)
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.create_user(
+            &user_data,
+            &env::PASSWORD_HASHING_PARAMS,
+            env::CONF.keys.hashing_key.as_bytes(),
+        )
     })
     .await?
     {
         Ok(u) => u,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
-                return Err(ServerError::InvalidFormat(None))
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
+                return Err(ServerError::InvalidFormat(None));
             }
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::AccessForbidden(Some("No user with ID")))
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::AccessForbidden(Some(String::from(
+                    "No user with ID",
+                ))));
             }
-            diesel::result::Error::DatabaseError(error_kind, _) => match error_kind {
-                diesel::result::DatabaseErrorKind::UniqueViolation => {
-                    return Err(ServerError::AlreadyExists(Some(
-                        "A user with the given email address already exists",
-                    )))
-                }
-                _ => {
-                    error!("{}", e);
-                    return Err(ServerError::InternalError(Some("Failed to create user")));
-                }
-            },
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => {
+                return Err(ServerError::AlreadyExists(Some(String::from(
+                    "A user with the given email address already exists",
+                ))));
+            }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some("Failed to create user")));
+                return Err(ServerError::InternalError(Some(String::from(
+                    "Failed to create user",
+                ))));
             }
         },
     };
 
-    let signin_token = auth_token::generate_signin_token(auth_token::TokenParams {
-        user_id: &user.id,
-        user_email: &user.email,
-        user_currency: &user.currency,
-    });
+    let signin_token = auth_token::generate_signin_token(
+        &auth_token::TokenParams {
+            user_id: &user.id,
+            user_email: &user.email,
+            user_currency: &user.currency,
+        },
+        Duration::from_secs(env::CONF.lifetimes.signin_token_lifetime_mins * 60),
+        env::CONF.keys.token_signing_key.as_bytes(),
+    );
 
     let signin_token = match signin_token {
         Ok(signin_token) => signin_token,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalError(Some(
+            return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate sign-in token for user",
-            )));
+            ))));
         }
     };
 
@@ -193,11 +210,15 @@ pub async fn create(
     let otp = match otp::generate_otp(
         user.id,
         current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
+        Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+        env::CONF.keys.otp_key.as_bytes(),
     ) {
         Ok(p) => p,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalError(Some("Failed to generate OTP")));
+            return Err(ServerError::InternalError(Some(String::from(
+                "Failed to generate OTP",
+            ))));
         }
     };
 
@@ -213,14 +234,14 @@ pub async fn edit(
     user_data: web::Json<InputEditUser>,
 ) -> Result<HttpResponse, ServerError> {
     web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.edit_user(auth_user_claims.0.uid, &user_data)
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         error!("{}", e);
-        ServerError::DatabaseTransactionError(Some("Failed to edit user"))
+        ServerError::DatabaseTransactionError(Some(String::from("Failed to edit user")))
     })
 }
 
@@ -232,7 +253,7 @@ pub async fn change_password(
     let db_thread_pool_clone = db_thread_pool.clone();
 
     let user = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.get_user_by_id(auth_user_claims.0.uid)
     })
     .await?
@@ -240,7 +261,9 @@ pub async fn change_password(
         Ok(u) => u,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InputRejected(Some("User not found")));
+            return Err(ServerError::InputRejected(Some(String::from(
+                "User not found",
+            ))));
         }
     };
 
@@ -250,15 +273,15 @@ pub async fn change_password(
         password_hasher::verify_hash(
             &current_password,
             &user.password_hash,
-            &*env::CONF.keys.hashing_key.as_bytes(),
+            env::CONF.keys.hashing_key.as_bytes(),
         )
     })
     .await?;
 
     if !does_password_match_hash {
-        return Err(ServerError::UserUnauthorized(Some(
+        return Err(ServerError::UserUnauthorized(Some(String::from(
             "Current password was incorrect",
-        )));
+        ))));
     }
 
     let new_password_validity = validators::validate_strong_password(
@@ -267,35 +290,27 @@ pub async fn change_password(
         &user.first_name,
         &user.last_name,
         &user.date_of_birth,
+        env::CONF.security.password_min_len_chars,
     );
 
-    if let validators::Validity::Invalid(msg) = new_password_validity {
+    if let Validity::Invalid(msg) = new_password_validity {
         return Err(ServerError::InputRejected(Some(msg)));
     };
 
     web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-
-        let hashing_params = password_hasher::HashingParams {
-            salt_len: env::CONF.hashing.salt_length_bytes,
-            hash_len: env::CONF.hashing.hash_length,
-            hash_iterations: env::CONF.hashing.hash_iterations,
-            hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
-            hash_lanes: env::CONF.hashing.hash_lanes,
-        };
-
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.change_password(
             auth_user_claims.0.uid,
             &password_pair.new_password,
-            &hashing_params,
-            &*env::CONF.keys.hashing_key.as_bytes(),
+            &env::PASSWORD_HASHING_PARAMS,
+            env::CONF.keys.hashing_key.as_bytes(),
         )
     })
     .await
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         error!("{}", e);
-        ServerError::DatabaseTransactionError(Some("Failed to update password"))
+        ServerError::DatabaseTransactionError(Some(String::from("Failed to update password")))
     })
 }
 
@@ -306,28 +321,28 @@ pub async fn send_buddy_request(
     other_user_id: web::Json<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     if other_user_id.user_id == auth_user_claims.0.uid {
-        return Err(ServerError::InputRejected(Some(
+        return Err(ServerError::InputRejected(Some(String::from(
             "Requester and recipient have the same ID",
-        )));
+        ))));
     }
 
     match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.send_buddy_request(other_user_id.user_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(_) => (),
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create buddy request",
-                )));
+                ))));
             }
         },
     }
@@ -342,29 +357,29 @@ pub async fn retract_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.delete_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::NotFound(Some(
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID was made by user",
-                )));
+                ))));
             }
         }
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete request",
-                )));
+                ))));
             }
         },
     }
@@ -382,29 +397,29 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
 
     let buddy_request_data = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.mark_buddy_request_accepted(request_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(req_data) => req_data,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to accept buddy request",
-                )));
+                ))));
             }
         },
     };
 
     match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao
             .create_buddy_relationship(buddy_request_data.sender_user_id, auth_user_claims.0.uid)
     })
@@ -413,9 +428,9 @@ pub async fn accept_buddy_request(
         Ok(_) => (),
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to accept buddy request",
-            )));
+            ))));
         }
     }
 
@@ -429,29 +444,29 @@ pub async fn decline_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.mark_buddy_request_declined(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::NotFound(Some(
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID",
-                )));
+                ))));
             }
         }
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to decline buddy request",
-                )));
+                ))));
             }
         },
     }
@@ -465,21 +480,23 @@ pub async fn get_all_pending_buddy_requests_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_all_pending_buddy_requests_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(reqs) => reqs,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No buddy requests for user")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No buddy requests for user",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy requests",
-                )));
+                ))));
             }
         },
     };
@@ -493,23 +510,23 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_all_pending_buddy_requests_made_by_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(reqs) => reqs,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No buddy requests made by user",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy requests",
-                )));
+                ))));
             }
         },
     };
@@ -524,21 +541,23 @@ pub async fn get_buddy_request(
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     let request = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao::get_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(req) => req,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("Buddy request not found")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "Buddy request not found",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy request",
-                )));
+                ))));
             }
         },
     };
@@ -553,21 +572,23 @@ pub async fn delete_buddy_relationship(
     other_user_id: web::Query<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.delete_buddy_relationship(auth_user_claims.0.uid, other_user_id.user_id)
     })
     .await?
     {
         Ok(_) => (),
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("Buddy relationship not found")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "Buddy relationship not found",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete buddy relationship",
-                )));
+                ))));
             }
         },
     };
@@ -581,17 +602,17 @@ pub async fn get_buddies(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let buddies = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao::get_buddies(auth_user_claims.0.uid)
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_buddies(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to find buddies for user",
-            )));
+            ))));
         }
     };
 
@@ -694,7 +715,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -745,7 +766,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -852,7 +873,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -889,7 +910,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -926,7 +947,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_no_query_param() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1009,7 +1030,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_with_query_param() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool
             .get()
             .expect("Failed to access database thread pool");
@@ -1235,7 +1256,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_change_password() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1333,7 +1354,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1431,7 +1452,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1529,7 +1550,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_send_buddy_request_and_accept() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1679,7 +1700,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_accept_buddy_requests_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1824,7 +1845,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_send_buddy_request_and_decline() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1946,7 +1967,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_decline_buddy_requests_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2091,7 +2112,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_retract_buddy_request() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2167,7 +2188,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_retract_buddy_request_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2299,7 +2320,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_pending_buddy_requests_for_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
     //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
@@ -2433,7 +2454,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_invitations_made_by_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()
@@ -2566,7 +2587,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_invitation() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
     //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
@@ -2683,7 +2704,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_remove_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
     //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
@@ -2816,7 +2837,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_remove_last_user_deletes_budget() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
     //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
@@ -3022,7 +3043,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_cannot_delete_budget_for_another_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
     //     let mut db_connection = db_thread_pool.get().unwrap();
 
     //     let app = test::init_service(
@@ -3169,7 +3190,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_budget() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()
@@ -3292,7 +3313,7 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_budgets_for_user() {
-    //     let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()

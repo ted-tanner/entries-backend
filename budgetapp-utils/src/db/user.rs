@@ -28,7 +28,7 @@ impl Dao {
             db_thread_pool: db_thread_pool.clone(),
         }
     }
-    
+
     fn get_connection(&mut self) -> Result<Rc<RefCell<DbConnection>>, DaoError> {
         if let Some(conn) = &self.db_connection {
             Ok(Rc::clone(conn))

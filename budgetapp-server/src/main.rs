@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate diesel;
-#[macro_use]
 extern crate lazy_static;
 
 use actix_web::middleware::Logger;
@@ -10,7 +8,6 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use env_logger::Env;
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Duration;
 
 mod env;
 mod handlers;
@@ -21,7 +18,6 @@ mod services;
 async fn main() -> std::io::Result<()> {
     let mut ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let mut port = 9000u16;
-    let mut schedule_cron_jobs = false;
 
     let mut args = std::env::args();
 
@@ -37,7 +33,7 @@ async fn main() -> std::io::Result<()> {
                     match next_arg {
                         Some(s) => s,
                         None => {
-                            eprintln!("--port option specified but no port was given");
+                            eprintln!("ERROR: --port option specified but no port was given");
                             std::process::exit(1);
                         }
                     }
@@ -49,7 +45,7 @@ async fn main() -> std::io::Result<()> {
                     match port_result {
                         Ok(p) => p,
                         Err(_) => {
-                            eprintln!("Incorrect format for port. Integer expected");
+                            eprintln!("ERROR: Incorrect format for port. Integer expected");
                             std::process::exit(1);
                         }
                     }
@@ -65,12 +61,12 @@ async fn main() -> std::io::Result<()> {
                         Some(s) => match s.parse::<IpAddr>() {
                             Ok(i) => i,
                             Err(_) => {
-                                eprintln!("Invalid IP address");
+                                eprintln!("ERROR: Invalid IP address");
                                 std::process::exit(1);
                             }
                         },
                         None => {
-                            eprintln!("--ip option specified but no IP was given");
+                            eprintln!("ERROR: --ip option specified but no IP was given");
                             std::process::exit(1);
                         }
                     }
@@ -79,7 +75,7 @@ async fn main() -> std::io::Result<()> {
                 continue;
             }
             a => {
-                eprintln!("Invalid argument: {}", &a);
+                eprintln!("ERROR: Invalid argument: {}", &a);
                 std::process::exit(1);
             }
         }
@@ -91,9 +87,7 @@ async fn main() -> std::io::Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    let cpu_count = num_cpus::get()
-        .try_into()
-        .expect("Failed to represent CPU count");
+    let cpu_count = num_cpus::get();
 
     let actix_workers = if let Some(count) = env::CONF.workers.actix_workers {
         count
@@ -125,7 +119,7 @@ async fn main() -> std::io::Result<()> {
     {
         Ok(c) => c,
         Err(_) => {
-            eprintln!("Failed to connect to database");
+            eprintln!("ERROR: Failed to connect to database");
             std::process::exit(1);
         }
     };
@@ -142,5 +136,7 @@ async fn main() -> std::io::Result<()> {
     .workers(actix_workers)
     .bind(base_addr)?
     .run()
-    .await?
+    .await?;
+
+    Ok(())
 }

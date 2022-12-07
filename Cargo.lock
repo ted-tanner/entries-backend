@@ -320,6 +320,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "log",
+ "num_cpus",
  "rand",
  "serde",
  "serde_json",

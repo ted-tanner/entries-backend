@@ -416,7 +416,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Make cron jobs their own thing
+* Run Clippy!
 * Get rid of panics
 * Double check all unsafe code
 * Finish tests in users handler

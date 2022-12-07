@@ -695,8 +695,12 @@ mod tests {
             hash_mem_size_kib: 128,
             hash_lanes: 2,
         };
-        
-        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
+
+        let hash = hash_password(
+            password,
+            &hash_params,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+        );
 
         assert!(!hash.contains(password));
     }
@@ -712,10 +716,18 @@ mod tests {
             hash_mem_size_kib: 128,
             hash_lanes: 2,
         };
-        
-        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
 
-        assert!(verify_hash(password, &hash, vec![30, 23, 4, 2, 3, 56, 56].as_slice()));
+        let hash = hash_password(
+            password,
+            &hash_params,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+        );
+
+        assert!(verify_hash(
+            password,
+            &hash,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice()
+        ));
     }
 
     #[test]
@@ -729,10 +741,18 @@ mod tests {
             hash_mem_size_kib: 128,
             hash_lanes: 2,
         };
-        
-        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
 
-        assert!(!verify_hash("@pa$$20rd-Test", &hash, vec![30, 23, 4, 2, 3, 56, 56].as_slice()));
+        let hash = hash_password(
+            password,
+            &hash_params,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+        );
+
+        assert!(!verify_hash(
+            "@pa$$20rd-Test",
+            &hash,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice()
+        ));
     }
 
     #[test]
@@ -746,9 +766,17 @@ mod tests {
             hash_mem_size_kib: 128,
             hash_lanes: 2,
         };
-        
-        let hash = hash_password(password, &hash_params, vec![30, 23, 4, 2, 3, 56, 56].as_slice());
 
-        assert!(!verify_hash(password, &hash, vec![30, 23, 4, 2, 4, 56, 56].as_slice()));
+        let hash = hash_password(
+            password,
+            &hash_params,
+            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+        );
+
+        assert!(!verify_hash(
+            password,
+            &hash,
+            vec![30, 23, 4, 2, 4, 56, 56].as_slice()
+        ));
     }
 }

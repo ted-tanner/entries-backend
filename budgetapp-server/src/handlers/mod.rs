@@ -12,16 +12,16 @@ pub mod error {
     #[derive(Debug)]
     pub enum ServerError {
         // 400 Errors
-        InvalidFormat(Option<&'static str>),
-        InputRejected(Option<&'static str>),
-        AlreadyExists(Option<&'static str>),
-        UserUnauthorized(Option<&'static str>),
-        AccessForbidden(Option<&'static str>),
-        NotFound(Option<&'static str>),
+        InvalidFormat(Option<String>),
+        InputRejected(Option<String>),
+        AlreadyExists(Option<String>),
+        UserUnauthorized(Option<String>),
+        AccessForbidden(Option<String>),
+        NotFound(Option<String>),
 
         // 500 Errors
-        InternalError(Option<&'static str>),
-        DatabaseTransactionError(Option<&'static str>),
+        InternalError(Option<String>),
+        DatabaseTransactionError(Option<String>),
     }
 
     impl std::error::Error for ServerError {}
@@ -65,7 +65,7 @@ pub mod error {
 
     impl From<actix_web::error::BlockingError> for ServerError {
         fn from(_result: actix_web::error::BlockingError) -> Self {
-            ServerError::InternalError(Some("Actix thread pool failure"))
+            ServerError::InternalError(Some(String::from("Actix thread pool failure")))
         }
     }
 
@@ -81,7 +81,7 @@ pub mod error {
     fn format_err(
         f: &mut fmt::Formatter<'_>,
         error_txt: &str,
-        msg: &Option<&'static str>,
+        msg: &Option<String>,
     ) -> fmt::Result {
         write!(
             f,

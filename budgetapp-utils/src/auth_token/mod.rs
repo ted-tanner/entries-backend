@@ -546,7 +546,7 @@ mod tests {
 
         let decoded_token =
             TokenClaims::from_token_with_validation(&token.token, "thisIsAFakeKey".as_bytes())
-            .unwrap();
+                .unwrap();
 
         assert_eq!(decoded_token.typ, u8::from(TokenType::Access));
         assert_eq!(decoded_token.uid, user_id);

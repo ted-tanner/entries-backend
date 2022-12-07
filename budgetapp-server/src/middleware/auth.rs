@@ -4,6 +4,8 @@ use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
 
+use crate::env;
+
 #[derive(Debug)]
 pub struct AuthorizedUserClaims(pub auth_token::TokenClaims);
 
@@ -39,10 +41,11 @@ impl FromRequest for AuthorizedUserClaims {
             None => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        let claims = match auth_token::validate_access_token(token) {
-            Ok(c) => c,
-            Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
-        };
+        let claims =
+            match auth_token::validate_access_token(token, env::CONF.keys.hashing_key.as_bytes()) {
+                Ok(c) => c,
+                Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
+            };
 
         future::ok(AuthorizedUserClaims(claims))
     }

@@ -2,7 +2,7 @@ use budgetapp_utils::request_io::{
     InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareEventId,
     OutputBudget, UserInvitationToBudget,
 };
-use budgetapp_utils::{db, db::DbThreadPool};
+use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
 use log::error;
@@ -17,25 +17,27 @@ pub async fn get(
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_budget_by_id(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No budget with provided ID")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
-                )));
+                ))));
             }
         },
     };
@@ -48,25 +50,25 @@ pub async fn get_all(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_budgets_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
-            diesel::result::Error::NotFound => {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
-                )));
+                ))));
             }
         },
     };
@@ -80,7 +82,7 @@ pub async fn get_all_between_dates(
     date_range: web::Query<InputDateRange>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_budgets_for_user_between_dates(
             auth_user_claims.0.uid,
             date_range.start_date,
@@ -91,18 +93,18 @@ pub async fn get_all_between_dates(
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None))
             }
-            diesel::result::Error::NotFound => {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
-                )));
+                ))));
             }
         },
     };
@@ -116,22 +118,22 @@ pub async fn create(
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_budget(&budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create budget",
-                )));
+                ))));
             }
         },
     };
@@ -145,31 +147,31 @@ pub async fn edit(
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
     if budget_data.start_date > budget_data.end_date {
-        return Err(ServerError::InputRejected(Some(
+        return Err(ServerError::InputRejected(Some(String::from(
             "End date cannot come before start date",
-        )));
+        ))));
     }
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.edit_budget(&budget_data, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
-                Err(ServerError::NotFound(Some(
+                Err(ServerError::NotFound(Some(String::from(
                     "Budget not found or no changes were made",
-                )))
+                ))))
             } else {
                 Ok(HttpResponse::Ok().finish())
             }
         }
         Err(e) => {
             error!("{}", e);
-            Err(ServerError::DatabaseTransactionError(Some(
+            Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to edit budget",
-            )))
+            ))))
         }
     }
 }
@@ -183,22 +185,22 @@ pub async fn add_entry(
     ensure_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
 
     let new_entry = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry(&entry_data, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create entry",
-                )));
+                ))));
             }
         },
     };
@@ -214,15 +216,15 @@ pub async fn invite_user(
     let inviting_user_id = auth_user_claims.0.uid;
 
     if invitation_info.invitee_user_id == inviting_user_id {
-        return Err(ServerError::InputRejected(Some(
+        return Err(ServerError::InputRejected(Some(String::from(
             "Inviter and invitee have the same ID",
-        )));
+        ))));
     }
 
     ensure_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id).await?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             invitation_info.budget_id,
             invitation_info.invitee_user_id,
@@ -233,15 +235,15 @@ pub async fn invite_user(
     {
         Ok(_) => (),
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to share budget",
-                )));
+                ))));
             }
         },
     }
@@ -255,29 +257,29 @@ pub async fn retract_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.delete_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::NotFound(Some(
+                return Err(ServerError::NotFound(Some(String::from(
                     "No share event belonging to user with provided ID",
-                )));
+                ))));
             }
         }
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No share event with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete invitation",
-                )));
+                ))));
             }
         },
     }
@@ -294,29 +296,29 @@ pub async fn accept_invitation(
     let share_event_id = invitation_id.share_event_id;
 
     let budget_id = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
         budget_dao.mark_invitation_accepted(share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(share_event) => share_event.budget_id,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No share event with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to accept invitation",
-                )));
+                ))));
             }
         },
     };
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.add_user(budget_id, auth_user_claims.0.uid)
     })
     .await?
@@ -324,9 +326,9 @@ pub async fn accept_invitation(
         Ok(_) => (),
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to accept invitation",
-            )));
+            ))));
         }
     }
 
@@ -339,29 +341,29 @@ pub async fn decline_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.mark_invitation_declined(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
-                return Err(ServerError::NotFound(Some(
+                return Err(ServerError::NotFound(Some(String::from(
                     "No share event with provided ID",
-                )));
+                ))));
             }
         }
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "No share event with provided ID",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to decline invitation",
-                )));
+                ))));
             }
         },
     }
@@ -374,21 +376,23 @@ pub async fn get_all_pending_invitations_for_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_pending_invitations_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(invites) => invites,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No share events for user")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No share events for user",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
-                )));
+                ))));
             }
         },
     };
@@ -401,21 +405,23 @@ pub async fn get_all_pending_invitations_made_by_user(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_pending_invitations_made_by_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(invites) => invites,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("No share events made by user")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No share events made by user",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
-                )));
+                ))));
             }
         },
     };
@@ -429,21 +435,23 @@ pub async fn get_invitation(
     invitation_id: web::Query<InputShareEventId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(invite) => invite,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some("Share event not found")));
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "Share event not found",
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
-                )));
+                ))));
             }
         },
     };
@@ -463,38 +471,38 @@ pub async fn remove_budget(
     let budget_id_second_clone = budget_id.0.clone();
 
     let rows_affected_count = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.remove_user(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => count,
         Err(e) => match e {
-            diesel::result::Error::NotFound => {
-                return Err(ServerError::NotFound(Some(
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
                     "User budget association not found",
-                )));
+                ))));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to remove association with budget",
-                )));
+                ))));
             }
         },
     };
 
     if rows_affected_count == 0 {
-        return Err(ServerError::NotFound(Some(
+        return Err(ServerError::NotFound(Some(String::from(
             "User budget association not found",
-        )));
+        ))));
     }
 
     // TODO: Perhaps user shouldn't have to wait for this (make it non-blocking). Users have
     //       already been removed from the budget, so the handler can return without finishing
     //       deleting the budget
     let remaining_users_in_budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.count_users_remaining_in_budget(budget_id_clone.budget_id)
     })
     .await?
@@ -511,7 +519,7 @@ pub async fn remove_budget(
 
     if remaining_users_in_budget == 0 {
         match web::block(move || {
-            let budget_dao = db::budget::Dao::new(&db_thread_pool_second_clone);
+            let mut budget_dao = db::budget::Dao::new(&db_thread_pool_second_clone);
             budget_dao.delete_budget(budget_id_second_clone.budget_id)
         })
         .await?
@@ -534,31 +542,32 @@ async fn ensure_user_in_budget(
     user_id: Uuid,
     budget_id: Uuid,
 ) -> Result<(), ServerError> {
+    let db_thread_pool_clone = db_thread_pool.clone();
     let is_user_in_budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(db_thread_pool);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.check_user_in_budget(user_id, budget_id)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            diesel::result::Error::InvalidCString(_)
-            | diesel::result::Error::DeserializationError(_) => {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
                 error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
-                )));
+                ))));
             }
         },
     };
 
     if !is_user_in_budget {
-        return Err(ServerError::NotFound(Some(
+        return Err(ServerError::NotFound(Some(String::from(
             "User has no budget with provided ID",
-        )));
+        ))));
     }
 
     Ok(())
@@ -677,7 +686,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_budget() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -819,7 +828,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit_budget() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -871,7 +880,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_edit_budget_of_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -932,7 +941,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit_budget_start_cannot_be_after_end() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -990,7 +999,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_add_entry() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1101,7 +1110,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_invite_user_and_accept() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1226,7 +1235,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_accept_invites_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1441,7 +1450,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_invite_user_and_decline() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1562,7 +1571,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_decline_invites_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1777,7 +1786,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_retract_invitation() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1843,7 +1852,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_retract_invites_made_by_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -1944,7 +1953,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_invitations_for_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -2078,7 +2087,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_invitations_made_by_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -2211,7 +2220,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_invitation() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2325,7 +2334,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_remove_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2456,7 +2465,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_remove_last_user_deletes_budget() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2660,7 +2669,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_delete_budget_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
         let app = test::init_service(
@@ -2804,7 +2813,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_budget() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -2924,7 +2933,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -3147,7 +3156,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user_between_dates() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -3633,7 +3642,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cant_access_budget_for_another_user() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()

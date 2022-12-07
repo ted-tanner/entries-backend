@@ -19,7 +19,9 @@ pub async fn sign_in(
     const INVALID_CREDENTIALS_MSG: &str = "Incorrect email or password";
 
     if !credentials.validate_email_address().is_valid() {
-        return Err(ServerError::InvalidFormat(Some("Invalid email address")));
+        return Err(ServerError::InvalidFormat(Some(String::from(
+            "Invalid email address",
+        ))));
     }
 
     let db_thread_pool_clone = db_thread_pool.clone();
@@ -27,12 +29,16 @@ pub async fn sign_in(
 
     let user = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
-        user_dao.get_user_by_email(user_email)
+        user_dao.get_user_by_email(&user_email)
     })
     .await?
     {
         Ok(u) => u,
-        Err(_) => return Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG))),
+        Err(_) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                INVALID_CREDENTIALS_MSG,
+            ))))
+        }
     };
 
     let attempts = match web::block(move || {
@@ -44,23 +50,23 @@ pub async fn sign_in(
         Ok(a) => a,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check password attempt count",
-            )));
+            ))));
         }
     };
 
     if attempts > env::CONF.security.password_max_attempts {
-        return Err(ServerError::AccessForbidden(Some(
+        return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many login attempts. Try again in a few minutes.",
-        )));
+        ))));
     }
 
     let does_password_match_hash = web::block(move || {
         password_hasher::verify_hash(
             &credentials.password,
             &user.password_hash,
-            &*env::CONF.keys.hashing_key.as_bytes(),
+            env::CONF.keys.hashing_key.as_bytes(),
         )
     })
     .await?;
@@ -73,16 +79,16 @@ pub async fn sign_in(
                 user_currency: &user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            &*env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.keys.token_signing_key.as_bytes(),
         );
 
         let signin_token = match signin_token {
             Ok(signin_token) => signin_token,
             Err(e) => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some(
+                return Err(ServerError::InternalError(Some(String::from(
                     "Failed to generate sign-in token for user",
-                )));
+                ))));
             }
         };
 
@@ -103,12 +109,14 @@ pub async fn sign_in(
             user.id,
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
             Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-            &*env::CONF.keys.otp_key.as_bytes(),
+            env::CONF.keys.otp_key.as_bytes(),
         ) {
             Ok(p) => p,
             Err(e) => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some("Failed to generate OTP")));
+                return Err(ServerError::InternalError(Some(String::from(
+                    "Failed to generate OTP",
+                ))));
             }
         };
 
@@ -117,7 +125,9 @@ pub async fn sign_in(
 
         Ok(HttpResponse::Ok().json(signin_token))
     } else {
-        Err(ServerError::UserUnauthorized(Some(INVALID_CREDENTIALS_MSG)))
+        Err(ServerError::UserUnauthorized(Some(String::from(
+            INVALID_CREDENTIALS_MSG,
+        ))))
     }
 }
 
@@ -128,7 +138,7 @@ pub async fn verify_otp_for_signin(
     let token_claims = match web::block(move || {
         auth_token::validate_signin_token(
             &otp_and_token.0.signin_token,
-            &*env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.keys.token_signing_key.as_bytes(),
         )
     })
     .await?
@@ -136,23 +146,31 @@ pub async fn verify_otp_for_signin(
         Ok(t) => t,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token is invalid",
+                ))));
             }
             auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token has expired",
+                ))));
             }
             auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Incorrect token type",
+                ))));
             }
             e => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some("Error verifying token")));
+                return Err(ServerError::InternalError(Some(String::from(
+                    "Error verifying token",
+                ))));
             }
         },
     };
 
     let attempts = match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_and_increment_otp_verification_count(token_claims.uid)
     })
     .await?
@@ -160,16 +178,16 @@ pub async fn verify_otp_for_signin(
         Ok(a) => a,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check OTP attempt count",
-            )));
+            ))));
         }
     };
 
     if attempts > env::CONF.security.otp_max_attempts {
-        return Err(ServerError::AccessForbidden(Some(
+        return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many attempts. Try again in a few minutes.",
-        )));
+        ))));
     }
 
     let is_valid = match web::block(move || {
@@ -185,7 +203,7 @@ pub async fn verify_otp_for_signin(
             token_claims.uid,
             current_time,
             Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-            &*env::CONF.keys.otp_key.as_bytes(),
+            env::CONF.keys.otp_key.as_bytes(),
         )?;
 
         // A future code gets sent to the user, so check a current and future code
@@ -195,7 +213,7 @@ pub async fn verify_otp_for_signin(
                 token_claims.uid,
                 current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
                 Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-                &*env::CONF.keys.otp_key.as_bytes(),
+                env::CONF.keys.otp_key.as_bytes(),
             )?;
         }
 
@@ -206,22 +224,28 @@ pub async fn verify_otp_for_signin(
         Ok(v) => v,
         Err(e) => match e {
             otp::OtpError::Unauthorized => {
-                return Err(ServerError::UserUnauthorized(Some("Incorrect passcode")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Incorrect passcode",
+                ))))
             }
             otp::OtpError::ImproperlyFormatted => {
-                return Err(ServerError::InputRejected(Some("Invalid passcode")))
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Invalid passcode",
+                ))))
             }
             otp::OtpError::Error(_) => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some(
+                return Err(ServerError::InternalError(Some(String::from(
                     "Validating passcode failed",
-                )));
+                ))));
             }
         },
     };
 
     if !is_valid {
-        return Err(ServerError::UserUnauthorized(Some("Incorrect passcode")));
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            "Incorrect passcode",
+        ))));
     }
 
     let token_pair = auth_token::generate_token_pair(
@@ -232,16 +256,16 @@ pub async fn verify_otp_for_signin(
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
         Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
-        &*env::CONF.keys.token_signing_key.as_bytes(),
+        env::CONF.keys.token_signing_key.as_bytes(),
     );
 
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalError(Some(
+            return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate tokens for new user",
-            )));
+            ))));
         }
     };
 
@@ -261,51 +285,59 @@ pub async fn refresh_tokens(
     let refresh_token = token.0.token.clone();
 
     let claims = match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
-        auth_token::validate_refresh_token(token.0.token.as_str(), &mut auth_dao)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
+        auth_token::validate_refresh_token(
+            token.0.token.as_str(),
+            env::CONF.keys.token_signing_key.as_bytes(),
+            &mut auth_dao,
+        )
     })
     .await?
     {
         Ok(c) => c,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some("Token is invalid")));
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token is invalid",
+                ))));
             }
             auth_token::TokenError::TokenBlacklisted => {
-                return Err(ServerError::UserUnauthorized(Some(
+                return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Token has been blacklisted",
-                )));
+                ))));
             }
             auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some("Token has expired")));
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token has expired",
+                ))));
             }
             auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")));
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Incorrect token type",
+                ))));
             }
             e => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some("Error verifying token")));
+                return Err(ServerError::InternalError(Some(String::from(
+                    "Error verifying token",
+                ))));
             }
         },
     };
 
     // TODO: Make it so users don't have to wait for this
     match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_token::blacklist_token(
-            refresh_token.as_str(),
-            &*env::CONF.keys.token_signing_key.as_bytes(),
-            &mut auth_dao,
-        )
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_token::blacklist_token(refresh_token.as_str(), &mut auth_dao)
     })
     .await?
     {
         Ok(_) => {}
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to blacklist token",
-            )));
+            ))));
         }
     }
 
@@ -317,16 +349,16 @@ pub async fn refresh_tokens(
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
         Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
-        &*env::CONF.keys.token_signing_key.as_bytes(),
+        env::CONF.keys.token_signing_key.as_bytes(),
     );
 
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
         Err(e) => {
             error!("{}", e);
-            return Err(ServerError::InternalError(Some(
+            return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate tokens for new user",
-            )));
+            ))));
         }
     };
 
@@ -347,42 +379,54 @@ pub async fn logout(
     let refresh_token_clone = refresh_token.token.clone();
 
     let refresh_token_claims = match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
-        auth_token::validate_refresh_token(&refresh_token_clone, &mut auth_dao)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
+        auth_token::validate_refresh_token(
+            &refresh_token_clone,
+            env::CONF.keys.token_signing_key.as_bytes(),
+            &mut auth_dao,
+        )
     })
     .await?
     {
         Ok(tc) => tc,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some("Token is invalid")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token is invalid",
+                ))))
             }
             auth_token::TokenError::TokenBlacklisted => {
-                return Err(ServerError::UserUnauthorized(Some(
+                return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Token has been blacklisted",
-                )))
+                ))))
             }
             auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some("Token has expired")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token has expired",
+                ))))
             }
             auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some("Incorrect token type")))
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Incorrect token type",
+                ))))
             }
             e => {
                 error!("{}", e);
-                return Err(ServerError::InternalError(Some("Error verifying token")));
+                return Err(ServerError::InternalError(Some(String::from(
+                    "Error verifying token",
+                ))));
             }
         },
     };
 
     if refresh_token_claims.uid != auth_user_claims.0.uid {
-        return Err(ServerError::AccessForbidden(Some(
+        return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
-        )));
+        ))));
     }
 
     match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_token::blacklist_token(refresh_token.0.token.as_str(), &mut auth_dao)
     })
     .await
@@ -390,9 +434,9 @@ pub async fn logout(
         Ok(_) => Ok(HttpResponse::Ok().finish()),
         Err(e) => {
             error!("{}", e);
-            Err(ServerError::InternalError(Some(
+            Err(ServerError::InternalError(Some(String::from(
                 "Failed to blacklist token",
-            )))
+            ))))
         }
     }
 }
@@ -414,7 +458,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -479,7 +523,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -530,7 +574,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in_fails_after_repeated_attempts() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -592,7 +636,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_with_current_code() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -692,7 +736,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_with_next_code() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -793,7 +837,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_after_repeated_attempts() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -882,7 +926,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -949,7 +993,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_expired_code() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1027,7 +1071,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_future_not_next_code() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1105,7 +1149,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1182,7 +1226,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1283,7 +1327,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1358,7 +1402,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_access_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1433,7 +1477,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_logout() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()
@@ -1515,7 +1559,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_logout_fails_with_invalid_refresh_token() {
-        let db_thread_pool = &*env::testing::DB_THREAD_POOL;
+        let db_thread_pool = env::testing::DB_THREAD_POOL;
 
         let app = test::init_service(
             App::new()

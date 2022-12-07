@@ -225,100 +225,170 @@ mod tests {
         let mut password = String::new();
 
         // Empty
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Shorter than 12 chars
         password = String::from("Qo1aG@Qe!9z");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains "password"
         password = String::from("sd@#$#324dDPaSsWOrd#$90");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // No uppercase
         password = String::from("axgwjq7byvbgzu&70@1$");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // No lowercase
         password = String::from("XLX%J!6&$SAUYII2*Q4J");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // No number
         password = String::from("Hf)y!GqmiB&#Agwa*qbQ");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // No ASCII special chars
         password = String::from("aqBA19jyuajjq3UvpYwp");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains user's first name
         password = String::from("yqTq8xAOJ$") + FIRST_NAME + "$d9";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains user's last name
         password = String::from("8#@V2TT0or") + LAST_NAME + "HF^h3z";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains username part of user's email
         password = String::from("Qh*r4qj8vD") + EMAIL.split_once('@').unwrap().0 + "3uX#F";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains user's birth year
         password = String::from("8#@V2TT0") + &date_of_birth.year().to_string() + "or)HF^h3z";
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Contains current or recent year
         password = String::from("wn0iVR2q2021#QiubXb");
-        assert!(
-            !validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(!validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Valid
         password = String::from("1&B3d^hJ37^9$YNA2sD9");
-        assert!(
-            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
 
         // Valid
         password = String::from("HtbNUF4j&x92");
-        assert!(
-            validate_strong_password(&password, EMAIL, FIRST_NAME, LAST_NAME, &date_of_birth, 12)
-                .is_valid()
-        );
+        assert!(validate_strong_password(
+            &password,
+            EMAIL,
+            FIRST_NAME,
+            LAST_NAME,
+            &date_of_birth,
+            12
+        )
+        .is_valid());
     }
 }

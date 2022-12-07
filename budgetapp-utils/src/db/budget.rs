@@ -1316,7 +1316,7 @@ pub mod tests {
     fn test_delete_budget() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
         let mut dao = Dao::new(&db_thread_pool);
-        
+
         let created_user_and_budget = generate_user_and_budget().unwrap();
         let created_user = created_user_and_budget.user.clone();
         let created_budget = created_user_and_budget.budget;
