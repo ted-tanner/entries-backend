@@ -42,7 +42,7 @@ impl FromRequest for AuthorizedUserClaims {
         };
 
         let claims =
-            match auth_token::validate_access_token(token, env::CONF.keys.hashing_key.as_bytes()) {
+            match auth_token::validate_access_token(token, env::CONF.keys.token_signing_key.as_bytes()) {
                 Ok(c) => c,
                 Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
             };
@@ -327,7 +327,7 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(
+        let token = auth_token::generate_refresh_token(
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
