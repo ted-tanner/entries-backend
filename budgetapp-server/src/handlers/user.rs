@@ -623,6 +623,18 @@ pub async fn get_buddies(
 pub mod tests {
     use super::*;
 
+    use budgetapp_utils::auth_token::TokenClaims;
+    use budgetapp_utils::models::buddy_relationship::BuddyRelationship;
+    use budgetapp_utils::models::buddy_request::BuddyRequest;
+    use budgetapp_utils::models::user::User;
+    use budgetapp_utils::request_io::{SigninTokenOtpPair, TokenPair};
+    use budgetapp_utils::schema::buddy_relationships as buddy_relationship_fields;
+    use budgetapp_utils::schema::buddy_relationships::dsl::buddy_relationships;
+    use budgetapp_utils::schema::buddy_requests as buddy_request_fields;
+    use budgetapp_utils::schema::buddy_requests::dsl::buddy_requests;
+    use budgetapp_utils::schema::users as user_fields;
+    use budgetapp_utils::schema::users::dsl::users;
+
     use actix_web::web::Data;
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
@@ -630,18 +642,7 @@ pub mod tests {
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::{SigninTokenOtpPair, TokenPair};
-    use crate::models::buddy_relationship::BuddyRelationship;
-    use crate::models::buddy_request::BuddyRequest;
-    use crate::models::user::User;
-    use crate::schema::buddy_relationships as buddy_relationship_fields;
-    use crate::schema::buddy_relationships::dsl::buddy_relationships;
-    use crate::schema::buddy_requests as buddy_request_fields;
-    use crate::schema::buddy_requests::dsl::buddy_requests;
-    use crate::schema::users as user_fields;
-    use crate::schema::users::dsl::users;
     use crate::services;
-    use crate::utils::auth_token::TokenClaims;
 
     #[derive(Clone)]
     pub struct UserWithAuthTokens {
@@ -687,14 +688,20 @@ pub mod tests {
             .unwrap()
             .uid;
 
-        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
-        let user = db::user::get_user_by_id(&mut db_connection, user_id).unwrap();
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user = user_dao.get_user_by_id(user_id).unwrap();
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -715,11 +722,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -749,7 +754,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let created_user = users
             .filter(user_fields::email.eq(&new_user.email.to_lowercase()))
@@ -766,11 +771,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -809,7 +812,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -873,11 +882,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_email() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -910,11 +917,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_fails_with_invalid_password() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -947,11 +952,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_no_query_param() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -990,7 +993,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1030,14 +1039,13 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_with_query_param() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool
+        let mut db_connection = env::testing::DB_THREAD_POOL
             .get()
             .expect("Failed to access database thread pool");
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1076,7 +1084,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1256,11 +1270,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_change_password() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1299,7 +1311,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1335,30 +1353,26 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
-            .unwrap()
-            .password_hash;
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let db_password_hash = user_dao.get_user_by_id(user_id).unwrap().password_hash;
 
         assert!(!password_hasher::verify_hash(
             &new_user.password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
         assert!(password_hasher::verify_hash(
             &password_pair.new_password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
     }
 
     #[actix_rt::test]
     async fn test_change_password_current_password_wrong() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1397,7 +1411,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1433,30 +1453,26 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
-            .unwrap()
-            .password_hash;
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let db_password_hash = user_dao.get_user_by_id(user_id).unwrap().password_hash;
 
         assert!(password_hasher::verify_hash(
             &new_user.password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
         assert!(!password_hasher::verify_hash(
             &password_pair.new_password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
     }
 
     #[actix_rt::test]
     async fn test_change_password_new_password_invalid() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1495,7 +1511,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1531,31 +1553,28 @@ pub mod tests {
 
         assert_eq!(res.status(), http::StatusCode::BAD_REQUEST);
 
-        let mut db_connection = db_thread_pool
-            .get()
-            .expect("Failed to access database thread pool");
-        let db_password_hash = db::user::get_user_by_id(&mut db_connection, user_id)
-            .unwrap()
-            .password_hash;
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let db_password_hash = user_dao.get_user_by_id(user_id).unwrap().password_hash;
 
         assert!(password_hasher::verify_hash(
             &new_user.password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
         assert!(!password_hasher::verify_hash(
             &password_pair.new_password,
-            &db_password_hash
+            &db_password_hash,
+            env::CONF.keys.hashing_key.as_bytes()
         ));
     }
 
     #[actix_rt::test]
     async fn test_send_buddy_request_and_accept() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1700,12 +1719,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_accept_buddy_requests_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1845,12 +1863,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_send_buddy_request_and_decline() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1967,12 +1984,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_decline_buddy_requests_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2112,12 +2128,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_retract_buddy_request() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2188,12 +2203,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_retract_buddy_request_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2320,12 +2334,12 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_pending_buddy_requests_for_user() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
-    //     let mut db_connection = db_thread_pool.get().unwrap();
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
+    //     let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
@@ -2454,22 +2468,22 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_invitations_made_by_user() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user1_budget1 = created_user1_and_budget.budget;
     //     let created_user1_id = created_user1_and_budget.user_id;
 
     //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user2_id = created_user2_and_budget.user_id;
 
     //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2587,27 +2601,27 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_invitation() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
-    //     let mut db_connection = db_thread_pool.get().unwrap();
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
+    //     let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user1_budget = created_user1_and_budget.budget;
     //     let created_user1_id = created_user1_and_budget.user_id;
 
     //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user2_id = created_user2_and_budget.user_id;
 
     //     let created_user3_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
 
     //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
     //     let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
@@ -2704,23 +2718,23 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_remove_user() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
-    //     let mut db_connection = db_thread_pool.get().unwrap();
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
+    //     let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user1_budget = created_user1_and_budget.budget;
     //     let created_user1_id = created_user1_and_budget.user_id;
 
     //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user2_id = created_user2_and_budget.user_id;
 
     //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -2837,23 +2851,23 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_remove_last_user_deletes_budget() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
-    //     let mut db_connection = db_thread_pool.get().unwrap();
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
+    //     let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user1_id = created_user1_and_budget.user_id;
     //     let created_user1_budget = created_user1_and_budget.budget;
 
     //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user2_id = created_user2_and_budget.user_id;
     //     let created_user2_budget = created_user2_and_budget.budget;
 
@@ -3043,26 +3057,26 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_cannot_delete_budget_for_another_user() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
-    //     let mut db_connection = db_thread_pool.get().unwrap();
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
+    //     let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user1_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user1_budget = created_user1_and_budget.budget;
 
     //     let created_user2_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user2_id = created_user2_and_budget.user_id;
 
     //     let created_user3_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_user3_budget = created_user3_and_budget.budget;
 
     //     let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
@@ -3190,17 +3204,17 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_budget() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_budget = created_user_and_budget.budget.clone();
     //     let access_token = created_user_and_budget.token_pair.access_token.clone();
     //     let budget_categories = created_budget.categories.clone();
@@ -3313,17 +3327,17 @@ pub mod tests {
 
     // #[actix_rt::test]
     // async fn test_get_all_budgets_for_user() {
-    //     let db_thread_pool = env::testing::DB_THREAD_POOL;
+    //     let env::testing::DB_THREAD_POOL = env::testing::DB_THREAD_POOL;
 
     //     let app = test::init_service(
     //         App::new()
-    //             .app_data(Data::new(db_thread_pool.clone()))
+    //             .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
     //             .configure(services::api::configure),
     //     )
     //     .await;
 
     //     let created_user_and_budget =
-    //         create_user_and_budget_and_sign_in(db_thread_pool.clone()).await;
+    //         create_user_and_budget_and_sign_in(env::testing::DB_THREAD_POOL.clone()).await;
     //     let created_budget0 = created_user_and_budget.budget.clone();
     //     let access_token = created_user_and_budget.token_pair.access_token.clone();
 

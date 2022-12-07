@@ -445,24 +445,23 @@ pub async fn logout(
 mod tests {
     use super::*;
 
+    use budgetapp_utils::auth_token::TokenClaims;
+    use budgetapp_utils::otp;
+    use budgetapp_utils::request_io::{InputUser, RefreshToken, SigninToken, SigninTokenOtpPair};
+
     use actix_web::web::Data;
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
     use rand::prelude::*;
 
     use crate::env;
-    use crate::handlers::request_io::{InputUser, RefreshToken, SigninToken, SigninTokenOtpPair};
     use crate::services;
-    use crate::utils::auth_token::TokenClaims;
-    use crate::utils::otp;
 
     #[actix_rt::test]
     async fn test_sign_in() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -514,20 +513,21 @@ mod tests {
         assert!(!signin_token.signin_token.is_empty());
 
         assert_eq!(
-            auth_token::validate_signin_token(&signin_token.signin_token)
-                .unwrap()
-                .uid,
+            auth_token::validate_signin_token(
+                &signin_token.signin_token,
+                env::CONF.keys.token_signing_key.as_bytes()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
     }
 
     #[actix_rt::test]
     async fn test_sign_in_fails_with_invalid_credentials() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -574,11 +574,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_sign_in_fails_after_repeated_attempts() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -636,11 +634,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_with_current_code() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -694,7 +690,13 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -718,29 +720,34 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
 
         assert_eq!(
-            auth_token::validate_access_token(&access_token)
-                .unwrap()
-                .uid,
+            auth_token::validate_access_token(
+                &access_token,
+                env::CONF.keys.token_signing_key.as_bytes()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
-                .unwrap()
-                .uid,
+            auth_token::validate_refresh_token(
+                &refresh_token,
+                env::CONF.keys.token_signing_key.as_bytes(),
+                &mut auth_dao
+            )
+            .unwrap()
+            .uid,
             user_id
         );
     }
 
     #[actix_rt::test]
     async fn test_verify_otp_with_next_code() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -795,7 +802,13 @@ mod tests {
             .as_secs()
             + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(user_id, future_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            future_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -819,29 +832,34 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
 
         assert_eq!(
-            auth_token::validate_access_token(&access_token)
-                .unwrap()
-                .uid,
+            auth_token::validate_access_token(
+                &access_token,
+                env::CONF.keys.token_signing_key.as_bytes()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
-                .unwrap()
-                .uid,
+            auth_token::validate_refresh_token(
+                &refresh_token,
+                env::CONF.keys.token_signing_key.as_bytes(),
+                &mut auth_dao
+            )
+            .unwrap()
+            .uid,
             user_id
         );
     }
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_after_repeated_attempts() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -896,7 +914,13 @@ mod tests {
             .as_secs()
             + env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(user_id, future_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            future_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -926,11 +950,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_code() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -993,11 +1015,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_expired_code() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1052,7 +1072,13 @@ mod tests {
             .as_secs()
             - env::CONF.lifetimes.otp_lifetime_mins * 60;
 
-        let otp = otp::generate_otp(user_id, past_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            past_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1071,11 +1097,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_future_not_next_code() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1130,7 +1154,13 @@ mod tests {
             .as_secs()
             + (2 * env::CONF.lifetimes.otp_lifetime_mins * 60);
 
-        let otp = otp::generate_otp(user_id, far_future_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            far_future_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1149,11 +1179,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_verify_otp_fails_with_wrong_token() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1207,7 +1235,13 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token + "i",
@@ -1226,11 +1260,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1249,8 +1281,6 @@ mod tests {
             .unwrap(),
             currency: String::from("USD"),
         };
-
-        let mut db_connection = db_thread_pool.get().unwrap();
 
         let create_user_res = test::call_service(
             &app,
@@ -1271,7 +1301,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1308,30 +1344,35 @@ mod tests {
         assert!(!access_token.is_empty());
         assert!(!refresh_token.is_empty());
 
-        assert!(
-            auth_token::is_on_blacklist(&refresh_token_payload.token, &mut db_connection).unwrap()
-        );
+        let mut auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+
+        assert!(auth_token::is_on_blacklist(&refresh_token_payload.token, &mut auth_dao).unwrap());
         assert_eq!(
-            auth_token::validate_access_token(&access_token)
-                .unwrap()
-                .uid,
+            auth_token::validate_access_token(
+                &access_token,
+                env::CONF.keys.token_signing_key.as_bytes()
+            )
+            .unwrap()
+            .uid,
             user_id
         );
         assert_eq!(
-            auth_token::validate_refresh_token(&refresh_token, &mut db_connection)
-                .unwrap()
-                .uid,
+            auth_token::validate_refresh_token(
+                &refresh_token,
+                env::CONF.keys.token_signing_key.as_bytes(),
+                &mut auth_dao
+            )
+            .unwrap()
+            .uid,
             user_id
         );
     }
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_invalid_refresh_token() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1370,7 +1411,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1402,11 +1449,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_refresh_tokens_fails_with_access_token() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1445,7 +1490,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1477,11 +1528,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_logout() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1520,7 +1569,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1553,17 +1608,15 @@ mod tests {
         let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::OK);
 
-        let mut db_connection = db_thread_pool.get().unwrap();
-        assert!(auth_token::is_on_blacklist(&logout_payload.token, &mut db_connection).unwrap());
+        let mut auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        assert!(auth_token::is_on_blacklist(&logout_payload.token, &mut auth_dao).unwrap());
     }
 
     #[actix_rt::test]
     async fn test_logout_fails_with_invalid_refresh_token() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1602,7 +1655,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -1635,7 +1694,7 @@ mod tests {
         let res = test::call_service(&app, req).await;
         assert_eq!(res.status(), http::StatusCode::UNAUTHORIZED);
 
-        let mut db_connection = db_thread_pool.get().unwrap();
-        assert!(!auth_token::is_on_blacklist(&logout_payload.token, &mut db_connection).unwrap());
+        let mut auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        assert!(!auth_token::is_on_blacklist(&logout_payload.token, &mut auth_dao).unwrap());
     }
 }

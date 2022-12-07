@@ -98,7 +98,7 @@ fn build_conf() -> Conf {
 
 #[cfg(test)]
 pub mod testing {
-    use crate::definitions::*;
+    use budgetapp_utils::db::DbThreadPool;
 
     use diesel::prelude::*;
     use diesel::r2d2::{self, ConnectionManager};

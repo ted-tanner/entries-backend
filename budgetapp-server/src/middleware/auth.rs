@@ -60,6 +60,7 @@ mod tests {
     use actix_web::test;
     use chrono::NaiveDate;
     use rand::prelude::*;
+    use std::time::Duration;
     use uuid::Uuid;
 
     #[actix_rt::test]
@@ -87,11 +88,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap();
 
         let req = test::TestRequest::get()
@@ -142,15 +147,18 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _token = auth_token::generate_access_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let _token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap();
 
         let req = test::TestRequest::get().to_http_request();
-
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();
 
         assert!(res.is_err());
@@ -181,11 +189,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap();
 
         let req = test::TestRequest::get()
@@ -222,11 +234,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _ = auth_token::generate_access_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let _token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap();
 
         let req = test::TestRequest::get()
@@ -262,11 +278,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap()
         .to_string();
 
@@ -307,11 +327,15 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_refresh_token(auth_token::TokenParams {
-            user_id: &new_user.id,
-            user_email: new_user.email,
-            user_currency: new_user.currency,
-        })
+        let token = auth_token::generate_access_token(
+            &auth_token::TokenParams {
+                user_id: &new_user.id,
+                user_email: new_user.email,
+                user_currency: new_user.currency,
+            },
+            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
+            env::CONF.keys.token_signing_key.as_bytes(),
+        )
         .unwrap();
 
         let req = test::TestRequest::get()

@@ -4,7 +4,6 @@ extern crate diesel;
 extern crate lazy_static;
 
 mod argon2;
-mod schema;
 
 #[cfg(test)]
 mod test_env;
@@ -16,4 +15,5 @@ pub mod models;
 pub mod otp;
 pub mod password_hasher;
 pub mod request_io;
+pub mod schema;
 pub mod validators;

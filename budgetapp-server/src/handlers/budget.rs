@@ -575,36 +575,37 @@ async fn ensure_user_in_budget(
 
 #[cfg(test)]
 pub mod tests {
+    use budgetapp_utils::auth_token::TokenClaims;
+    use budgetapp_utils::models::budget::Budget;
+    use budgetapp_utils::models::budget_share_event::BudgetShareEvent;
+    use budgetapp_utils::models::category::Category;
+    use budgetapp_utils::models::entry::Entry;
+    use budgetapp_utils::models::user_budget::UserBudget;
+    use budgetapp_utils::request_io::{
+        InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
+        InputShareEventId, InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
+        UserInvitationToBudget,
+    };
+    use budgetapp_utils::schema::budget_share_events as budget_share_event_fields;
+    use budgetapp_utils::schema::budget_share_events::dsl::budget_share_events;
+    use budgetapp_utils::schema::budgets as budget_fields;
+    use budgetapp_utils::schema::budgets::dsl::budgets;
+    use budgetapp_utils::schema::entries as entry_fields;
+    use budgetapp_utils::schema::user_budgets as user_budget_fields;
+    use budgetapp_utils::schema::user_budgets::dsl::user_budgets;
+    use budgetapp_utils::{db, otp};
+
     use actix_web::web::Data;
     use actix_web::{http, test, App};
     use chrono::NaiveDate;
     use diesel::prelude::*;
     use rand::prelude::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
     use crate::env;
-    use crate::handlers::request_io::{
-        InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
-        InputShareEventId, InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
-        UserInvitationToBudget,
-    };
     use crate::handlers::user::tests::create_user_and_sign_in;
-    use crate::models::budget::Budget;
-    use crate::models::budget_share_event::BudgetShareEvent;
-    use crate::models::category::Category;
-    use crate::models::entry::Entry;
-    use crate::models::user_budget::UserBudget;
-    use crate::schema::budget_share_events as budget_share_event_fields;
-    use crate::schema::budget_share_events::dsl::budget_share_events;
-    use crate::schema::budgets as budget_fields;
-    use crate::schema::budgets::dsl::budgets;
-    use crate::schema::entries as entry_fields;
-    use crate::schema::user_budgets as user_budget_fields;
-    use crate::schema::user_budgets::dsl::user_budgets;
     use crate::services;
-    use crate::utils::auth_token::TokenClaims;
-    use crate::utils::{db, otp};
 
     #[derive(Clone)]
     pub struct UserAndBudgetWithAuthTokens {
@@ -686,11 +687,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_create_budget() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -729,7 +728,13 @@ pub mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let otp = otp::generate_otp(user_id, current_time).unwrap();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
 
         let token_and_otp = SigninTokenOtpPair {
             signin_token: signin_token.signin_token,
@@ -792,7 +797,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::CREATED);
 
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let created_budget = budgets
             .filter(budget_fields::name.eq(&new_budget.name))
@@ -828,11 +833,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit_budget() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -865,12 +868,11 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let budget_after_edit = db::budget::get_budget_by_id(
-            &mut db_thread_pool.get().unwrap(),
-            budget_before_edit.id,
-            created_user_id,
-        )
-        .unwrap();
+        let mut budget_dao = db::budget::Dao::new(&env::testing::DB_THREAD_POOL);
+
+        let budget_after_edit = budget_dao
+            .get_budget_by_id(budget_before_edit.id, created_user_id)
+            .unwrap();
 
         assert_eq!(&budget_after_edit.name, &edit_budget.name);
         assert_eq!(&budget_after_edit.description, &edit_budget.description);
@@ -880,11 +882,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_edit_budget_of_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -920,12 +920,11 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let budget_after_edit = db::budget::get_budget_by_id(
-            &mut db_thread_pool.get().unwrap(),
-            budget_before_edit.id,
-            created_user1_id,
-        )
-        .unwrap();
+        let mut budget_dao = db::budget::Dao::new(&env::testing::DB_THREAD_POOL);
+
+        let budget_after_edit = budget_dao
+            .get_budget_by_id(budget_before_edit.id, created_user1_id)
+            .unwrap();
 
         assert_eq!(&budget_after_edit.name, &budget_before_edit.name);
         assert_eq!(
@@ -941,11 +940,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_edit_budget_start_cannot_be_after_end() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -978,12 +975,11 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
 
-        let budget_after_edit = db::budget::get_budget_by_id(
-            &mut db_thread_pool.get().unwrap(),
-            budget_before_edit.id,
-            created_user_id,
-        )
-        .unwrap();
+        let mut budget_dao = db::budget::Dao::new(&env::testing::DB_THREAD_POOL);
+
+        let budget_after_edit = budget_dao
+            .get_budget_by_id(budget_before_edit.id, created_user_id)
+            .unwrap();
 
         assert_eq!(&budget_after_edit.name, &budget_before_edit.name);
         assert_eq!(
@@ -999,11 +995,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_add_entry() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1062,7 +1056,7 @@ pub mod tests {
         let resp1 = test::call_service(&app, req1).await;
         assert_eq!(resp1.status(), http::StatusCode::CREATED);
 
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let budget_id = InputBudgetId {
             budget_id: budget.id,
@@ -1110,12 +1104,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_invite_user_and_accept() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1235,12 +1228,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_accept_invites_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1450,12 +1442,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_invite_user_and_decline() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1571,12 +1562,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_decline_invites_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1786,12 +1776,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_retract_invitation() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1852,12 +1841,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_retract_invites_made_by_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -1953,11 +1941,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_invitations_for_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2087,11 +2073,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_invitations_made_by_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2220,12 +2204,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_invitation() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2334,12 +2317,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_remove_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2465,12 +2447,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_remove_last_user_deletes_budget() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2669,12 +2650,11 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cannot_delete_budget_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-        let mut db_connection = db_thread_pool.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2813,11 +2793,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_budget() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -2933,11 +2911,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -3156,11 +3132,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_all_budgets_for_user_between_dates() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
@@ -3170,7 +3144,7 @@ pub mod tests {
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
         diesel::delete(budgets.find(created_budget.id))
-            .execute(&mut db_thread_pool.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let category0 = InputCategory {
@@ -3642,11 +3616,9 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_cant_access_budget_for_another_user() {
-        let db_thread_pool = env::testing::DB_THREAD_POOL;
-
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(db_thread_pool.clone()))
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .configure(services::api::configure),
         )
         .await;
