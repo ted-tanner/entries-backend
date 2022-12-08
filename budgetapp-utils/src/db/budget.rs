@@ -1790,7 +1790,7 @@ pub mod tests {
             start_date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..300_000_000)),
             end_date: SystemTime::UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..7050_000_000)),
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..700_000_000)),
         };
 
         let in_range_budget1 = InputBudget {
