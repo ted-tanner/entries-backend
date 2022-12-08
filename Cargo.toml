@@ -3,7 +3,7 @@
 members = [
     "budgetapp-server",
     "budgetapp-utils",
-    "budgetapp-cron",
+    "budgetapp-job-scheduler",
 ]
 
 [workspace.package]
