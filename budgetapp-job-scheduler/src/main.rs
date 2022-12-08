@@ -1,20 +1,42 @@
 #[macro_use]
 extern crate lazy_static;
 
+use env_logger::Env;
 use std::time::Duration;
 
 mod env;
 mod jobs;
 mod runner;
 
+use jobs::Job;
+
 fn main() {
-    println!("{:#?}", *env::CONF);
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    
+    let job1 = Job::new(
+        "Testing 1",
+        Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
+        || {
+            println!("I am inside the first job executor!");
 
-    let job = jobs::Job::new(Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs), || {
-        println!("I am inside the job executor!");
+            Ok(())
+        },
+    );
 
-        Ok(())
-    });
+    let job2 = Job::new(
+        "Testing 2",
+        Duration::from_secs(env::CONF.clear_password_attempts_job.job_frequency_secs),
+        || {
+            println!("I am inside the second job executor!");
+
+            Ok(())
+        },
+    );
+
+    let mut job_runner = env::runner::JOB_RUNNER.lock().expect("Job runner lock was poisioned");
+    job_runner.register(job1);
+    job_runner.register(job2);
+    job_runner.start();
 
     // let mut runners = Vec::new();
 

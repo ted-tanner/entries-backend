@@ -7,7 +7,6 @@ use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpResponse};
-use log::error;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
@@ -48,7 +47,7 @@ pub async fn get(
                 ))))
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get user data",
                 ))));
@@ -68,7 +67,7 @@ pub async fn get(
             {
                 Ok(buddies) => buddies,
                 Err(e) => {
-                    error!("{}", e);
+                    log::error!("{}", e);
                     return Err(ServerError::DatabaseTransactionError(Some(String::from(
                         "Failed to get user data",
                     ))));
@@ -170,7 +169,7 @@ pub async fn create(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Failed to create user",
                 ))));
@@ -191,7 +190,7 @@ pub async fn create(
     let signin_token = match signin_token {
         Ok(signin_token) => signin_token,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate sign-in token for user",
             ))));
@@ -215,7 +214,7 @@ pub async fn create(
     ) {
         Ok(p) => p,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate OTP",
             ))));
@@ -240,7 +239,7 @@ pub async fn edit(
     .await
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
-        error!("{}", e);
+        log::error!("{}", e);
         ServerError::DatabaseTransactionError(Some(String::from("Failed to edit user")))
     })
 }
@@ -260,7 +259,7 @@ pub async fn change_password(
     {
         Ok(u) => u,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::InputRejected(Some(String::from(
                 "User not found",
             ))));
@@ -308,7 +307,7 @@ pub async fn change_password(
     .await
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
-        error!("{}", e);
+        log::error!("{}", e);
         ServerError::DatabaseTransactionError(Some(String::from("Failed to update password")))
     })
 }
@@ -338,7 +337,7 @@ pub async fn send_buddy_request(
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create buddy request",
                 ))));
@@ -375,7 +374,7 @@ pub async fn retract_buddy_request(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete request",
                 ))));
@@ -409,7 +408,7 @@ pub async fn accept_buddy_request(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to accept buddy request",
                 ))));
@@ -426,7 +425,7 @@ pub async fn accept_buddy_request(
     {
         Ok(_) => (),
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to accept buddy request",
             ))));
@@ -462,7 +461,7 @@ pub async fn decline_buddy_request(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to decline buddy request",
                 ))));
@@ -492,7 +491,7 @@ pub async fn get_all_pending_buddy_requests_for_user(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy requests",
                 ))));
@@ -522,7 +521,7 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy requests",
                 ))));
@@ -553,7 +552,7 @@ pub async fn get_buddy_request(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find buddy request",
                 ))));
@@ -584,7 +583,7 @@ pub async fn delete_buddy_relationship(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete buddy relationship",
                 ))));
@@ -608,7 +607,7 @@ pub async fn get_buddies(
     {
         Ok(b) => b,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to find buddies for user",
             ))));

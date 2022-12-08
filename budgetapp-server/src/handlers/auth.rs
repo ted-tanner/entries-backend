@@ -5,7 +5,6 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpResponse};
-use log::error;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
@@ -49,7 +48,7 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check password attempt count",
             ))));
@@ -85,7 +84,7 @@ pub async fn sign_in(
         let signin_token = match signin_token {
             Ok(signin_token) => signin_token,
             Err(e) => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Failed to generate sign-in token for user",
                 ))));
@@ -113,7 +112,7 @@ pub async fn sign_in(
         ) {
             Ok(p) => p,
             Err(e) => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Failed to generate OTP",
                 ))));
@@ -161,7 +160,7 @@ pub async fn verify_otp_for_signin(
                 ))));
             }
             e => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Error verifying token",
                 ))));
@@ -177,7 +176,7 @@ pub async fn verify_otp_for_signin(
     {
         Ok(a) => a,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check OTP attempt count",
             ))));
@@ -234,7 +233,7 @@ pub async fn verify_otp_for_signin(
                 ))))
             }
             otp::OtpError::Error(_) => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Validating passcode failed",
                 ))));
@@ -262,7 +261,7 @@ pub async fn verify_otp_for_signin(
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate tokens for new user",
             ))));
@@ -317,7 +316,7 @@ pub async fn refresh_tokens(
                 ))));
             }
             e => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Error verifying token",
                 ))));
@@ -334,7 +333,7 @@ pub async fn refresh_tokens(
     {
         Ok(_) => {}
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to blacklist token",
             ))));
@@ -355,7 +354,7 @@ pub async fn refresh_tokens(
     let token_pair = match token_pair {
         Ok(token_pair) => token_pair,
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::InternalError(Some(String::from(
                 "Failed to generate tokens for new user",
             ))));
@@ -411,7 +410,7 @@ pub async fn logout(
                 ))))
             }
             e => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::InternalError(Some(String::from(
                     "Error verifying token",
                 ))));
@@ -433,7 +432,7 @@ pub async fn logout(
     {
         Ok(_) => Ok(HttpResponse::Ok().finish()),
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             Err(ServerError::InternalError(Some(String::from(
                 "Failed to blacklist token",
             ))))

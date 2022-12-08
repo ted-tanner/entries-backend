@@ -5,7 +5,6 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
-use log::error;
 use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -35,7 +34,7 @@ pub async fn get(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
                 ))));
@@ -66,7 +65,7 @@ pub async fn get_all(
                 return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
                 ))));
@@ -102,7 +101,7 @@ pub async fn get_all_between_dates(
                 return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
                 ))));
@@ -131,7 +130,7 @@ pub async fn create(
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create budget",
                 ))));
@@ -169,7 +168,7 @@ pub async fn edit(
             }
         }
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to edit budget",
             ))))
@@ -198,7 +197,7 @@ pub async fn add_entry(
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create entry",
                 ))));
@@ -241,7 +240,7 @@ pub async fn invite_user(
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to share budget",
                 ))));
@@ -277,7 +276,7 @@ pub async fn retract_invitation(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to delete invitation",
                 ))));
@@ -310,7 +309,7 @@ pub async fn accept_invitation(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to accept invitation",
                 ))));
@@ -326,7 +325,7 @@ pub async fn accept_invitation(
     {
         Ok(_) => (),
         Err(e) => {
-            error!("{}", e);
+            log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to accept invitation",
             ))));
@@ -361,7 +360,7 @@ pub async fn decline_invitation(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to decline invitation",
                 ))));
@@ -390,7 +389,7 @@ pub async fn get_all_pending_invitations_for_user(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
                 ))));
@@ -419,7 +418,7 @@ pub async fn get_all_pending_invitations_made_by_user(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
                 ))));
@@ -449,7 +448,7 @@ pub async fn get_invitation(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to find invitations",
                 ))));
@@ -485,7 +484,7 @@ pub async fn remove_budget(
                 ))));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to remove association with budget",
                 ))));
@@ -510,7 +509,7 @@ pub async fn remove_budget(
     {
         Ok(c) => c,
         Err(e) => {
-            error!(
+            log::error!(
                 "Failed to get count of how many users are left in budget with ID '{}': {}",
                 budget_id_clone.budget_id, e
             );
@@ -527,7 +526,7 @@ pub async fn remove_budget(
         {
             Ok(_) => (),
             Err(e) => {
-                error!(
+                log::error!(
                     "Failed to delete budget with ID '{}': {}",
                     budget_id_second_clone.budget_id, e
                 );
@@ -557,7 +556,7 @@ async fn ensure_user_in_budget(
                 return Err(ServerError::InvalidFormat(None));
             }
             _ => {
-                error!("{}", e);
+                log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
                 ))));

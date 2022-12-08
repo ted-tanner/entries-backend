@@ -19,7 +19,6 @@ pub struct Connections {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RunnerConf {
     pub update_frequency_secs: u64,
-    pub thread_pool_max_size: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -70,14 +69,30 @@ pub mod db {
 
     lazy_static! {
         pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
-            .max_size(if let Some(c) = crate::env::CONF.connections.max_db_connections {
-                c
-            } else {
-                (num_cpus::get() * 2).try_into().unwrap()
-            })
+            .max_size(
+                if let Some(c) = crate::env::CONF.connections.max_db_connections {
+                    c
+                } else {
+                    (num_cpus::get() * 2).try_into().unwrap()
+                }
+            )
             .build(ConnectionManager::<PgConnection>::new(
                 crate::env::CONF.connections.database_uri.as_str()
             ))
             .expect("Failed to create DB thread pool");
+    }
+}
+
+pub mod runner {
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use super::*;
+    use crate::runner::JobRunner;
+
+    lazy_static! {
+        pub static ref JOB_RUNNER: Mutex<JobRunner> = Mutex::new(JobRunner::new(
+            Duration::from_secs(CONF.runner.update_frequency_secs)
+        ));
     }
 }
