@@ -1,7 +1,7 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbConnection, DbThreadPool};
@@ -38,7 +38,7 @@ impl Dao {
         &mut self,
         token: &str,
         user_id: Uuid,
-        token_expiration_time: i64,
+        token_expiration_time: SystemTime,
     ) -> Result<(), DaoError> {
         let blacklisted_token = NewBlacklistedToken {
             token,
@@ -65,17 +65,9 @@ impl Dao {
     pub fn clear_all_expired_refresh_tokens(&mut self) -> Result<usize, DaoError> {
         // Add two minutes to current time to prevent slight clock differences/inaccuracies from
         // opening a window for an attacker to use an expired refresh token
-        let current_unix_epoch: i64 = (SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs()
-            + 120)
-            .try_into()
-            .expect("Seconds since Unix Epoch is too big to be stored in a signed 64-bit integer");
-
         Ok(diesel::delete(
             blacklisted_tokens
-                .filter(blacklisted_token_fields::token_expiration_time.lt(current_unix_epoch)),
+                .filter(blacklisted_token_fields::token_expiration_time.lt(SystemTime::now())),
         )
         .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
@@ -133,10 +125,9 @@ impl Dao {
 mod tests {
     use super::*;
 
-    use chrono::NaiveDate;
     use diesel::{dsl, RunQueryDsl};
     use rand::prelude::*;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime};
 
     use crate::auth_token;
     use crate::db::user;
@@ -162,12 +153,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -210,21 +197,16 @@ mod tests {
         )
         .unwrap();
 
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let expired_blacklisted = NewBlacklistedToken {
             token: &pretend_expired_token.to_string(),
             user_id,
-            token_expiration_time: (current_time - 3600).try_into().unwrap(),
+            token_expiration_time: SystemTime::now() - Duration::from_secs(3600),
         };
 
         let unexpired_blacklisted = NewBlacklistedToken {
             token: &unexpired_token.to_string(),
             user_id,
-            token_expiration_time: (current_time + 3600).try_into().unwrap(),
+            token_expiration_time: SystemTime::now() + Duration::from_secs(3600),
         };
 
         let mut db_connection = db_thread_pool.get().unwrap();
@@ -240,7 +222,7 @@ mod tests {
         assert!(dao.clear_all_expired_refresh_tokens().unwrap() >= 1);
 
         assert!(
-            !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &mut dao,).unwrap()
+            !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &mut dao).unwrap()
         );
         assert!(auth_token::is_on_blacklist(&unexpired_token.to_string(), &mut dao).unwrap());
     }
@@ -257,12 +239,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -310,12 +288,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -367,12 +341,8 @@ mod tests {
                 password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
                 first_name: format!("Test-{}", &user_number),
                 last_name: format!("User-{}", &user_number),
-                date_of_birth: NaiveDate::from_ymd_opt(
-                    rand::thread_rng().gen_range(1950..=2020),
-                    rand::thread_rng().gen_range(1..=12),
-                    rand::thread_rng().gen_range(1..=28),
-                )
-                .unwrap(),
+                date_of_birth: SystemTime::UNIX_EPOCH
+                    + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
                 currency: String::from("USD"),
             };
 
@@ -437,12 +407,8 @@ mod tests {
                 password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
                 first_name: format!("Test-{}", &user_number),
                 last_name: format!("User-{}", &user_number),
-                date_of_birth: NaiveDate::from_ymd_opt(
-                    rand::thread_rng().gen_range(1950..=2020),
-                    rand::thread_rng().gen_range(1..=12),
-                    rand::thread_rng().gen_range(1..=28),
-                )
-                .unwrap(),
+                date_of_birth: SystemTime::UNIX_EPOCH
+                    + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
                 currency: String::from("USD"),
             };
 

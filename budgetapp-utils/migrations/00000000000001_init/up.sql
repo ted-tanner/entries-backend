@@ -2,7 +2,7 @@ CREATE TABLE blacklisted_tokens (
     id SERIAL PRIMARY KEY,
     token VARCHAR(800) UNIQUE NOT NULL,
     user_id UUID NOT NULL,
-    token_expiration_time BIGINT NOT NULL
+    token_expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE buddy_relationships (
@@ -36,8 +36,8 @@ CREATE TABLE budgets (
     name VARCHAR(255) NOT NULL,
     description TEXT,
 
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL CHECK(end_date >= start_date),
+    start_date TIMESTAMP NOT NULL,
+    end_date TIMESTAMP NOT NULL CHECK(end_date >= start_date),
 
     latest_entry_time TIMESTAMP NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,
@@ -108,7 +108,7 @@ CREATE TABLE entries (
     is_deleted BOOLEAN NOT NULL,
 
     amount_cents BIGINT NOT NULL,
-    date DATE NOT NULL,
+    date TIMESTAMP NOT NULL,
     name VARCHAR(120),
     category SMALLINT,
     note TEXT,
@@ -160,12 +160,12 @@ CREATE TABLE users (
     is_active BOOLEAN NOT NULL,
 
     is_premium BOOLEAN NOT NULL,
-    premium_expiration DATE,
+    premium_expiration TIMESTAMP,
 
     email VARCHAR(255) UNIQUE NOT NULL,
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
-    date_of_birth DATE NOT NULL,
+    date_of_birth TIMESTAMP NOT NULL,
     currency VARCHAR(3) NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,

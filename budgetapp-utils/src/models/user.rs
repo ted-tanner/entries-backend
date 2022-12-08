@@ -1,6 +1,6 @@
-use chrono::{NaiveDate, NaiveDateTime};
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::schema::users;
 
@@ -12,16 +12,16 @@ pub struct User {
     pub is_active: bool,
 
     pub is_premium: bool,
-    pub premium_expiration: Option<NaiveDate>,
+    pub premium_expiration: Option<SystemTime>,
 
     pub email: String,
     pub first_name: String,
     pub last_name: String,
-    pub date_of_birth: NaiveDate,
+    pub date_of_birth: SystemTime,
     pub currency: String,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -32,14 +32,14 @@ pub struct NewUser<'a> {
     pub is_active: bool,
 
     pub is_premium: bool,
-    pub premium_expiration: Option<NaiveDate>,
+    pub premium_expiration: Option<SystemTime>,
 
     pub email: &'a str,
     pub first_name: &'a str,
     pub last_name: &'a str,
-    pub date_of_birth: NaiveDate,
+    pub date_of_birth: SystemTime,
     pub currency: &'a str,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }

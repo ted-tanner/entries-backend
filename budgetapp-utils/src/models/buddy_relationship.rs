@@ -1,7 +1,6 @@
-use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable};
-
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::models::user::User;
 use crate::schema::buddy_relationships;
@@ -13,7 +12,7 @@ use crate::schema::buddy_relationships;
 #[diesel(table_name = buddy_relationships)]
 pub struct BuddyRelationship {
     pub id: i32,
-    pub created_timestamp: NaiveDateTime,
+    pub created_timestamp: SystemTime,
     pub user1_id: uuid::Uuid,
     pub user2_id: uuid::Uuid,
 }
@@ -21,7 +20,7 @@ pub struct BuddyRelationship {
 #[derive(Debug, Insertable)]
 #[diesel(table_name = buddy_relationships)]
 pub struct NewBuddyRelationship {
-    pub created_timestamp: NaiveDateTime,
+    pub created_timestamp: SystemTime,
     pub user1_id: uuid::Uuid,
     pub user2_id: uuid::Uuid,
 }

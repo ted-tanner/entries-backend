@@ -1,6 +1,6 @@
-use chrono::{NaiveDate, NaiveDateTime};
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::schema::budgets;
 
@@ -15,12 +15,12 @@ pub struct Budget {
     pub name: String,
     pub description: Option<String>,
 
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub latest_entry_time: NaiveDateTime,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
+    pub latest_entry_time: SystemTime,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -34,10 +34,10 @@ pub struct NewBudget<'a> {
     pub name: &'a str,
     pub description: Option<&'a str>,
 
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub latest_entry_time: NaiveDateTime,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
+    pub latest_entry_time: SystemTime,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }

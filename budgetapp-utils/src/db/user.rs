@@ -1,6 +1,7 @@
 use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbConnection, DbThreadPool};
@@ -59,7 +60,7 @@ impl Dao {
     ) -> Result<User, DaoError> {
         let hashed_password =
             password_hasher::hash_password(&user_data.password, hash_params, hashing_secret_key);
-        let current_time = chrono::Utc::now().naive_utc();
+        let current_time = SystemTime::now();
 
         let new_user = NewUser {
             id: Uuid::new_v4(),
@@ -88,7 +89,7 @@ impl Dao {
     ) -> Result<usize, DaoError> {
         Ok(dsl::update(users.filter(user_fields::id.eq(user_id)))
             .set((
-                user_fields::modified_timestamp.eq(chrono::Utc::now().naive_utc()),
+                user_fields::modified_timestamp.eq(SystemTime::now()),
                 user_fields::first_name.eq(&edited_user_data.first_name),
                 user_fields::last_name.eq(&edited_user_data.last_name),
                 user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
@@ -124,7 +125,7 @@ impl Dao {
             recipient_user_id,
             sender_user_id,
             accepted: false,
-            created_timestamp: chrono::Utc::now().naive_utc(),
+            created_timestamp: SystemTime::now(),
             accepted_declined_timestamp: None,
         };
 
@@ -158,7 +159,7 @@ impl Dao {
         )
         .set((
             buddy_request_fields::accepted.eq(true),
-            buddy_request_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+            buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .get_result(&mut *(self.get_connection()?).borrow_mut())?)
     }
@@ -175,7 +176,7 @@ impl Dao {
         )
         .set((
             buddy_request_fields::accepted.eq(false),
-            buddy_request_fields::accepted_declined_timestamp.eq(chrono::Utc::now().naive_utc()),
+            buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
@@ -222,7 +223,7 @@ impl Dao {
         user1_id: Uuid,
         user2_id: Uuid,
     ) -> Result<usize, DaoError> {
-        let current_time = chrono::Utc::now().naive_utc();
+        let current_time = SystemTime::now();
 
         let relationship = NewBuddyRelationship {
             created_timestamp: current_time,
@@ -283,8 +284,8 @@ impl Dao {
 pub mod tests {
     use super::*;
 
-    use chrono::NaiveDate;
     use rand::prelude::*;
+    use std::time::Duration;
 
     use crate::models::buddy_relationship::BuddyRelationship;
     use crate::models::buddy_request::BuddyRequest;
@@ -301,12 +302,8 @@ pub mod tests {
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),
             first_name: format!("Test-{}", user_number),
             last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -339,12 +336,8 @@ pub mod tests {
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -390,12 +383,8 @@ pub mod tests {
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -437,12 +426,8 @@ pub mod tests {
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -486,12 +471,8 @@ pub mod tests {
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -541,12 +522,8 @@ pub mod tests {
             password: PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -565,12 +542,8 @@ pub mod tests {
         let user_edits = InputEditUser {
             first_name: String::from("Edited"),
             last_name: String::from("Name"),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1940..=1949),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("DOP"),
         };
 
@@ -602,12 +575,8 @@ pub mod tests {
             password: ORIGINAL_PASSWORD.to_string(),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -695,7 +664,7 @@ pub mod tests {
 
         assert!(!created_buddy_requests[0].accepted);
 
-        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_buddy_requests[0].created_timestamp < SystemTime::now());
         assert_eq!(created_buddy_requests[0].accepted_declined_timestamp, None);
     }
 
@@ -790,12 +759,12 @@ pub mod tests {
 
         assert!(created_buddy_requests[0].accepted);
 
-        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_buddy_requests[0].created_timestamp < SystemTime::now());
         assert!(
             created_buddy_requests[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                < chrono::Utc::now().naive_utc()
+                < SystemTime::now()
         );
         assert!(
             created_buddy_requests[0]
@@ -855,12 +824,12 @@ pub mod tests {
 
         assert!(!created_buddy_requests[0].accepted);
 
-        assert!(created_buddy_requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_buddy_requests[0].created_timestamp < SystemTime::now());
         assert!(
             created_buddy_requests[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                < chrono::Utc::now().naive_utc()
+                < SystemTime::now()
         );
         assert!(
             created_buddy_requests[0]
@@ -906,14 +875,14 @@ pub mod tests {
         assert_eq!(requests[0].sender_user_id, created_user1.id);
         assert!(!requests[0].accepted);
 
-        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].created_timestamp < SystemTime::now());
         assert!(requests[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(requests[1].recipient_user_id, created_user2.id);
         assert_eq!(requests[1].sender_user_id, created_user3.id);
         assert!(!requests[1].accepted);
 
-        assert!(requests[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[1].created_timestamp < SystemTime::now());
         assert!(requests[1].accepted_declined_timestamp.is_none());
 
         dao.mark_buddy_request_accepted(requests[0].id, created_user2.id)
@@ -929,7 +898,7 @@ pub mod tests {
         assert_eq!(requests[0].sender_user_id, created_user3.id);
         assert!(!requests[0].accepted);
 
-        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].created_timestamp < SystemTime::now());
         assert!(requests[0].accepted_declined_timestamp.is_none());
     }
 
@@ -970,14 +939,14 @@ pub mod tests {
         assert_eq!(requests[0].sender_user_id, created_user1.id);
         assert!(!requests[0].accepted);
 
-        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].created_timestamp < SystemTime::now());
         assert!(requests[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(requests[1].recipient_user_id, created_user3.id);
         assert_eq!(requests[1].sender_user_id, created_user1.id);
         assert!(!requests[1].accepted);
 
-        assert!(requests[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[1].created_timestamp < SystemTime::now());
         assert!(requests[1].accepted_declined_timestamp.is_none());
 
         dao.mark_buddy_request_accepted(requests[0].id, created_user2.id)
@@ -993,7 +962,7 @@ pub mod tests {
         assert_eq!(requests[0].sender_user_id, created_user1.id);
         assert!(!requests[0].accepted);
 
-        assert!(requests[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(requests[0].created_timestamp < SystemTime::now());
         assert!(requests[0].accepted_declined_timestamp.is_none());
     }
 
@@ -1028,8 +997,8 @@ pub mod tests {
         assert_eq!(request.sender_user_id, created_user1.id);
         assert!(request.accepted);
 
-        assert!(request.created_timestamp < chrono::Utc::now().naive_utc());
-        assert!(request.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(request.created_timestamp < SystemTime::now());
+        assert!(request.accepted_declined_timestamp.unwrap() < SystemTime::now());
         assert!(request.accepted_declined_timestamp.unwrap() > request.created_timestamp);
 
         let request = dao
@@ -1040,8 +1009,8 @@ pub mod tests {
         assert_eq!(request.sender_user_id, created_user1.id);
         assert!(request.accepted);
 
-        assert!(request.created_timestamp < chrono::Utc::now().naive_utc());
-        assert!(request.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(request.created_timestamp < SystemTime::now());
+        assert!(request.accepted_declined_timestamp.unwrap() < SystemTime::now());
         assert!(request.accepted_declined_timestamp.unwrap() > request.created_timestamp);
     }
 
@@ -1088,8 +1057,8 @@ pub mod tests {
         assert_eq!(buddy_relationships12.len(), 1);
         assert_eq!(buddy_relationships34.len(), 1);
 
-        assert!(buddy_relationships12[0].created_timestamp < chrono::Utc::now().naive_utc());
-        assert!(buddy_relationships34[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(buddy_relationships12[0].created_timestamp < SystemTime::now());
+        assert!(buddy_relationships34[0].created_timestamp < SystemTime::now());
     }
 
     #[test]

@@ -1,5 +1,5 @@
-use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::validators;
@@ -50,8 +50,8 @@ pub struct InputBudgetShareEventId {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputDateRange {
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -60,7 +60,7 @@ pub struct InputUser {
     pub password: String,
     pub first_name: String,
     pub last_name: String,
-    pub date_of_birth: NaiveDate,
+    pub date_of_birth: SystemTime,
     pub currency: String,
 }
 
@@ -75,7 +75,6 @@ impl InputUser {
             &self.email,
             &self.first_name,
             &self.last_name,
-            &self.date_of_birth,
             min_password_len,
         )
     }
@@ -85,7 +84,7 @@ impl InputUser {
 pub struct InputEditUser {
     pub first_name: String,
     pub last_name: String,
-    pub date_of_birth: NaiveDate,
+    pub date_of_birth: SystemTime,
     pub currency: String,
 }
 
@@ -119,8 +118,8 @@ pub struct InputBudget {
     pub name: String,
     pub description: Option<String>,
     pub categories: Vec<InputCategory>,
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -128,8 +127,8 @@ pub struct InputEditBudget {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -142,7 +141,7 @@ pub struct UserInvitationToBudget {
 pub struct InputEntry {
     pub budget_id: Uuid,
     pub amount_cents: i64,
-    pub date: NaiveDate,
+    pub date: SystemTime,
     pub name: Option<String>,
     pub category: Option<i16>,
     pub note: Option<String>,

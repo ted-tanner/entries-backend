@@ -1,5 +1,5 @@
-use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::models::category::Category;
 use crate::models::entry::Entry;
@@ -10,16 +10,16 @@ pub struct OutputUserPrivate {
     pub is_active: bool,
 
     pub is_premium: bool,
-    pub premium_expiration: Option<NaiveDate>,
+    pub premium_expiration: Option<SystemTime>,
 
     pub email: String,
     pub first_name: String,
     pub last_name: String,
-    pub date_of_birth: NaiveDate,
+    pub date_of_birth: SystemTime,
     pub currency: String,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -66,10 +66,10 @@ pub struct OutputBudget {
     pub categories: Vec<Category>,
     pub entries: Vec<Entry>,
 
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub latest_entry_time: NaiveDateTime,
+    pub start_date: SystemTime,
+    pub end_date: SystemTime,
+    pub latest_entry_time: SystemTime,
 
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }

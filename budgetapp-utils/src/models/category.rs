@@ -1,6 +1,6 @@
-use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::models::budget::Budget;
 use crate::schema::categories;
@@ -16,8 +16,8 @@ pub struct Category {
     pub name: String,
     pub limit_cents: i64,
     pub color: String,
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }
 
 #[derive(Clone, Debug, Insertable)]
@@ -29,6 +29,6 @@ pub struct NewCategory<'a> {
     pub name: &'a str,
     pub limit_cents: i64,
     pub color: &'a str,
-    pub modified_timestamp: NaiveDateTime,
-    pub created_timestamp: NaiveDateTime,
+    pub modified_timestamp: SystemTime,
+    pub created_timestamp: SystemTime,
 }

@@ -1,6 +1,6 @@
-use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::schema::budget_share_events;
 
@@ -15,8 +15,8 @@ pub struct BudgetShareEvent {
     pub budget_id: uuid::Uuid,
     pub accepted: bool,
 
-    pub created_timestamp: NaiveDateTime,
-    pub accepted_declined_timestamp: Option<NaiveDateTime>,
+    pub created_timestamp: SystemTime,
+    pub accepted_declined_timestamp: Option<SystemTime>,
 }
 
 #[derive(Debug, Insertable)]
@@ -30,6 +30,6 @@ pub struct NewBudgetShareEvent {
     pub budget_id: uuid::Uuid,
     pub accepted: bool,
 
-    pub created_timestamp: NaiveDateTime,
-    pub accepted_declined_timestamp: Option<NaiveDateTime>,
+    pub created_timestamp: SystemTime,
+    pub accepted_declined_timestamp: Option<SystemTime>,
 }

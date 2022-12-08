@@ -1,12 +1,12 @@
-use chrono::NaiveDate;
 use diesel::associations::GroupedBy;
-use diesel::sql_types::{self, Date, Nullable, Text, Timestamp, VarChar};
+use diesel::sql_types::{self, Nullable, Text, Timestamp, VarChar};
 use diesel::{
     dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
     RunQueryDsl,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbConnection, DbThreadPool};
@@ -149,8 +149,8 @@ impl Dao {
     pub fn get_all_budgets_for_user_between_dates(
         &mut self,
         user_id: Uuid,
-        start_date: NaiveDate,
-        end_date: NaiveDate,
+        start_date: SystemTime,
+        end_date: SystemTime,
     ) -> Result<Vec<OutputBudget>, DaoError> {
         let query = "SELECT budgets.* FROM user_budgets, budgets \
                      WHERE user_budgets.user_id = $1 \
@@ -161,8 +161,8 @@ impl Dao {
 
         let loaded_budgets = sql_query(query)
             .bind::<sql_types::Uuid, _>(user_id)
-            .bind::<sql_types::Date, _>(start_date)
-            .bind::<sql_types::Date, _>(end_date)
+            .bind::<Timestamp, _>(start_date)
+            .bind::<Timestamp, _>(end_date)
             .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
         let mut loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::id.asc())
@@ -232,7 +232,7 @@ impl Dao {
         budget_data: &InputBudget,
         user_id: Uuid,
     ) -> Result<OutputBudget, DaoError> {
-        let current_time = chrono::Utc::now().naive_utc();
+        let current_time = SystemTime::now();
         let budget_id = Uuid::new_v4();
 
         let description = budget_data.description.as_deref();
@@ -322,11 +322,11 @@ impl Dao {
              AND b.id = ub.budget_id \
              AND b.id = $7",
         )
-        .bind::<Timestamp, _>(chrono::Utc::now().naive_utc())
+        .bind::<Timestamp, _>(SystemTime::now())
         .bind::<VarChar, _>(&edited_budget_data.name)
         .bind::<Nullable<Text>, _>(&edited_budget_data.description)
-        .bind::<Date, _>(&edited_budget_data.start_date)
-        .bind::<Date, _>(&edited_budget_data.end_date)
+        .bind::<Timestamp, _>(&edited_budget_data.start_date)
+        .bind::<Timestamp, _>(&edited_budget_data.end_date)
         .bind::<sql_types::Uuid, _>(user_id)
         .bind::<sql_types::Uuid, _>(&edited_budget_data.id)
         .execute(&mut *(self.get_connection()?).borrow_mut())?)
@@ -344,7 +344,7 @@ impl Dao {
             sender_user_id,
             budget_id,
             accepted: false,
-            created_timestamp: chrono::Utc::now().naive_utc(),
+            created_timestamp: SystemTime::now(),
             accepted_declined_timestamp: None,
         };
 
@@ -378,8 +378,7 @@ impl Dao {
         )
         .set((
             budget_share_event_fields::accepted.eq(true),
-            budget_share_event_fields::accepted_declined_timestamp
-                .eq(chrono::Utc::now().naive_utc()),
+            budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .get_result(&mut *(self.get_connection()?).borrow_mut())?)
     }
@@ -396,8 +395,7 @@ impl Dao {
         )
         .set((
             budget_share_event_fields::accepted.eq(false),
-            budget_share_event_fields::accepted_declined_timestamp
-                .eq(chrono::Utc::now().naive_utc()),
+            budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
@@ -440,7 +438,7 @@ impl Dao {
     }
 
     pub fn add_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
-        let current_time = chrono::Utc::now().naive_utc();
+        let current_time = SystemTime::now();
 
         let new_user_budget_association = NewUserBudget {
             created_timestamp: current_time,
@@ -478,7 +476,7 @@ impl Dao {
         entry_data: &InputEntry,
         user_id: Uuid,
     ) -> Result<Entry, DaoError> {
-        let current_time = chrono::Utc::now().naive_utc();
+        let current_time = SystemTime::now();
         let entry_id = Uuid::new_v4();
 
         let name = entry_data.name.as_deref();
@@ -513,9 +511,9 @@ impl Dao {
 pub mod tests {
     use super::*;
 
-    use chrono::{Duration, NaiveDate};
     use diesel::ExpressionMethods;
     use rand::prelude::*;
+    use std::time::Duration;
 
     use crate::db::user;
     use crate::models::budget::Budget;
@@ -568,18 +566,10 @@ pub mod tests {
                 "This is a description of Test Budget {budget_number}.",
             )),
             categories: budget_categories,
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let created_budget =
@@ -602,12 +592,8 @@ pub mod tests {
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),
             first_name: format!("Test-{}", user_number),
             last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -649,18 +635,10 @@ pub mod tests {
                 "This is a description of Test Budget {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         dao.create_budget(&new_budget, created_user.id).unwrap();
@@ -672,9 +650,7 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(created_user_budget_associations.len(), 1);
-        assert!(
-            created_user_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
-        );
+        assert!(created_user_budget_associations[0].created_timestamp < SystemTime::now());
         assert_eq!(created_user_budget_associations[0].user_id, created_user.id);
 
         let budget_id = created_user_budget_associations[0].budget_id;
@@ -690,6 +666,7 @@ pub mod tests {
 
         let saved_categories = categories
             .filter(category_fields::budget_id.eq(budget_id))
+            .order(category_fields::id.asc())
             .load::<Category>(&mut db_connection)
             .unwrap();
 
@@ -746,7 +723,7 @@ pub mod tests {
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert!(!created_budget_share_events[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
         assert_eq!(
             created_budget_share_events[0].accepted_declined_timestamp,
             None
@@ -839,12 +816,12 @@ pub mod tests {
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert!(created_budget_share_events[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
         assert!(
             created_budget_share_events[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                < chrono::Utc::now().naive_utc()
+                < SystemTime::now()
         );
         assert!(
             created_budget_share_events[0]
@@ -901,12 +878,12 @@ pub mod tests {
         assert_eq!(created_budget_share_events[0].budget_id, budget.id);
         assert!(!created_budget_share_events[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
         assert!(
             created_budget_share_events[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                < chrono::Utc::now().naive_utc()
+                < SystemTime::now()
         );
         assert!(
             created_budget_share_events[0]
@@ -953,7 +930,7 @@ pub mod tests {
         assert_eq!(share_events[0].budget_id, budget1.id);
         assert!(!share_events[0].accepted);
 
-        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < SystemTime::now());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(share_events[1].recipient_user_id, created_user2.id);
@@ -961,7 +938,7 @@ pub mod tests {
         assert_eq!(share_events[1].budget_id, budget2.id);
         assert!(!share_events[1].accepted);
 
-        assert!(share_events[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].created_timestamp < SystemTime::now());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
         dao.mark_invitation_accepted(share_events[0].id, created_user2.id)
@@ -978,7 +955,7 @@ pub mod tests {
         assert_eq!(share_events[0].budget_id, budget2.id);
         assert!(!share_events[0].accepted);
 
-        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < SystemTime::now());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
@@ -1019,7 +996,7 @@ pub mod tests {
         assert_eq!(share_events[0].budget_id, budget1.id);
         assert!(!share_events[0].accepted);
 
-        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < SystemTime::now());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
 
         assert_eq!(share_events[1].recipient_user_id, created_user2.id);
@@ -1027,7 +1004,7 @@ pub mod tests {
         assert_eq!(share_events[1].budget_id, budget2.id);
         assert!(!share_events[1].accepted);
 
-        assert!(share_events[1].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[1].created_timestamp < SystemTime::now());
         assert!(share_events[1].accepted_declined_timestamp.is_none());
 
         dao.mark_invitation_declined(share_events[0].id, created_user2.id)
@@ -1044,7 +1021,7 @@ pub mod tests {
         assert_eq!(share_events[0].budget_id, budget2.id);
         assert!(!share_events[0].accepted);
 
-        assert!(share_events[0].created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(share_events[0].created_timestamp < SystemTime::now());
         assert!(share_events[0].accepted_declined_timestamp.is_none());
     }
 
@@ -1085,8 +1062,8 @@ pub mod tests {
         assert_eq!(share_event.budget_id, budget.id);
         assert!(share_event.accepted);
 
-        assert!(share_event.created_timestamp < chrono::Utc::now().naive_utc());
-        assert!(share_event.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(share_event.created_timestamp < SystemTime::now());
+        assert!(share_event.accepted_declined_timestamp.unwrap() < SystemTime::now());
         assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
 
         let share_event = dao
@@ -1098,8 +1075,8 @@ pub mod tests {
         assert_eq!(share_event.budget_id, budget.id);
         assert!(share_event.accepted);
 
-        assert!(share_event.created_timestamp < chrono::Utc::now().naive_utc());
-        assert!(share_event.accepted_declined_timestamp.unwrap() < chrono::Utc::now().naive_utc());
+        assert!(share_event.created_timestamp < SystemTime::now());
+        assert!(share_event.accepted_declined_timestamp.unwrap() < SystemTime::now());
         assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
     }
 
@@ -1143,10 +1120,8 @@ pub mod tests {
 
         let user2_budget_association = user2_budget_association.unwrap();
 
-        assert!(
-            created_user1_budget_associations[0].created_timestamp < chrono::Utc::now().naive_utc()
-        );
-        assert!(user2_budget_association.created_timestamp < chrono::Utc::now().naive_utc());
+        assert!(created_user1_budget_associations[0].created_timestamp < SystemTime::now());
+        assert!(user2_budget_association.created_timestamp < SystemTime::now());
 
         assert_eq!(
             created_user1_budget_associations[0].user_id,
@@ -1390,18 +1365,10 @@ pub mod tests {
             id: budget_before.id,
             name: String::from("this is an edited budget name"),
             description: Some(String::from("This is an edited description for the budget")),
-            start_date: NaiveDate::from_ymd_opt(
-                2024,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2025,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         dao.edit_budget(&budget_edits, created_user.id).unwrap();
@@ -1448,7 +1415,7 @@ pub mod tests {
             id: budget_before.id,
             name: budget_before.name.clone(),
             description: budget_before.description.clone(),
-            start_date: budget_before.end_date + Duration::days(1),
+            start_date: budget_before.end_date + Duration::from_secs(86400),
             end_date: budget_before.end_date,
         };
 
@@ -1470,12 +1437,8 @@ pub mod tests {
         let new_entry = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -1521,12 +1484,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..800_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -1535,12 +1494,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
             name: None,
             category: None,
             note: None,
@@ -1635,18 +1590,10 @@ pub mod tests {
             name: "Test Budget1 user".to_string(),
             description: Some("This is a description of Test Budget1 user.".to_string()),
             categories: budget1_categories,
-            start_date: NaiveDate::from_ymd_opt(
-                2020,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2024,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..400_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let created_budgets = vec![
@@ -1657,12 +1604,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -1671,12 +1614,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
             name: None,
             category: None,
             note: None,
@@ -1685,12 +1624,8 @@ pub mod tests {
         let entry2 = InputEntry {
             budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..800_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is 2 little note")),
@@ -1699,12 +1634,8 @@ pub mod tests {
         let entry3 = InputEntry {
             budget_id: created_budgets[1].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
             name: None,
             category: None,
             note: None,
@@ -1721,8 +1652,13 @@ pub mod tests {
         dao.create_entry(&entry2, created_user.id).unwrap();
         dao.create_entry(&entry3, created_user.id).unwrap();
 
-        let fetched_budgets = dao.get_all_budgets_for_user(created_user.id).unwrap();
+        let mut fetched_budgets = dao.get_all_budgets_for_user(created_user.id).unwrap();
         assert_eq!(fetched_budgets.len(), created_budgets.len());
+        assert!(!fetched_budgets.is_empty());
+
+        if fetched_budgets[0].id != created_budgets[0].id {
+            fetched_budgets.reverse();
+        }
 
         for i in 0..fetched_budgets.len() {
             assert_eq!(fetched_budgets[i].id, created_budgets[i].id);
@@ -1766,6 +1702,12 @@ pub mod tests {
                 assert_eq!(fetched_cat.color, created_cat.color);
             }
 
+            assert!(!fetched_budgets[i].entries.is_empty());
+            assert_eq!(
+                fetched_budgets[i].entries.len(),
+                created_entries[i].len()
+            );
+
             for j in 0..fetched_budgets[i].entries.len() {
                 let fetched_entry = &fetched_budgets[i].entries[j];
                 let created_entry = &created_entries[i][j];
@@ -1790,12 +1732,8 @@ pub mod tests {
             password: String::from("g&eWi3#oIKDW%cTu*5*2"),
             first_name: format!("Test-{}", user_number),
             last_name: format!("User-{}", user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1837,8 +1775,10 @@ pub mod tests {
                 "This is a description of Test Too_Early {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 3, 14).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 3, 30).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..100_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(100_000_000..200_000_000)),
         };
 
         let in_range_budget0 = InputBudget {
@@ -1847,8 +1787,10 @@ pub mod tests {
                 "This is a description of Test Budget1 {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 3, 12).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 18).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..300_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..7050_000_000)),
         };
 
         let in_range_budget1 = InputBudget {
@@ -1857,8 +1799,10 @@ pub mod tests {
                 "This is a description of Test Budget2 {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 8).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 10).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(300_000_000..400_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
         };
 
         let in_range_budget2 = InputBudget {
@@ -1867,8 +1811,10 @@ pub mod tests {
                 "This is a description of Test Budget2 {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 9).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 5, 6).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(600_000_000..700_000_000)),
         };
 
         let too_late_budget = InputBudget {
@@ -1877,8 +1823,10 @@ pub mod tests {
                 "This is a description of Test Budget3 {user_number}.",
             )),
             categories: budget_categories,
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 22).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 30).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..800_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
         };
 
         let mut in_range_budgets = Vec::new();
@@ -1907,7 +1855,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(2022, 4, 8).unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..700_000_000)),
             name: Some(format!("Test Entry 0 for {user_number}")),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -1916,7 +1865,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: in_range_budgets[0].id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(2022, 4, 9).unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..500_000_000)),
             name: None,
             category: None,
             note: None,
@@ -1935,12 +1885,12 @@ pub mod tests {
         entry5.budget_id = in_range_budgets[2].id;
 
         let created_entries = vec![
-            entry0.clone(),
-            entry1.clone(),
-            entry2.clone(),
-            entry3.clone(),
-            entry4.clone(),
             entry5.clone(),
+            entry4.clone(),
+            entry3.clone(),
+            entry2.clone(),
+            entry1.clone(),
+            entry0.clone(),
         ];
 
         dao.create_entry(&entry0, created_user.id).unwrap();
@@ -1955,11 +1905,12 @@ pub mod tests {
         let fetched_budgets = dao
             .get_all_budgets_for_user_between_dates(
                 created_user.id,
-                NaiveDate::from_ymd_opt(2022, 4, 6).unwrap(),
-                NaiveDate::from_ymd_opt(2022, 4, 12).unwrap(),
+                SystemTime::UNIX_EPOCH + Duration::from_secs(200_000_000),
+                SystemTime::UNIX_EPOCH + Duration::from_secs(700_000_000),
             )
             .unwrap();
         assert_eq!(fetched_budgets.len(), in_range_budgets.len());
+        assert!(!fetched_budgets.is_empty());
 
         for i in 0..fetched_budgets.len() {
             assert_eq!(fetched_budgets[i].id, in_range_budgets[i].id);

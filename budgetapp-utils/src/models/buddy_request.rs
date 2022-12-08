@@ -1,6 +1,6 @@
-use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::schema::buddy_requests;
 
@@ -14,8 +14,8 @@ pub struct BuddyRequest {
 
     pub accepted: bool,
 
-    pub created_timestamp: NaiveDateTime,
-    pub accepted_declined_timestamp: Option<NaiveDateTime>,
+    pub created_timestamp: SystemTime,
+    pub accepted_declined_timestamp: Option<SystemTime>,
 }
 
 #[derive(Debug, Insertable)]
@@ -28,6 +28,6 @@ pub struct NewBuddyRequest {
 
     pub accepted: bool,
 
-    pub created_timestamp: NaiveDateTime,
-    pub accepted_declined_timestamp: Option<NaiveDateTime>,
+    pub created_timestamp: SystemTime,
+    pub accepted_declined_timestamp: Option<SystemTime>,
 }
