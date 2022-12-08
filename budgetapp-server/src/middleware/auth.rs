@@ -3,6 +3,7 @@ use budgetapp_utils::auth_token;
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
 
@@ -60,7 +61,6 @@ mod tests {
     use budgetapp_utils::models::user::NewUser;
 
     use actix_web::test;
-    use chrono::NaiveDate;
     use rand::prelude::*;
     use std::time::Duration;
     use uuid::Uuid;
@@ -69,7 +69,7 @@ mod tests {
     async fn test_auth_token_user_auth_middleware() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -79,12 +79,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -128,7 +124,7 @@ mod tests {
     async fn test_auth_middleware_rejects_request_without_auth_header() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -138,12 +134,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -170,7 +162,7 @@ mod tests {
     async fn test_auth_middleware_rejects_header_without_bearer_keyword() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -180,12 +172,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -215,7 +203,7 @@ mod tests {
     async fn test_auth_middleware_rejects_header_without_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -225,12 +213,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -259,7 +243,7 @@ mod tests {
     async fn test_auth_middleware_rejects_invalid_token() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -269,12 +253,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
@@ -308,7 +288,7 @@ mod tests {
     async fn test_auth_middleware_rejects_refresh_token_in_auth_header() {
         let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let timestamp = chrono::Utc::now().naive_utc();
+        let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
             is_active: true,
@@ -318,12 +298,8 @@ mod tests {
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
             last_name: &format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
             modified_timestamp: timestamp,
             created_timestamp: timestamp,

@@ -50,8 +50,8 @@ pub struct InputBudgetShareEventId {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputDateRange {
-    pub start_date: SystemTime,
-    pub end_date: SystemTime,
+    pub start_date: u64,
+    pub end_date: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

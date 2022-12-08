@@ -6,6 +6,7 @@ use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
 use log::error;
+use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::handlers::error::ServerError;
@@ -85,8 +86,8 @@ pub async fn get_all_between_dates(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_budgets_for_user_between_dates(
             auth_user_claims.0.uid,
-            date_range.start_date,
-            date_range.end_date,
+            UNIX_EPOCH + Duration::from_secs(date_range.start_date),
+            UNIX_EPOCH + Duration::from_secs(date_range.end_date),
         )
     })
     .await?
@@ -597,7 +598,6 @@ pub mod tests {
 
     use actix_web::web::Data;
     use actix_web::{http, test, App};
-    use chrono::NaiveDate;
     use diesel::prelude::*;
     use rand::prelude::*;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -650,18 +650,10 @@ pub mod tests {
                 "This is a description of Test Budget {rand_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..300_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -700,12 +692,8 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -773,18 +761,10 @@ pub mod tests {
                 "This is a description of Test Budget {user_number}.",
             )),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let req = test::TestRequest::post()
@@ -850,12 +830,7 @@ pub mod tests {
             name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
             start_date: budget_before_edit.start_date,
-            end_date: NaiveDate::from_ymd_opt(
-                2024,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            end_date: SystemTime::now(),
         };
 
         let req = test::TestRequest::put()
@@ -902,12 +877,7 @@ pub mod tests {
             name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
             start_date: budget_before_edit.start_date,
-            end_date: NaiveDate::from_ymd_opt(
-                2024,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            end_date: SystemTime::now(),
         };
 
         let req = test::TestRequest::put()
@@ -957,12 +927,8 @@ pub mod tests {
             name: "Test Budget user after edit".to_string(),
             description: budget_before_edit.description.clone(),
             start_date: budget_before_edit.start_date,
-            end_date: NaiveDate::from_ymd_opt(
-                2019,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            end_date: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(50_000_000..100_000_000)),
         };
 
         let req = test::TestRequest::put()
@@ -1009,12 +975,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -1023,12 +985,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
             name: None,
             category: None,
             note: None,
@@ -1128,7 +1086,7 @@ pub mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let instant_before_share = chrono::Utc::now().naive_utc();
+        let instant_before_share = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -1140,7 +1098,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let instant_after_share = chrono::Utc::now().naive_utc();
+        let instant_after_share = SystemTime::now();
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
@@ -1255,7 +1213,7 @@ pub mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let instant_before_share = chrono::Utc::now().naive_utc();
+        let instant_before_share = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -1292,7 +1250,7 @@ pub mod tests {
             .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
-        let instant_after_share = chrono::Utc::now().naive_utc();
+        let instant_after_share = SystemTime::now();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
@@ -1466,7 +1424,7 @@ pub mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let instant_before_share = chrono::Utc::now().naive_utc();
+        let instant_before_share = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -1483,7 +1441,7 @@ pub mod tests {
             .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
-        let instant_after_share = chrono::Utc::now().naive_utc();
+        let instant_after_share = SystemTime::now();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
@@ -1589,7 +1547,7 @@ pub mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let instant_before_share = chrono::Utc::now().naive_utc();
+        let instant_before_share = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -1626,7 +1584,7 @@ pub mod tests {
             .load::<BudgetShareEvent>(&mut db_connection)
             .unwrap();
 
-        let instant_after_share = chrono::Utc::now().naive_utc();
+        let instant_after_share = SystemTime::now();
 
         assert_eq!(share_events.len(), 1);
         assert_eq!(share_events[0].recipient_user_id, created_user2_id);
@@ -1978,18 +1936,10 @@ pub mod tests {
             name: "Test Budget #2".to_string(),
             description: Some("This is a description of Test Budget #2.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -2109,18 +2059,10 @@ pub mod tests {
             name: "Test Budget #2".to_string(),
             description: Some("This is a description of Test Budget #2.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2021,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let create_budget_req = test::TestRequest::post()
@@ -2231,7 +2173,7 @@ pub mod tests {
             budget_id: created_user1_budget.id,
         };
 
-        let instant_before_share = chrono::Utc::now().naive_utc();
+        let instant_before_share = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/budget/invite")
@@ -2243,7 +2185,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let instant_after_share = chrono::Utc::now().naive_utc();
+        let instant_after_share = SystemTime::now();
 
         let share_events = budget_share_events
             .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
@@ -2808,12 +2750,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -2822,12 +2760,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
             category: None,
             note: None,
@@ -2941,18 +2875,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
-            end_date: NaiveDate::from_ymd_opt(
-                2023,
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..700_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let create_budget1_req = test::TestRequest::post()
@@ -2978,12 +2904,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -2992,12 +2914,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3006,12 +2924,8 @@ pub mod tests {
         let entry2 = InputEntry {
             budget_id: created_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3020,12 +2934,8 @@ pub mod tests {
         let entry3 = InputEntry {
             budget_id: created_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3081,8 +2991,12 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
 
         let res_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
-        let output_budgets = serde_json::from_str::<Vec<OutputBudget>>(res_body.as_str()).unwrap();
+        let mut output_budgets = serde_json::from_str::<Vec<OutputBudget>>(res_body.as_str()).unwrap();
         assert_eq!(output_budgets.len(), 2);
+
+        if output_budgets[0].id != created_budgets[0].id {
+            output_budgets.reverse();
+        }
 
         for i in 0..output_budgets.len() {
             let budget = &output_budgets[i];
@@ -3167,8 +3081,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 3, 14).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 3, 30).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..100_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(100_000_000..200_000_000)),
         };
 
         let create_too_early_budget_req = test::TestRequest::post()
@@ -3195,8 +3111,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 3, 12).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 18).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(300_000_000..400_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
         };
 
         let create_in_range_budget0_req = test::TestRequest::post()
@@ -3223,8 +3141,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 8).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 10).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
         };
 
         let create_in_range_budget1_req = test::TestRequest::post()
@@ -3251,8 +3171,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 9).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 5, 6).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(600_000_000..700_000_000)),
         };
 
         let create_in_range_budget2_req = test::TestRequest::post()
@@ -3279,8 +3201,10 @@ pub mod tests {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
             categories: budget_categories.clone(),
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 22).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 30).unwrap(),
+            start_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
+            end_date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
         };
 
         let create_too_late_budget_req = test::TestRequest::post()
@@ -3311,12 +3235,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_too_early_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(100_000_000..200_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3325,12 +3245,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_too_early_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..300_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3339,12 +3255,8 @@ pub mod tests {
         let entry2 = InputEntry {
             budget_id: created_in_range_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(300_000_000..400_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3353,12 +3265,8 @@ pub mod tests {
         let entry3 = InputEntry {
             budget_id: created_in_range_budget0.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3367,12 +3275,8 @@ pub mod tests {
         let entry4 = InputEntry {
             budget_id: created_in_range_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3381,12 +3285,8 @@ pub mod tests {
         let entry5 = InputEntry {
             budget_id: created_in_range_budget1.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(600_000_000..700_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3395,12 +3295,8 @@ pub mod tests {
         let entry6 = InputEntry {
             budget_id: created_in_range_budget2.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..800_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3409,12 +3305,8 @@ pub mod tests {
         let entry7 = InputEntry {
             budget_id: created_in_range_budget2.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3423,12 +3315,8 @@ pub mod tests {
         let entry8 = InputEntry {
             budget_id: created_too_late_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3437,12 +3325,8 @@ pub mod tests {
         let entry9 = InputEntry {
             budget_id: created_too_late_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(1_000_000_000..1_100_000_000)),
             name: None,
             category: None,
             note: None,
@@ -3545,14 +3429,15 @@ pub mod tests {
         test::call_service(&app, entry9_req).await;
 
         let date_range = InputDateRange {
-            start_date: NaiveDate::from_ymd_opt(2022, 4, 6).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2022, 4, 12).unwrap(),
+            start_date: 300_000_000,
+            end_date: 700_000_000,
         };
 
         let req = test::TestRequest::get()
             .uri(&format!(
                 "/api/budget/get_all_between_dates?start_date={}&end_date={}",
-                date_range.start_date, date_range.end_date,
+                date_range.start_date,
+                date_range.end_date,
             ))
             .insert_header(("authorization", format!("bearer {access_token}")))
             .to_request();
@@ -3651,12 +3536,8 @@ pub mod tests {
         let entry0 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(1..=6),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
             category: Some(0),
             note: Some(String::from("This is a little note")),
@@ -3665,12 +3546,8 @@ pub mod tests {
         let entry1 = InputEntry {
             budget_id: created_budget.id,
             amount_cents: rand::thread_rng().gen_range(90..=120000),
-            date: NaiveDate::from_ymd_opt(
-                2022,
-                rand::thread_rng().gen_range(7..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
             category: None,
             note: None,

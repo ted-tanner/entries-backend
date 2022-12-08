@@ -289,7 +289,6 @@ pub async fn change_password(
         &user.email,
         &user.first_name,
         &user.last_name,
-        &user.date_of_birth,
         env::CONF.security.password_min_len_chars,
     );
 
@@ -637,7 +636,6 @@ pub mod tests {
 
     use actix_web::web::Data;
     use actix_web::{http, test, App};
-    use chrono::NaiveDate;
     use diesel::prelude::*;
     use rand::prelude::*;
 
@@ -664,12 +662,8 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -736,12 +730,8 @@ pub mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -784,12 +774,8 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -896,12 +882,8 @@ pub mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -931,12 +913,8 @@ pub mod tests {
             password: String::from("Password1234"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -965,12 +943,8 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1056,12 +1030,8 @@ pub mod tests {
             password: String::from("1dIbCx^n@VF9f&0*c*39"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1283,12 +1253,8 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1383,12 +1349,8 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1483,12 +1445,8 @@ pub mod tests {
             password: String::from("tNmUV%9$khHK2TqOLw*%W"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1589,7 +1547,7 @@ pub mod tests {
             user_id: created_user2.user.id,
         };
 
-        let instant_before_request = chrono::Utc::now().naive_utc();
+        let instant_before_request = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/user/send_buddy_request")
@@ -1601,7 +1559,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let instant_after_request = chrono::Utc::now().naive_utc();
+        let instant_after_request = SystemTime::now();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
@@ -1882,7 +1840,7 @@ pub mod tests {
             user_id: created_user2.user.id,
         };
 
-        let instant_before_request = chrono::Utc::now().naive_utc();
+        let instant_before_request = SystemTime::now();
 
         let req = test::TestRequest::post()
             .uri("/api/user/send_buddy_request")
@@ -1894,7 +1852,7 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let instant_after_request = chrono::Utc::now().naive_utc();
+        let instant_after_request = SystemTime::now();
 
         let created_buddy_requests = buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(created_user2.user.id))
@@ -2632,7 +2590,7 @@ pub mod tests {
     //         budget_id: created_user1_budget.id,
     //     };
 
-    //     let instant_before_share = chrono::Utc::now().naive_utc();
+    //     let instant_before_share = SystemTime::now();
 
     //     let req = test::TestRequest::post()
     //         .uri("/api/budget/invite")
@@ -2644,7 +2602,7 @@ pub mod tests {
     //     let resp = test::call_service(&app, req).await;
     //     assert_eq!(resp.status(), http::StatusCode::OK);
 
-    //     let instant_after_share = chrono::Utc::now().naive_utc();
+    //     let instant_after_share = SystemTime::now();
 
     //     let share_events = budget_share_events
     //         .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))

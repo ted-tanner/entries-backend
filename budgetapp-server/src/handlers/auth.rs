@@ -451,7 +451,6 @@ mod tests {
 
     use actix_web::web::Data;
     use actix_web::{http, test, App};
-    use chrono::NaiveDate;
     use rand::prelude::*;
 
     use crate::env;
@@ -472,12 +471,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -538,12 +533,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -587,12 +578,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -647,12 +634,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -758,12 +741,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -870,12 +849,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -963,12 +938,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1028,12 +999,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1110,12 +1077,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1192,12 +1155,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1273,12 +1232,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1383,12 +1338,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1462,12 +1413,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1541,12 +1488,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
@@ -1627,12 +1570,8 @@ mod tests {
             password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
             first_name: format!("Test-{}", &user_number),
             last_name: format!("User-{}", &user_number),
-            date_of_birth: NaiveDate::from_ymd_opt(
-                rand::thread_rng().gen_range(1950..=2020),
-                rand::thread_rng().gen_range(1..=12),
-                rand::thread_rng().gen_range(1..=28),
-            )
-            .unwrap(),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: String::from("USD"),
         };
 
