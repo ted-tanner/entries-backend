@@ -2991,7 +2991,8 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
 
         let res_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
-        let mut output_budgets = serde_json::from_str::<Vec<OutputBudget>>(res_body.as_str()).unwrap();
+        let mut output_budgets =
+            serde_json::from_str::<Vec<OutputBudget>>(res_body.as_str()).unwrap();
         assert_eq!(output_budgets.len(), 2);
 
         if output_budgets[0].id != created_budgets[0].id {
@@ -3436,8 +3437,7 @@ pub mod tests {
         let req = test::TestRequest::get()
             .uri(&format!(
                 "/api/budget/get_all_between_dates?start_date={}&end_date={}",
-                date_range.start_date,
-                date_range.end_date,
+                date_range.start_date, date_range.end_date,
             ))
             .insert_header(("authorization", format!("bearer {access_token}")))
             .to_request();
