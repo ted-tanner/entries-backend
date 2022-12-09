@@ -1,5 +1,13 @@
 # The Budget App (Server)
 
+## Cloning Repository
+
+This repository has a submodule dependency, so a simple `git clone` won't work. The repository must be cloned recursively:
+
+```
+git clone --recursive git@github.com:ted-tanner/the-budget-app-server-rust.git
+```
+
 ## Contents
 
 - [Dependencies](#dependencies)
