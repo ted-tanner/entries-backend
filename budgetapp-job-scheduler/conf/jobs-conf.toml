@@ -1,3 +1,5 @@
+# This configuration is for testing purposes only
+
 [connections]
 database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
 max_db_connections = 8
