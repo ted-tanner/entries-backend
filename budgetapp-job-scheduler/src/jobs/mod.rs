@@ -60,9 +60,9 @@ mod tests {
 
     use budgetapp_utils::db::auth::Dao as AuthDao;
     use budgetapp_utils::db::user;
+    use budgetapp_utils::models::otp_attempts::OtpAttempts;
     use budgetapp_utils::password_hasher;
     use budgetapp_utils::request_io::InputUser;
-    use budgetapp_utils::models::otp_attempts::OtpAttempts;
     use budgetapp_utils::schema::otp_attempts as otp_attempts_fields;
     use budgetapp_utils::schema::otp_attempts::dsl::otp_attempts;
 
@@ -77,7 +77,7 @@ mod tests {
 
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
         assert!(!job.ready());
-        
+
         job.set_last_run_time(SystemTime::now() - Duration::from_secs(86400 * 366));
         assert!(job.ready());
 
@@ -166,4 +166,3 @@ mod tests {
         }
     }
 }
-

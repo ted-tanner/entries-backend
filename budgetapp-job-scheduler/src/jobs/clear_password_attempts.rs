@@ -48,11 +48,11 @@ impl Job for ClearPasswordAttempts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use budgetapp_utils::db::user;
+    use budgetapp_utils::models::password_attempts::PasswordAttempts;
     use budgetapp_utils::password_hasher;
     use budgetapp_utils::request_io::InputUser;
-    use budgetapp_utils::models::password_attempts::PasswordAttempts;
     use budgetapp_utils::schema::password_attempts as password_attempts_fields;
     use budgetapp_utils::schema::password_attempts::dsl::password_attempts;
 
@@ -63,24 +63,24 @@ mod tests {
     #[test]
     fn test_last_run_time() {
         let before = SystemTime::now();
-        
+
         thread::sleep(Duration::from_millis(1));
         let mut job = ClearPasswordAttempts::new();
         thread::sleep(Duration::from_millis(1));
-        
+
         assert!(job.last_run_time() > before);
         assert!(job.last_run_time() < SystemTime::now());
 
         let before = SystemTime::now();
-        
+
         thread::sleep(Duration::from_millis(1));
         job.set_last_run_time(SystemTime::now());
         thread::sleep(Duration::from_millis(1));
-        
+
         assert!(job.last_run_time() > before);
         assert!(job.last_run_time() < SystemTime::now());
     }
-    
+
     #[test]
     fn test_run_handler_fun() {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);

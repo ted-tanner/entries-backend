@@ -108,7 +108,7 @@ mod tests {
 
         job_runner.register(Box::new(mock_job1));
         assert_eq!(job_runner.jobs.len(), 1);
-        
+
         job_runner.register(Box::new(mock_job2));
         assert_eq!(job_runner.jobs.len(), 2);
     }
