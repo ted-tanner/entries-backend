@@ -416,9 +416,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Run Clippy!
 * Get rid of panics
 * Double check all unsafe code
+* Write tests for job scheduler
 * Finish tests in users handler
 
 *By 9/2*

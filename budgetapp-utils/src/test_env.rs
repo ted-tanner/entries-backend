@@ -40,20 +40,16 @@ fn build_conf() -> Conf {
 
 pub mod db {
     use diesel::pg::PgConnection;
-    use diesel::r2d2::{self, ConnectionManager};
+    use diesel::r2d2::ConnectionManager;
+
+    use crate::db::create_db_thread_pool;
 
     type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 
     lazy_static! {
-        pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
-            .max_size(if let Some(c) = crate::test_env::CONF.max_db_connections {
-                c
-            } else {
-                (num_cpus::get() * 2).try_into().unwrap()
-            })
-            .build(ConnectionManager::<PgConnection>::new(
-                crate::test_env::CONF.database_uri.as_str()
-            ))
-            .expect("Failed to create DB thread pool");
+        pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
+            crate::test_env::CONF.database_uri.as_str(),
+            crate::test_env::CONF.max_db_connections,
+        );
     }
 }

@@ -98,24 +98,13 @@ fn build_conf() -> Conf {
 
 #[cfg(test)]
 pub mod testing {
-    use budgetapp_utils::db::DbThreadPool;
-
-    use diesel::prelude::*;
-    use diesel::r2d2::{self, ConnectionManager};
+    use budgetapp_utils::db::{create_db_thread_pool, DbThreadPool};
 
     lazy_static! {
-        pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
-            .max_size(
-                if let Some(c) = crate::env::CONF.connections.max_db_connections {
-                    c
-                } else {
-                    (num_cpus::get() * 2).try_into().unwrap()
-                }
-            )
-            .build(ConnectionManager::<PgConnection>::new(
-                crate::env::CONF.connections.database_uri.as_str()
-            ))
-            .expect("Failed to create DB thread pool");
+        pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
+            crate::env::CONF.connections.database_uri.as_str(),
+            crate::env::CONF.connections.max_db_connections,
+        );
     }
 }
 

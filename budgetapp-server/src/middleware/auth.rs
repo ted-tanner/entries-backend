@@ -3,7 +3,6 @@ use budgetapp_utils::auth_token;
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
 
@@ -62,7 +61,7 @@ mod tests {
 
     use actix_web::test;
     use rand::prelude::*;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
     #[actix_rt::test]

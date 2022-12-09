@@ -511,7 +511,8 @@ pub async fn remove_budget(
         Err(e) => {
             log::error!(
                 "Failed to get count of how many users are left in budget with ID '{}': {}",
-                budget_id_clone.budget_id, e
+                budget_id_clone.budget_id,
+                e
             );
             10
         }
@@ -528,7 +529,8 @@ pub async fn remove_budget(
             Err(e) => {
                 log::error!(
                     "Failed to delete budget with ID '{}': {}",
-                    budget_id_second_clone.budget_id, e
+                    budget_id_second_clone.budget_id,
+                    e
                 );
             }
         };

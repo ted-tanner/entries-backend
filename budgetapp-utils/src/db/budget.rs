@@ -1703,10 +1703,7 @@ pub mod tests {
             }
 
             assert!(!fetched_budgets[i].entries.is_empty());
-            assert_eq!(
-                fetched_budgets[i].entries.len(),
-                created_entries[i].len()
-            );
+            assert_eq!(fetched_budgets[i].entries.len(), created_entries[i].len());
 
             for j in 0..fetched_budgets[i].entries.len() {
                 let fetched_entry = &fetched_budgets[i].entries[j];

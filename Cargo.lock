@@ -298,13 +298,10 @@ name = "budgetapp_job_scheduler"
 version = "0.1.0"
 dependencies = [
  "budgetapp_utils",
- "diesel",
  "env_logger",
  "lazy_static",
  "log",
- "num_cpus",
  "serde",
- "serde_json",
  "toml",
  "uuid",
 ]

@@ -8,6 +8,7 @@ pub struct Conf {
     pub runner: RunnerConf,
     pub clear_otp_attempts_job: ClearOtpAttemptsJob,
     pub clear_password_attempts_job: ClearPasswordAttemptsJob,
+    pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJob,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -28,6 +29,11 @@ pub struct ClearOtpAttemptsJob {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ClearPasswordAttemptsJob {
+    pub job_frequency_secs: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UnblacklistExpiredRefreshTokensJob {
     pub job_frequency_secs: u64,
 }
 
@@ -62,24 +68,13 @@ fn build_conf() -> Conf {
 }
 
 pub mod db {
-    use diesel::pg::PgConnection;
-    use diesel::r2d2::{self, ConnectionManager};
-
-    type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
+    use budgetapp_utils::db::{create_db_thread_pool, DbThreadPool};
 
     lazy_static! {
-        pub static ref DB_THREAD_POOL: DbThreadPool = r2d2::Pool::builder()
-            .max_size(
-                if let Some(c) = crate::env::CONF.connections.max_db_connections {
-                    c
-                } else {
-                    (num_cpus::get() * 2).try_into().unwrap()
-                }
-            )
-            .build(ConnectionManager::<PgConnection>::new(
-                crate::env::CONF.connections.database_uri.as_str()
-            ))
-            .expect("Failed to create DB thread pool");
+        pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
+            crate::env::CONF.connections.database_uri.as_str(),
+            crate::env::CONF.connections.max_db_connections,
+        );
     }
 }
 

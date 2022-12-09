@@ -4,7 +4,7 @@ use std::time::Duration;
 use crate::jobs::Job;
 
 pub struct JobRunner {
-    jobs: Vec<Job>,
+    jobs: Vec<Box<dyn Job>>,
     update_frequency_secs: Duration,
 }
 
@@ -16,7 +16,8 @@ impl JobRunner {
         }
     }
 
-    pub fn register(&mut self, job: Job) {
+    pub fn register(&mut self, job: Box<dyn Job>) {
+        log::info!("Registered job \"{}\"", job.name());
         self.jobs.push(job);
     }
 
