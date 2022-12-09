@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use ring::hmac;
 use serde::{Deserialize, Serialize};
 use std::fmt;
