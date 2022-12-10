@@ -1,3 +1,5 @@
+#![cfg(not(doctest))]
+
 #[macro_use]
 extern crate diesel;
 #[macro_use]

@@ -1,12 +1,4 @@
-// This file is based off the bindgen reference at https://rust-lang.github.io/rust-bindgen/tutorial-3.html
-
-extern crate bindgen;
-
-use std::path::PathBuf;
-
 fn main() {
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-
     let supports_simd = cfg!(target_arch = "x86_64");
 
     let simd_src_file = if supports_simd {
@@ -42,25 +34,9 @@ fn main() {
 
     println!("cargo:rerun-if-changed=libraries/argon2_bindings.h");
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
-    let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
+    bindgen::Builder::default()
         .header("libraries/argon2_bindings.h")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
         .generate()
-        // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings for argon2 library");
-
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let bindings_out_path = PathBuf::from(format!("{}/argon2_bindings.rs", out_dir));
-
-    bindings
-        .write_to_file(bindings_out_path)
-        .expect("Couldn't write argon2 library bindings");
 }
