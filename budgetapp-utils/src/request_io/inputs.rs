@@ -24,7 +24,7 @@ pub struct InputUserId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputOptionalUserId {
     pub user_id: Option<Uuid>,
-    pub is_buddy: Option<bool>,
+    pub get_buddy_profile: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
