@@ -489,6 +489,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
 * Validation for `budgetapp_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
+* Budget user get request logic should be handled in a query to eliminate multiple queries
 * Create mock in Dao to test DB stuff in budgetapp-utils
 * Replace lazy_static with OnceCell
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
