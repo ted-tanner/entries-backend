@@ -131,6 +131,16 @@ impl Dao {
 
         Ok(dsl::insert_into(buddy_requests)
             .values(&request)
+            .on_conflict((
+                buddy_request_fields::recipient_user_id,
+                buddy_request_fields::sender_user_id,
+            ))
+            .do_update()
+            .set((
+                buddy_request_fields::accepted.eq(false),
+                buddy_request_fields::created_timestamp.eq(SystemTime::now()),
+                buddy_request_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
+            ))
             .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
 

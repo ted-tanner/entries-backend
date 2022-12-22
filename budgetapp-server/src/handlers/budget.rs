@@ -2336,7 +2336,7 @@ pub mod tests {
                 budget_id.budget_id
             ))
             .insert_header(("content-type", "application/json"))
-            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2350,14 +2350,14 @@ pub mod tests {
         assert_eq!(share_events.len(), 1); // Share event still exists
 
         let budget_association = user_budgets
-            .filter(user_budget_fields::user_id.eq(created_user1_id))
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
             .first::<UserBudget>(&mut db_connection);
 
         assert!(budget_association.is_err());
 
         let budget_association = user_budgets
-            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::user_id.eq(created_user1_id))
             .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
             .first::<UserBudget>(&mut db_connection);
 
@@ -2369,7 +2369,7 @@ pub mod tests {
                 budget_id.budget_id
             ))
             .insert_header(("content-type", "application/json"))
-            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .insert_header(("authorization", format!("bearer {user2_access_token}")))
             .to_request();
 
         let resp = test::call_service(&app, req).await;
@@ -2381,11 +2381,43 @@ pub mod tests {
                 budget_id.budget_id
             ))
             .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        // Make sure a new invitation can be sent again
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info_budget)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::put()
+            .uri(&format!(
+                "/api/budget/accept_invitation?share_event_id={}",
+                invite_id.share_event_id
+            ))
+            .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let budget_association = user_budgets
+            .filter(user_budget_fields::user_id.eq(created_user2_id))
+            .filter(user_budget_fields::budget_id.eq(created_user1_budget.id))
+            .first::<UserBudget>(&mut db_connection)
+            .unwrap();
+
+        assert_eq!(budget_association.user_id, created_user2_id);
+        assert_eq!(budget_association.budget_id, created_user1_budget.id);
     }
 
     #[actix_rt::test]

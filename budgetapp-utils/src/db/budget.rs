@@ -350,6 +350,17 @@ impl Dao {
 
         Ok(dsl::insert_into(budget_share_events)
             .values(&budget_share_event)
+            .on_conflict((
+                budget_share_event_fields::recipient_user_id,
+                budget_share_event_fields::sender_user_id,
+                budget_share_event_fields::budget_id,
+            ))
+            .do_update()
+            .set((
+                budget_share_event_fields::accepted.eq(false),
+                budget_share_event_fields::created_timestamp.eq(SystemTime::now()),
+                budget_share_event_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
+            ))
             .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
 

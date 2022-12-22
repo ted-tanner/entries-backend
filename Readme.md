@@ -424,7 +424,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Get rid of panics
+* BUG: Budget invites can be sent to users who already belong to budget and duplicate buddy invites can be sent to users who are already buddies
+* Get rid of panics?
 * Double check all unsafe code
 * Finish tests in users handler
 
