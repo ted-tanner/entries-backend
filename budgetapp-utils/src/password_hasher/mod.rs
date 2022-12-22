@@ -452,9 +452,11 @@ pub fn hash_argon2id(
     let result = unsafe { argon2id_ctx(&mut ctx as *mut Argon2_Context) };
 
     if result != Argon2_ErrorCodes_ARGON2_OK {
-        panic!("Failed to hash password: {}", unsafe {
+        let err_msg = format!("Failed to hash password: {}", unsafe {
             std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
         });
+        error!("{}", err_msg);
+        panic!("{}", err_msg);
     }
 
     BinaryHash {

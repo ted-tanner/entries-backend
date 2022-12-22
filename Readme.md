@@ -424,10 +424,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Get rid of panics?
-* Double check all unsafe code
-* Finish tests in users handler
-
 *By 9/2*
 
 * Consider replacing diesel with sqlx
