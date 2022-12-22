@@ -119,6 +119,7 @@ impl Dao {
 
         let mut output_budgets = Vec::new();
 
+        // TODO: Expects
         for budget in loaded_budgets.into_iter() {
             let output_budget = OutputBudget {
                 id: budget.id,
@@ -177,6 +178,7 @@ impl Dao {
 
         let mut output_budgets = Vec::new();
 
+        // TODO: Expects
         for budget in loaded_budgets.into_iter() {
             let output_budget = OutputBudget {
                 id: budget.id,

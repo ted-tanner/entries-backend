@@ -23,7 +23,7 @@ struct TokenizedHash {
 #[derive(Clone, Debug)]
 pub struct HashParams {
     pub salt_len: usize,
-    pub hash_len: usize,
+    pub hash_len: u32,
     pub hash_iterations: u32,
     // hash_mem_size_kib must be a power of 2 and at least 128
     pub hash_mem_size_kib: u32,

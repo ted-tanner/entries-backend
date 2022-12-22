@@ -65,6 +65,12 @@ pub fn validate_strong_password(
         ));
     }
 
+    if password.len() > 512 {
+        return Validity::Invalid(String::from(
+            "Password cannot be greater than 512 characters long."
+        ));
+    }
+
     let lowercase_password = password.to_lowercase();
 
     if lowercase_password.contains("password") {

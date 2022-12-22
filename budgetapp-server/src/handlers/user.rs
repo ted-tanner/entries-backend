@@ -1024,9 +1024,7 @@ pub mod tests {
 
     #[actix_rt::test]
     async fn test_get_with_query_param() {
-        let mut db_connection = env::testing::DB_THREAD_POOL
-            .get()
-            .expect("Failed to access database thread pool");
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
 
         let app = test::init_service(
             App::new()
