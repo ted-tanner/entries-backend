@@ -5,6 +5,7 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
+use futures::try_join;
 use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -182,7 +183,15 @@ pub async fn add_entry(
     entry_data: web::Json<InputEntry>,
 ) -> Result<HttpResponse, ServerError> {
     let budget_id = entry_data.budget_id;
-    ensure_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
+
+    let is_user_in_budget =
+        check_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
+
+    if !is_user_in_budget {
+        return Err(ServerError::NotFound(Some(String::from(
+            "User has no budget with provided ID",
+        ))));
+    }
 
     let new_entry = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -221,7 +230,29 @@ pub async fn invite_user(
         ))));
     }
 
-    ensure_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id).await?;
+    let is_sender_in_budget_future =
+        check_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id);
+
+    let is_receiver_in_budget_future = check_user_in_budget(
+        &db_thread_pool,
+        invitation_info.invitee_user_id,
+        invitation_info.budget_id,
+    );
+
+    let (is_sender_in_budget, is_receiver_in_budget) =
+        try_join!(is_sender_in_budget_future, is_receiver_in_budget_future)?;
+
+    if !is_sender_in_budget {
+        return Err(ServerError::NotFound(Some(String::from(
+            "User has no budget with provided ID",
+        ))));
+    };
+
+    if is_receiver_in_budget {
+        return Err(ServerError::InputRejected(Some(String::from(
+            "User already has access to budget",
+        ))));
+    }
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -500,7 +531,11 @@ pub async fn remove_budget(
 
     // TODO: Perhaps user shouldn't have to wait for this (make it non-blocking). Users have
     //       already been removed from the budget, so the handler can return without finishing
-    //       deleting the budget
+    //       deleting the budget.
+    //
+    //       Perhaps create a thread or threadpool (in another module) with a queue. The thread
+    //       just polls the queue and executes closures from the queue. This delete operation
+    //       could be added to that queue.
     let remaining_users_in_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.count_users_remaining_in_budget(budget_id_clone.budget_id)
@@ -539,40 +574,32 @@ pub async fn remove_budget(
     Ok(HttpResponse::Ok().finish())
 }
 
-async fn ensure_user_in_budget(
+async fn check_user_in_budget(
     db_thread_pool: &DbThreadPool,
     user_id: Uuid,
     budget_id: Uuid,
-) -> Result<(), ServerError> {
+) -> Result<bool, ServerError> {
     let db_thread_pool_clone = db_thread_pool.clone();
-    let is_user_in_budget = match web::block(move || {
+    match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.check_user_in_budget(user_id, budget_id)
     })
     .await?
     {
-        Ok(b) => b,
+        Ok(b) => Ok(b),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
+                Err(ServerError::InvalidFormat(None))
             }
             _ => {
                 log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data",
-                ))));
+                ))))
             }
         },
-    };
-
-    if !is_user_in_budget {
-        return Err(ServerError::NotFound(Some(String::from(
-            "User has no budget with provided ID",
-        ))));
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1183,6 +1210,16 @@ pub mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/api/budget/invite")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&invitation_info)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
     #[actix_rt::test]

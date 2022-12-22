@@ -424,7 +424,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* BUG: Budget invites can be sent to users who already belong to budget and duplicate buddy invites can be sent to users who are already buddies
 * Get rid of panics?
 * Double check all unsafe code
 * Finish tests in users handler
@@ -494,7 +493,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Create mock in Dao to test DB stuff in budgetapp-utils
 * Replace lazy_static with OnceCell
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
-* In `utils::db::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget
+* In `budgetapp_server::handlers::budget::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget. See the comment in the code for an idea of how to do this performantly
 * OTP attempts, password attempts, and blacklisted tokens can be moved to Redis
 * Comments (budget comments, entry comments, etc.)
 * Publicly export models (so imports look like this `use crate::models::BuddyRequest;` rather than `use crate::models::buddy_request::BuddyRequest;`

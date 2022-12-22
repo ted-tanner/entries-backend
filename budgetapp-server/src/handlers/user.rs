@@ -8,6 +8,7 @@ use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -56,20 +57,8 @@ pub async fn get(
         let mut are_buddies = false;
 
         if let Some(true) = input_user_id.get_buddy_profile {
-            are_buddies = match web::block(move || {
-                let mut user_dao = db::user::Dao::new(&db_thread_pool);
-                user_dao.check_are_buddies(user_id, auth_user_claims.0.uid)
-            })
-            .await?
-            {
-                Ok(buddies) => buddies,
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                        "Failed to get user data",
-                    ))));
-                }
-            };
+            are_buddies =
+                check_are_buddies(&db_thread_pool, auth_user_claims.0.uid, user_id).await?;
         }
 
         if !are_buddies {
@@ -317,6 +306,19 @@ pub async fn send_buddy_request(
     if other_user_id.user_id == auth_user_claims.0.uid {
         return Err(ServerError::InputRejected(Some(String::from(
             "Requester and recipient have the same ID",
+        ))));
+    }
+
+    let are_buddies = check_are_buddies(
+        &db_thread_pool,
+        auth_user_claims.0.uid,
+        other_user_id.user_id,
+    )
+    .await?;
+
+    if are_buddies {
+        return Err(ServerError::InputRejected(Some(String::from(
+            "Sender and recipient are already buddies",
         ))));
     }
 
@@ -603,6 +605,28 @@ pub async fn get_buddies(
     };
 
     Ok(HttpResponse::Ok().json(buddies))
+}
+
+async fn check_are_buddies(
+    db_thread_pool: &DbThreadPool,
+    user1_id: Uuid,
+    user2_id: Uuid,
+) -> Result<bool, ServerError> {
+    let db_thread_pool_clone = db_thread_pool.clone();
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        user_dao.check_are_buddies(user1_id, user2_id)
+    })
+    .await?
+    {
+        Ok(buddies) => Ok(buddies),
+        Err(e) => {
+            log::error!("{}", e);
+            Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to get user data",
+            ))))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1669,6 +1693,16 @@ pub mod tests {
         assert_eq!(user_from_resp.id, created_user2.user.id);
         assert_eq!(user_from_resp.first_name, created_user2.user.first_name);
         assert_eq!(user_from_resp.last_name, created_user2.user.last_name);
+
+        let req = test::TestRequest::post()
+            .uri("/api/user/send_buddy_request")
+            .insert_header(("content-type", "application/json"))
+            .insert_header(("authorization", format!("bearer {user1_access_token}")))
+            .set_json(&other_user_id)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
     #[actix_rt::test]
@@ -2304,7 +2338,7 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user_id = InputUserId {
-            user_id: created_user3.user.id.clone(),
+            user_id: created_user3.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -2374,7 +2408,7 @@ pub mod tests {
             found_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(found_buddy_requests[0].accepted, false);
+        assert!(!found_buddy_requests[0].accepted);
         assert!(found_buddy_requests[0]
             .accepted_declined_timestamp
             .is_none());
@@ -2387,7 +2421,7 @@ pub mod tests {
             found_buddy_requests[1].sender_user_id,
             created_user2.user.id
         );
-        assert_eq!(found_buddy_requests[1].accepted, false);
+        assert!(!found_buddy_requests[1].accepted);
         assert!(found_buddy_requests[1]
             .accepted_declined_timestamp
             .is_none());
@@ -2427,7 +2461,7 @@ pub mod tests {
             found_buddy_requests[0].sender_user_id,
             created_user2.user.id
         );
-        assert_eq!(found_buddy_requests[0].accepted, false);
+        assert!(!found_buddy_requests[0].accepted);
         assert!(found_buddy_requests[0]
             .accepted_declined_timestamp
             .is_none());
@@ -2478,11 +2512,11 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user2_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let other_user3_id = InputUserId {
-            user_id: created_user3.user.id.clone(),
+            user_id: created_user3.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -2552,7 +2586,7 @@ pub mod tests {
             found_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(found_buddy_requests[0].accepted, false);
+        assert!(!found_buddy_requests[0].accepted);
         assert!(found_buddy_requests[0]
             .accepted_declined_timestamp
             .is_none());
@@ -2565,7 +2599,7 @@ pub mod tests {
             found_buddy_requests[1].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(found_buddy_requests[1].accepted, false);
+        assert!(!found_buddy_requests[1].accepted);
         assert!(found_buddy_requests[1]
             .accepted_declined_timestamp
             .is_none());
@@ -2605,7 +2639,7 @@ pub mod tests {
             found_buddy_requests[0].sender_user_id,
             created_user1.user.id
         );
-        assert_eq!(found_buddy_requests[0].accepted, false);
+        assert!(!found_buddy_requests[0].accepted);
         assert!(found_buddy_requests[0]
             .accepted_declined_timestamp
             .is_none());
@@ -2656,7 +2690,7 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user2_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -2690,7 +2724,7 @@ pub mod tests {
 
         assert_eq!(found_buddy_request.recipient_user_id, created_user2.user.id);
         assert_eq!(found_buddy_request.sender_user_id, created_user1.user.id);
-        assert_eq!(found_buddy_request.accepted, false);
+        assert!(!found_buddy_request.accepted);
         assert!(found_buddy_request.accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::get()
@@ -2706,7 +2740,7 @@ pub mod tests {
 
         assert_eq!(found_buddy_request.recipient_user_id, created_user2.user.id);
         assert_eq!(found_buddy_request.sender_user_id, created_user1.user.id);
-        assert_eq!(found_buddy_request.accepted, false);
+        assert!(!found_buddy_request.accepted);
         assert!(found_buddy_request.accepted_declined_timestamp.is_none());
 
         // Test can't get for another user
@@ -2740,7 +2774,7 @@ pub mod tests {
         let user3_access_token = created_user3.token_pair.access_token.clone();
 
         let other_user2_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -2982,11 +3016,11 @@ pub mod tests {
         assert!(found_buddies.is_empty());
 
         let other_user2_id = InputUserId {
-            user_id: created_user2.user.id.clone(),
+            user_id: created_user2.user.id,
         };
 
         let other_user3_id = InputUserId {
-            user_id: created_user3.user.id.clone(),
+            user_id: created_user3.user.id,
         };
 
         let req = test::TestRequest::post()
@@ -3085,7 +3119,10 @@ pub mod tests {
 
         assert_eq!(found_buddies.len(), 2);
 
-        let found_buddies_ids = found_buddies.iter().map(|buddy| buddy.id).collect::<Vec<_>>();
+        let found_buddies_ids = found_buddies
+            .iter()
+            .map(|buddy| buddy.id)
+            .collect::<Vec<_>>();
         assert!(found_buddies_ids.contains(&created_user2.user.id));
         assert!(found_buddies_ids.contains(&created_user3.user.id));
 

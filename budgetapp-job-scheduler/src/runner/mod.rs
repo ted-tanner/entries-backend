@@ -17,7 +17,11 @@ impl JobRunner {
     }
 
     pub fn register(&mut self, job: Box<dyn Job>) {
-        log::info!("Registered job \"{}\"", job.name());
+        log::info!(
+            "Registered job \"{}\" to run every {} seconds",
+            job.name(),
+            job.run_frequency().as_secs()
+        );
         self.jobs.push(job);
     }
 
