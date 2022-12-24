@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 fn main() {
     let supports_simd = cfg!(target_arch = "x86_64");
 
@@ -39,4 +41,18 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings for argon2 library");
+
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+
+    let bindings = bindgen::Builder::default()
+        .header("libraries/argon2_bindings.h")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .generate()
+        .expect("Unable to generate bindings for argon2 library");
+
+    let bindings_out_path = PathBuf::from(format!("{}/argon2_bindings.rs", out_dir));
+
+    bindings
+        .write_to_file(bindings_out_path)
+        .expect("Couldn't write argon2 library bindings");
 }
