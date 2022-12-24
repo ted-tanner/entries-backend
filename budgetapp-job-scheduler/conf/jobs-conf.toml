@@ -8,11 +8,11 @@ max_db_connections = 8
 update_frequency_secs = 10
 
 [clear_otp_attempts_job]
-job_frequency_secs = 300
+job_frequency_secs = 120
 attempts_lifetime_mins = 15
 
 [clear_password_attempts_job]
-job_frequency_secs = 300
+job_frequency_secs = 120
 attempts_lifetime_mins = 15
 
 [unblacklist_expired_refresh_tokens_job]
