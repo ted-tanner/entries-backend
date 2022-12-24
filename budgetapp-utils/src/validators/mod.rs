@@ -15,6 +15,10 @@ impl Validity {
 }
 
 pub fn validate_email_address(email: &str) -> Validity {
+    if email.chars().count() > 320 {
+        return Validity::Invalid(String::from("Email address cannot contain a space."));
+    }
+
     for c in email.chars() {
         if c == ' ' || !c.is_ascii() {
             return Validity::Invalid(String::from("Email address cannot contain a space."));
@@ -151,6 +155,8 @@ pub fn validate_strong_password(
 mod tests {
     use super::*;
 
+    use rand::{distributions::Alphanumeric, Rng};
+
     #[test]
     fn test_validate_email_address() {
         // Valid
@@ -161,7 +167,7 @@ mod tests {
         const IP_DOMAIN: &str = "email@123.123.123.123";
         const BRACKETED_IP_DOMAIN: &str = "email@[123.123.123.123]";
         const WITH_QUOTATION_MARKS: &str = "\"email\"@example.com";
-        const NUMERIC_USERNAME: &str = "1234567890@example.com";
+        const NUMERIC_USERNAME: &str = "1234567890@example.co.uk";
         const DASH_IN_DOMAIN: &str = "email@example-one.com";
         const DASH_IN_USERNAME: &str = "firstname-lastname@example.com";
         const ALL_UNDERSCORE_USERNAME: &str = "_______@example.com";
@@ -179,6 +185,18 @@ mod tests {
         assert!(validate_email_address(ALL_UNDERSCORE_USERNAME).is_valid());
 
         // Invalid
+        let mut too_long: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(255)
+            .map(char::from)
+            .collect();
+
+        too_long.push('@');
+        too_long.push_str(
+            "thisisareallyreallylongdomainnamethatwillmaketheaddressinvalidbecauseitisjustlong",
+        );
+        too_long.push_str(".com");
+
         const WITH_SPACE: &str = "te st@example.com";
         const NON_ASCII_CHAR: &str = "test😂@example.com";
         const MULTIPLE_AT: &str = "test@exam.com@ple.com";
@@ -186,6 +204,7 @@ mod tests {
         const DOMAIN_DOT_ADJACENT_TO_AT: &str = "test@.com";
         const DOT_LAST_CHAR: &str = "test@example.com.";
 
+        assert!(!validate_email_address(&too_long).is_valid());
         assert!(!validate_email_address(WITH_SPACE).is_valid());
         assert!(!validate_email_address(NON_ASCII_CHAR).is_valid());
         assert!(!validate_email_address(MULTIPLE_AT).is_valid());

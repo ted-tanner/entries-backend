@@ -426,7 +426,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 9/2*
 
-* Get another user by email
+* Get rid of is_active field for users
 
 *By 9/16*
 

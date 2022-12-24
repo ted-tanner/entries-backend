@@ -6,7 +6,7 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -17,13 +17,9 @@ use crate::middleware;
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    input_user_id: web::Query<InputOptionalUserId>,
+    input_user_data: web::Query<InputOptionalUserId>,
 ) -> Result<HttpResponse, ServerError> {
-    let (user_id, is_another_user_requesting) = if let Some(id) = input_user_id.user_id {
-        (id, true)
-    } else {
-        (auth_user_claims.0.uid, false)
-    };
+    let user_id = input_user_data.user_id.unwrap_or(auth_user_claims.0.uid);
 
     let db_thread_pool_clone = db_thread_pool.clone();
 
@@ -40,9 +36,7 @@ pub async fn get(
                 return Err(ServerError::InvalidFormat(None))
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::AccessForbidden(Some(String::from(
-                    "No user with ID",
-                ))))
+                return Err(ServerError::NotFound(Some(String::from("User not found"))))
             }
             _ => {
                 log::error!("{}", e);
@@ -53,29 +47,31 @@ pub async fn get(
         },
     };
 
-    if is_another_user_requesting && user_id != auth_user_claims.0.uid {
-        let mut are_buddies = false;
+    if user.id == auth_user_claims.0.uid {
+        let output_user = OutputUserPrivate {
+            id: user.id,
+            is_active: user.is_active,
+            is_premium: user.is_premium,
+            premium_expiration: user.premium_expiration,
+            email: user.email,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            date_of_birth: user.date_of_birth,
+            currency: user.currency,
+            modified_timestamp: user.modified_timestamp,
+            created_timestamp: user.created_timestamp,
+        };
 
-        if let Some(true) = input_user_id.get_buddy_profile {
-            are_buddies =
-                check_are_buddies(&db_thread_pool, auth_user_claims.0.uid, user_id).await?;
-        }
-
-        if !are_buddies {
-            let output_user = OutputUserPublic {
-                id: user.id,
-                is_premium: user.is_premium,
-                is_active: user.is_active,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                currency: user.currency,
-            };
-
-            return Ok(HttpResponse::Ok().json(output_user));
-        }
+        return Ok(HttpResponse::Ok().json(output_user));
     }
 
-    if is_another_user_requesting {
+    let are_buddies = if let Some(true) = input_user_data.get_buddy_profile {
+        check_are_buddies(&db_thread_pool, auth_user_claims.0.uid, user.id).await?
+    } else {
+        false
+    };
+
+    if are_buddies {
         let output_user = OutputUserForBuddies {
             id: user.id,
             is_active: user.is_active,
@@ -86,27 +82,82 @@ pub async fn get(
             currency: user.currency,
         };
 
-        return Ok(HttpResponse::Ok().json(output_user));
-    }
+        Ok(HttpResponse::Ok().json(output_user))
+    } else {
+        let output_user = OutputUserPublic {
+            id: user.id,
+            is_active: user.is_active,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            currency: user.currency,
+        };
 
-    let output_user = OutputUserPrivate {
+        Ok(HttpResponse::Ok().json(output_user))
+    }
+}
+
+pub async fn get_user_by_email(
+    req: HttpRequest,
+    db_thread_pool: web::Data<DbThreadPool>,
+    _auth_user_claims: middleware::auth::AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    // Using a header to accept email address so email address gets encrypted over HTTPS (it
+    // wouldn't if sent in URL query) and so a payload doesn't need to be sent with an HTTP
+    // GET request
+    let email_addr = if let Some(email_val) = req.headers().get("user-email") {
+        if let Ok(email) = email_val.to_str() {
+            if !validators::validate_email_address(email).is_valid() {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Invalid email address",
+                ))));
+            }
+
+            String::from(email)
+        } else {
+            return Err(ServerError::InputRejected(Some(String::from(
+                "Invalid email address",
+            ))));
+        }
+    } else {
+        return Err(ServerError::InvalidFormat(Some(String::from(
+            "user-email header not provided",
+        ))));
+    };
+
+    let user = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_user_by_email(&email_addr)
+    })
+    .await?
+    {
+        Ok(u) => u,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
+                return Err(ServerError::InvalidFormat(None))
+            }
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from("User not found"))))
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to get user data",
+                ))));
+            }
+        },
+    };
+
+    let output_user = OutputUserPublic {
         id: user.id,
         is_active: user.is_active,
-        is_premium: user.is_premium,
-        premium_expiration: user.premium_expiration,
-        email: user.email,
         first_name: user.first_name,
         last_name: user.last_name,
-        date_of_birth: user.date_of_birth,
         currency: user.currency,
-        modified_timestamp: user.modified_timestamp,
-        created_timestamp: user.created_timestamp,
     };
 
     Ok(HttpResponse::Ok().json(output_user))
 }
-
-// TODO: Get another user by email
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -1207,6 +1258,22 @@ pub mod tests {
         assert_eq!(&user_id, &user_from_res.id);
 
         let req = test::TestRequest::get()
+            .uri("/api/user/get?get_buddy_profile=true")
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token).as_str(),
+            ))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        let user_from_res = serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap();
+
+        assert_eq!(&other_user.user.id, &user_from_res.id);
+
+        let req = test::TestRequest::get()
             .uri(&format!(
                 "/api/user/get?user_id={}&get_buddy_profile=true",
                 user_id
@@ -1254,6 +1321,104 @@ pub mod tests {
         assert_eq!(&other_user.user.first_name, &user_from_res.first_name);
         assert_eq!(&other_user.user.last_name, &user_from_res.last_name);
         assert_eq!(&other_user.user.currency, &user_from_res.currency);
+    }
+
+    #[actix_rt::test]
+    async fn test_get_user_by_email() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("1dIbCx^n@VF9f&0*c*39"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
+            currency: String::from("USD"),
+        };
+
+        let create_user_res = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let signin_token = test::read_body_json::<SigninToken, _>(create_user_res).await;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&token_and_otp).unwrap())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        let token_pair = actix_web::test::read_body_json::<TokenPair, _>(res).await;
+        let access_token = token_pair.access_token.to_string();
+
+        let other_user = create_user_and_sign_in().await;
+
+        let req = test::TestRequest::get()
+            .uri("/api/user/get_user_by_email")
+            .insert_header((
+                "authorization",
+                format!("bearer {}", &other_user.token_pair.access_token).as_str(),
+            ))
+            .insert_header(("user-email", other_user.user.email.as_str()))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let res_body = String::from_utf8(actix_web::test::read_body(res).await.to_vec()).unwrap();
+        // Returs public rather than private info if not buddies
+        serde_json::from_str::<OutputUserPrivate>(res_body.as_str()).unwrap_err();
+        serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap_err();
+        let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
+
+        assert_eq!(&other_user.user.id, &user_from_res.id);
+        assert!(&other_user.user.is_active);
+        assert_eq!(&other_user.user.first_name, &user_from_res.first_name);
+        assert_eq!(&other_user.user.last_name, &user_from_res.last_name);
+        assert_eq!(&other_user.user.currency, &user_from_res.currency);
+
+        let req = test::TestRequest::get()
+            .uri("/api/user/get_user_by_email")
+            .insert_header(("authorization", format!("bearer {access_token}").as_str()))
+            .insert_header(("user-email", "notarealuseremail@fake.con"))
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::NOT_FOUND);
     }
 
     #[actix_rt::test]
