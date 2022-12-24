@@ -427,7 +427,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 9/2*
 
 * Get another user by email
-* Use a file logger, like log4rs, to log to a file and stdout
 * The password attempts and OTP attempts need an expiration. The last attempt time should be saved and if it was X amount of time in he past, the user is allowed to sign in again. This prevents a failed cron job from preventing people from signing in
 
 *By 9/16*

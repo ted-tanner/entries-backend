@@ -404,7 +404,7 @@ pub fn hash_password(password: &str, hash_params: &HashParams, hashing_key: &[u8
         password,
         hashing_key,
         &salt[..],
-        u32::try_from(hash_params.hash_len).expect("Hash length is too big"),
+        hash_params.hash_len,
         hash_params.hash_iterations,
         hash_params.hash_mem_size_kib,
         hash_params.hash_lanes,
