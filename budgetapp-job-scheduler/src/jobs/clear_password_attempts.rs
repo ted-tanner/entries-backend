@@ -37,7 +37,9 @@ impl Job for ClearPasswordAttempts {
     fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
-        if let Err(e) = dao.clear_password_attempt_count() {
+        if let Err(e) = dao.clear_password_attempt_count(Duration::from_secs(
+            env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60,
+        )) {
             return Err(JobError::DaoFailure(e));
         }
 
@@ -56,7 +58,7 @@ mod tests {
     use budgetapp_utils::schema::password_attempts as password_attempts_fields;
     use budgetapp_utils::schema::password_attempts::dsl::password_attempts;
 
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
     use std::thread;
 
@@ -119,30 +121,50 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_password_attempt_count(user.id)
+                dao.get_and_increment_password_attempt_count(user.id, Duration::from_millis(1))
                     .unwrap();
             }
         }
 
         let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
 
-        // Ensure rows are in the table before clearing
-        for user_id in user_ids.clone() {
-            let user_pass_attempts = password_attempts
+        for user_id in &user_ids {
+            let user_password_attempts = password_attempts
                 .filter(password_attempts_fields::user_id.eq(user_id))
                 .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_pass_attempts.is_ok());
+            assert!(user_password_attempts.is_ok());
         }
 
         let mut job = ClearPasswordAttempts::new();
         job.run_handler_func().unwrap();
 
-        // Ensure rows have been removed
-        for user_id in user_ids {
-            let user_pass_attempts = password_attempts
+        for user_id in &user_ids {
+            let user_password_attempts = password_attempts
                 .filter(password_attempts_fields::user_id.eq(user_id))
                 .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_pass_attempts.is_err());
+            assert!(user_password_attempts.is_ok());
+        }
+
+        for user_id in &user_ids {
+            dsl::update(password_attempts.filter(password_attempts_fields::user_id.eq(user_id)))
+                .set(
+                    password_attempts_fields::expiration_time.eq(SystemTime::now()
+                        - Duration::from_secs(
+                            env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60 + 1,
+                        )),
+                )
+                .execute(&mut db_connection)
+                .unwrap();
+        }
+
+        let mut job = ClearPasswordAttempts::new();
+        job.run_handler_func().unwrap();
+
+        for user_id in user_ids {
+            let user_password_attempts = password_attempts
+                .filter(password_attempts_fields::user_id.eq(user_id))
+                .first::<PasswordAttempts>(&mut db_connection);
+            assert!(user_password_attempts.is_err());
         }
     }
 }

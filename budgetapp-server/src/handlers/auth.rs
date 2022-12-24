@@ -42,7 +42,10 @@ pub async fn sign_in(
 
     let attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.get_and_increment_password_attempt_count(user.id)
+        auth_dao.get_and_increment_password_attempt_count(
+            user.id,
+            Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
+        )
     })
     .await?
     {
@@ -55,7 +58,9 @@ pub async fn sign_in(
         }
     };
 
-    if attempts > env::CONF.security.password_max_attempts {
+    if attempts.attempt_count > env::CONF.security.password_max_attempts
+        && attempts.expiration_time >= SystemTime::now()
+    {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many login attempts. Try again in a few minutes.",
         ))));
@@ -170,7 +175,10 @@ pub async fn verify_otp_for_signin(
 
     let attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.get_and_increment_otp_verification_count(token_claims.uid)
+        auth_dao.get_and_increment_otp_verification_count(
+            token_claims.uid,
+            Duration::from_secs(env::CONF.security.otp_attempts_reset_mins * 60),
+        )
     })
     .await?
     {
@@ -183,7 +191,9 @@ pub async fn verify_otp_for_signin(
         }
     };
 
-    if attempts > env::CONF.security.otp_max_attempts {
+    if attempts.attempt_count > env::CONF.security.otp_max_attempts
+        && attempts.expiration_time >= SystemTime::now()
+    {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many attempts. Try again in a few minutes.",
         ))));
@@ -445,11 +455,19 @@ mod tests {
     use super::*;
 
     use budgetapp_utils::auth_token::TokenClaims;
+    use budgetapp_utils::models::user::User;
     use budgetapp_utils::otp;
     use budgetapp_utils::request_io::{InputUser, RefreshToken, SigninToken, SigninTokenOtpPair};
+    use budgetapp_utils::schema::otp_attempts as otp_attempts_fields;
+    use budgetapp_utils::schema::otp_attempts::dsl::otp_attempts;
+    use budgetapp_utils::schema::password_attempts as password_attempts_fields;
+    use budgetapp_utils::schema::password_attempts::dsl::password_attempts;
+    use budgetapp_utils::schema::users as user_fields;
+    use budgetapp_utils::schema::users::dsl::users;
 
     use actix_web::web::Data;
     use actix_web::{http, test, App};
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::prelude::*;
 
     use crate::env;
@@ -515,6 +533,87 @@ mod tests {
             .uid,
             user_id
         );
+    }
+
+    #[actix_rt::test]
+    async fn test_password_attempts_expires() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let new_user = InputUser {
+            email: format!("my_test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            password: new_user.password,
+        };
+
+        let creds_vec = serde_json::ser::to_vec(&credentials).unwrap();
+
+        for _ in 0..env::CONF.security.password_max_attempts {
+            let req = test::TestRequest::post()
+                .uri("/api/auth/sign_in")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(creds_vec.clone())
+                .to_request();
+
+            let res = test::call_service(&app, req).await;
+            assert_eq!(res.status(), http::StatusCode::OK);
+        }
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(creds_vec.clone())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::FORBIDDEN);
+
+        let user_id = users
+            .filter(user_fields::email.eq(new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap()
+            .id;
+
+        dsl::update(password_attempts.filter(password_attempts_fields::user_id.eq(user_id)))
+            .set(
+                password_attempts_fields::expiration_time
+                    .eq(SystemTime::now() - Duration::from_millis(1)),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(creds_vec)
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
     }
 
     #[actix_rt::test]
@@ -723,6 +822,119 @@ mod tests {
             .uid,
             user_id
         );
+    }
+
+    #[actix_rt::test]
+    async fn test_otp_attempts_expires() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .configure(services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
+            first_name: format!("Test-{}", &user_number),
+            last_name: format!("User-{}", &user_number),
+            date_of_birth: SystemTime::UNIX_EPOCH
+                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
+            currency: String::from("USD"),
+        };
+
+        test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/user/create")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(serde_json::ser::to_vec(&new_user).unwrap())
+                .to_request(),
+        )
+        .await;
+
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            password: new_user.password,
+        };
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(serde_json::ser::to_vec(&credentials).unwrap())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
+
+        let signin_token = actix_web::test::read_body_json::<SigninToken, _>(res).await;
+        let user_id = TokenClaims::from_token_without_validation(&signin_token.signin_token)
+            .unwrap()
+            .uid;
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let otp = otp::generate_otp(
+            user_id,
+            current_time,
+            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
+            env::CONF.keys.otp_key.as_bytes(),
+        )
+        .unwrap();
+
+        let token_and_otp = SigninTokenOtpPair {
+            signin_token: signin_token.signin_token,
+            otp: otp.to_string(),
+        };
+
+        let creds_vec = serde_json::ser::to_vec(&token_and_otp).unwrap();
+
+        for _ in 0..env::CONF.security.otp_max_attempts {
+            let req = test::TestRequest::post()
+                .uri("/api/auth/verify_otp_for_signin")
+                .insert_header(("content-type", "application/json"))
+                .set_payload(creds_vec.clone())
+                .to_request();
+
+            let res = test::call_service(&app, req).await;
+            assert_eq!(res.status(), http::StatusCode::OK);
+        }
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(creds_vec.clone())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::FORBIDDEN);
+
+        let user_id = users
+            .filter(user_fields::email.eq(new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap()
+            .id;
+
+        dsl::update(otp_attempts.filter(otp_attempts_fields::user_id.eq(user_id)))
+            .set(
+                otp_attempts_fields::expiration_time
+                    .eq(SystemTime::now() - Duration::from_millis(1)),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/api/auth/verify_otp_for_signin")
+            .insert_header(("content-type", "application/json"))
+            .set_payload(creds_vec.clone())
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+        assert_eq!(res.status(), http::StatusCode::OK);
     }
 
     #[actix_rt::test]

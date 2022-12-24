@@ -106,21 +106,22 @@ impl Dao {
         let loaded_budgets = sql_query(query)
             .bind::<sql_types::Uuid, _>(user_id)
             .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
-        let mut loaded_categories = Category::belonging_to(&loaded_budgets)
+        let loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::id.asc())
             .load::<Category>(&mut *(self.get_connection()?).borrow_mut())?
-            .grouped_by(&loaded_budgets)
-            .into_iter();
-        let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+            .grouped_by(&loaded_budgets);
+        let loaded_entries = Entry::belonging_to(&loaded_budgets)
             .order(entry_fields::date.asc())
             .load::<Entry>(&mut *(self.get_connection()?).borrow_mut())?
-            .grouped_by(&loaded_budgets)
-            .into_iter();
+            .grouped_by(&loaded_budgets);
 
+        let zipped_budgets = loaded_budgets
+            .into_iter()
+            .zip(loaded_categories.into_iter())
+            .zip(loaded_entries.into_iter());
         let mut output_budgets = Vec::new();
 
-        // TODO: Expects
-        for budget in loaded_budgets.into_iter() {
+        for ((budget, budget_categories), budget_entries) in zipped_budgets {
             let output_budget = OutputBudget {
                 id: budget.id,
                 is_shared: budget.is_shared,
@@ -128,12 +129,8 @@ impl Dao {
                 is_deleted: budget.is_deleted,
                 name: budget.name,
                 description: budget.description,
-                categories: loaded_categories
-                    .next()
-                    .expect("Failed to fetch all categories for budget"),
-                entries: loaded_entries
-                    .next()
-                    .expect("Failed to fetch all entries for budget"),
+                categories: budget_categories,
+                entries: budget_entries,
                 start_date: budget.start_date,
                 end_date: budget.end_date,
                 latest_entry_time: budget.latest_entry_time,
@@ -165,21 +162,22 @@ impl Dao {
             .bind::<Timestamp, _>(start_date)
             .bind::<Timestamp, _>(end_date)
             .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
-        let mut loaded_categories = Category::belonging_to(&loaded_budgets)
+        let loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::id.asc())
             .load::<Category>(&mut *(self.get_connection()?).borrow_mut())?
-            .grouped_by(&loaded_budgets)
-            .into_iter();
-        let mut loaded_entries = Entry::belonging_to(&loaded_budgets)
+            .grouped_by(&loaded_budgets);
+        let loaded_entries = Entry::belonging_to(&loaded_budgets)
             .order(entry_fields::date.asc())
             .load::<Entry>(&mut *(self.get_connection()?).borrow_mut())?
-            .grouped_by(&loaded_budgets)
-            .into_iter();
+            .grouped_by(&loaded_budgets);
 
+        let zipped_budgets = loaded_budgets
+            .into_iter()
+            .zip(loaded_categories.into_iter())
+            .zip(loaded_entries.into_iter());
         let mut output_budgets = Vec::new();
 
-        // TODO: Expects
-        for budget in loaded_budgets.into_iter() {
+        for ((budget, budget_categories), budget_entries) in zipped_budgets {
             let output_budget = OutputBudget {
                 id: budget.id,
                 is_shared: budget.is_shared,
@@ -187,12 +185,8 @@ impl Dao {
                 is_deleted: budget.is_deleted,
                 name: budget.name,
                 description: budget.description,
-                categories: loaded_categories
-                    .next()
-                    .expect("Failed to fetch all categories for budget"),
-                entries: loaded_entries
-                    .next()
-                    .expect("Failed to fetch all entries for budget"),
+                categories: budget_categories,
+                entries: budget_entries,
                 start_date: budget.start_date,
                 end_date: budget.end_date,
                 latest_entry_time: budget.latest_entry_time,

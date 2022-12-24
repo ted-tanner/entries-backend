@@ -145,13 +145,15 @@ CREATE TABLE entry_comment_reactions (
 CREATE TABLE otp_attempts (
     id SERIAL PRIMARY KEY,
     user_id UUID UNIQUE NOT NULL,
-    attempt_count SMALLINT NOT NULL
+    attempt_count SMALLINT NOT NULL,
+    expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE password_attempts (
     id SERIAL PRIMARY KEY,
     user_id UUID UNIQUE NOT NULL,
-    attempt_count SMALLINT NOT NULL
+    attempt_count SMALLINT NOT NULL,
+    expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE users (

@@ -138,6 +138,7 @@ table! {
         id -> Int4,
         user_id -> Uuid,
         attempt_count -> Int2,
+        expiration_time -> Timestamp,
     }
 }
 
@@ -146,6 +147,7 @@ table! {
         id -> Int4,
         user_id -> Uuid,
         attempt_count -> Int2,
+        expiration_time -> Timestamp,
     }
 }
 

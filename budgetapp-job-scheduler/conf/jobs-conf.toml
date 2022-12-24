@@ -5,13 +5,15 @@ database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budget
 max_db_connections = 8
 
 [runner]
-update_frequency_secs = 300
+update_frequency_secs = 10
 
 [clear_otp_attempts_job]
-job_frequency_secs = 14400
+job_frequency_secs = 300
+attempts_lifetime_mins = 15
 
 [clear_password_attempts_job]
-job_frequency_secs = 14400
+job_frequency_secs = 300
+attempts_lifetime_mins = 15
 
 [unblacklist_expired_refresh_tokens_job]
 job_frequency_secs = 86400

@@ -1,16 +1,20 @@
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 use crate::models::user::User;
 use crate::schema::password_attempts;
 
-#[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable, QueryableByName)]
+#[derive(
+    Clone, Debug, Serialize, Deserialize, Identifiable, Associations, Queryable, QueryableByName,
+)]
 #[diesel(table_name = password_attempts)]
 #[diesel(belongs_to(User, foreign_key = user_id))]
 pub struct PasswordAttempts {
     pub id: i32,
     pub user_id: uuid::Uuid,
     pub attempt_count: i16,
+    pub expiration_time: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -18,4 +22,5 @@ pub struct PasswordAttempts {
 pub struct NewPasswordAttempts {
     pub user_id: uuid::Uuid,
     pub attempt_count: i16,
+    pub expiration_time: SystemTime,
 }

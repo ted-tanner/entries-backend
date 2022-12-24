@@ -25,11 +25,13 @@ pub struct RunnerConf {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ClearOtpAttemptsJob {
     pub job_frequency_secs: u64,
+    pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ClearPasswordAttemptsJob {
     pub job_frequency_secs: u64,
+    pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

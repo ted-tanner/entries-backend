@@ -427,7 +427,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 9/2*
 
 * Get another user by email
-* The password attempts and OTP attempts need an expiration. The last attempt time should be saved and if it was X amount of time in he past, the user is allowed to sign in again. This prevents a failed cron job from preventing people from signing in
 
 *By 9/16*
 
@@ -438,6 +437,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   
 *By 9/30*
 
+* Edit handler for entries
 * Create delete handlers (and db::utils) for user and entry
   - Create a deletion record in the database when a user deletes their account and set the `is_deleted` field to true for the user
   - Create a cron job that periodically goest through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 

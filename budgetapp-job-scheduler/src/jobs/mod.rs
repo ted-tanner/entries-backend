@@ -124,7 +124,7 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_otp_verification_count(user.id)
+                dao.get_and_increment_otp_verification_count(user.id, Duration::from_millis(1))
                     .unwrap();
             }
         }

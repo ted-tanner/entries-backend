@@ -1,15 +1,19 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbConnection, DbThreadPool};
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
-use crate::models::otp_attempts::OtpAttempts;
-use crate::models::password_attempts::PasswordAttempts;
+use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
+use crate::models::password_attempts::{NewPasswordAttempts, PasswordAttempts};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
+use crate::schema::otp_attempts as otp_attempt_fields;
+use crate::schema::otp_attempts::dsl::otp_attempts;
+use crate::schema::password_attempts as password_attempt_fields;
+use crate::schema::password_attempts::dsl::password_attempts;
 
 pub struct Dao {
     db_connection: Option<Rc<RefCell<DbConnection>>>,
@@ -72,52 +76,74 @@ impl Dao {
         .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
 
-    pub fn clear_otp_verification_count(&mut self) -> Result<usize, DaoError> {
-        Ok(diesel::sql_query("TRUNCATE otp_attempts")
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+    pub fn clear_otp_verification_count(
+        &mut self,
+        attempts_lifetime: Duration,
+    ) -> Result<usize, DaoError> {
+        let expiration_cut_off = SystemTime::now() - attempts_lifetime;
+
+        Ok(diesel::delete(
+            otp_attempts.filter(otp_attempt_fields::expiration_time.lt(expiration_cut_off)),
+        )
+        .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
 
-    pub fn clear_password_attempt_count(&mut self) -> Result<usize, DaoError> {
-        Ok(diesel::sql_query("TRUNCATE password_attempts")
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+    pub fn clear_password_attempt_count(
+        &mut self,
+        attempts_lifetime: Duration,
+    ) -> Result<usize, DaoError> {
+        let expiration_cut_off = SystemTime::now() - attempts_lifetime;
+
+        Ok(diesel::delete(
+            password_attempts
+                .filter(password_attempt_fields::expiration_time.lt(expiration_cut_off)),
+        )
+        .execute(&mut *(self.get_connection()?).borrow_mut())?)
     }
 
     pub fn get_and_increment_otp_verification_count(
         &mut self,
         user_id: Uuid,
-    ) -> Result<i16, DaoError> {
-        let query = "INSERT INTO otp_attempts \
-                     (id, user_id, attempt_count) \
-                     VALUES (DEFAULT, $1, 1) \
-                     ON CONFLICT (user_id) DO UPDATE \
-                     SET attempt_count = otp_attempts.attempt_count + 1 \
-                     WHERE otp_attempts.user_id = $1 \
-                     RETURNING *";
+        attempts_lifetime: Duration,
+    ) -> Result<OtpAttempts, DaoError> {
+        let expiration_time = SystemTime::now() + attempts_lifetime;
 
-        let db_resp = diesel::sql_query(query)
-            .bind::<diesel::sql_types::Uuid, _>(user_id)
-            .load::<OtpAttempts>(&mut *(self.get_connection()?).borrow_mut())?;
+        let new_attempt = NewOtpAttempts {
+            user_id,
+            attempt_count: 1,
+            expiration_time,
+        };
 
-        Ok(db_resp[0].attempt_count)
+        Ok(dsl::insert_into(otp_attempts)
+            .values(&new_attempt)
+            .on_conflict(otp_attempt_fields::user_id)
+            .do_update()
+            .set(otp_attempt_fields::attempt_count.eq(otp_attempt_fields::attempt_count + 1))
+            .get_result::<OtpAttempts>(&mut *(self.get_connection()?).borrow_mut())?)
     }
 
     pub fn get_and_increment_password_attempt_count(
         &mut self,
         user_id: Uuid,
-    ) -> Result<i16, DaoError> {
-        let query = "INSERT INTO password_attempts \
-                     (user_id, attempt_count) \
-                     VALUES ($1, 1) \
-                     ON CONFLICT (user_id) DO UPDATE \
-                     SET attempt_count = password_attempts.attempt_count + 1 \
-                     WHERE password_attempts.user_id = $1 \
-                     RETURNING *";
+        attempts_lifetime: Duration,
+    ) -> Result<PasswordAttempts, DaoError> {
+        let expiration_time = SystemTime::now() + attempts_lifetime;
 
-        let db_resp = diesel::sql_query(query)
-            .bind::<diesel::sql_types::Uuid, _>(user_id)
-            .load::<PasswordAttempts>(&mut *(self.get_connection()?).borrow_mut())?;
+        let new_attempt = NewPasswordAttempts {
+            user_id,
+            attempt_count: 1,
+            expiration_time,
+        };
 
-        Ok(db_resp[0].attempt_count)
+        Ok(dsl::insert_into(password_attempts)
+            .values(&new_attempt)
+            .on_conflict(password_attempt_fields::user_id)
+            .do_update()
+            .set(
+                password_attempt_fields::attempt_count
+                    .eq(password_attempt_fields::attempt_count + 1),
+            )
+            .get_result::<PasswordAttempts>(&mut *(self.get_connection()?).borrow_mut())?)
     }
 }
 
@@ -135,10 +161,6 @@ mod tests {
     use crate::password_hasher;
     use crate::request_io::InputUser;
     use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-    use crate::schema::otp_attempts as otp_attempts_fields;
-    use crate::schema::otp_attempts::dsl::otp_attempts;
-    use crate::schema::password_attempts as password_attempts_fields;
-    use crate::schema::password_attempts::dsl::password_attempts;
     use crate::test_env;
 
     #[test]
@@ -260,20 +282,29 @@ mod tests {
             )
             .unwrap();
 
-        let current_count = dao
-            .get_and_increment_otp_verification_count(user.id)
+        let attempts = dao
+            .get_and_increment_otp_verification_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 1);
+        assert_eq!(attempts.attempt_count, 1);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
 
-        let current_count = dao
-            .get_and_increment_otp_verification_count(user.id)
+        let attempts = dao
+            .get_and_increment_otp_verification_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 2);
+        assert_eq!(attempts.attempt_count, 2);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
 
-        let current_count = dao
-            .get_and_increment_otp_verification_count(user.id)
+        let attempts = dao
+            .get_and_increment_otp_verification_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 3);
+        assert_eq!(attempts.attempt_count, 3);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
     }
 
     #[test]
@@ -309,20 +340,29 @@ mod tests {
             )
             .unwrap();
 
-        let current_count = dao
-            .get_and_increment_password_attempt_count(user.id)
+        let attempts = dao
+            .get_and_increment_password_attempt_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 1);
+        assert_eq!(attempts.attempt_count, 1);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
 
-        let current_count = dao
-            .get_and_increment_password_attempt_count(user.id)
+        let attempts = dao
+            .get_and_increment_password_attempt_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 2);
+        assert_eq!(attempts.attempt_count, 2);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
 
-        let current_count = dao
-            .get_and_increment_password_attempt_count(user.id)
+        let attempts = dao
+            .get_and_increment_password_attempt_count(user.id, Duration::from_secs(1))
             .unwrap();
-        assert_eq!(current_count, 3);
+        assert_eq!(attempts.attempt_count, 3);
+        assert_eq!(attempts.user_id, user.id);
+        assert!(attempts.expiration_time > SystemTime::now());
+        assert!(attempts.expiration_time < SystemTime::now() + Duration::from_secs(2));
     }
 
     #[ignore]
@@ -365,7 +405,7 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_otp_verification_count(user.id)
+                dao.get_and_increment_otp_verification_count(user.id, Duration::from_secs(10))
                     .unwrap();
             }
         }
@@ -375,17 +415,19 @@ mod tests {
         // Ensure rows are in the table before clearing
         for user_id in user_ids.clone() {
             let user_otp_attempts = otp_attempts
-                .filter(otp_attempts_fields::user_id.eq(user_id))
+                .filter(otp_attempt_fields::user_id.eq(user_id))
                 .first::<OtpAttempts>(&mut db_connection);
             assert!(user_otp_attempts.is_ok());
         }
 
-        dao.clear_otp_verification_count().unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        dao.clear_otp_verification_count(Duration::from_millis(1))
+            .unwrap();
 
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_otp_attempts = otp_attempts
-                .filter(otp_attempts_fields::user_id.eq(user_id))
+                .filter(otp_attempt_fields::user_id.eq(user_id))
                 .first::<OtpAttempts>(&mut db_connection);
             assert!(user_otp_attempts.is_err());
         }
@@ -431,7 +473,7 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_password_attempt_count(user.id)
+                dao.get_and_increment_password_attempt_count(user.id, Duration::from_secs(10))
                     .unwrap();
             }
         }
@@ -441,17 +483,19 @@ mod tests {
         // Ensure rows are in the table before clearing
         for user_id in user_ids.clone() {
             let user_pass_attempts = password_attempts
-                .filter(password_attempts_fields::user_id.eq(user_id))
+                .filter(password_attempt_fields::user_id.eq(user_id))
                 .first::<PasswordAttempts>(&mut db_connection);
             assert!(user_pass_attempts.is_ok());
         }
 
-        dao.clear_password_attempt_count().unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        dao.clear_password_attempt_count(Duration::from_millis(1))
+            .unwrap();
 
         // Ensure rows have been removed
         for user_id in user_ids {
             let user_pass_attempts = password_attempts
-                .filter(password_attempts_fields::user_id.eq(user_id))
+                .filter(password_attempt_fields::user_id.eq(user_id))
                 .first::<PasswordAttempts>(&mut db_connection);
             assert!(user_pass_attempts.is_err());
         }
