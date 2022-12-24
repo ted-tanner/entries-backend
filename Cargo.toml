@@ -1,9 +1,9 @@
 [workspace]
 
 members = [
+    "budgetapp-job-scheduler",
     "budgetapp-server",
     "budgetapp-utils",
-    "budgetapp-job-scheduler",
 ]
 
 [workspace.package]

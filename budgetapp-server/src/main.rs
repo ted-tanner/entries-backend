@@ -1,12 +1,13 @@
 #[macro_use]
 extern crate lazy_static;
 
-use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
-use env_logger::Env;
+use flexi_logger::{
+    Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
+};
 use std::net::{IpAddr, Ipv4Addr};
 
 mod env;
@@ -83,9 +84,32 @@ async fn main() -> std::io::Result<()> {
 
     let base_addr = format!("{}:{}", &ip, &port);
 
-    env::initialize();
+    let _logger = Logger::with(LogSpecification::info())
+        .log_to_file(FileSpec::default().directory("./logs"))
+        .rotate(
+            Criterion::Age(Age::Day),
+            Naming::Timestamps,
+            Cleanup::KeepLogAndCompressedFiles(60, 365),
+        )
+        .cleanup_in_background_thread(true)
+        .duplicate_to_stdout(Duplicate::All)
+        .write_mode(WriteMode::Async)
+        .format(|writer, now, record| {
+            write!(
+                writer,
+                "{:5} | {} | {}:{} | {}",
+                record.level(),
+                now.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
+                record.file().unwrap_or("<unknown>"),
+                record.line().unwrap_or(0),
+                record.args()
+            )
+        })
+        .use_utc()
+        .start()
+        .expect("Failed to start logger");
 
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    env::initialize();
 
     let cpu_count = num_cpus::get();
 
@@ -131,7 +155,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(db_thread_pool.clone()))
             .configure(services::api::configure)
             .configure(services::web::configure)
-            .wrap(Logger::default())
+            .wrap(actix_web::middleware::Logger::default())
     })
     .workers(actix_workers)
     .bind(base_addr)?
