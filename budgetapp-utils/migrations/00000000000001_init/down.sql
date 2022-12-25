@@ -39,6 +39,8 @@ DROP TABLE entry_comment_reactions;
 DROP TABLE otp_attempts;
 DROP TABLE password_attempts;
 DROP TABLE users;
+DROP TABLE user_deletion_requests;
+DROP TABLE user_tombstones;
 DROP TABLE user_notifications;
 
 DROP TABLE user_budgets;

@@ -181,6 +181,20 @@ CREATE TABLE user_budgets (
     UNIQUE (user_id, budget_id)
 );
 
+CREATE TABLE user_deletion_requests (
+    id SERIAL PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL,
+    deletion_request_time TIMESTAMP NOT NULL,
+    ready_for_deletion_time TIMESTAMP NOT NULL
+);
+
+CREATE TABLE user_tombstones (
+    id SERIAL PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL,
+    deletion_request_time TIMESTAMP NOT NULL,
+    deletion_time TIMESTAMP NOT NULL
+);
+
 CREATE TABLE user_notifications (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     user_id UUID NOT NULL,

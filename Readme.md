@@ -424,6 +424,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Delete handler for user
+  - Require user password for deletion
+  - Create a deletion record in the database when a user deletes their account. Upon deletion, create a tombstone record for user.
+  - Create a scheduled job that periodically goes through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 
+  - Don't have the cron job delete users if the request is less than 24 hours old
+  - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
+  - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
+  - Upon requesting deletion, let the user know they can cancel the request within the next 24 hours in account settings after signing in again. Place the button to restore in a clear-to-see place in account settings
+
 *By 9/16*
 
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
@@ -434,13 +443,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 9/30*
 
 * Edit handler for entries
-* Create delete handlers (and db::utils) for user and entry
-  - Create a deletion record in the database when a user deletes their account and set the `is_deleted` field to true for the user
-  - Create a cron job that periodically goest through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 
-  - Don't have the cron job delete users if the request is less than 24 hours old
-  - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
-  - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
-  - Upon requesting deletion, let the user know they can cancel the request within the next 24 hours in account settings after signing in again. Place the button to restore in a clear-to-see place in account settings
+* Create delete handlers (and db::utils) for entry
 
 *By 10/14*
 
@@ -469,9 +472,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 12/9*
 
 * User notifications
+* In-app purchases
+  - Cancel subscription if user is deleted
+* Email notifications for the following:
+  - User deletion initiated
+  - Budget shared? Users need a way to turn off this notification
 
 ### Do it later
 
+* Replace all sql_queries with diesel dsl
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
 * Validation for `budgetapp_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
 * Budget user get request logic should be handled in a query to eliminate multiple queries

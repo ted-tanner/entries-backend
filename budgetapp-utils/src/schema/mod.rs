@@ -161,6 +161,15 @@ table! {
 }
 
 table! {
+    user_deletion_requests (id) {
+        id -> Int4,
+        user_id -> Uuid,
+        deletion_request_time -> Timestamp,
+        ready_for_deletion_time -> Timestamp,
+    }
+}
+
+table! {
     user_notifications (id) {
         id -> Uuid,
         user_id -> Uuid,
@@ -173,6 +182,15 @@ table! {
         associated_data -> Nullable<Text>,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
+    }
+}
+
+table! {
+    user_tombstones (id) {
+        id -> Int4,
+        user_id -> Uuid,
+        deletion_request_time -> Timestamp,
+        deletion_time -> Timestamp,
     }
 }
 
@@ -209,6 +227,8 @@ allow_tables_to_appear_in_same_query!(
     otp_attempts,
     password_attempts,
     user_budgets,
+    user_deletion_requests,
     user_notifications,
+    user_tombstones,
     users,
 );

@@ -1,19 +1,25 @@
 use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbConnection, DbThreadPool};
 use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
+use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
+use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
 use crate::request_io::{InputEditUser, InputUser};
 use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
 use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
+use crate::schema::user_deletion_requests as user_deletion_request_fields;
+use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+use crate::schema::user_tombstones as user_tombstone_fields;
+use crate::schema::user_tombstones::dsl::user_tombstones;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
@@ -286,6 +292,62 @@ impl Dao {
             ),
         ))
         .get_result(&mut *(self.get_connection()?).borrow_mut())?)
+    }
+
+    // TODO: Test
+    pub fn initiate_user_deletion(
+        &mut self,
+        user_id: Uuid,
+        time_until_deletion: Duration,
+    ) -> Result<usize, DaoError> {
+        let new_request = NewUserDeletionRequest {
+            user_id,
+            deletion_request_time: SystemTime::now(),
+            ready_for_deletion_time: SystemTime::now() + time_until_deletion,
+        };
+
+        Ok(dsl::insert_into(user_deletion_requests)
+            .values(&new_request)
+            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+    }
+
+    // TODO: Test
+    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
+        Ok(diesel::delete(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user_id)),
+        )
+        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+    }
+
+    // TODO: Test
+    pub fn delete_user(&mut self, request: UserDeletionRequest) -> Result<usize, DaoError> {
+        let new_tombstone = NewUserTombstone {
+            user_id: request.user_id,
+            deletion_request_time: request.deletion_request_time,
+            deletion_time: SystemTime::now(),
+        };
+
+        dsl::insert_into(user_tombstones)
+            .values(&new_tombstone)
+            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+
+        diesel::delete(
+            user_deletion_requests
+                .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
+        )
+        .execute(&mut *(self.get_connection()?).borrow_mut())?;
+
+        todo!();
+        // Delete data associated with user (all data should have optional/nullable user id foreign key)
+        // Perhaps add an ON CASCADE DELETE to some data, but others should have ON CASCADE DELETE changed to nullify field!
+        // Delete user
+    }
+
+    // TODO: Test
+    pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
+        Ok(user_tombstones
+            .filter(user_tombstone_fields::user_id.eq(user_id))
+            .first::<UserTombstone>(&mut *(self.get_connection()?).borrow_mut())?)
     }
 }
 
