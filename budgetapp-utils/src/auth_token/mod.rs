@@ -515,7 +515,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -566,7 +565,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -617,7 +615,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -668,7 +665,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -741,7 +737,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -851,7 +846,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -926,7 +920,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1004,7 +997,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1077,7 +1069,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1161,7 +1152,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1233,7 +1223,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1313,7 +1302,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1363,7 +1351,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1407,7 +1394,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1444,7 +1430,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
@@ -1481,7 +1466,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),

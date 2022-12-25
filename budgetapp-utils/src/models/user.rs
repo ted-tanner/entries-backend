@@ -9,7 +9,6 @@ use crate::schema::users;
 pub struct User {
     pub id: uuid::Uuid,
     pub password_hash: String,
-    pub is_active: bool,
 
     pub is_premium: bool,
     pub premium_expiration: Option<SystemTime>,
@@ -29,7 +28,6 @@ pub struct User {
 pub struct NewUser<'a> {
     pub id: uuid::Uuid,
     pub password_hash: &'a str,
-    pub is_active: bool,
 
     pub is_premium: bool,
     pub premium_expiration: Option<SystemTime>,

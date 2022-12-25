@@ -64,7 +64,6 @@ impl Dao {
 
         let new_user = NewUser {
             id: Uuid::new_v4(),
-            is_active: true,
             is_premium: false,
             premium_expiration: Option::None,
             email: &user_data.email.to_lowercase(),

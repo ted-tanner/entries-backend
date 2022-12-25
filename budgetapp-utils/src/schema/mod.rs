@@ -180,7 +180,6 @@ table! {
     users (id) {
         id -> Uuid,
         password_hash -> Text,
-        is_active -> Bool,
         is_premium -> Bool,
         premium_expiration -> Nullable<Timestamp>,
         email -> Varchar,

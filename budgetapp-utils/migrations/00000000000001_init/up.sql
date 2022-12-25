@@ -159,7 +159,6 @@ CREATE TABLE password_attempts (
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     password_hash TEXT NOT NULL,
-    is_active BOOLEAN NOT NULL,
 
     is_premium BOOLEAN NOT NULL,
     premium_expiration TIMESTAMP,

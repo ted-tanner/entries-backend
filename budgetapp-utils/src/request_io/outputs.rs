@@ -7,7 +7,6 @@ use crate::models::entry::Entry;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
     pub id: uuid::Uuid,
-    pub is_active: bool,
 
     pub is_premium: bool,
     pub premium_expiration: Option<SystemTime>,
@@ -25,7 +24,6 @@ pub struct OutputUserPrivate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserForBuddies {
     pub id: uuid::Uuid,
-    pub is_active: bool,
     pub is_premium: bool,
     pub email: String,
     pub first_name: String,
@@ -36,7 +34,6 @@ pub struct OutputUserForBuddies {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPublic {
     pub id: uuid::Uuid,
-    pub is_active: bool,
     pub first_name: String,
     pub last_name: String,
     pub currency: String,

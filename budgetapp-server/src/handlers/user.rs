@@ -50,7 +50,6 @@ pub async fn get(
     if user.id == auth_user_claims.0.uid {
         let output_user = OutputUserPrivate {
             id: user.id,
-            is_active: user.is_active,
             is_premium: user.is_premium,
             premium_expiration: user.premium_expiration,
             email: user.email,
@@ -74,7 +73,6 @@ pub async fn get(
     if are_buddies {
         let output_user = OutputUserForBuddies {
             id: user.id,
-            is_active: user.is_active,
             is_premium: user.is_premium,
             email: user.email,
             first_name: user.first_name,
@@ -86,7 +84,6 @@ pub async fn get(
     } else {
         let output_user = OutputUserPublic {
             id: user.id,
-            is_active: user.is_active,
             first_name: user.first_name,
             last_name: user.last_name,
             currency: user.currency,
@@ -150,7 +147,6 @@ pub async fn get_user_by_email(
 
     let output_user = OutputUserPublic {
         id: user.id,
-        is_active: user.is_active,
         first_name: user.first_name,
         last_name: user.last_name,
         currency: user.currency,
@@ -1157,7 +1153,6 @@ pub mod tests {
         let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
 
         assert_eq!(&user_id, &user_from_res.id);
-        assert!(user_from_res.is_active);
         assert_eq!(&new_user.first_name, &user_from_res.first_name);
         assert_eq!(&new_user.last_name, &user_from_res.last_name);
         assert_eq!(&new_user.currency, &user_from_res.currency);
@@ -1293,7 +1288,6 @@ pub mod tests {
             serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
 
         assert_eq!(&user_id, &user_from_res.id);
-        assert!(user_from_res.is_active);
         assert_eq!(&new_user.email, &user_from_res.email);
         assert_eq!(&new_user.first_name, &user_from_res.first_name);
         assert_eq!(&new_user.last_name, &user_from_res.last_name);
@@ -1316,7 +1310,6 @@ pub mod tests {
             serde_json::from_str::<OutputUserForBuddies>(res_body.as_str()).unwrap();
 
         assert_eq!(&other_user.user.id, &user_from_res.id);
-        assert!(user_from_res.is_active);
         assert_eq!(&other_user.user.email, &user_from_res.email);
         assert_eq!(&other_user.user.first_name, &user_from_res.first_name);
         assert_eq!(&other_user.user.last_name, &user_from_res.last_name);
@@ -1406,7 +1399,6 @@ pub mod tests {
         let user_from_res = serde_json::from_str::<OutputUserPublic>(res_body.as_str()).unwrap();
 
         assert_eq!(&other_user.user.id, &user_from_res.id);
-        assert!(&other_user.user.is_active);
         assert_eq!(&other_user.user.first_name, &user_from_res.first_name);
         assert_eq!(&other_user.user.last_name, &user_from_res.last_name);
         assert_eq!(&other_user.user.currency, &user_from_res.currency);
