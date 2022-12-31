@@ -44,31 +44,6 @@ CREATE TABLE budgets (
     created_timestamp TIMESTAMP NOT NULL
 );
 
-CREATE TABLE budget_comments (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    budget_id UUID NOT NULL,
-    user_id UUID NOT NULL,
-
-    is_deleted BOOLEAN NOT NULL,
-    is_current BOOLEAN NOT NULL,
-
-    text TEXT NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
-);
-
-CREATE TABLE budget_comment_reactions (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    comment_id UUID NOT NULL,
-    user_id UUID NOT NULL,
-
-    reaction SMALLINT NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
-);
-
 CREATE TABLE budget_share_events (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     
@@ -103,7 +78,7 @@ CREATE TABLE categories (
 CREATE TABLE entries (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
-    user_id UUID NOT NULL,
+    user_id UUID,
     
     is_deleted BOOLEAN NOT NULL,
 
@@ -112,31 +87,6 @@ CREATE TABLE entries (
     name VARCHAR(120),
     category SMALLINT,
     note TEXT,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
-);
-
-CREATE TABLE entry_comments (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    entry_id UUID NOT NULL,
-    user_id UUID NOT NULL,
-
-    is_deleted BOOLEAN NOT NULL,
-    is_current BOOLEAN NOT NULL,
-
-    text TEXT NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
-);
-
-CREATE TABLE entry_comment_reactions (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    comment_id UUID NOT NULL,
-    user_id UUID NOT NULL,
-
-    reaction SMALLINT NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
@@ -222,24 +172,14 @@ ALTER TABLE buddy_relationships ADD CONSTRAINT user1_key FOREIGN KEY(user1_id) R
 ALTER TABLE buddy_relationships ADD CONSTRAINT user2_key FOREIGN KEY(user2_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE buddy_requests ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE buddy_requests ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE budget_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE budget_comments ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE budget_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE budget_comment_reactions ADD CONSTRAINT comment_key FOREIGN KEY(comment_id) REFERENCES budget_comments(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_events ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_events ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_events ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entry_comments ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE entry_comments ADD CONSTRAINT entry_key FOREIGN KEY(entry_id) REFERENCES entries(id) ON DELETE CASCADE;
-ALTER TABLE entry_comment_reactions ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE entry_comment_reactions ADD CONSTRAINT comment_key FOREIGN KEY(comment_id) REFERENCES entry_comments(id) ON DELETE CASCADE;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE user_budgets ADD CONSTRAINT ub_only_one_association UNIQUE (user_id, budget_id);
 ALTER TABLE user_notifications ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-

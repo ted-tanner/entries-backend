@@ -1,10 +1,12 @@
 mod clear_otp_attempts;
 mod clear_password_attempts;
+mod delete_users;
 mod unblacklist_expired_refresh_tokens;
 
-pub use clear_otp_attempts::ClearOtpAttempts;
-pub use clear_password_attempts::ClearPasswordAttempts;
-pub use unblacklist_expired_refresh_tokens::UnblacklistExpiredRefreshTokens;
+pub use clear_otp_attempts::ClearOtpAttemptsJob;
+pub use clear_password_attempts::ClearPasswordAttemptsJob;
+pub use delete_users::DeleteUsersJob;
+pub use unblacklist_expired_refresh_tokens::UnblacklistExpiredRefreshTokensJob;
 
 use budgetapp_utils::db::DaoError;
 
@@ -13,7 +15,7 @@ use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
 pub enum JobError {
-    DaoFailure(DaoError),
+    DaoFailure(Option<DaoError>),
     NotReady,
 }
 
@@ -21,12 +23,22 @@ impl fmt::Display for JobError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JobError::DaoFailure(e) => {
-                write!(f, "JobError: {}", e)
+                if let Some(inner_err) = e {
+                    write!(f, "JobError: {}", inner_err)
+                } else {
+                    write!(f, "JobError: DaoFailure")
+                }
             }
             JobError::NotReady => {
                 write!(f, "JobError: Attempted execution before job was ready")
             }
         }
+    }
+}
+
+impl From<DaoError> for JobError {
+    fn from(e: DaoError) -> Self {
+        JobError::DaoFailure(Some(e))
     }
 }
 
@@ -73,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_job_ready() {
-        let mut job = clear_otp_attempts::ClearOtpAttempts::new();
+        let mut job = clear_otp_attempts::ClearOtpAttemptsJob::new();
 
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
         assert!(!job.ready());
@@ -139,7 +151,7 @@ mod tests {
             assert!(user_otp_attempts.is_ok());
         }
 
-        let mut job = ClearOtpAttempts::new();
+        let mut job = ClearOtpAttemptsJob::new();
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
 
         assert!(

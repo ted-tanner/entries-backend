@@ -9,7 +9,7 @@ mod env;
 mod jobs;
 mod runner;
 
-use jobs::{ClearOtpAttempts, ClearPasswordAttempts, UnblacklistExpiredRefreshTokens};
+use jobs::{ClearOtpAttemptsJob, ClearPasswordAttemptsJob, UnblacklistExpiredRefreshTokensJob};
 
 fn main() {
     Logger::with(LogSpecification::info())
@@ -40,9 +40,9 @@ fn main() {
     let mut job_runner = env::runner::JOB_RUNNER
         .lock()
         .expect("Job runner lock was poisioned");
-    job_runner.register(Box::new(ClearOtpAttempts::new()));
-    job_runner.register(Box::new(ClearPasswordAttempts::new()));
-    job_runner.register(Box::new(UnblacklistExpiredRefreshTokens::new()));
+    job_runner.register(Box::new(ClearOtpAttemptsJob::new()));
+    job_runner.register(Box::new(ClearPasswordAttemptsJob::new()));
+    job_runner.register(Box::new(UnblacklistExpiredRefreshTokensJob::new()));
 
     job_runner.start();
 }

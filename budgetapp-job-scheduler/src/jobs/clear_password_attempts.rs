@@ -5,11 +5,11 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::jobs::{Job, JobError};
 
-pub struct ClearPasswordAttempts {
+pub struct ClearPasswordAttemptsJob {
     last_run_time: SystemTime,
 }
 
-impl ClearPasswordAttempts {
+impl ClearPasswordAttemptsJob {
     pub fn new() -> Self {
         Self {
             last_run_time: SystemTime::now(),
@@ -17,7 +17,7 @@ impl ClearPasswordAttempts {
     }
 }
 
-impl Job for ClearPasswordAttempts {
+impl Job for ClearPasswordAttemptsJob {
     fn name(&self) -> &'static str {
         "Clear Password Attempts"
     }
@@ -37,11 +37,9 @@ impl Job for ClearPasswordAttempts {
     fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
-        if let Err(e) = dao.clear_password_attempt_count(Duration::from_secs(
+        dao.clear_password_attempt_count(Duration::from_secs(
             env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60,
-        )) {
-            return Err(JobError::DaoFailure(e));
-        }
+        ))?;
 
         Ok(())
     }
@@ -67,7 +65,7 @@ mod tests {
         let before = SystemTime::now();
 
         thread::sleep(Duration::from_millis(1));
-        let mut job = ClearPasswordAttempts::new();
+        let mut job = ClearPasswordAttemptsJob::new();
         thread::sleep(Duration::from_millis(1));
 
         assert!(job.last_run_time() > before);
@@ -135,7 +133,7 @@ mod tests {
             assert!(user_password_attempts.is_ok());
         }
 
-        let mut job = ClearPasswordAttempts::new();
+        let mut job = ClearPasswordAttemptsJob::new();
         job.run_handler_func().unwrap();
 
         for user_id in &user_ids {
@@ -157,7 +155,7 @@ mod tests {
                 .unwrap();
         }
 
-        let mut job = ClearPasswordAttempts::new();
+        let mut job = ClearPasswordAttemptsJob::new();
         job.run_handler_func().unwrap();
 
         for user_id in user_ids {

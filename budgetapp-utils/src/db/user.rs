@@ -8,6 +8,7 @@ use crate::db::{DaoError, DbConnection, DbThreadPool};
 use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
+use crate::models::user_budget::UserBudget;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
@@ -16,6 +17,9 @@ use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
 use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
+use crate::schema::budgets::dsl::budgets;
+use crate::schema::user_budgets as user_budget_fields;
+use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_tombstones as user_tombstone_fields;
@@ -331,16 +335,49 @@ impl Dao {
             .values(&new_tombstone)
             .execute(&mut *(self.get_connection()?).borrow_mut())?;
 
+        let user_budgets_for_user = user_budgets
+            .filter(user_budget_fields::user_id.eq(request.user_id))
+            .load::<UserBudget>(&mut *(self.get_connection()?).borrow_mut())?;
+
+        for ub in user_budgets_for_user {
+            // TODO: This can be one query per loop iteration
+            let users_in_budget_count = user_budgets
+                .filter(user_budget_fields::budget_id.eq(ub.budget_id))
+                .count()
+                .get_result::<i64>(&mut *(self.get_connection()?).borrow_mut())?;
+
+            if users_in_budget_count == 1 {
+                // Postgres will cascade delete the budget's associated data (assuming the
+                // foreign key constraints are set to ON DELETE CASCADE)
+                diesel::delete(budgets.find(ub.budget_id))
+                    .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            }
+        }
+
+        let delete_user_res = diesel::delete(users.find(request.user_id))
+            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+
+        // Do this last. If there is an error before this point, the request will still be
+        // present.
+        //
+        // NOTE: Future changes to the error handling of a failed deletion may necessitate the
+        //       deletion of the request FIRST rather than last.
         diesel::delete(
             user_deletion_requests
                 .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
         )
         .execute(&mut *(self.get_connection()?).borrow_mut())?;
 
-        todo!();
-        // Delete data associated with user (all data should have optional/nullable user id foreign key)
-        // Perhaps add an ON CASCADE DELETE to some data, but others should have ON CASCADE DELETE changed to nullify field!
-        // Delete user
+        Ok(delete_user_res)
+    }
+
+    // TODO: Test
+    pub fn get_all_users_ready_for_deletion(
+        &mut self,
+    ) -> Result<Vec<UserDeletionRequest>, DaoError> {
+        Ok(user_deletion_requests
+            .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
+            .get_results(&mut *(self.get_connection()?).borrow_mut())?)
     }
 
     // TODO: Test

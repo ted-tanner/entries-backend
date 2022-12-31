@@ -422,7 +422,23 @@ This list is not comprehensive; it's mostly just a "don't forget to do this" lis
 find . -name "*.rs" | xargs grep -n "TODO"
 ```
 
+### Tests
+
+* All methods for `budgetapp_job_scheduler::jobs::delete_users::DeleteUsersJob`
+* `budgetapp_utils::db::user::initiate_user_deletion`
+* `budgetapp_utils::db::user::cancel_user_deletion`
+* `budgetapp_utils::db::user::delete_user`
+* `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
+* `budgetapp_utils::db::user::get_user_tombstone`
+
 ### Minimum Viable Product
+
+* Condense deletion of budgets during user deletion down to a single query with something like DELETE WHERE (COUNT ub.budget_id = $id) = 1
+* Perhaps make `budgetapp_job_scheduler::jobs::Job` trait an async trait and make the `run_handler_func` async. Then, in the DeleteUsersJob, the loop for user deletion can create futures and join them all.
+* In DAOs, just get connection from thread pool in each method. No need to use a RefCell and such.
+* When running `cargo test -- --test-threads 1 --include-ignored`, tests fail because job scheduler doesn't find anything to delete. Handle this case. The handler should NOT return an error when there is nothing to delete. Perhaps just `match` the result and check error type. Should these tests be ignored?
+* Rename budget_share_events table to something that makes more sense (budget_share_invitations?)
+* Replace all sql_queries with diesel dsl
 
 * Delete handler for user
   - Require user password for deletion
@@ -480,7 +496,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Replace all sql_queries with diesel dsl
+* Budget comments, entry comments
+  - Reactions to said comments
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
 * Validation for `budgetapp_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
 * Budget user get request logic should be handled in a query to eliminate multiple queries
@@ -494,6 +511,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 * Reject accept/decline budget shares and buddy requests if already accepted or declined
 * Admin console
+* If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `budgetapp_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
+* Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
 
 ### Note on timezones
 

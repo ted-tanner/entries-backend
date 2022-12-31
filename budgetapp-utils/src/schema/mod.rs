@@ -28,30 +28,6 @@ table! {
 }
 
 table! {
-    budget_comment_reactions (id) {
-        id -> Uuid,
-        comment_id -> Uuid,
-        user_id -> Uuid,
-        reaction -> Int2,
-        modified_timestamp -> Timestamp,
-        created_timestamp -> Timestamp,
-    }
-}
-
-table! {
-    budget_comments (id) {
-        id -> Uuid,
-        budget_id -> Uuid,
-        user_id -> Uuid,
-        is_deleted -> Bool,
-        is_current -> Bool,
-        text -> Text,
-        modified_timestamp -> Timestamp,
-        created_timestamp -> Timestamp,
-    }
-}
-
-table! {
     budget_share_events (id) {
         id -> Uuid,
         recipient_user_id -> Uuid,
@@ -97,37 +73,13 @@ table! {
     entries (id) {
         id -> Uuid,
         budget_id -> Uuid,
-        user_id -> Uuid,
+        user_id -> Nullable<Uuid>,
         is_deleted -> Bool,
         amount_cents -> Int8,
         date -> Timestamp,
         name -> Nullable<Varchar>,
         category -> Nullable<Int2>,
         note -> Nullable<Text>,
-        modified_timestamp -> Timestamp,
-        created_timestamp -> Timestamp,
-    }
-}
-
-table! {
-    entry_comment_reactions (id) {
-        id -> Uuid,
-        comment_id -> Uuid,
-        user_id -> Uuid,
-        reaction -> Int2,
-        modified_timestamp -> Timestamp,
-        created_timestamp -> Timestamp,
-    }
-}
-
-table! {
-    entry_comments (id) {
-        id -> Uuid,
-        entry_id -> Uuid,
-        user_id -> Uuid,
-        is_deleted -> Bool,
-        is_current -> Bool,
-        text -> Text,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }
@@ -210,20 +162,14 @@ table! {
     }
 }
 
-joinable!(entry_comments -> entries (entry_id));
-
 allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
     buddy_relationships,
     buddy_requests,
-    budget_comment_reactions,
-    budget_comments,
     budget_share_events,
     budgets,
     categories,
     entries,
-    entry_comment_reactions,
-    entry_comments,
     otp_attempts,
     password_attempts,
     user_budgets,

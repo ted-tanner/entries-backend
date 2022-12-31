@@ -1152,10 +1152,10 @@ pub mod tests {
             created_user2.id,
         );
 
-        let user1_loaded_budgets = sql_query(&query_user1)
+        let user1_loaded_budgets = sql_query(query_user1)
             .load::<Budget>(&mut db_connection)
             .unwrap();
-        let user2_loaded_budgets = sql_query(&query_user2)
+        let user2_loaded_budgets = sql_query(query_user2)
             .load::<Budget>(&mut db_connection)
             .unwrap();
 
@@ -1244,10 +1244,10 @@ pub mod tests {
             created_user2.id,
         );
 
-        let user1_loaded_budgets = sql_query(&query_user1)
+        let user1_loaded_budgets = sql_query(query_user1)
             .load::<Budget>(&mut db_connection)
             .unwrap();
-        let user2_loaded_budgets = sql_query(&query_user2)
+        let user2_loaded_budgets = sql_query(query_user2)
             .load::<Budget>(&mut db_connection)
             .unwrap();
 

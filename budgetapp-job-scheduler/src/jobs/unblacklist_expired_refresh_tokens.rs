@@ -5,11 +5,11 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::jobs::{Job, JobError};
 
-pub struct UnblacklistExpiredRefreshTokens {
+pub struct UnblacklistExpiredRefreshTokensJob {
     last_run_time: SystemTime,
 }
 
-impl UnblacklistExpiredRefreshTokens {
+impl UnblacklistExpiredRefreshTokensJob {
     pub fn new() -> Self {
         Self {
             last_run_time: SystemTime::now(),
@@ -17,7 +17,7 @@ impl UnblacklistExpiredRefreshTokens {
     }
 }
 
-impl Job for UnblacklistExpiredRefreshTokens {
+impl Job for UnblacklistExpiredRefreshTokensJob {
     fn name(&self) -> &'static str {
         "Unblacklist Expired Refresh Tokens"
     }
@@ -40,10 +40,7 @@ impl Job for UnblacklistExpiredRefreshTokens {
 
     fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
-
-        if let Err(e) = dao.clear_all_expired_refresh_tokens() {
-            return Err(JobError::DaoFailure(e));
-        }
+        dao.clear_all_expired_refresh_tokens()?;
 
         Ok(())
     }
@@ -69,7 +66,7 @@ mod tests {
         let before = SystemTime::now();
 
         thread::sleep(Duration::from_millis(1));
-        let mut job = UnblacklistExpiredRefreshTokens::new();
+        let mut job = UnblacklistExpiredRefreshTokensJob::new();
         thread::sleep(Duration::from_millis(1));
 
         assert!(job.last_run_time() > before);
@@ -162,7 +159,7 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let mut job = UnblacklistExpiredRefreshTokens::new();
+        let mut job = UnblacklistExpiredRefreshTokensJob::new();
         job.run_handler_func().unwrap();
 
         assert!(

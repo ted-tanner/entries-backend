@@ -997,6 +997,7 @@ pub mod tests {
         .await;
 
         let created_user_and_budget = create_user_and_budget_and_sign_in().await;
+        let user_id = created_user_and_budget.user_id;
         let budget = created_user_and_budget.budget.clone();
         let access_token = created_user_and_budget.token_pair.access_token.clone();
 
@@ -1080,6 +1081,7 @@ pub mod tests {
 
         for i in 0..created_entries.len() {
             assert_eq!(created_entries[i].budget_id, new_entries[i].budget_id);
+            assert_eq!(created_entries[i].user_id, Some(user_id));
             assert_eq!(created_entries[i].amount_cents, new_entries[i].amount_cents);
             assert_eq!(created_entries[i].date, new_entries[i].date);
             assert_eq!(created_entries[i].name, new_entries[i].name);
