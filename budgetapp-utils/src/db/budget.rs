@@ -467,8 +467,7 @@ impl Dao {
     }
 
     pub fn delete_budget(&mut self, budget_id: Uuid) -> Result<usize, DaoError> {
-        Ok(diesel::delete(budgets.find(budget_id))
-            .execute(&mut self.db_thread_pool.get()?)?)
+        Ok(diesel::delete(budgets.find(budget_id)).execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_entry(

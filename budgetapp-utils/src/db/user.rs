@@ -331,8 +331,8 @@ impl Dao {
             .bind::<sql_types::Uuid, _>(request.user_id)
             .execute(&mut db_connection)?;
 
-        let delete_user_res = diesel::delete(users.find(request.user_id))
-            .execute(&mut db_connection)?;
+        let delete_user_res =
+            diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
 
         // Do this last. If there is an error before this point, the request will still be
         // present.
