@@ -41,9 +41,9 @@ impl Job for DeleteUsersJob {
         let users_ready_for_deletion = dao.get_all_users_ready_for_deletion()?;
 
         let mut last_error: Option<_> = None;
-        for user in users_ready_for_deletion {
+        for user in &users_ready_for_deletion {
             if let Err(e) = dao.delete_user(user) {
-                log::error!("User deletion failed: {}", e);
+                log::error!("User deletion failed for user {}: {}", &user.user_id, e);
                 last_error = Some(e);
             }
         }

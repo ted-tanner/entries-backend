@@ -1,4 +1,6 @@
-use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl, sql_query, sql_types, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
@@ -8,7 +10,6 @@ use crate::db::{DaoError, DbConnection, DbThreadPool};
 use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
-use crate::models::user_budget::UserBudget;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
@@ -17,9 +18,6 @@ use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
 use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
-use crate::schema::budgets::dsl::budgets;
-use crate::schema::user_budgets as user_budget_fields;
-use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_tombstones as user_tombstone_fields;
@@ -324,7 +322,7 @@ impl Dao {
     }
 
     // TODO: Test
-    pub fn delete_user(&mut self, request: UserDeletionRequest) -> Result<usize, DaoError> {
+    pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<usize, DaoError> {
         let new_tombstone = NewUserTombstone {
             user_id: request.user_id,
             deletion_request_time: request.deletion_request_time,
@@ -335,24 +333,15 @@ impl Dao {
             .values(&new_tombstone)
             .execute(&mut *(self.get_connection()?).borrow_mut())?;
 
-        let user_budgets_for_user = user_budgets
-            .filter(user_budget_fields::user_id.eq(request.user_id))
-            .load::<UserBudget>(&mut *(self.get_connection()?).borrow_mut())?;
+        let delete_budgets_query = "DELETE FROM budgets b \
+                                    WHERE ( \
+                                    SELECT COUNT(*) FROM user_budgets ub WHERE ub.user_id = $1 \
+                                    AND b.id = ub.budget_id \
+                                    ) = 1";
 
-        for ub in user_budgets_for_user {
-            // TODO: This can be one query per loop iteration
-            let users_in_budget_count = user_budgets
-                .filter(user_budget_fields::budget_id.eq(ub.budget_id))
-                .count()
-                .get_result::<i64>(&mut *(self.get_connection()?).borrow_mut())?;
-
-            if users_in_budget_count == 1 {
-                // Postgres will cascade delete the budget's associated data (assuming the
-                // foreign key constraints are set to ON DELETE CASCADE)
-                diesel::delete(budgets.find(ub.budget_id))
-                    .execute(&mut *(self.get_connection()?).borrow_mut())?;
-            }
-        }
+        sql_query(delete_budgets_query)
+            .bind::<sql_types::Uuid, _>(request.user_id)
+            .execute(&mut *(self.get_connection()?).borrow_mut())?;
 
         let delete_user_res = diesel::delete(users.find(request.user_id))
             .execute(&mut *(self.get_connection()?).borrow_mut())?;
