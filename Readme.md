@@ -435,7 +435,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Condense deletion of budgets during user deletion down to a single query with something like DELETE WHERE (COUNT ub.budget_id = $id) = 1
 * Perhaps make `budgetapp_job_scheduler::jobs::Job` trait an async trait and make the `run_handler_func` async. Then, in the DeleteUsersJob, the loop for user deletion can create futures and join them all.
-* In DAOs, just get connection from thread pool in each method. No need to use a RefCell and such.
 * Remove `is_shared` field from budgets -- just count matching records in the `user_budgets` table
 * When running `cargo test -- --test-threads 1 --include-ignored`, tests fail because job scheduler doesn't find anything to delete. Handle this case. The handler should NOT return an error when there is nothing to delete. Perhaps just `match` the result and check error type. Should these tests be ignored?
 * Rename budget_share_events table to something that makes more sense (budget_share_invitations?)

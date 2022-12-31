@@ -4,12 +4,10 @@ use diesel::{
     dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
     RunQueryDsl,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::SystemTime;
 use uuid::Uuid;
 
-use crate::db::{DaoError, DbConnection, DbThreadPool};
+use crate::db::{DaoError, DbThreadPool};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::budget_share_event::{BudgetShareEvent, NewBudgetShareEvent};
 use crate::models::category::{Category, NewCategory};
@@ -28,25 +26,13 @@ use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 
 pub struct Dao {
-    db_connection: Option<Rc<RefCell<DbConnection>>>,
     db_thread_pool: DbThreadPool,
 }
 
 impl Dao {
     pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {
-            db_connection: None,
             db_thread_pool: db_thread_pool.clone(),
-        }
-    }
-
-    fn get_connection(&mut self) -> Result<Rc<RefCell<DbConnection>>, DaoError> {
-        if let Some(conn) = &self.db_connection {
-            Ok(Rc::clone(conn))
-        } else {
-            let conn = Rc::new(RefCell::new(self.db_thread_pool.get()?));
-            self.db_connection = Some(Rc::clone(&conn));
-            Ok(conn)
         }
     }
 
@@ -55,12 +41,14 @@ impl Dao {
         budget_id: Uuid,
         user_id: Uuid,
     ) -> Result<OutputBudget, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
         let mut loaded_budgets = budgets
             .select(budget_fields::all_columns)
             .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
             .filter(budget_fields::id.eq(budget_id))
             .filter(user_budget_fields::user_id.eq(user_id))
-            .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
+            .load::<Budget>(&mut db_connection)?;
 
         if loaded_budgets.len() != 1 {
             return Err(diesel::result::Error::NotFound.into());
@@ -70,10 +58,10 @@ impl Dao {
 
         let loaded_categories = Category::belonging_to(&budget)
             .order(category_fields::id.asc())
-            .load::<Category>(&mut *(self.get_connection()?).borrow_mut())?;
+            .load::<Category>(&mut db_connection)?;
         let loaded_entries = Entry::belonging_to(&budget)
             .order(entry_fields::date.asc())
-            .load::<Entry>(&mut *(self.get_connection()?).borrow_mut())?;
+            .load::<Entry>(&mut db_connection)?;
 
         let output_budget = OutputBudget {
             id: budget.id,
@@ -98,6 +86,8 @@ impl Dao {
         &mut self,
         user_id: Uuid,
     ) -> Result<Vec<OutputBudget>, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
         let query = "SELECT budgets.* FROM user_budgets, budgets \
                      WHERE user_budgets.user_id = $1 \
                      AND user_budgets.budget_id = budgets.id \
@@ -105,14 +95,14 @@ impl Dao {
 
         let loaded_budgets = sql_query(query)
             .bind::<sql_types::Uuid, _>(user_id)
-            .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
+            .load::<Budget>(&mut db_connection)?;
         let loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::id.asc())
-            .load::<Category>(&mut *(self.get_connection()?).borrow_mut())?
+            .load::<Category>(&mut db_connection)?
             .grouped_by(&loaded_budgets);
         let loaded_entries = Entry::belonging_to(&loaded_budgets)
             .order(entry_fields::date.asc())
-            .load::<Entry>(&mut *(self.get_connection()?).borrow_mut())?
+            .load::<Entry>(&mut db_connection)?
             .grouped_by(&loaded_budgets);
 
         let zipped_budgets = loaded_budgets
@@ -150,6 +140,8 @@ impl Dao {
         start_date: SystemTime,
         end_date: SystemTime,
     ) -> Result<Vec<OutputBudget>, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
         let query = "SELECT budgets.* FROM user_budgets, budgets \
                      WHERE user_budgets.user_id = $1 \
                      AND user_budgets.budget_id = budgets.id \
@@ -161,14 +153,14 @@ impl Dao {
             .bind::<sql_types::Uuid, _>(user_id)
             .bind::<Timestamp, _>(start_date)
             .bind::<Timestamp, _>(end_date)
-            .load::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
+            .load::<Budget>(&mut db_connection)?;
         let loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::id.asc())
-            .load::<Category>(&mut *(self.get_connection()?).borrow_mut())?
+            .load::<Category>(&mut db_connection)?
             .grouped_by(&loaded_budgets);
         let loaded_entries = Entry::belonging_to(&loaded_budgets)
             .order(entry_fields::date.asc())
-            .load::<Entry>(&mut *(self.get_connection()?).borrow_mut())?
+            .load::<Entry>(&mut db_connection)?
             .grouped_by(&loaded_budgets);
 
         let zipped_budgets = loaded_budgets
@@ -208,7 +200,7 @@ impl Dao {
         let association_exists = match user_budgets
             .filter(user_budget_fields::user_id.eq(user_id))
             .filter(user_budget_fields::budget_id.eq(budget_id))
-            .execute(&mut *(self.get_connection()?).borrow_mut())
+            .execute(&mut self.db_thread_pool.get()?)
         {
             Ok(count) => count > 0,
             Err(e) => {
@@ -229,8 +221,9 @@ impl Dao {
         user_id: Uuid,
     ) -> Result<OutputBudget, DaoError> {
         let current_time = SystemTime::now();
-        let budget_id = Uuid::new_v4();
+        let mut db_connection = self.db_thread_pool.get()?;
 
+        let budget_id = Uuid::new_v4();
         let description = budget_data.description.as_deref();
 
         let new_budget = NewBudget {
@@ -249,7 +242,7 @@ impl Dao {
 
         let budget = dsl::insert_into(budgets)
             .values(&new_budget)
-            .get_result::<Budget>(&mut *(self.get_connection()?).borrow_mut())?;
+            .get_result::<Budget>(&mut db_connection)?;
 
         let new_user_budget_association = NewUserBudget {
             created_timestamp: current_time,
@@ -259,7 +252,7 @@ impl Dao {
 
         dsl::insert_into(user_budgets)
             .values(&new_user_budget_association)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut db_connection)?;
 
         let mut budget_categories = Vec::new();
 
@@ -280,7 +273,7 @@ impl Dao {
 
         let inserted_categories = dsl::insert_into(categories)
             .values(budget_categories)
-            .get_results::<Category>(&mut *(self.get_connection()?).borrow_mut())?;
+            .get_results::<Category>(&mut db_connection)?;
 
         let output_budget = OutputBudget {
             id: budget.id,
@@ -325,7 +318,7 @@ impl Dao {
         .bind::<Timestamp, _>(&edited_budget_data.end_date)
         .bind::<sql_types::Uuid, _>(user_id)
         .bind::<sql_types::Uuid, _>(&edited_budget_data.id)
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn invite_user(
@@ -357,7 +350,7 @@ impl Dao {
                 budget_share_event_fields::created_timestamp.eq(SystemTime::now()),
                 budget_share_event_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
             ))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_invitation(
@@ -370,7 +363,7 @@ impl Dao {
                 .find(invitation_id)
                 .filter(budget_share_event_fields::sender_user_id.eq(sender_user_id)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn mark_invitation_accepted(
@@ -387,7 +380,7 @@ impl Dao {
             budget_share_event_fields::accepted.eq(true),
             budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
-        .get_result(&mut *(self.get_connection()?).borrow_mut())?)
+        .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn mark_invitation_declined(
@@ -404,7 +397,7 @@ impl Dao {
             budget_share_event_fields::accepted.eq(false),
             budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_invitations_for_user(
@@ -415,7 +408,7 @@ impl Dao {
             .filter(budget_share_event_fields::recipient_user_id.eq(user_id))
             .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
             .order(budget_share_event_fields::created_timestamp.asc())
-            .load::<BudgetShareEvent>(&mut *(self.get_connection()?).borrow_mut())?)
+            .load::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_invitations_made_by_user(
@@ -426,7 +419,7 @@ impl Dao {
             .filter(budget_share_event_fields::sender_user_id.eq(user_id))
             .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
             .order(budget_share_event_fields::created_timestamp.asc())
-            .load::<BudgetShareEvent>(&mut *(self.get_connection()?).borrow_mut())?)
+            .load::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_invitation(
@@ -441,7 +434,7 @@ impl Dao {
                     .eq(user_id)
                     .or(budget_share_event_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<BudgetShareEvent>(&mut *(self.get_connection()?).borrow_mut())?)
+            .first::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn add_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
@@ -455,7 +448,7 @@ impl Dao {
 
         Ok(dsl::insert_into(user_budgets)
             .values(&new_user_budget_association)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn remove_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
@@ -464,18 +457,18 @@ impl Dao {
                 .filter(user_budget_fields::user_id.eq(user_id))
                 .filter(user_budget_fields::budget_id.eq(budget_id)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn count_users_remaining_in_budget(&mut self, budget_id: Uuid) -> Result<usize, DaoError> {
         Ok(user_budgets
             .filter(user_budget_fields::budget_id.eq(budget_id))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_budget(&mut self, budget_id: Uuid) -> Result<usize, DaoError> {
         Ok(diesel::delete(budgets.find(budget_id))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_entry(
@@ -503,12 +496,14 @@ impl Dao {
             created_timestamp: current_time,
         };
 
+        let mut db_connection = self.db_thread_pool.get()?;
+
         let entry = dsl::insert_into(entries)
             .values(&new_entry)
-            .get_result::<Entry>(&mut *(self.get_connection()?).borrow_mut())?;
+            .get_result::<Entry>(&mut db_connection)?;
         diesel::update(budgets.find(new_entry.budget_id))
             .set(budget_fields::latest_entry_time.eq(current_time))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut db_connection)?;
 
         Ok(entry)
     }

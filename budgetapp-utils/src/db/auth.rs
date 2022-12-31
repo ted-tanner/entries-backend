@@ -1,10 +1,8 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-use crate::db::{DaoError, DbConnection, DbThreadPool};
+use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
 use crate::models::password_attempts::{NewPasswordAttempts, PasswordAttempts};
@@ -16,25 +14,13 @@ use crate::schema::password_attempts as password_attempt_fields;
 use crate::schema::password_attempts::dsl::password_attempts;
 
 pub struct Dao {
-    db_connection: Option<Rc<RefCell<DbConnection>>>,
     db_thread_pool: DbThreadPool,
 }
 
 impl Dao {
     pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {
-            db_connection: None,
             db_thread_pool: db_thread_pool.clone(),
-        }
-    }
-
-    fn get_connection(&mut self) -> Result<Rc<RefCell<DbConnection>>, DaoError> {
-        if let Some(conn) = &self.db_connection {
-            Ok(Rc::clone(conn))
-        } else {
-            let conn = Rc::new(RefCell::new(self.db_thread_pool.get()?));
-            self.db_connection = Some(Rc::clone(&conn));
-            Ok(conn)
         }
     }
 
@@ -52,7 +38,7 @@ impl Dao {
 
         dsl::insert_into(blacklisted_tokens)
             .values(&blacklisted_token)
-            .get_result::<BlacklistedToken>(&mut *(self.get_connection()?).borrow_mut())?;
+            .get_result::<BlacklistedToken>(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -61,7 +47,7 @@ impl Dao {
         let count = blacklisted_tokens
             .filter(blacklisted_token_fields::token.eq(token))
             .count()
-            .get_result::<i64>(&mut *(self.get_connection()?).borrow_mut())?;
+            .get_result::<i64>(&mut self.db_thread_pool.get()?)?;
 
         Ok(count > 0)
     }
@@ -73,7 +59,7 @@ impl Dao {
             blacklisted_tokens
                 .filter(blacklisted_token_fields::token_expiration_time.lt(SystemTime::now())),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn clear_otp_verification_count(
@@ -85,7 +71,7 @@ impl Dao {
         Ok(diesel::delete(
             otp_attempts.filter(otp_attempt_fields::expiration_time.lt(expiration_cut_off)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn clear_password_attempt_count(
@@ -98,7 +84,7 @@ impl Dao {
             password_attempts
                 .filter(password_attempt_fields::expiration_time.lt(expiration_cut_off)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_and_increment_otp_verification_count(
@@ -119,7 +105,7 @@ impl Dao {
             .on_conflict(otp_attempt_fields::user_id)
             .do_update()
             .set(otp_attempt_fields::attempt_count.eq(otp_attempt_fields::attempt_count + 1))
-            .get_result::<OtpAttempts>(&mut *(self.get_connection()?).borrow_mut())?)
+            .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_and_increment_password_attempt_count(
@@ -143,7 +129,7 @@ impl Dao {
                 password_attempt_fields::attempt_count
                     .eq(password_attempt_fields::attempt_count + 1),
             )
-            .get_result::<PasswordAttempts>(&mut *(self.get_connection()?).borrow_mut())?)
+            .get_result::<PasswordAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 }
 

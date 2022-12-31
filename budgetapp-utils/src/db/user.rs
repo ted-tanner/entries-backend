@@ -1,12 +1,10 @@
 use diesel::{
     dsl, sql_query, sql_types, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-use crate::db::{DaoError, DbConnection, DbThreadPool};
+use crate::db::{DaoError, DbThreadPool};
 use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
@@ -26,38 +24,26 @@ use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
 pub struct Dao {
-    db_connection: Option<Rc<RefCell<DbConnection>>>,
     db_thread_pool: DbThreadPool,
 }
 
 impl Dao {
     pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {
-            db_connection: None,
             db_thread_pool: db_thread_pool.clone(),
-        }
-    }
-
-    fn get_connection(&mut self) -> Result<Rc<RefCell<DbConnection>>, DaoError> {
-        if let Some(conn) = &self.db_connection {
-            Ok(Rc::clone(conn))
-        } else {
-            let conn = Rc::new(RefCell::new(self.db_thread_pool.get()?));
-            self.db_connection = Some(Rc::clone(&conn));
-            Ok(conn)
         }
     }
 
     pub fn get_user_by_id(&mut self, user_id: Uuid) -> Result<User, DaoError> {
         Ok(users
             .find(user_id)
-            .first::<User>(&mut *(self.get_connection()?).borrow_mut())?)
+            .first::<User>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_user_by_email(&mut self, user_email: &str) -> Result<User, DaoError> {
         Ok(users
             .filter(user_fields::email.eq(user_email.to_lowercase()))
-            .first::<User>(&mut *(self.get_connection()?).borrow_mut())?)
+            .first::<User>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(
@@ -86,7 +72,7 @@ impl Dao {
 
         Ok(dsl::insert_into(users)
             .values(&new_user)
-            .get_result::<User>(&mut *(self.get_connection()?).borrow_mut())?)
+            .get_result::<User>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn edit_user(
@@ -102,7 +88,7 @@ impl Dao {
                 user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
                 user_fields::currency.eq(&edited_user_data.currency),
             ))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn change_password(
@@ -117,7 +103,7 @@ impl Dao {
 
         dsl::update(users.filter(user_fields::id.eq(user_id)))
             .set(user_fields::password_hash.eq(hashed_password))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -148,7 +134,7 @@ impl Dao {
                 buddy_request_fields::created_timestamp.eq(SystemTime::now()),
                 buddy_request_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
             ))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_request(
@@ -161,7 +147,7 @@ impl Dao {
                 .find(request_id)
                 .filter(buddy_request_fields::sender_user_id.eq(sender_user_id)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn mark_buddy_request_accepted(
@@ -178,7 +164,7 @@ impl Dao {
             buddy_request_fields::accepted.eq(true),
             buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
-        .get_result(&mut *(self.get_connection()?).borrow_mut())?)
+        .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn mark_buddy_request_declined(
@@ -195,7 +181,7 @@ impl Dao {
             buddy_request_fields::accepted.eq(false),
             buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_buddy_requests_for_user(
@@ -206,7 +192,7 @@ impl Dao {
             .filter(buddy_request_fields::recipient_user_id.eq(user_id))
             .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
             .order(buddy_request_fields::created_timestamp.asc())
-            .load::<BuddyRequest>(&mut *(self.get_connection()?).borrow_mut())?)
+            .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_buddy_requests_made_by_user(
@@ -217,7 +203,7 @@ impl Dao {
             .filter(buddy_request_fields::sender_user_id.eq(user_id))
             .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
             .order(buddy_request_fields::created_timestamp.asc())
-            .load::<BuddyRequest>(&mut *(self.get_connection()?).borrow_mut())?)
+            .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_buddy_request(
@@ -232,7 +218,7 @@ impl Dao {
                     .eq(user_id)
                     .or(buddy_request_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<BuddyRequest>(&mut *(self.get_connection()?).borrow_mut())?)
+            .first::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_buddy_relationship(
@@ -250,7 +236,7 @@ impl Dao {
 
         Ok(dsl::insert_into(buddy_relationships)
             .values(&relationship)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_relationship(
@@ -268,7 +254,7 @@ impl Dao {
                         .and(buddy_relationship_fields::user2_id.eq(user1_id))),
             ),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<User>, DaoError> {
@@ -279,7 +265,7 @@ impl Dao {
 
         Ok(sql_query(query)
             .bind::<diesel::sql_types::Uuid, _>(user_id)
-            .load(&mut *(self.get_connection()?).borrow_mut())?)
+            .load(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn check_are_buddies(&mut self, user1_id: Uuid, user2_id: Uuid) -> Result<bool, DaoError> {
@@ -293,7 +279,7 @@ impl Dao {
                         .and(buddy_relationship_fields::user2_id.eq(user1_id))),
             ),
         ))
-        .get_result(&mut *(self.get_connection()?).borrow_mut())?)
+        .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
@@ -310,7 +296,7 @@ impl Dao {
 
         Ok(dsl::insert_into(user_deletion_requests)
             .values(&new_request)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?)
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
@@ -318,11 +304,13 @@ impl Dao {
         Ok(diesel::delete(
             user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user_id)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?)
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
     pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<usize, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
         let new_tombstone = NewUserTombstone {
             user_id: request.user_id,
             deletion_request_time: request.deletion_request_time,
@@ -331,7 +319,7 @@ impl Dao {
 
         dsl::insert_into(user_tombstones)
             .values(&new_tombstone)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut db_connection)?;
 
         let delete_budgets_query = "DELETE FROM budgets b \
                                     WHERE ( \
@@ -341,10 +329,10 @@ impl Dao {
 
         sql_query(delete_budgets_query)
             .bind::<sql_types::Uuid, _>(request.user_id)
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut db_connection)?;
 
         let delete_user_res = diesel::delete(users.find(request.user_id))
-            .execute(&mut *(self.get_connection()?).borrow_mut())?;
+            .execute(&mut db_connection)?;
 
         // Do this last. If there is an error before this point, the request will still be
         // present.
@@ -355,7 +343,7 @@ impl Dao {
             user_deletion_requests
                 .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
         )
-        .execute(&mut *(self.get_connection()?).borrow_mut())?;
+        .execute(&mut db_connection)?;
 
         Ok(delete_user_res)
     }
@@ -366,14 +354,14 @@ impl Dao {
     ) -> Result<Vec<UserDeletionRequest>, DaoError> {
         Ok(user_deletion_requests
             .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
-            .get_results(&mut *(self.get_connection()?).borrow_mut())?)
+            .get_results(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
     pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
         Ok(user_tombstones
             .filter(user_tombstone_fields::user_id.eq(user_id))
-            .first::<UserTombstone>(&mut *(self.get_connection()?).borrow_mut())?)
+            .first::<UserTombstone>(&mut self.db_thread_pool.get()?)?)
     }
 }
 
