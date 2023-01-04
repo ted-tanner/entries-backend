@@ -65,7 +65,6 @@ impl Dao {
 
         let output_budget = OutputBudget {
             id: budget.id,
-            is_private: budget.is_private,
             is_deleted: budget.is_deleted,
             name: budget.name,
             description: budget.description,
@@ -113,7 +112,6 @@ impl Dao {
         for ((budget, budget_categories), budget_entries) in zipped_budgets {
             let output_budget = OutputBudget {
                 id: budget.id,
-                is_private: budget.is_private,
                 is_deleted: budget.is_deleted,
                 name: budget.name,
                 description: budget.description,
@@ -170,7 +168,6 @@ impl Dao {
         for ((budget, budget_categories), budget_entries) in zipped_budgets {
             let output_budget = OutputBudget {
                 id: budget.id,
-                is_private: budget.is_private,
                 is_deleted: budget.is_deleted,
                 name: budget.name,
                 description: budget.description,
@@ -225,7 +222,6 @@ impl Dao {
 
         let new_budget = NewBudget {
             id: budget_id,
-            is_private: true,
             is_deleted: false,
             name: &budget_data.name,
             description,
@@ -273,7 +269,6 @@ impl Dao {
 
         let output_budget = OutputBudget {
             id: budget.id,
-            is_private: budget.is_private,
             is_deleted: budget.is_deleted,
             name: budget.name,
             description: budget.description,
@@ -1507,7 +1502,6 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(fetched_budget.id, created_budget.id);
-        assert_eq!(fetched_budget.is_private, created_budget.is_private);
         assert_eq!(fetched_budget.is_deleted, created_budget.is_deleted);
         assert_eq!(fetched_budget.name, created_budget.name);
         assert_eq!(fetched_budget.description, created_budget.description);
@@ -1657,7 +1651,6 @@ pub mod tests {
 
         for i in 0..fetched_budgets.len() {
             assert_eq!(fetched_budgets[i].id, created_budgets[i].id);
-            assert_eq!(fetched_budgets[i].is_private, created_budgets[i].is_private);
             assert_eq!(fetched_budgets[i].is_deleted, created_budgets[i].is_deleted);
             assert_eq!(fetched_budgets[i].name, created_budgets[i].name);
             assert_eq!(
@@ -1905,10 +1898,6 @@ pub mod tests {
 
         for i in 0..fetched_budgets.len() {
             assert_eq!(fetched_budgets[i].id, in_range_budgets[i].id);
-            assert_eq!(
-                fetched_budgets[i].is_private,
-                in_range_budgets[i].is_private
-            );
             assert_eq!(
                 fetched_budgets[i].is_deleted,
                 in_range_budgets[i].is_deleted

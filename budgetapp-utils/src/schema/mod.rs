@@ -42,7 +42,6 @@ table! {
 table! {
     budgets (id) {
         id -> Uuid,
-        is_private -> Bool,
         is_deleted -> Bool,
         name -> Varchar,
         description -> Nullable<Text>,

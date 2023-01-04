@@ -29,7 +29,6 @@ CREATE TABLE buddy_requests (
 
 CREATE TABLE budgets (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
-    is_private BOOLEAN NOT NULL,
     is_deleted BOOLEAN NOT NULL,
 
     name VARCHAR(255) NOT NULL,

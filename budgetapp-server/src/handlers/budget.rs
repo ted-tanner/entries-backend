@@ -2882,7 +2882,6 @@ pub mod tests {
         let budget = serde_json::from_str::<OutputBudget>(res_body.as_str()).unwrap();
 
         assert_eq!(budget.id, created_budget.id);
-        assert_eq!(budget.is_private, created_budget.is_private);
         assert_eq!(budget.is_deleted, created_budget.is_deleted);
         assert_eq!(budget.name, created_budget.name);
         assert_eq!(budget.description, created_budget.description);
@@ -3078,7 +3077,6 @@ pub mod tests {
             let created_budget = &created_budgets[i];
 
             assert_eq!(budget.id, created_budget.id);
-            assert_eq!(budget.is_private, created_budget.is_private);
             assert_eq!(budget.is_deleted, created_budget.is_deleted);
             assert_eq!(budget.name, created_budget.name);
             assert_eq!(budget.description, created_budget.description);
@@ -3528,7 +3526,6 @@ pub mod tests {
             let created_budget = &in_range_budgets[i];
 
             assert_eq!(budget.id, created_budget.id);
-            assert_eq!(budget.is_private, created_budget.is_private);
             assert_eq!(budget.is_deleted, created_budget.is_deleted);
             assert_eq!(budget.name, created_budget.name);
             assert_eq!(budget.description, created_budget.description);
@@ -3704,7 +3701,6 @@ pub mod tests {
         let budget = serde_json::from_str::<OutputBudget>(res_body.as_str()).unwrap();
 
         assert_eq!(budget.id, created_budget.id);
-        assert_eq!(budget.is_private, created_budget.is_private);
         assert_eq!(budget.is_deleted, created_budget.is_deleted);
         assert_eq!(budget.name, created_budget.name);
         assert_eq!(budget.description, created_budget.description);
