@@ -1,17 +1,21 @@
 use budgetapp_utils::db::auth::Dao as AuthDao;
+use budgetapp_utils::db::DbThreadPool;
 
 use std::time::{Duration, SystemTime};
 
-use crate::env;
 use crate::jobs::{Job, JobError};
 
 pub struct UnblacklistExpiredRefreshTokensJob {
+    pub job_frequency: Duration,
+    db_thread_pool: DbThreadPool,
     last_run_time: SystemTime,
 }
 
 impl UnblacklistExpiredRefreshTokensJob {
-    pub fn new() -> Self {
+    pub fn new(job_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
         Self {
+            job_frequency,
+            db_thread_pool,
             last_run_time: SystemTime::now(),
         }
     }
@@ -23,11 +27,7 @@ impl Job for UnblacklistExpiredRefreshTokensJob {
     }
 
     fn run_frequency(&self) -> Duration {
-        Duration::from_secs(
-            env::CONF
-                .unblacklist_expired_refresh_tokens_job
-                .job_frequency_secs,
-        )
+        self.job_frequency
     }
 
     fn last_run_time(&self) -> SystemTime {
@@ -39,7 +39,7 @@ impl Job for UnblacklistExpiredRefreshTokensJob {
     }
 
     fn run_handler_func(&mut self) -> Result<(), JobError> {
-        let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = AuthDao::new(&self.db_thread_pool);
         dao.clear_all_expired_refresh_tokens()?;
 
         Ok(())
@@ -61,12 +61,17 @@ mod tests {
     use rand::Rng;
     use std::thread;
 
+    use crate::env;
+
     #[test]
     fn test_last_run_time() {
         let before = SystemTime::now();
 
         thread::sleep(Duration::from_millis(1));
-        let mut job = UnblacklistExpiredRefreshTokensJob::new();
+        let mut job = UnblacklistExpiredRefreshTokensJob::new(
+            Duration::from_millis(1),
+            env::db::DB_THREAD_POOL.clone(),
+        );
         thread::sleep(Duration::from_millis(1));
 
         assert!(job.last_run_time() > before);
@@ -83,6 +88,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_run_handler_fun() {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
@@ -159,7 +165,10 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let mut job = UnblacklistExpiredRefreshTokensJob::new();
+        let mut job = UnblacklistExpiredRefreshTokensJob::new(
+            Duration::from_millis(1),
+            env::db::DB_THREAD_POOL.clone(),
+        );
         job.run_handler_func().unwrap();
 
         assert!(

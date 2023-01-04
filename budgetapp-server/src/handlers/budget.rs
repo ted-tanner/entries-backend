@@ -619,6 +619,7 @@ pub mod tests {
     use budgetapp_utils::schema::budget_share_events::dsl::budget_share_events;
     use budgetapp_utils::schema::budgets as budget_fields;
     use budgetapp_utils::schema::budgets::dsl::budgets;
+    use budgetapp_utils::schema::categories as category_fields;
     use budgetapp_utils::schema::entries as entry_fields;
     use budgetapp_utils::schema::user_budgets as user_budget_fields;
     use budgetapp_utils::schema::user_budgets::dsl::user_budgets;
@@ -814,10 +815,12 @@ pub mod tests {
             .unwrap();
 
         let created_categories = Category::belonging_to(&created_budget)
+            .order(category_fields::id.asc())
             .load::<Category>(&mut db_connection)
             .unwrap();
 
         let created_entries = Entry::belonging_to(&created_budget)
+            .order(entry_fields::created_timestamp.asc())
             .load::<Entry>(&mut db_connection)
             .unwrap();
 
@@ -2879,7 +2882,6 @@ pub mod tests {
         let budget = serde_json::from_str::<OutputBudget>(res_body.as_str()).unwrap();
 
         assert_eq!(budget.id, created_budget.id);
-        assert_eq!(budget.is_shared, created_budget.is_shared);
         assert_eq!(budget.is_private, created_budget.is_private);
         assert_eq!(budget.is_deleted, created_budget.is_deleted);
         assert_eq!(budget.name, created_budget.name);
@@ -3076,7 +3078,6 @@ pub mod tests {
             let created_budget = &created_budgets[i];
 
             assert_eq!(budget.id, created_budget.id);
-            assert_eq!(budget.is_shared, created_budget.is_shared);
             assert_eq!(budget.is_private, created_budget.is_private);
             assert_eq!(budget.is_deleted, created_budget.is_deleted);
             assert_eq!(budget.name, created_budget.name);
@@ -3527,7 +3528,6 @@ pub mod tests {
             let created_budget = &in_range_budgets[i];
 
             assert_eq!(budget.id, created_budget.id);
-            assert_eq!(budget.is_shared, created_budget.is_shared);
             assert_eq!(budget.is_private, created_budget.is_private);
             assert_eq!(budget.is_deleted, created_budget.is_deleted);
             assert_eq!(budget.name, created_budget.name);
@@ -3704,7 +3704,6 @@ pub mod tests {
         let budget = serde_json::from_str::<OutputBudget>(res_body.as_str()).unwrap();
 
         assert_eq!(budget.id, created_budget.id);
-        assert_eq!(budget.is_shared, created_budget.is_shared);
         assert_eq!(budget.is_private, created_budget.is_private);
         assert_eq!(budget.is_deleted, created_budget.is_deleted);
         assert_eq!(budget.name, created_budget.name);

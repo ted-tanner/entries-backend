@@ -57,49 +57,10 @@ impl JobRunner {
 mod tests {
     use super::*;
 
-    use crate::jobs::{Job, JobError};
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, SystemTime};
-
-    struct MockJob {
-        pub last_run_time: SystemTime,
-        pub run_frequency: Duration,
-        pub runs: Arc<Mutex<usize>>,
-    }
-
-    impl MockJob {
-        pub fn new(run_frequency: Duration) -> Self {
-            Self {
-                last_run_time: SystemTime::now(),
-                run_frequency,
-                runs: Arc::new(Mutex::new(0)),
-            }
-        }
-    }
-
-    impl Job for MockJob {
-        fn name(&self) -> &'static str {
-            "Mock"
-        }
-
-        fn run_frequency(&self) -> Duration {
-            self.run_frequency
-        }
-
-        fn last_run_time(&self) -> SystemTime {
-            self.last_run_time
-        }
-
-        fn set_last_run_time(&mut self, time: SystemTime) {
-            self.last_run_time = time;
-        }
-
-        fn run_handler_func(&mut self) -> Result<(), JobError> {
-            *self.runs.lock().unwrap() += 1;
-            Ok(())
-        }
-    }
+    use crate::jobs::tests::MockJob;
 
     #[test]
     fn test_register() {

@@ -1,18 +1,22 @@
 use budgetapp_utils::db::user::Dao as UserDao;
+use budgetapp_utils::db::DbThreadPool;
 
 use std::time::{Duration, SystemTime};
 
-use crate::env;
 use crate::jobs::{Job, JobError};
 
 // TODO: Test
 pub struct DeleteUsersJob {
+    pub job_frequency: Duration,
+    db_thread_pool: DbThreadPool,
     last_run_time: SystemTime,
 }
 
 impl DeleteUsersJob {
-    pub fn new() -> Self {
+    pub fn new(job_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
         Self {
+            job_frequency,
+            db_thread_pool,
             last_run_time: SystemTime::now(),
         }
     }
@@ -24,7 +28,7 @@ impl Job for DeleteUsersJob {
     }
 
     fn run_frequency(&self) -> Duration {
-        Duration::from_secs(env::CONF.delete_users_job.job_frequency_secs)
+        self.job_frequency
     }
 
     fn last_run_time(&self) -> SystemTime {
@@ -36,7 +40,7 @@ impl Job for DeleteUsersJob {
     }
 
     fn run_handler_func(&mut self) -> Result<(), JobError> {
-        let mut dao = UserDao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = UserDao::new(&self.db_thread_pool);
 
         let users_ready_for_deletion = dao.get_all_users_ready_for_deletion()?;
 

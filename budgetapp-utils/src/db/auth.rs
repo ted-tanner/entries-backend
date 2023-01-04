@@ -391,7 +391,7 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_otp_verification_count(user.id, Duration::from_secs(10))
+                dao.get_and_increment_otp_verification_count(user.id, Duration::from_millis(1))
                     .unwrap();
             }
         }
@@ -402,8 +402,9 @@ mod tests {
         for user_id in user_ids.clone() {
             let user_otp_attempts = otp_attempts
                 .filter(otp_attempt_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&mut db_connection);
-            assert!(user_otp_attempts.is_ok());
+                .get_results::<OtpAttempts>(&mut db_connection)
+                .unwrap();
+            assert!(!user_otp_attempts.is_empty());
         }
 
         std::thread::sleep(Duration::from_millis(2));
@@ -414,8 +415,9 @@ mod tests {
         for user_id in user_ids {
             let user_otp_attempts = otp_attempts
                 .filter(otp_attempt_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&mut db_connection);
-            assert!(user_otp_attempts.is_err());
+                .get_results::<OtpAttempts>(&mut db_connection)
+                .unwrap();
+            assert!(user_otp_attempts.is_empty());
         }
     }
 
@@ -459,7 +461,7 @@ mod tests {
             user_ids.push(user.id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_password_attempt_count(user.id, Duration::from_secs(10))
+                dao.get_and_increment_password_attempt_count(user.id, Duration::from_millis(1))
                     .unwrap();
             }
         }
@@ -470,8 +472,9 @@ mod tests {
         for user_id in user_ids.clone() {
             let user_pass_attempts = password_attempts
                 .filter(password_attempt_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_pass_attempts.is_ok());
+                .get_results::<PasswordAttempts>(&mut db_connection)
+                .unwrap();
+            assert!(!user_pass_attempts.is_empty());
         }
 
         std::thread::sleep(Duration::from_millis(2));
@@ -482,8 +485,9 @@ mod tests {
         for user_id in user_ids {
             let user_pass_attempts = password_attempts
                 .filter(password_attempt_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_pass_attempts.is_err());
+                .get_results::<PasswordAttempts>(&mut db_connection)
+                .unwrap();
+            assert!(user_pass_attempts.is_empty());
         }
     }
 }

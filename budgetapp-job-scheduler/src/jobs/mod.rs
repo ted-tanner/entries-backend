@@ -67,114 +67,80 @@ pub trait Job: Send {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
-    use budgetapp_utils::db::auth::Dao as AuthDao;
-    use budgetapp_utils::db::user;
-    use budgetapp_utils::models::otp_attempts::OtpAttempts;
-    use budgetapp_utils::password_hasher;
-    use budgetapp_utils::request_io::InputUser;
-    use budgetapp_utils::schema::otp_attempts as otp_attempts_fields;
-    use budgetapp_utils::schema::otp_attempts::dsl::otp_attempts;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, SystemTime};
 
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-    use rand::Rng;
+    pub struct MockJob {
+        pub last_run_time: SystemTime,
+        pub run_frequency: Duration,
+        pub runs: Arc<Mutex<usize>>,
+    }
 
-    use crate::env;
+    impl MockJob {
+        pub fn new(run_frequency: Duration) -> Self {
+            Self {
+                last_run_time: SystemTime::now(),
+                run_frequency,
+                runs: Arc::new(Mutex::new(0)),
+            }
+        }
+    }
+
+    impl Job for MockJob {
+        fn name(&self) -> &'static str {
+            "Mock"
+        }
+
+        fn run_frequency(&self) -> Duration {
+            self.run_frequency
+        }
+
+        fn last_run_time(&self) -> SystemTime {
+            self.last_run_time
+        }
+
+        fn set_last_run_time(&mut self, time: SystemTime) {
+            self.last_run_time = time;
+        }
+
+        fn run_handler_func(&mut self) -> Result<(), JobError> {
+            *self.runs.lock().unwrap() += 1;
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_job_ready() {
-        let mut job = clear_otp_attempts::ClearOtpAttemptsJob::new();
+        let mut job = MockJob::new(Duration::from_secs(10));
 
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
         assert!(!job.ready());
 
-        job.set_last_run_time(SystemTime::now() - Duration::from_secs(86400 * 366));
+        job.set_last_run_time(SystemTime::now() - Duration::from_secs(25));
         assert!(job.ready());
 
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
         assert!(!job.ready());
     }
 
-    #[ignore]
     #[test]
     fn test_job_execute() {
-        let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
+        let mut job = MockJob::new(Duration::from_millis(10));
+        let job_run_count = Arc::clone(&job.runs);
+        assert_eq!(*job_run_count.lock().unwrap(), 0);
 
-        let mut user_ids = Vec::new();
-
-        for _ in 0..3 {
-            let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-
-            let new_user = InputUser {
-                email: format!("test_user{}@test.com", &user_number),
-                password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
-                first_name: format!("Test-{}", &user_number),
-                last_name: format!("User-{}", &user_number),
-                date_of_birth: SystemTime::UNIX_EPOCH
-                    + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
-                currency: String::from("USD"),
-            };
-
-            let hash_params = password_hasher::HashParams {
-                salt_len: 16,
-                hash_len: 32,
-                hash_iterations: 2,
-                hash_mem_size_kib: 128,
-                hash_lanes: 2,
-            };
-
-            let user = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(
-                    &new_user,
-                    &hash_params,
-                    vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
-                )
-                .unwrap();
-
-            user_ids.push(user.id);
-
-            for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_otp_verification_count(user.id, Duration::from_millis(1))
-                    .unwrap();
-            }
-        }
-
-        let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
-
-        // Ensure rows are in the table before clearing
-        for user_id in user_ids.clone() {
-            let user_otp_attempts = otp_attempts
-                .filter(otp_attempts_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&mut db_connection);
-            assert!(user_otp_attempts.is_ok());
-        }
-
-        let mut job = ClearOtpAttemptsJob::new();
         job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
-
         assert!(
             matches!(job.execute().unwrap_err(), JobError::NotReady),
-            "Job should not have been ready. It's last_run_time was in the future."
+            "Job should not have been ready. Its last_run_time was in the future."
         );
 
-        for user_id in user_ids.clone() {
-            let user_otp_attempts = otp_attempts
-                .filter(otp_attempts_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&mut db_connection);
-            assert!(user_otp_attempts.is_ok());
-        }
-
-        job.set_last_run_time(SystemTime::now() - Duration::from_secs(86400 * 366));
+        job.set_last_run_time(SystemTime::now() - Duration::from_secs(1));
         job.execute().unwrap();
 
-        // Ensure rows have been removed
-        for user_id in user_ids {
-            let user_otp_attempts = otp_attempts
-                .filter(otp_attempts_fields::user_id.eq(user_id))
-                .first::<OtpAttempts>(&mut db_connection);
-            assert!(user_otp_attempts.is_err());
-        }
+        assert_eq!(*job_run_count.lock().unwrap(), 1);
     }
 }

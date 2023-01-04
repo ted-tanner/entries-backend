@@ -53,7 +53,6 @@ pub struct TokenPair {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputBudget {
     pub id: uuid::Uuid,
-    pub is_shared: bool,
     pub is_private: bool,
     pub is_deleted: bool,
 

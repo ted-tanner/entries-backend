@@ -4,6 +4,7 @@ extern crate lazy_static;
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
 };
+use std::time::Duration;
 
 mod env;
 mod jobs;
@@ -43,10 +44,32 @@ fn main() {
     let mut job_runner = env::runner::JOB_RUNNER
         .lock()
         .expect("Job runner lock was poisioned");
-    job_runner.register(Box::new(ClearOtpAttemptsJob::new()));
-    job_runner.register(Box::new(ClearPasswordAttemptsJob::new()));
-    job_runner.register(Box::new(DeleteUsersJob::new()));
-    job_runner.register(Box::new(UnblacklistExpiredRefreshTokensJob::new()));
+
+    job_runner.register(Box::new(ClearOtpAttemptsJob::new(
+        Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
+        Duration::from_secs(env::CONF.clear_otp_attempts_job.attempts_lifetime_mins * 60),
+        env::db::DB_THREAD_POOL.clone(),
+    )));
+
+    job_runner.register(Box::new(ClearPasswordAttemptsJob::new(
+        Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
+        Duration::from_secs(env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60),
+        env::db::DB_THREAD_POOL.clone(),
+    )));
+
+    job_runner.register(Box::new(DeleteUsersJob::new(
+        Duration::from_secs(env::CONF.delete_users_job.job_frequency_secs),
+        env::db::DB_THREAD_POOL.clone(),
+    )));
+
+    job_runner.register(Box::new(UnblacklistExpiredRefreshTokensJob::new(
+        Duration::from_secs(
+            env::CONF
+                .unblacklist_expired_refresh_tokens_job
+                .job_frequency_secs,
+        ),
+        env::db::DB_THREAD_POOL.clone(),
+    )));
 
     job_runner.start();
 }

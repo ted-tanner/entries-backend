@@ -433,21 +433,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Condense deletion of budgets during user deletion down to a single query with something like DELETE WHERE (COUNT ub.budget_id = $id) = 1
 * Perhaps make `budgetapp_job_scheduler::jobs::Job` trait an async trait and make the `run_handler_func` async. Then, in the DeleteUsersJob, the loop for user deletion can create futures and join them all.
-* Remove `is_shared` field from budgets -- just count matching records in the `user_budgets` table
-* When running `cargo test -- --test-threads 1 --include-ignored`, tests fail because job scheduler doesn't find anything to delete. Handle this case. The handler should NOT return an error when there is nothing to delete. Perhaps just `match` the result and check error type. Should these tests be ignored?
 * Rename budget_share_events table to something that makes more sense (budget_share_invitations?)
-* Replace all sql_queries with diesel dsl
-
-* Delete handler for user
-  - Require user password for deletion
-  - Create a deletion record in the database when a user deletes their account. Upon deletion, create a tombstone record for user.
-  - Create a scheduled job that periodically goes through and goes through the list of users in the deletion list and deletes them and all their data (except data belonging to a shared budget) and removes them from their buddies' buddy lists 
-  - Don't have the cron job delete users if the request is less than 24 hours old
-  - Don't have the cron job delete users if the `is_deleted` flag on their user record is set to `false`. Thus, users can be effectively "undeleted" within a 24-hour period by changing that flag
-  - If deleted user tries to sign in, update the user deletion record (set it to the current time so the user doesn't get deleted until they haven't used the app for 24-hours)
-  - Upon requesting deletion, let the user know they can cancel the request within the next 24 hours in account settings after signing in again. Place the button to restore in a clear-to-see place in account settings
+* Check if `is_private` field for budgets is being used correctly. Is it checked when sharing?
 
 *By 9/16*
 

@@ -8,7 +8,6 @@ use crate::schema::budgets;
 #[diesel(table_name = budgets)]
 pub struct Budget {
     pub id: uuid::Uuid,
-    pub is_shared: bool,
     pub is_private: bool,
     pub is_deleted: bool,
 
@@ -27,7 +26,6 @@ pub struct Budget {
 #[diesel(table_name = budgets)]
 pub struct NewBudget<'a> {
     pub id: uuid::Uuid,
-    pub is_shared: bool,
     pub is_private: bool,
     pub is_deleted: bool,
 
