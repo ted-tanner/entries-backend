@@ -1,5 +1,5 @@
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareEventId,
+    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareInviteId,
     OutputBudget, UserInvitationToBudget,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
@@ -285,25 +285,25 @@ pub async fn invite_user(
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Query<InputShareEventId>,
+    invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share event belonging to user with provided ID",
+                    "No share invite belonging to user with provided ID",
                 ))));
             }
         }
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share event with provided ID",
+                    "No share invite with provided ID",
                 ))));
             }
             _ => {
@@ -321,22 +321,22 @@ pub async fn retract_invitation(
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Query<InputShareEventId>,
+    invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let db_thread_pool_ref = db_thread_pool.clone();
-    let share_event_id = invitation_id.share_event_id;
+    let share_invite_id = invitation_id.share_invite_id;
 
     let budget_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
-        budget_dao.mark_invitation_accepted(share_event_id, auth_user_claims.0.uid)
+        budget_dao.mark_invitation_accepted(share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(share_event) => share_event.budget_id,
+        Ok(share_invite) => share_invite.budget_id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share event with provided ID",
+                    "No share invite with provided ID",
                 ))));
             }
             _ => {
@@ -369,25 +369,25 @@ pub async fn accept_invitation(
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Query<InputShareEventId>,
+    invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.mark_invitation_declined(invitation_id.share_event_id, auth_user_claims.0.uid)
+        budget_dao.mark_invitation_declined(invitation_id.share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(count) => {
             if count == 0 {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share event with provided ID",
+                    "No share invite with provided ID",
                 ))));
             }
         }
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share event with provided ID",
+                    "No share invite with provided ID",
                 ))));
             }
             _ => {
@@ -416,7 +416,7 @@ pub async fn get_all_pending_invitations_for_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share events for user",
+                    "No share invites for user",
                 ))));
             }
             _ => {
@@ -445,7 +445,7 @@ pub async fn get_all_pending_invitations_made_by_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No share events made by user",
+                    "No share invites made by user",
                 ))));
             }
             _ => {
@@ -463,11 +463,11 @@ pub async fn get_all_pending_invitations_made_by_user(
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    invitation_id: web::Query<InputShareEventId>,
+    invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_invitation(invitation_id.share_event_id, auth_user_claims.0.uid)
+        budget_dao.get_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -475,7 +475,7 @@ pub async fn get_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "Share event not found",
+                    "Share invite not found",
                 ))));
             }
             _ => {
@@ -606,17 +606,17 @@ async fn check_user_in_budget(
 pub mod tests {
     use budgetapp_utils::auth_token::TokenClaims;
     use budgetapp_utils::models::budget::Budget;
-    use budgetapp_utils::models::budget_share_event::BudgetShareEvent;
+    use budgetapp_utils::models::budget_share_invite::BudgetShareInvite;
     use budgetapp_utils::models::category::Category;
     use budgetapp_utils::models::entry::Entry;
     use budgetapp_utils::models::user_budget::UserBudget;
     use budgetapp_utils::request_io::{
         InputBudget, InputBudgetId, InputCategory, InputDateRange, InputEditBudget, InputEntry,
-        InputShareEventId, InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
+        InputShareInviteId, InputUser, OutputBudget, SigninToken, SigninTokenOtpPair, TokenPair,
         UserInvitationToBudget,
     };
-    use budgetapp_utils::schema::budget_share_events as budget_share_event_fields;
-    use budgetapp_utils::schema::budget_share_events::dsl::budget_share_events;
+    use budgetapp_utils::schema::budget_share_invites as budget_share_invite_fields;
+    use budgetapp_utils::schema::budget_share_invites::dsl::budget_share_invites;
     use budgetapp_utils::schema::budgets as budget_fields;
     use budgetapp_utils::schema::budgets::dsl::budgets;
     use budgetapp_utils::schema::categories as category_fields;
@@ -1133,33 +1133,33 @@ pub mod tests {
 
         let instant_after_share = SystemTime::now();
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
         };
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -1168,20 +1168,20 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
-        assert!(share_events[0].accepted_declined_timestamp.is_some());
+        assert!(share_invites[0].accepted_declined_timestamp.is_some());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_some());
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -1288,21 +1288,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = SystemTime::now();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1332,14 +1332,14 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
@@ -1348,19 +1348,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert!(!share_events[0].accepted);
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert_eq!(share_invites.len(), 1);
+        assert!(!share_invites[0].accepted);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
@@ -1369,19 +1369,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert!(!share_events[0].accepted);
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert_eq!(share_invites.len(), 1);
+        assert!(!share_invites[0].accepted);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -1390,19 +1390,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_some());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
@@ -1479,34 +1479,34 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = SystemTime::now();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
         };
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/decline_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/decline_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -1515,19 +1515,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_some());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -1622,21 +1622,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
         let instant_after_share = SystemTime::now();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let input_budget_id = InputBudgetId {
             budget_id: created_user1_budget.id,
@@ -1666,14 +1666,14 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/decline_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/decline_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
@@ -1682,19 +1682,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert!(!share_events[0].accepted);
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert_eq!(share_invites.len(), 1);
+        assert!(!share_invites[0].accepted);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/decline_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/decline_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
@@ -1703,19 +1703,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert!(!share_events[0].accepted);
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert_eq!(share_invites.len(), 1);
+        assert!(!share_invites[0].accepted);
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/decline_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/decline_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -1724,19 +1724,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
-        assert_eq!(share_events[0].recipient_user_id, created_user2_id);
-        assert_eq!(share_events[0].sender_user_id, created_user1_id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites.len(), 1);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2_id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1_id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].accepted_declined_timestamp.is_some());
-        assert!(share_events[0].created_timestamp > instant_before_share);
-        assert!(share_events[0].created_timestamp < instant_after_share);
+        assert!(share_invites[0].accepted_declined_timestamp.is_some());
+        assert!(share_invites[0].created_timestamp > instant_before_share);
+        assert!(share_invites[0].created_timestamp < instant_after_share);
 
         let req = test::TestRequest::get()
             .uri(&format!(
@@ -1809,21 +1809,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::delete()
             .uri(&format!(
-                "/api/budget/retract_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/retract_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
@@ -1832,12 +1832,12 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
     }
 
     #[actix_rt::test]
@@ -1878,21 +1878,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::delete()
             .uri(&format!(
-                "/api/budget/retract_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/retract_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -1903,8 +1903,8 @@ pub mod tests {
 
         let req = test::TestRequest::delete()
             .uri(&format!(
-                "/api/budget/retract_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/retract_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
@@ -1913,17 +1913,17 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
         let req = test::TestRequest::delete()
             .uri(&format!(
-                "/api/budget/retract_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/retract_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
@@ -1932,12 +1932,12 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
     }
 
     #[actix_rt::test]
@@ -2044,7 +2044,7 @@ pub mod tests {
 
         let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
         let invitations =
-            serde_json::from_str::<Vec<BudgetShareEvent>>(resp_body.as_str()).unwrap();
+            serde_json::from_str::<Vec<BudgetShareInvite>>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitations.len(), 2);
 
@@ -2167,7 +2167,7 @@ pub mod tests {
 
         let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
         let invitations =
-            serde_json::from_str::<Vec<BudgetShareEvent>>(resp_body.as_str()).unwrap();
+            serde_json::from_str::<Vec<BudgetShareInvite>>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitations.len(), 2);
 
@@ -2230,21 +2230,21 @@ pub mod tests {
 
         let instant_after_share = SystemTime::now();
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::get()
             .uri(&format!(
-                "/api/budget/get_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/get_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user1_access_token}")))
@@ -2254,7 +2254,7 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
 
         let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
-        let invitation = serde_json::from_str::<BudgetShareEvent>(resp_body.as_str()).unwrap();
+        let invitation = serde_json::from_str::<BudgetShareInvite>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
         assert_eq!(invitation.sender_user_id, created_user1_id);
@@ -2266,8 +2266,8 @@ pub mod tests {
 
         let req = test::TestRequest::get()
             .uri(&format!(
-                "/api/budget/get_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/get_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -2277,7 +2277,7 @@ pub mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
 
         let resp_body = String::from_utf8(actix_web::test::read_body(resp).await.to_vec()).unwrap();
-        let invitation = serde_json::from_str::<BudgetShareEvent>(resp_body.as_str()).unwrap();
+        let invitation = serde_json::from_str::<BudgetShareInvite>(resp_body.as_str()).unwrap();
 
         assert_eq!(invitation.recipient_user_id, created_user2_id);
         assert_eq!(invitation.sender_user_id, created_user1_id);
@@ -2289,8 +2289,8 @@ pub mod tests {
 
         let req = test::TestRequest::get()
             .uri(&format!(
-                "/api/budget/get_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/get_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user3_access_token}")))
@@ -2336,21 +2336,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -2384,12 +2384,12 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1); // Share event still exists
+        assert_eq!(share_invites.len(), 1); // Share invite still exists
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user2_id))
@@ -2442,8 +2442,8 @@ pub mod tests {
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -2499,21 +2499,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))
@@ -2565,19 +2565,19 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user2_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user2_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
 
         let budget_association = user_budgets
             .filter(user_budget_fields::user_id.eq(created_user1_id))
@@ -2704,21 +2704,21 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), http::StatusCode::OK);
 
-        let share_events = budget_share_events
-            .filter(budget_share_event_fields::budget_id.eq(created_user1_budget.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::budget_id.eq(created_user1_budget.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        let invite_id = InputShareEventId {
-            share_event_id: share_events[0].id,
+        let invite_id = InputShareInviteId {
+            share_invite_id: share_invites[0].id,
         };
 
         let req = test::TestRequest::put()
             .uri(&format!(
-                "/api/budget/accept_invitation?share_event_id={}",
-                invite_id.share_event_id
+                "/api/budget/accept_invitation?share_invite_id={}",
+                invite_id.share_invite_id
             ))
             .insert_header(("content-type", "application/json"))
             .insert_header(("authorization", format!("bearer {user2_access_token}")))

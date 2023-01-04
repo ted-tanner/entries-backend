@@ -435,7 +435,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Perhaps make `budgetapp_job_scheduler::jobs::Job` trait an async trait and make the `run_handler_func` async. Then, in the DeleteUsersJob, the loop for user deletion can create futures and join them all.
 * Rename budget_share_events table to something that makes more sense (budget_share_invitations?)
-* Check if `is_private` field for budgets is being used correctly. Is it checked when sharing?
 
 *By 9/16*
 

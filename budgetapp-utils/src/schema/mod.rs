@@ -28,7 +28,7 @@ table! {
 }
 
 table! {
-    budget_share_events (id) {
+    budget_share_invites (id) {
         id -> Uuid,
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
@@ -164,7 +164,7 @@ allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
     buddy_relationships,
     buddy_requests,
-    budget_share_events,
+    budget_share_invites,
     budgets,
     categories,
     entries,

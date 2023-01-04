@@ -2,11 +2,11 @@ use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-use crate::schema::budget_share_events;
+use crate::schema::budget_share_invites;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[diesel(table_name = budget_share_events)]
-pub struct BudgetShareEvent {
+#[diesel(table_name = budget_share_invites)]
+pub struct BudgetShareInvite {
     pub id: uuid::Uuid,
 
     pub recipient_user_id: uuid::Uuid,
@@ -20,8 +20,8 @@ pub struct BudgetShareEvent {
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = budget_share_events)]
-pub struct NewBudgetShareEvent {
+#[diesel(table_name = budget_share_invites)]
+pub struct NewBudgetShareInvite {
     pub id: uuid::Uuid,
 
     pub recipient_user_id: uuid::Uuid,

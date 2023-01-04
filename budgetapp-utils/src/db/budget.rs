@@ -9,13 +9,13 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::budget::{Budget, NewBudget};
-use crate::models::budget_share_event::{BudgetShareEvent, NewBudgetShareEvent};
+use crate::models::budget_share_invite::{BudgetShareInvite, NewBudgetShareInvite};
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{InputBudget, InputEditBudget, InputEntry, OutputBudget};
-use crate::schema::budget_share_events as budget_share_event_fields;
-use crate::schema::budget_share_events::dsl::budget_share_events;
+use crate::schema::budget_share_invites as budget_share_invite_fields;
+use crate::schema::budget_share_invites::dsl::budget_share_invites;
 use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::categories as category_fields;
@@ -317,7 +317,7 @@ impl Dao {
         recipient_user_id: Uuid,
         sender_user_id: Uuid,
     ) -> Result<usize, DaoError> {
-        let budget_share_event = NewBudgetShareEvent {
+        let budget_share_invite = NewBudgetShareInvite {
             id: Uuid::new_v4(),
             recipient_user_id,
             sender_user_id,
@@ -327,18 +327,18 @@ impl Dao {
             accepted_declined_timestamp: None,
         };
 
-        Ok(dsl::insert_into(budget_share_events)
-            .values(&budget_share_event)
+        Ok(dsl::insert_into(budget_share_invites)
+            .values(&budget_share_invite)
             .on_conflict((
-                budget_share_event_fields::recipient_user_id,
-                budget_share_event_fields::sender_user_id,
-                budget_share_event_fields::budget_id,
+                budget_share_invite_fields::recipient_user_id,
+                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::budget_id,
             ))
             .do_update()
             .set((
-                budget_share_event_fields::accepted.eq(false),
-                budget_share_event_fields::created_timestamp.eq(SystemTime::now()),
-                budget_share_event_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
+                budget_share_invite_fields::accepted.eq(false),
+                budget_share_invite_fields::created_timestamp.eq(SystemTime::now()),
+                budget_share_invite_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
             ))
             .execute(&mut self.db_thread_pool.get()?)?)
     }
@@ -349,9 +349,9 @@ impl Dao {
         sender_user_id: Uuid,
     ) -> Result<usize, DaoError> {
         Ok(diesel::delete(
-            budget_share_events
+            budget_share_invites
                 .find(invitation_id)
-                .filter(budget_share_event_fields::sender_user_id.eq(sender_user_id)),
+                .filter(budget_share_invite_fields::sender_user_id.eq(sender_user_id)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }
@@ -360,15 +360,15 @@ impl Dao {
         &mut self,
         invitation_id: Uuid,
         recipient_user_id: Uuid,
-    ) -> Result<BudgetShareEvent, DaoError> {
+    ) -> Result<BudgetShareInvite, DaoError> {
         Ok(diesel::update(
-            budget_share_events
+            budget_share_invites
                 .find(invitation_id)
-                .filter(budget_share_event_fields::recipient_user_id.eq(recipient_user_id)),
+                .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
         )
         .set((
-            budget_share_event_fields::accepted.eq(true),
-            budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
+            budget_share_invite_fields::accepted.eq(true),
+            budget_share_invite_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .get_result(&mut self.db_thread_pool.get()?)?)
     }
@@ -379,13 +379,13 @@ impl Dao {
         recipient_user_id: Uuid,
     ) -> Result<usize, DaoError> {
         Ok(diesel::update(
-            budget_share_events
+            budget_share_invites
                 .find(invitation_id)
-                .filter(budget_share_event_fields::recipient_user_id.eq(recipient_user_id)),
+                .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
         )
         .set((
-            budget_share_event_fields::accepted.eq(false),
-            budget_share_event_fields::accepted_declined_timestamp.eq(SystemTime::now()),
+            budget_share_invite_fields::accepted.eq(false),
+            budget_share_invite_fields::accepted_declined_timestamp.eq(SystemTime::now()),
         ))
         .execute(&mut self.db_thread_pool.get()?)?)
     }
@@ -393,38 +393,38 @@ impl Dao {
     pub fn get_all_pending_invitations_for_user(
         &mut self,
         user_id: Uuid,
-    ) -> Result<Vec<BudgetShareEvent>, DaoError> {
-        Ok(budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(user_id))
-            .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-            .order(budget_share_event_fields::created_timestamp.asc())
-            .load::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
+    ) -> Result<Vec<BudgetShareInvite>, DaoError> {
+        Ok(budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(user_id))
+            .filter(budget_share_invite_fields::accepted_declined_timestamp.is_null())
+            .order(budget_share_invite_fields::created_timestamp.asc())
+            .load::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_invitations_made_by_user(
         &mut self,
         user_id: Uuid,
-    ) -> Result<Vec<BudgetShareEvent>, DaoError> {
-        Ok(budget_share_events
-            .filter(budget_share_event_fields::sender_user_id.eq(user_id))
-            .filter(budget_share_event_fields::accepted_declined_timestamp.is_null())
-            .order(budget_share_event_fields::created_timestamp.asc())
-            .load::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
+    ) -> Result<Vec<BudgetShareInvite>, DaoError> {
+        Ok(budget_share_invites
+            .filter(budget_share_invite_fields::sender_user_id.eq(user_id))
+            .filter(budget_share_invite_fields::accepted_declined_timestamp.is_null())
+            .order(budget_share_invite_fields::created_timestamp.asc())
+            .load::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_invitation(
         &mut self,
         invitation_id: Uuid,
         user_id: Uuid,
-    ) -> Result<BudgetShareEvent, DaoError> {
-        Ok(budget_share_events
+    ) -> Result<BudgetShareInvite, DaoError> {
+        Ok(budget_share_invites
             .find(invitation_id)
             .filter(
-                budget_share_event_fields::sender_user_id
+                budget_share_invite_fields::sender_user_id
                     .eq(user_id)
-                    .or(budget_share_event_fields::recipient_user_id.eq(user_id)),
+                    .or(budget_share_invite_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<BudgetShareEvent>(&mut self.db_thread_pool.get()?)?)
+            .first::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn add_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
@@ -508,14 +508,14 @@ pub mod tests {
 
     use crate::db::user;
     use crate::models::budget::Budget;
-    use crate::models::budget_share_event::BudgetShareEvent;
+    use crate::models::budget_share_invite::BudgetShareInvite;
     use crate::models::category::Category;
     use crate::models::user::User;
     use crate::models::user_budget::UserBudget;
     use crate::password_hasher;
     use crate::request_io::{InputBudget, InputCategory, InputUser, OutputBudget};
-    use crate::schema::budget_share_events as budget_share_event_fields;
-    use crate::schema::budget_share_events::dsl::budget_share_events;
+    use crate::schema::budget_share_invites as budget_share_invite_fields;
+    use crate::schema::budget_share_invites::dsl::budget_share_invites;
     use crate::schema::budgets::dsl::budgets;
     use crate::schema::categories as category_fields;
     use crate::schema::categories::dsl::categories;
@@ -684,39 +684,39 @@ pub mod tests {
 
         let budget = created_user_and_budget1.budget;
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 0);
+        assert_eq!(created_budget_share_invites.len(), 0);
 
         dao.invite_user(budget.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
         assert_eq!(
-            created_budget_share_events[0].recipient_user_id,
+            created_budget_share_invites[0].recipient_user_id,
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sender_user_id,
+            created_budget_share_invites[0].sender_user_id,
             created_user1.id
         );
-        assert_eq!(created_budget_share_events[0].budget_id, budget.id);
-        assert!(!created_budget_share_events[0].accepted);
+        assert_eq!(created_budget_share_invites[0].budget_id, budget.id);
+        assert!(!created_budget_share_invites[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
+        assert!(created_budget_share_invites[0].created_timestamp < SystemTime::now());
         assert_eq!(
-            created_budget_share_events[0].accepted_declined_timestamp,
+            created_budget_share_invites[0].accepted_declined_timestamp,
             None
         );
     }
@@ -737,24 +737,24 @@ pub mod tests {
         dao.invite_user(budget.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
-        dao.delete_invitation(created_budget_share_events[0].id, created_user1.id)
+        dao.delete_invitation(created_budget_share_invites[0].id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 0);
+        assert_eq!(created_budget_share_invites.len(), 0);
     }
 
     #[test]
@@ -774,51 +774,51 @@ pub mod tests {
         dao.invite_user(budget.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
-        let returned_budget_share_event = dao
-            .mark_invitation_accepted(created_budget_share_events[0].id, created_user2.id)
+        let returned_budget_share_invite = dao
+            .mark_invitation_accepted(created_budget_share_invites[0].id, created_user2.id)
             .unwrap();
 
-        assert_eq!(returned_budget_share_event.budget_id, budget.id);
+        assert_eq!(returned_budget_share_invite.budget_id, budget.id);
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
         assert_eq!(
-            created_budget_share_events[0].recipient_user_id,
+            created_budget_share_invites[0].recipient_user_id,
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sender_user_id,
+            created_budget_share_invites[0].sender_user_id,
             created_user1.id
         );
-        assert_eq!(created_budget_share_events[0].budget_id, budget.id);
-        assert!(created_budget_share_events[0].accepted);
+        assert_eq!(created_budget_share_invites[0].budget_id, budget.id);
+        assert!(created_budget_share_invites[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
+        assert!(created_budget_share_invites[0].created_timestamp < SystemTime::now());
         assert!(
-            created_budget_share_events[0]
+            created_budget_share_invites[0]
                 .accepted_declined_timestamp
                 .unwrap()
                 < SystemTime::now()
         );
         assert!(
-            created_budget_share_events[0]
+            created_budget_share_invites[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                > created_budget_share_events[0].created_timestamp
+                > created_budget_share_invites[0].created_timestamp
         );
     }
 
@@ -839,48 +839,48 @@ pub mod tests {
         dao.invite_user(budget.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
-        dao.mark_invitation_declined(created_budget_share_events[0].id, created_user2.id)
+        dao.mark_invitation_declined(created_budget_share_invites[0].id, created_user2.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
         assert_eq!(
-            created_budget_share_events[0].recipient_user_id,
+            created_budget_share_invites[0].recipient_user_id,
             created_user2.id
         );
         assert_eq!(
-            created_budget_share_events[0].sender_user_id,
+            created_budget_share_invites[0].sender_user_id,
             created_user1.id
         );
-        assert_eq!(created_budget_share_events[0].budget_id, budget.id);
-        assert!(!created_budget_share_events[0].accepted);
+        assert_eq!(created_budget_share_invites[0].budget_id, budget.id);
+        assert!(!created_budget_share_invites[0].accepted);
 
-        assert!(created_budget_share_events[0].created_timestamp < SystemTime::now());
+        assert!(created_budget_share_invites[0].created_timestamp < SystemTime::now());
         assert!(
-            created_budget_share_events[0]
+            created_budget_share_invites[0]
                 .accepted_declined_timestamp
                 .unwrap()
                 < SystemTime::now()
         );
         assert!(
-            created_budget_share_events[0]
+            created_budget_share_invites[0]
                 .accepted_declined_timestamp
                 .unwrap()
-                > created_budget_share_events[0].created_timestamp
+                > created_budget_share_invites[0].created_timestamp
         );
     }
 
@@ -904,50 +904,50 @@ pub mod tests {
         dao.invite_user(budget2.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_for_user(created_user1.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_for_user(created_user2.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 2);
+        assert_eq!(share_invites.len(), 2);
 
-        assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sender_user_id, created_user1.id);
-        assert_eq!(share_events[0].budget_id, budget1.id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[0].budget_id, budget1.id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].created_timestamp < SystemTime::now());
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp < SystemTime::now());
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
-        assert_eq!(share_events[1].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[1].sender_user_id, created_user1.id);
-        assert_eq!(share_events[1].budget_id, budget2.id);
-        assert!(!share_events[1].accepted);
+        assert_eq!(share_invites[1].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[1].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[1].budget_id, budget2.id);
+        assert!(!share_invites[1].accepted);
 
-        assert!(share_events[1].created_timestamp < SystemTime::now());
-        assert!(share_events[1].accepted_declined_timestamp.is_none());
+        assert!(share_invites[1].created_timestamp < SystemTime::now());
+        assert!(share_invites[1].accepted_declined_timestamp.is_none());
 
-        dao.mark_invitation_accepted(share_events[0].id, created_user2.id)
+        dao.mark_invitation_accepted(share_invites[0].id, created_user2.id)
             .unwrap();
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_for_user(created_user2.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sender_user_id, created_user1.id);
-        assert_eq!(share_events[0].budget_id, budget2.id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[0].budget_id, budget2.id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].created_timestamp < SystemTime::now());
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp < SystemTime::now());
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
     }
 
     #[test]
@@ -970,50 +970,50 @@ pub mod tests {
         dao.invite_user(budget2.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_made_by_user(created_user2.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 0);
+        assert_eq!(share_invites.len(), 0);
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_made_by_user(created_user1.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 2);
+        assert_eq!(share_invites.len(), 2);
 
-        assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sender_user_id, created_user1.id);
-        assert_eq!(share_events[0].budget_id, budget1.id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[0].budget_id, budget1.id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].created_timestamp < SystemTime::now());
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp < SystemTime::now());
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
 
-        assert_eq!(share_events[1].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[1].sender_user_id, created_user1.id);
-        assert_eq!(share_events[1].budget_id, budget2.id);
-        assert!(!share_events[1].accepted);
+        assert_eq!(share_invites[1].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[1].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[1].budget_id, budget2.id);
+        assert!(!share_invites[1].accepted);
 
-        assert!(share_events[1].created_timestamp < SystemTime::now());
-        assert!(share_events[1].accepted_declined_timestamp.is_none());
+        assert!(share_invites[1].created_timestamp < SystemTime::now());
+        assert!(share_invites[1].accepted_declined_timestamp.is_none());
 
-        dao.mark_invitation_declined(share_events[0].id, created_user2.id)
+        dao.mark_invitation_declined(share_invites[0].id, created_user2.id)
             .unwrap();
 
-        let share_events = dao
+        let share_invites = dao
             .get_all_pending_invitations_made_by_user(created_user1.id)
             .unwrap();
 
-        assert_eq!(share_events.len(), 1);
+        assert_eq!(share_invites.len(), 1);
 
-        assert_eq!(share_events[0].recipient_user_id, created_user2.id);
-        assert_eq!(share_events[0].sender_user_id, created_user1.id);
-        assert_eq!(share_events[0].budget_id, budget2.id);
-        assert!(!share_events[0].accepted);
+        assert_eq!(share_invites[0].recipient_user_id, created_user2.id);
+        assert_eq!(share_invites[0].sender_user_id, created_user1.id);
+        assert_eq!(share_invites[0].budget_id, budget2.id);
+        assert!(!share_invites[0].accepted);
 
-        assert!(share_events[0].created_timestamp < SystemTime::now());
-        assert!(share_events[0].accepted_declined_timestamp.is_none());
+        assert!(share_invites[0].created_timestamp < SystemTime::now());
+        assert!(share_invites[0].accepted_declined_timestamp.is_none());
     }
 
     #[test]
@@ -1033,42 +1033,42 @@ pub mod tests {
         dao.invite_user(budget.id, created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_budget_share_events = budget_share_events
-            .filter(budget_share_event_fields::recipient_user_id.eq(created_user2.id))
-            .filter(budget_share_event_fields::sender_user_id.eq(created_user1.id))
-            .load::<BudgetShareEvent>(&mut db_connection)
+        let created_budget_share_invites = budget_share_invites
+            .filter(budget_share_invite_fields::recipient_user_id.eq(created_user2.id))
+            .filter(budget_share_invite_fields::sender_user_id.eq(created_user1.id))
+            .load::<BudgetShareInvite>(&mut db_connection)
             .unwrap();
 
-        assert_eq!(created_budget_share_events.len(), 1);
+        assert_eq!(created_budget_share_invites.len(), 1);
 
-        dao.mark_invitation_accepted(created_budget_share_events[0].id, created_user2.id)
+        dao.mark_invitation_accepted(created_budget_share_invites[0].id, created_user2.id)
             .unwrap();
 
-        let share_event = dao
-            .get_invitation(created_budget_share_events[0].id, created_user1.id)
+        let share_invite = dao
+            .get_invitation(created_budget_share_invites[0].id, created_user1.id)
             .unwrap();
 
-        assert_eq!(share_event.recipient_user_id, created_user2.id);
-        assert_eq!(share_event.sender_user_id, created_user1.id);
-        assert_eq!(share_event.budget_id, budget.id);
-        assert!(share_event.accepted);
+        assert_eq!(share_invite.recipient_user_id, created_user2.id);
+        assert_eq!(share_invite.sender_user_id, created_user1.id);
+        assert_eq!(share_invite.budget_id, budget.id);
+        assert!(share_invite.accepted);
 
-        assert!(share_event.created_timestamp < SystemTime::now());
-        assert!(share_event.accepted_declined_timestamp.unwrap() < SystemTime::now());
-        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
+        assert!(share_invite.created_timestamp < SystemTime::now());
+        assert!(share_invite.accepted_declined_timestamp.unwrap() < SystemTime::now());
+        assert!(share_invite.accepted_declined_timestamp.unwrap() > share_invite.created_timestamp);
 
-        let share_event = dao
-            .get_invitation(created_budget_share_events[0].id, created_user2.id)
+        let share_invite = dao
+            .get_invitation(created_budget_share_invites[0].id, created_user2.id)
             .unwrap();
 
-        assert_eq!(share_event.recipient_user_id, created_user2.id);
-        assert_eq!(share_event.sender_user_id, created_user1.id);
-        assert_eq!(share_event.budget_id, budget.id);
-        assert!(share_event.accepted);
+        assert_eq!(share_invite.recipient_user_id, created_user2.id);
+        assert_eq!(share_invite.sender_user_id, created_user1.id);
+        assert_eq!(share_invite.budget_id, budget.id);
+        assert!(share_invite.accepted);
 
-        assert!(share_event.created_timestamp < SystemTime::now());
-        assert!(share_event.accepted_declined_timestamp.unwrap() < SystemTime::now());
-        assert!(share_event.accepted_declined_timestamp.unwrap() > share_event.created_timestamp);
+        assert!(share_invite.created_timestamp < SystemTime::now());
+        assert!(share_invite.accepted_declined_timestamp.unwrap() < SystemTime::now());
+        assert!(share_invite.accepted_declined_timestamp.unwrap() > share_invite.created_timestamp);
     }
 
     #[test]
