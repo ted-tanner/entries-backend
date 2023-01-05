@@ -495,14 +495,11 @@ pub async fn remove_budget(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
-    let db_thread_pool_second_clone = db_thread_pool.clone();
-
     let budget_id_clone = budget_id.0.clone();
     let budget_id_second_clone = budget_id.0.clone();
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
 
     let rows_affected_count = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.remove_user(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
@@ -529,6 +526,8 @@ pub async fn remove_budget(
         ))));
     }
 
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+
     // TODO: Perhaps user shouldn't have to wait for this (make it non-blocking). Users have
     //       already been removed from the budget, so the handler can return without finishing
     //       deleting the budget.
@@ -537,7 +536,6 @@ pub async fn remove_budget(
     //       just polls the queue and executes closures from the queue. This delete operation
     //       could be added to that queue.
     let remaining_users_in_budget = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.count_users_remaining_in_budget(budget_id_clone.budget_id)
     })
     .await?
@@ -554,8 +552,9 @@ pub async fn remove_budget(
     };
 
     if remaining_users_in_budget == 0 {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+
         match web::block(move || {
-            let mut budget_dao = db::budget::Dao::new(&db_thread_pool_second_clone);
             budget_dao.delete_budget(budget_id_second_clone.budget_id)
         })
         .await?
@@ -580,6 +579,7 @@ async fn check_user_in_budget(
     budget_id: Uuid,
 ) -> Result<bool, ServerError> {
     let db_thread_pool_clone = db_thread_pool.clone();
+
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
         budget_dao.check_user_in_budget(user_id, budget_id)

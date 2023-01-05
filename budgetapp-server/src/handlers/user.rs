@@ -21,10 +21,9 @@ pub async fn get(
 ) -> Result<HttpResponse, ServerError> {
     let user_id = input_user_data.user_id.unwrap_or(auth_user_claims.0.uid);
 
-    let db_thread_pool_clone = db_thread_pool.clone();
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     let user = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.get_user_by_id(user_id)
     })
     .await?
@@ -121,8 +120,9 @@ pub async fn get_user_by_email(
         ))));
     };
 
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+
     let user = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_by_email(&email_addr)
     })
     .await?
@@ -282,10 +282,9 @@ pub async fn change_password(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     password_pair: web::Json<CurrentAndNewPasswordPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     let user = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.get_user_by_id(auth_user_claims.0.uid)
     })
     .await?
@@ -435,11 +434,10 @@ pub async fn accept_buddy_request(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
     let request_id = request_id.buddy_request_id;
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     let buddy_request_data = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.mark_buddy_request_accepted(request_id, auth_user_claims.0.uid)
     })
     .await?
@@ -659,9 +657,10 @@ async fn check_are_buddies(
     user1_id: Uuid,
     user2_id: Uuid,
 ) -> Result<bool, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
+    let db_thread_pool = db_thread_pool.clone();
+
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.check_are_buddies(user1_id, user2_id)
     })
     .await?

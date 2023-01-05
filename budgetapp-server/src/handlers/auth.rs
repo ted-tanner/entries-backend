@@ -23,11 +23,10 @@ pub async fn sign_in(
         ))));
     }
 
-    let db_thread_pool_clone = db_thread_pool.clone();
     let user_email = credentials.email.clone();
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     let user = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool_clone);
         user_dao.get_user_by_email(&user_email)
     })
     .await?
@@ -40,8 +39,9 @@ pub async fn sign_in(
         }
     };
 
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
     let attempts = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_and_increment_password_attempt_count(
             user.id,
             Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
@@ -290,11 +290,10 @@ pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
     let refresh_token = token.0.token.clone();
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let claims = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
         auth_token::validate_refresh_token(
             token.0.token.as_str(),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -334,9 +333,10 @@ pub async fn refresh_tokens(
         },
     };
 
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
     // TODO: Make it so users don't have to wait for this
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_token::blacklist_token(refresh_token.as_str(), &mut auth_dao)
     })
     .await?
@@ -384,11 +384,10 @@ pub async fn logout(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
     let refresh_token_clone = refresh_token.token.clone();
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let refresh_token_claims = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool_clone);
         auth_token::validate_refresh_token(
             &refresh_token_clone,
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -434,8 +433,9 @@ pub async fn logout(
         ))));
     }
 
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_token::blacklist_token(refresh_token.0.token.as_str(), &mut auth_dao)
     })
     .await

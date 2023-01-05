@@ -433,8 +433,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* In handlers, instead of cloning db_thread_pool into something like db_thread_pool_clone, just create a new dao that gts moved. See delete_users.rs (in budgetapp_job_scheduler) for reference.
-
 *By 9/16*
 
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
