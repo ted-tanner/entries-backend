@@ -21,6 +21,8 @@ pub struct Connections {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RunnerConf {
     pub update_frequency_secs: u64,
+    pub worker_threads: Option<usize>,
+    pub max_blocking_threads: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

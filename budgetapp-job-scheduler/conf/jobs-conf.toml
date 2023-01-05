@@ -6,6 +6,8 @@ max_db_connections = 8
 
 [runner]
 update_frequency_secs = 10
+worker_threads = 2
+max_blocking_threads = 32
 
 [clear_otp_attempts_job]
 job_frequency_secs = 120

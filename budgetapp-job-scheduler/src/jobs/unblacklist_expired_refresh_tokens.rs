@@ -1,6 +1,7 @@
 use budgetapp_utils::db::auth::Dao as AuthDao;
 use budgetapp_utils::db::DbThreadPool;
 
+use async_trait::async_trait;
 use std::time::{Duration, SystemTime};
 
 use crate::jobs::{Job, JobError};
@@ -8,6 +9,7 @@ use crate::jobs::{Job, JobError};
 pub struct UnblacklistExpiredRefreshTokensJob {
     pub job_frequency: Duration,
     db_thread_pool: DbThreadPool,
+    is_running: bool,
     last_run_time: SystemTime,
 }
 
@@ -16,11 +18,13 @@ impl UnblacklistExpiredRefreshTokensJob {
         Self {
             job_frequency,
             db_thread_pool,
+            is_running: false,
             last_run_time: SystemTime::now(),
         }
     }
 }
 
+#[async_trait]
 impl Job for UnblacklistExpiredRefreshTokensJob {
     fn name(&self) -> &'static str {
         "Unblacklist Expired Refresh Tokens"
@@ -38,9 +42,22 @@ impl Job for UnblacklistExpiredRefreshTokensJob {
         self.last_run_time = time
     }
 
-    fn run_handler_func(&mut self) -> Result<(), JobError> {
+    fn is_running(&self) -> bool {
+        self.is_running
+    }
+
+    fn set_running_state_not_running(&mut self) {
+        self.is_running = false;
+    }
+
+    fn set_running_state_running(&mut self) {
+        self.is_running = true;
+    }
+
+    async fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&self.db_thread_pool);
-        dao.clear_all_expired_refresh_tokens()?;
+
+        tokio::task::spawn_blocking(move || dao.clear_all_expired_refresh_tokens()).await??;
 
         Ok(())
     }
@@ -87,9 +104,9 @@ mod tests {
         assert!(job.last_run_time() < SystemTime::now());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_run_handler_fun() {
+    async fn test_run_handler_fun() {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -169,7 +186,7 @@ mod tests {
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
         );
-        job.run_handler_func().unwrap();
+        job.run_handler_func().await.unwrap();
 
         assert!(
             !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &mut dao).unwrap()

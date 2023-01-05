@@ -1,5 +1,6 @@
-use std::thread;
+use futures::future;
 use std::time::{Duration, Instant};
+use tokio::time;
 
 use crate::jobs::Job;
 
@@ -25,21 +26,28 @@ impl JobRunner {
         self.jobs.push(job);
     }
 
-    pub fn start(&mut self) -> ! {
+    pub async fn start(&mut self) -> ! {
         loop {
             let before = Instant::now();
+
+            let mut job_names = Vec::with_capacity(self.jobs.len());
+            let mut job_futures = Vec::with_capacity(self.jobs.len());
 
             for job in &mut self.jobs {
                 if job.ready() {
                     log::info!("Executing job \"{}\"", job.name());
+                    job_names.push(job.name());
+                    job_futures.push(job.execute());
+                }
+            }
 
-                    let res = job.execute();
+            let results = future::join_all(job_futures).await;
 
-                    if let Err(e) = res {
-                        log::error!("{}", e);
-                    } else {
-                        log::info!("Job \"{}\" finished successfully", job.name());
-                    }
+            for (i, result) in results.into_iter().enumerate() {
+                if let Err(e) = result {
+                    log::error!("{}", e);
+                } else {
+                    log::info!("Job \"{}\" finished successfully", job_names[i]);
                 }
             }
 
@@ -47,7 +55,7 @@ impl JobRunner {
             let delta = after - before;
 
             if delta < self.update_frequency {
-                thread::sleep(self.update_frequency - delta);
+                time::sleep(self.update_frequency - delta).await;
             }
         }
     }
@@ -78,8 +86,8 @@ mod tests {
         assert_eq!(job_runner.jobs.len(), 2);
     }
 
-    #[test]
-    fn test_start() {
+    #[tokio::test]
+    async fn test_start() {
         let mut job_runner = JobRunner::new(Duration::from_micros(500));
         let job1 = MockJob::new(Duration::from_millis(10));
         let job2 = MockJob::new(Duration::from_millis(15));
@@ -93,19 +101,19 @@ mod tests {
         assert_eq!(*job1_run_count.lock().unwrap(), 0);
         assert_eq!(*job2_run_count.lock().unwrap(), 0);
 
-        thread::spawn(move || {
-            job_runner.start();
+        tokio::task::spawn(async move {
+            job_runner.start().await
         });
 
-        thread::sleep(Duration::from_millis(11));
+        time::sleep(Duration::from_millis(12)).await;
         assert_eq!(*job1_run_count.lock().unwrap(), 1);
         assert_eq!(*job2_run_count.lock().unwrap(), 0);
 
-        thread::sleep(Duration::from_millis(5));
+        time::sleep(Duration::from_millis(5)).await;
         assert_eq!(*job1_run_count.lock().unwrap(), 1);
         assert_eq!(*job2_run_count.lock().unwrap(), 1);
 
-        thread::sleep(Duration::from_millis(5));
+        time::sleep(Duration::from_millis(5)).await;
         assert_eq!(*job1_run_count.lock().unwrap(), 2);
         assert_eq!(*job2_run_count.lock().unwrap(), 1);
     }

@@ -1,6 +1,7 @@
 use budgetapp_utils::db::auth::Dao as AuthDao;
 use budgetapp_utils::db::DbThreadPool;
 
+use async_trait::async_trait;
 use std::time::{Duration, SystemTime};
 
 use crate::jobs::{Job, JobError};
@@ -8,7 +9,9 @@ use crate::jobs::{Job, JobError};
 pub struct ClearOtpAttemptsJob {
     pub job_frequency: Duration,
     pub attempts_lifetime: Duration,
+
     db_thread_pool: DbThreadPool,
+    is_running: bool,
     last_run_time: SystemTime,
 }
 
@@ -22,11 +25,13 @@ impl ClearOtpAttemptsJob {
             job_frequency,
             attempts_lifetime,
             db_thread_pool,
+            is_running: false,
             last_run_time: SystemTime::now(),
         }
     }
 }
 
+#[async_trait]
 impl Job for ClearOtpAttemptsJob {
     fn name(&self) -> &'static str {
         "Clear OTP Attempts"
@@ -44,9 +49,25 @@ impl Job for ClearOtpAttemptsJob {
         self.last_run_time = time
     }
 
-    fn run_handler_func(&mut self) -> Result<(), JobError> {
+    fn is_running(&self) -> bool {
+        self.is_running
+    }
+
+    fn set_running_state_not_running(&mut self) {
+        self.is_running = false;
+    }
+
+    fn set_running_state_running(&mut self) {
+        self.is_running = true;
+    }
+
+    async fn run_handler_func(&mut self) -> Result<(), JobError> {
+        let attempts_lifetime = self.attempts_lifetime;
         let mut dao = AuthDao::new(&self.db_thread_pool);
-        dao.clear_otp_verification_count(self.attempts_lifetime)?;
+
+        tokio::task::spawn_blocking(move || dao.clear_otp_verification_count(attempts_lifetime))
+            .await??;
+
         Ok(())
     }
 }
@@ -93,9 +114,9 @@ mod tests {
         assert!(job.last_run_time() < SystemTime::now());
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_run_handler_fun() {
+    async fn test_run_handler_fun() {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
         let mut user_ids = Vec::new();
@@ -152,7 +173,7 @@ mod tests {
             env::db::DB_THREAD_POOL.clone(),
         );
 
-        job.run_handler_func().unwrap();
+        job.run_handler_func().await.unwrap();
 
         for user_id in &user_ids {
             let user_otp_attempts = otp_attempts
@@ -176,7 +197,7 @@ mod tests {
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
         );
-        job.run_handler_func().unwrap();
+        job.run_handler_func().await.unwrap();
 
         for user_id in user_ids {
             let user_otp_attempts = otp_attempts

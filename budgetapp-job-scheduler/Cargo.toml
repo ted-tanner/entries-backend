@@ -5,14 +5,19 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = "0.1"
 budgetapp_utils = { path = "../budgetapp-utils" }
 flexi_logger = { version = "0.24", features = ["compress"], default_features = false }
+futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"
+num_cpus = "1.15"
 serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.23", features = ["rt-multi-thread", "time"] }
 toml = "0.5"
 uuid = { version = "1.2", features = ["serde", "v4"] }
 
 [dev-dependencies]
 diesel = { version = "2.0", features = ["postgres", "uuid", "r2d2"] }
+tokio = { version = "1.23", features = ["macros"] }
 rand = "0.8"

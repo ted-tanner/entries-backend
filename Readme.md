@@ -433,8 +433,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Perhaps make `budgetapp_job_scheduler::jobs::Job` trait an async trait and make the `run_handler_func` async. Then, in the DeleteUsersJob, the loop for user deletion can create futures and join them all.
-* Rename budget_share_events table to something that makes more sense (budget_share_invitations?)
+* In handlers, instead of cloning db_thread_pool into something like db_thread_pool_clone, just create a new dao that gts moved. See delete_users.rs (in budgetapp_job_scheduler) for reference.
 
 *By 9/16*
 
