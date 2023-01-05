@@ -101,9 +101,7 @@ mod tests {
         assert_eq!(*job1_run_count.lock().unwrap(), 0);
         assert_eq!(*job2_run_count.lock().unwrap(), 0);
 
-        tokio::task::spawn(async move {
-            job_runner.start().await
-        });
+        tokio::task::spawn(async move { job_runner.start().await });
 
         time::sleep(Duration::from_millis(12)).await;
         assert_eq!(*job1_run_count.lock().unwrap(), 1);
