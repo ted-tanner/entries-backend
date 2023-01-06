@@ -430,16 +430,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::delete_user`
 * `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
 * `budgetapp_utils::db::user::get_user_tombstone`
-* Test creating an entry and associating it with an entry
+* Test creating an entry and associating it with a budget
 
 ### Minimum Viable Product
 
 *By 9/16*
 
-* Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)? A few things that need to be accounted for:
-  - If a category is deleted, all entries with that category need to be updated. Perhaps their `category` field could be set `uncategorized` category?
-  - Perhaps no deletion is necessary for categories until budget is deleted
-  - Move `request_io` module to `utils`
+* Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)?
   
 *By 9/30*
 
