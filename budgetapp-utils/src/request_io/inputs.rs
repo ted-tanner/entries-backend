@@ -107,7 +107,6 @@ pub struct CurrentAndNewPasswordPair {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategory {
-    pub id: i16,
     pub name: String,
     pub limit_cents: i64,
     pub color: String,
@@ -143,6 +142,6 @@ pub struct InputEntry {
     pub amount_cents: i64,
     pub date: SystemTime,
     pub name: Option<String>,
-    pub category: Option<i16>,
+    pub category_id: Option<Uuid>,
     pub note: Option<String>,
 }

@@ -23,11 +23,7 @@ pub async fn get(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let user = match web::block(move || {
-        user_dao.get_user_by_id(user_id)
-    })
-    .await?
-    {
+    let user = match web::block(move || user_dao.get_user_by_id(user_id)).await? {
         Ok(u) => u,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
@@ -122,11 +118,7 @@ pub async fn get_user_by_email(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let user = match web::block(move || {
-        user_dao.get_user_by_email(&email_addr)
-    })
-    .await?
-    {
+    let user = match web::block(move || user_dao.get_user_by_email(&email_addr)).await? {
         Ok(u) => u,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
@@ -284,11 +276,7 @@ pub async fn change_password(
 ) -> Result<HttpResponse, ServerError> {
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let user = match web::block(move || {
-        user_dao.get_user_by_id(auth_user_claims.0.uid)
-    })
-    .await?
-    {
+    let user = match web::block(move || user_dao.get_user_by_id(auth_user_claims.0.uid)).await? {
         Ok(u) => u,
         Err(e) => {
             log::error!("{}", e);

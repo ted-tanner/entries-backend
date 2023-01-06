@@ -59,12 +59,9 @@ CREATE TABLE budget_share_invites (
 );
 
 CREATE TABLE categories (
-    pk SERIAL NOT NULL PRIMARY KEY,
+    id UUID NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
 
-    is_deleted BOOLEAN NOT NULL,
-
-    id SMALLINT NOT NULL,
     name VARCHAR(120) NOT NULL,
     limit_cents BIGINT NOT NULL,
     color VARCHAR(9) NOT NULL,
@@ -83,8 +80,9 @@ CREATE TABLE entries (
     amount_cents BIGINT NOT NULL,
     date TIMESTAMP NOT NULL,
     name VARCHAR(120),
-    category SMALLINT,
     note TEXT,
+
+    category_id UUID,
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
@@ -174,8 +172,9 @@ ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipi
 ALTER TABLE budget_share_invites ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
+ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE entries ADD CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

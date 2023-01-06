@@ -26,11 +26,7 @@ pub async fn sign_in(
     let user_email = credentials.email.clone();
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let user = match web::block(move || {
-        user_dao.get_user_by_email(&user_email)
-    })
-    .await?
-    {
+    let user = match web::block(move || user_dao.get_user_by_email(&user_email)).await? {
         Ok(u) => u,
         Err(_) => {
             return Err(ServerError::UserUnauthorized(Some(String::from(
@@ -336,10 +332,8 @@ pub async fn refresh_tokens(
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     // TODO: Make it so users don't have to wait for this
-    match web::block(move || {
-        auth_token::blacklist_token(refresh_token.as_str(), &mut auth_dao)
-    })
-    .await?
+    match web::block(move || auth_token::blacklist_token(refresh_token.as_str(), &mut auth_dao))
+        .await?
     {
         Ok(_) => {}
         Err(e) => {

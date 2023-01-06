@@ -1,6 +1,7 @@
 use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
+use uuid::Uuid;
 
 use crate::models::budget::Budget;
 use crate::schema::categories;
@@ -9,10 +10,8 @@ use crate::schema::categories;
 #[diesel(belongs_to(Budget, foreign_key = budget_id))]
 #[diesel(table_name = categories)]
 pub struct Category {
-    pub pk: i32,
-    pub budget_id: uuid::Uuid,
-    pub is_deleted: bool,
-    pub id: i16,
+    pub id: Uuid,
+    pub budget_id: Uuid,
     pub name: String,
     pub limit_cents: i64,
     pub color: String,
@@ -23,9 +22,8 @@ pub struct Category {
 #[derive(Clone, Debug, Insertable)]
 #[diesel(table_name = categories)]
 pub struct NewCategory<'a> {
-    pub budget_id: uuid::Uuid,
-    pub is_deleted: bool,
-    pub id: i16,
+    pub id: Uuid,
+    pub budget_id: Uuid,
     pub name: &'a str,
     pub limit_cents: i64,
     pub color: &'a str,

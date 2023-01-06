@@ -54,11 +54,9 @@ table! {
 }
 
 table! {
-    categories (pk) {
-        pk -> Int4,
+    categories (id) {
+        id -> Uuid,
         budget_id -> Uuid,
-        is_deleted -> Bool,
-        id -> Int2,
         name -> Varchar,
         limit_cents -> Int8,
         color -> Varchar,
@@ -76,8 +74,8 @@ table! {
         amount_cents -> Int8,
         date -> Timestamp,
         name -> Nullable<Varchar>,
-        category -> Nullable<Int2>,
         note -> Nullable<Text>,
+        category_id -> Nullable<Uuid>,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }
@@ -159,6 +157,8 @@ table! {
         created_timestamp -> Timestamp,
     }
 }
+
+joinable!(entries -> categories (category_id));
 
 allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,

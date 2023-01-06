@@ -23,8 +23,9 @@ pub struct Entry {
     pub amount_cents: i64,
     pub date: SystemTime,
     pub name: Option<String>,
-    pub category: Option<i16>,
     pub note: Option<String>,
+
+    pub category_id: Option<Uuid>,
 
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,
@@ -38,11 +39,13 @@ pub struct NewEntry<'a> {
     pub user_id: Uuid,
 
     pub is_deleted: bool,
+
     pub amount_cents: i64,
     pub date: SystemTime,
     pub name: Option<&'a str>,
-    pub category: Option<i16>,
     pub note: Option<&'a str>,
+
+    pub category_id: Option<Uuid>,
 
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,

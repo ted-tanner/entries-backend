@@ -554,10 +554,7 @@ pub async fn remove_budget(
     if remaining_users_in_budget == 0 {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
 
-        match web::block(move || {
-            budget_dao.delete_budget(budget_id_second_clone.budget_id)
-        })
-        .await?
+        match web::block(move || budget_dao.delete_budget(budget_id_second_clone.budget_id)).await?
         {
             Ok(_) => (),
             Err(e) => {
@@ -658,14 +655,12 @@ pub mod tests {
         let rand_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let category0 = InputCategory {
-            id: 0,
             name: format!("First Random Category {rand_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
-            id: 1,
             name: format!("Second Random Category {rand_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
@@ -769,14 +764,12 @@ pub mod tests {
         let access_token = token_pair.access_token.to_string();
 
         let category0 = InputCategory {
-            id: 0,
             name: format!("First Random Category {user_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
-            id: 1,
             name: format!("Second Random Category {user_number}"),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
@@ -815,7 +808,7 @@ pub mod tests {
             .unwrap();
 
         let created_categories = Category::belonging_to(&created_budget)
-            .order(category_fields::id.asc())
+            .order(category_fields::name.asc())
             .load::<Category>(&mut db_connection)
             .unwrap();
 
@@ -835,7 +828,6 @@ pub mod tests {
             let new_cat = &new_budget.categories[i];
 
             assert_eq!(created_cat.budget_id, created_budget.id);
-            assert_eq!(created_cat.id, new_cat.id);
             assert_eq!(created_cat.name, new_cat.name);
             assert_eq!(created_cat.limit_cents, new_cat.limit_cents);
             assert_eq!(created_cat.color, new_cat.color);
@@ -1010,7 +1002,7 @@ pub mod tests {
             date: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -1020,7 +1012,7 @@ pub mod tests {
             date: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -1088,7 +1080,7 @@ pub mod tests {
             assert_eq!(created_entries[i].amount_cents, new_entries[i].amount_cents);
             assert_eq!(created_entries[i].date, new_entries[i].date);
             assert_eq!(created_entries[i].name, new_entries[i].name);
-            assert_eq!(created_entries[i].category, new_entries[i].category);
+            assert_eq!(created_entries[i].category_id, new_entries[i].category_id);
             assert_eq!(created_entries[i].note, new_entries[i].note);
         }
     }
@@ -1960,14 +1952,12 @@ pub mod tests {
         let user2_access_token = created_user2_and_budget.token_pair.access_token.clone();
 
         let category0 = InputCategory {
-            id: 0,
             name: "First Random Category for user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
-            id: 1,
             name: "Second Random Category user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
@@ -2083,14 +2073,12 @@ pub mod tests {
         let user1_access_token = created_user1_and_budget.token_pair.access_token.clone();
 
         let category0 = InputCategory {
-            id: 0,
             name: "First Random Category for user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
-            id: 1,
             name: "Second Random Category user1_budget2".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
@@ -2828,7 +2816,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -2838,7 +2826,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -2899,7 +2887,6 @@ pub mod tests {
         for (i, fetched_cat) in budget_categories.iter().enumerate() {
             let created_cat = &created_budget.categories[i];
 
-            assert_eq!(fetched_cat.pk, created_cat.pk);
             assert_eq!(fetched_cat.budget_id, created_cat.budget_id);
             assert_eq!(fetched_cat.id, created_cat.id);
             assert_eq!(fetched_cat.name, created_cat.name);
@@ -2911,7 +2898,7 @@ pub mod tests {
             assert_eq!(budget.entries[i].amount_cents, created_entry.amount_cents);
             assert_eq!(budget.entries[i].date, created_entry.date);
             assert_eq!(budget.entries[i].name, created_entry.name);
-            assert_eq!(budget.entries[i].category, created_entry.category);
+            assert_eq!(budget.entries[i].category_id, created_entry.category_id);
             assert_eq!(budget.entries[i].note, created_entry.note);
         }
     }
@@ -2931,13 +2918,11 @@ pub mod tests {
 
         let budget_categories = vec![
             InputCategory {
-                id: created_budget0.categories[0].id,
                 name: created_budget0.categories[0].name.clone(),
                 limit_cents: created_budget0.categories[0].limit_cents,
                 color: created_budget0.categories[0].color.clone(),
             },
             InputCategory {
-                id: created_budget0.categories[1].id,
                 name: created_budget0.categories[1].name.clone(),
                 limit_cents: created_budget0.categories[1].limit_cents,
                 color: created_budget0.categories[1].color.clone(),
@@ -2962,6 +2947,8 @@ pub mod tests {
             .to_request();
 
         let create_budget1_resp = test::call_service(&app, create_budget1_req).await;
+        assert_eq!(create_budget1_resp.status(), http::StatusCode::CREATED);
+
         let create_budget1_res_body = String::from_utf8(
             actix_web::test::read_body(create_budget1_resp)
                 .await
@@ -2980,7 +2967,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -2990,7 +2977,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3000,7 +2987,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3010,7 +2997,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3095,7 +3082,6 @@ pub mod tests {
                 let fetched_cat = &budget.categories[j];
                 let created_cat = &created_budget.categories[j];
 
-                assert_eq!(fetched_cat.pk, created_cat.pk);
                 assert_eq!(fetched_cat.budget_id, created_cat.budget_id);
                 assert_eq!(fetched_cat.id, created_cat.id);
                 assert_eq!(fetched_cat.name, created_cat.name);
@@ -3110,7 +3096,10 @@ pub mod tests {
                 );
                 assert_eq!(budget.entries[j].date, created_entries[i][j].date);
                 assert_eq!(budget.entries[j].name, created_entries[i][j].name);
-                assert_eq!(budget.entries[j].category, created_entries[i][j].category);
+                assert_eq!(
+                    budget.entries[j].category_id,
+                    created_entries[i][j].category_id
+                );
                 assert_eq!(budget.entries[j].note, created_entries[i][j].note);
             }
         }
@@ -3134,14 +3123,12 @@ pub mod tests {
             .unwrap();
 
         let category0 = InputCategory {
-            id: 0,
             name: "First Random Category user".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#ff11ee"),
         };
 
         let category1 = InputCategory {
-            id: 1,
             name: "Second Random Category user".to_string(),
             limit_cents: rand::thread_rng().gen_range(100..500),
             color: String::from("#112233"),
@@ -3152,7 +3139,7 @@ pub mod tests {
         let too_early_budget = InputBudget {
             name: "Test Budget user".to_string(),
             description: Some("This is a description of Test Budget user.".to_string()),
-            categories: budget_categories.clone(),
+            categories: Vec::new(),
             start_date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..100_000_000)),
             end_date: SystemTime::UNIX_EPOCH
@@ -3310,7 +3297,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(100_000_000..200_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3320,7 +3307,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(200_000_000..300_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3330,7 +3317,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(300_000_000..400_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3340,7 +3327,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..500_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3350,7 +3337,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(500_000_000..600_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3360,7 +3347,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(600_000_000..700_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3370,7 +3357,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..800_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3380,7 +3367,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(800_000_000..900_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3390,7 +3377,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: Some("Test Entry 2 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3400,7 +3387,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(1_000_000_000..1_100_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3544,7 +3531,6 @@ pub mod tests {
                 let fetched_cat = &budget.categories[j];
                 let created_cat = &created_budget.categories[j];
 
-                assert_eq!(fetched_cat.pk, created_cat.pk);
                 assert_eq!(fetched_cat.budget_id, created_cat.budget_id);
                 assert_eq!(fetched_cat.id, created_cat.id);
                 assert_eq!(fetched_cat.name, created_cat.name);
@@ -3560,8 +3546,8 @@ pub mod tests {
                 assert_eq!(budget.entries[j].date, in_range_budget_entries[i][j].date);
                 assert_eq!(budget.entries[j].name, in_range_budget_entries[i][j].name);
                 assert_eq!(
-                    budget.entries[j].category,
-                    in_range_budget_entries[i][j].category
+                    budget.entries[j].category_id,
+                    in_range_budget_entries[i][j].category_id
                 );
                 assert_eq!(budget.entries[j].note, in_range_budget_entries[i][j].note);
             }
@@ -3583,13 +3569,11 @@ pub mod tests {
 
         let budget_categories = vec![
             InputCategory {
-                id: created_budget.categories[0].id,
                 name: created_budget.categories[0].name.clone(),
                 limit_cents: created_budget.categories[0].limit_cents,
                 color: created_budget.categories[0].color.clone(),
             },
             InputCategory {
-                id: created_budget.categories[1].id,
                 name: created_budget.categories[1].name.clone(),
                 limit_cents: created_budget.categories[1].limit_cents,
                 color: created_budget.categories[1].color.clone(),
@@ -3608,7 +3592,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(400_000_000..600_000_000)),
             name: Some("Test Entry 0 for user".to_string()),
-            category: Some(0),
+            category_id: None,
             note: Some(String::from("This is a little note")),
         };
 
@@ -3618,7 +3602,7 @@ pub mod tests {
             date: SystemTime::UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(900_000_000..1_000_000_000)),
             name: None,
-            category: None,
+            category_id: None,
             note: None,
         };
 
@@ -3719,7 +3703,6 @@ pub mod tests {
             let fetched_cat = &budget.categories[i];
             let created_cat = &created_budget.categories[i];
 
-            assert_eq!(fetched_cat.pk, created_cat.pk);
             assert_eq!(fetched_cat.budget_id, created_cat.budget_id);
             assert_eq!(fetched_cat.id, created_cat.id);
             assert_eq!(fetched_cat.name, created_cat.name);
@@ -3731,7 +3714,7 @@ pub mod tests {
             assert_eq!(budget.entries[i].amount_cents, created_entry.amount_cents);
             assert_eq!(budget.entries[i].date, created_entry.date);
             assert_eq!(budget.entries[i].name, created_entry.name);
-            assert_eq!(budget.entries[i].category, created_entry.category);
+            assert_eq!(budget.entries[i].category_id, created_entry.category_id);
             assert_eq!(budget.entries[i].note, created_entry.note);
         }
     }

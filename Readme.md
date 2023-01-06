@@ -430,6 +430,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::delete_user`
 * `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
 * `budgetapp_utils::db::user::get_user_tombstone`
+* Test creating an entry and associating it with an entry
 
 ### Minimum Viable Product
 
