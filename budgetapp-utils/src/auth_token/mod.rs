@@ -367,7 +367,7 @@ mod tests {
     fn test_create_token() {
         let claims = TokenClaims {
             exp: 123456789,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -376,7 +376,7 @@ mod tests {
 
         let claims_different = TokenClaims {
             exp: 123456788,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -411,7 +411,7 @@ mod tests {
     fn test_claims_from_token_with_validation() {
         let claims = TokenClaims {
             exp: u64::MAX,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -440,7 +440,7 @@ mod tests {
     fn test_token_validation_fails_with_wrong_key() {
         let claims = TokenClaims {
             exp: u64::MAX,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -465,7 +465,7 @@ mod tests {
     fn test_token_validation_fails_when_expired() {
         let claims = TokenClaims {
             exp: 1657076995,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -490,7 +490,7 @@ mod tests {
     fn test_claims_from_token_without_validation() {
         let claims = TokenClaims {
             exp: 1657076995,
-            uid: parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             cur: String::from("USD"),
             typ: u8::from(TokenType::Access),
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_generate_access_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_generate_refresh_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -610,7 +610,7 @@ mod tests {
 
     #[test]
     fn test_generate_signin_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -660,7 +660,7 @@ mod tests {
 
     #[test]
     fn test_generate_token_pair() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -732,7 +732,7 @@ mod tests {
 
     #[test]
     fn test_generate_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn test_validate_access_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -915,7 +915,7 @@ mod tests {
     fn test_validate_refresh_token() {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
 
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -992,7 +992,7 @@ mod tests {
 
     #[test]
     fn test_validate_signin_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1064,7 +1064,7 @@ mod tests {
 
     #[test]
     fn test_validate_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1147,7 +1147,7 @@ mod tests {
 
     #[test]
     fn test_validate_tokens_does_not_validate_tokens_of_wrong_type() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1218,7 +1218,7 @@ mod tests {
 
     #[test]
     fn test_read_claims() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1297,7 +1297,7 @@ mod tests {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1346,7 +1346,7 @@ mod tests {
         let db_thread_pool = &*test_env::db::DB_THREAD_POOL;
         let mut db_connection = db_thread_pool.get().unwrap();
 
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1389,7 +1389,7 @@ mod tests {
 
     #[test]
     fn test_is_access_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1425,7 +1425,7 @@ mod tests {
 
     #[test]
     fn test_is_refresh_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
@@ -1461,7 +1461,7 @@ mod tests {
 
     #[test]
     fn test_is_signin_token() {
-        let user_id = new_v4();
+        let user_id = Uuid::new_v4();
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
         let timestamp = SystemTime::now();
         let new_user = NewUser {
