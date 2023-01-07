@@ -53,9 +53,7 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
-            let mut job_runner = env::runner::JOB_RUNNER
-                .lock()
-                .await;
+            let mut job_runner = env::runner::JOB_RUNNER.lock().await;
 
             job_runner.register(Box::new(ClearOtpAttemptsJob::new(
                 Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
