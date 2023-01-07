@@ -10,4 +10,5 @@ pub mod password_attempts;
 pub mod user;
 pub mod user_budget;
 pub mod user_deletion_request;
+pub mod user_notification;
 pub mod user_tombstone;

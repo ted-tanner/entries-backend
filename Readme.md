@@ -431,11 +431,16 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
 * `budgetapp_utils::db::user::get_user_tombstone`
 * Test creating an entry and associating it with a budget
+* `budgetapp_utils::db::user::create_notification`
+* `budgetapp_utils::db::user::mark_notification_touched`
+* `budgetapp_utils::db::user::mark_notifications_read`
+* `budgetapp_utils::db::user::get_unread_notifications`
 
 ### Minimum Viable Product
 
 * User notifications
 * Create notification for budget invitations and buddy requests
+* Create endpoint for getting unread notifications for a user
 * Create endpoint that accepts a list of notifications that are no longer pristine
 * Create endpoint for marking an endpoint as touched
 
@@ -479,6 +484,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Replace all Diesel `sql_query`s with Diesel's DSL syntax
 * Budget comments, entry comments

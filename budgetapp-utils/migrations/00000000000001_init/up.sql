@@ -145,17 +145,11 @@ CREATE TABLE user_notifications (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     user_id UUID NOT NULL,
 
-    is_unread BOOLEAN NOT NULL, -- Hasn't been seen
     is_pristine BOOLEAN NOT NULL, -- Hasn't been tapped on
-    is_deleted BOOLEAN NOT NULL,
+    is_unread BOOLEAN NOT NULL, -- Hasn't been seen
 
-    notification_type SMALLINT NOT NULL,
-    alt_title VARCHAR(500) NOT NULL,
-    alt_message VARCHAR(500) NOT NULL,
-
-    -- Can hold things like associated user, budget, or comment IDs
-    associated_data TEXT,
-    -- Be sure to check to make sure the data the IDs pertain to still exist!
+    notification_type VARCHAR(40) NOT NULL,
+    payload TEXT NOT NULL, -- A JSON structure
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL

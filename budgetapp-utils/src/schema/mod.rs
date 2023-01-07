@@ -121,13 +121,10 @@ table! {
     user_notifications (id) {
         id -> Uuid,
         user_id -> Uuid,
-        is_unread -> Bool,
         is_pristine -> Bool,
-        is_deleted -> Bool,
-        notification_type -> Int2,
-        alt_title -> Varchar,
-        alt_message -> Varchar,
-        associated_data -> Nullable<Text>,
+        is_unread -> Bool,
+        notification_type -> Varchar,
+        payload -> Text,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }

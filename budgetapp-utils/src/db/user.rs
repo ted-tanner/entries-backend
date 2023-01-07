@@ -9,6 +9,7 @@ use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
+use crate::models::user_notification::{NewUserNotification, UserNotification};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
 use crate::request_io::{InputEditUser, InputUser};
@@ -18,6 +19,8 @@ use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+use crate::schema::user_notifications as user_notification_fields;
+use crate::schema::user_notifications::dsl::user_notifications;
 use crate::schema::user_tombstones as user_tombstone_fields;
 use crate::schema::user_tombstones::dsl::user_tombstones;
 use crate::schema::users as user_fields;
@@ -80,7 +83,7 @@ impl Dao {
         user_id: Uuid,
         edited_user_data: &InputEditUser,
     ) -> Result<usize, DaoError> {
-        Ok(dsl::update(users.filter(user_fields::id.eq(user_id)))
+        Ok(dsl::update(users.find(user_id))
             .set((
                 user_fields::modified_timestamp.eq(SystemTime::now()),
                 user_fields::first_name.eq(&edited_user_data.first_name),
@@ -101,7 +104,7 @@ impl Dao {
         let hashed_password =
             password_hasher::hash_password(new_password, hash_params, hashing_secret_key);
 
-        dsl::update(users.filter(user_fields::id.eq(user_id)))
+        dsl::update(users.find(user_id))
             .set(user_fields::password_hash.eq(hashed_password))
             .execute(&mut self.db_thread_pool.get()?)?;
 
@@ -280,6 +283,76 @@ impl Dao {
             ),
         ))
         .get_result(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn create_notification(
+        &mut self,
+        user_id: Uuid,
+        notification_type: &str,
+        payload: &str,
+    ) -> Result<usize, DaoError> {
+        let new_notification = NewUserNotification {
+            id: Uuid::new_v4(),
+            user_id,
+            is_pristine: true,
+            is_unread: true,
+            notification_type,
+            payload,
+            modified_timestamp: SystemTime::now(),
+            created_timestamp: SystemTime::now(),
+        };
+
+        Ok(dsl::insert_into(user_notifications)
+            .values(&new_notification)
+            .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn mark_notification_touched(
+        &mut self,
+        notification_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<usize, DaoError> {
+        Ok(dsl::update(
+            user_notifications
+                .find(notification_id)
+                .filter(user_notification_fields::user_id.eq(user_id)),
+        )
+        .set((
+            user_notification_fields::is_pristine.eq(false),
+            user_notification_fields::is_unread.eq(false),
+            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn mark_notifications_read(
+        &mut self,
+        notification_ids: Vec<Uuid>,
+        user_id: Uuid,
+    ) -> Result<usize, DaoError> {
+        Ok(dsl::update(
+            user_notifications
+                .filter(user_notification_fields::id.eq_any(notification_ids))
+                .filter(user_notification_fields::user_id.eq(user_id)),
+        )
+        .set((
+            user_notification_fields::is_unread.eq(false),
+            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn get_unread_notifications(
+        &mut self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserNotification>, DaoError> {
+        Ok(user_notifications
+            .filter(user_notification_fields::user_id.eq(user_id))
+            .get_results::<UserNotification>(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
