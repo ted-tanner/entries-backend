@@ -89,7 +89,7 @@ pub mod db {
 }
 
 pub mod runner {
-    use std::sync::Mutex;
+    use futures::lock::Mutex;
     use std::time::Duration;
 
     use super::*;
