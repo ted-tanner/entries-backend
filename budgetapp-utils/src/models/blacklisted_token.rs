@@ -1,6 +1,7 @@
 use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
+use uuid::Uuid;
 
 use crate::schema::blacklisted_tokens;
 
@@ -9,7 +10,7 @@ use crate::schema::blacklisted_tokens;
 pub struct BlacklistedToken {
     pub id: i32,
     pub token: String,
-    pub user_id: uuid::Uuid,
+    pub user_id: Uuid,
     pub token_expiration_time: SystemTime,
 }
 
@@ -17,6 +18,6 @@ pub struct BlacklistedToken {
 #[diesel(table_name = blacklisted_tokens)]
 pub struct NewBlacklistedToken<'a> {
     pub token: &'a str,
-    pub user_id: uuid::Uuid,
+    pub user_id: Uuid,
     pub token_expiration_time: SystemTime,
 }

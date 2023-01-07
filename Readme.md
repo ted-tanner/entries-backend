@@ -434,6 +434,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* User notifications
+* Create notification for budget invitations and buddy requests
+* Create endpoint that accepts a list of notifications that are no longer pristine
+* Create endpoint for marking an endpoint as touched
+
 *By 9/16*
 
 * Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)?
@@ -461,15 +466,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 11/25*
 
-* Pass db_thread_pool to db utils instead of trying to obtain db_connections in the handler 
 * `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`). Instead, pass fields as params
-* Move `cron` crate into `utils`
-* Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Security check endpoints: make sure users can't access other users' data
 
 *By 12/9*
 
-* User notifications
 * In-app purchases
   - Cancel subscription if user is deleted
 * Email notifications for the following:
@@ -478,6 +479,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Replace all Diesel `sql_query`s with Diesel's DSL syntax
 * Budget comments, entry comments
   - Reactions to said comments

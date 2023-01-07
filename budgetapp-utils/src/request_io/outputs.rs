@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
+use uuid::Uuid;
 
 use crate::models::category::Category;
 use crate::models::entry::Entry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
-    pub id: uuid::Uuid,
+    pub id: Uuid,
 
     pub is_premium: bool,
     pub premium_expiration: Option<SystemTime>,
@@ -23,7 +24,7 @@ pub struct OutputUserPrivate {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserForBuddies {
-    pub id: uuid::Uuid,
+    pub id: Uuid,
     pub is_premium: bool,
     pub email: String,
     pub first_name: String,
@@ -33,7 +34,7 @@ pub struct OutputUserForBuddies {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPublic {
-    pub id: uuid::Uuid,
+    pub id: Uuid,
     pub first_name: String,
     pub last_name: String,
     pub currency: String,
@@ -52,7 +53,7 @@ pub struct TokenPair {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputBudget {
-    pub id: uuid::Uuid,
+    pub id: Uuid,
     pub is_deleted: bool,
 
     pub name: String,
