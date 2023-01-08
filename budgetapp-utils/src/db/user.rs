@@ -154,6 +154,17 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
+    // TODO: Test
+    pub fn delete_buddy_request_notification(
+        &mut self,
+        request_id: Uuid,
+    ) -> Result<usize, DaoError> {
+        Ok(diesel::delete(user_notifications.filter(
+            dsl::sql::<sql_types::Bool>("payload->>'buddy_request_id' = '$1'").bind::<sql_types::Uuid, _>(request_id),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
     pub fn mark_buddy_request_accepted(
         &mut self,
         request_id: Uuid,

@@ -432,6 +432,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::get_user_tombstone`
 * Test creating an entry and associating it with a budget
 * `budgetapp_utils::db::user::create_notification`
+* `budgetapp_utils::db::user::delete_buddy_request_notification`
 * `budgetapp_utils::db::user::mark_notification_touched`
 * `budgetapp_utils::db::user::mark_notifications_read`
 * `budgetapp_utils::db::user::get_unread_notifications`

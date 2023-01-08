@@ -448,6 +448,8 @@ pub async fn retract_buddy_request(
         },
     }
 
+    // TODO: user_dao.delete_buddy_request_notification()
+
     Ok(HttpResponse::Ok().finish())
 }
 
