@@ -438,12 +438,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_server::handlers::user::mark_notification_touched`
 * `budgetapp_server::handlers::user::mark_notifications_read`
 * `budgetapp_server::handlers::user::get_unread_notifications`
+* Test notification gets created during execution of `budgetapp_server::handlers::user::send_buddy_request`
 
 ### Minimum Viable Product
 
-* User notifications
-* Create notification for budget invitations and buddy requests
 * Job to delete read notifications that were edited more than X time ago
+* Create notification for buddy request accepted
+* Create notification for budget invitations sent
+* Create notification for budget invitations accepted
+* Document notification types
 
 *By 9/16*
 

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::buddy_relationship::NewBuddyRelationship;
+use crate::models::buddy_relationship::{BuddyRelationship, NewBuddyRelationship};
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
@@ -116,7 +116,7 @@ impl Dao {
         &mut self,
         recipient_user_id: Uuid,
         sender_user_id: Uuid,
-    ) -> Result<usize, DaoError> {
+    ) -> Result<BuddyRequest, DaoError> {
         let request = NewBuddyRequest {
             id: Uuid::new_v4(),
             recipient_user_id,
@@ -138,7 +138,7 @@ impl Dao {
                 buddy_request_fields::created_timestamp.eq(SystemTime::now()),
                 buddy_request_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
             ))
-            .execute(&mut self.db_thread_pool.get()?)?)
+            .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_request(
@@ -229,7 +229,7 @@ impl Dao {
         &mut self,
         user1_id: Uuid,
         user2_id: Uuid,
-    ) -> Result<usize, DaoError> {
+    ) -> Result<BuddyRelationship, DaoError> {
         let current_time = SystemTime::now();
 
         let relationship = NewBuddyRelationship {
@@ -240,7 +240,7 @@ impl Dao {
 
         Ok(dsl::insert_into(buddy_relationships)
             .values(&relationship)
-            .execute(&mut self.db_thread_pool.get()?)?)
+            .get_result::<BuddyRelationship>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_relationship(
@@ -292,7 +292,7 @@ impl Dao {
         user_id: Uuid,
         notification_type: &str,
         payload: &str,
-    ) -> Result<usize, DaoError> {
+    ) -> Result<UserNotification, DaoError> {
         let new_notification = NewUserNotification {
             id: Uuid::new_v4(),
             user_id,
@@ -306,7 +306,7 @@ impl Dao {
 
         Ok(dsl::insert_into(user_notifications)
             .values(&new_notification)
-            .execute(&mut self.db_thread_pool.get()?)?)
+            .get_result::<UserNotification>(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test
@@ -805,27 +805,17 @@ pub mod tests {
 
         assert_eq!(created_buddy_requests.len(), 0);
 
-        dao.send_buddy_request(created_user2.id, created_user1.id)
+        let created_buddy_request = dao
+            .send_buddy_request(created_user2.id, created_user1.id)
             .unwrap();
 
-        let created_buddy_requests = buddy_requests
-            .filter(buddy_request_fields::recipient_user_id.eq(created_user2.id))
-            .filter(buddy_request_fields::sender_user_id.eq(created_user1.id))
-            .load::<BuddyRequest>(&mut db_connection)
-            .unwrap();
+        assert_eq!(created_buddy_request.recipient_user_id, created_user2.id);
+        assert_eq!(created_buddy_request.sender_user_id, created_user1.id);
 
-        assert_eq!(created_buddy_requests.len(), 1);
+        assert!(!created_buddy_request.accepted);
 
-        assert_eq!(
-            created_buddy_requests[0].recipient_user_id,
-            created_user2.id
-        );
-        assert_eq!(created_buddy_requests[0].sender_user_id, created_user1.id);
-
-        assert!(!created_buddy_requests[0].accepted);
-
-        assert!(created_buddy_requests[0].created_timestamp < SystemTime::now());
-        assert_eq!(created_buddy_requests[0].accepted_declined_timestamp, None);
+        assert!(created_buddy_request.created_timestamp < SystemTime::now());
+        assert_eq!(created_buddy_request.accepted_declined_timestamp, None);
     }
 
     #[test]
@@ -1199,26 +1189,15 @@ pub mod tests {
         assert_eq!(buddy_relationships12.len(), 0);
         assert_eq!(buddy_relationships34.len(), 0);
 
-        dao.create_buddy_relationship(created_user1.id, created_user2.id)
+        let buddy_relationship12 = dao
+            .create_buddy_relationship(created_user1.id, created_user2.id)
             .unwrap();
-        dao.create_buddy_relationship(created_user4.id, created_user3.id)
-            .unwrap();
-
-        let buddy_relationships12 = buddy_relationships
-            .filter(buddy_relationship_fields::user1_id.eq(created_user1.id))
-            .load::<BuddyRelationship>(&mut db_connection)
+        let buddy_relationship34 = dao
+            .create_buddy_relationship(created_user4.id, created_user3.id)
             .unwrap();
 
-        let buddy_relationships34 = buddy_relationships
-            .filter(buddy_relationship_fields::user2_id.eq(created_user3.id))
-            .load::<BuddyRelationship>(&mut db_connection)
-            .unwrap();
-
-        assert_eq!(buddy_relationships12.len(), 1);
-        assert_eq!(buddy_relationships34.len(), 1);
-
-        assert!(buddy_relationships12[0].created_timestamp < SystemTime::now());
-        assert!(buddy_relationships34[0].created_timestamp < SystemTime::now());
+        assert!(buddy_relationship12.created_timestamp < SystemTime::now());
+        assert!(buddy_relationship34.created_timestamp < SystemTime::now());
     }
 
     #[test]

@@ -8,6 +8,7 @@ use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpRequest, HttpResponse};
+use serde_json::json;
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -358,13 +359,14 @@ pub async fn send_buddy_request(
         ))));
     }
 
-    match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+
+    let buddy_request = match web::block(move || {
         user_dao.send_buddy_request(other_user_id.user_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(_) => (),
+        Ok(req) => req,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
@@ -372,13 +374,43 @@ pub async fn send_buddy_request(
             }
             _ => {
                 log::error!("{}", e);
-                println!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to create buddy request",
                 ))));
             }
         },
-    }
+    };
+
+    // TODO: Test notification created
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+    let buddy_request_id = buddy_request.id;
+
+    match web::block(move || {
+        let notification_payload = json!({
+            "buddy_request_id": buddy_request.id,
+            "requester_user_id": buddy_request.sender_user_id,
+        });
+
+        user_dao.create_notification(
+            buddy_request.recipient_user_id,
+            "buddy_request",
+            &notification_payload.to_string(),
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!(
+                "Created buddy request {}, but failed to send notification: {}",
+                buddy_request_id,
+                e
+            );
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Created buddy request, but failed to send notification",
+            ))));
+        }
+    };
 
     Ok(HttpResponse::Ok().finish())
 }
