@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 base64 = "0.13"
-diesel = { version = "2.0", features = ["postgres", "uuid", "r2d2"] }
+diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
 hex = "0.4"
 hmac = "0.12"
 lazy_static = "1.4"

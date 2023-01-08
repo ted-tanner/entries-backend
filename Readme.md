@@ -444,8 +444,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Job to delete read notifications that were edited more than X time ago
 * Create notification for buddy request accepted
+* If buddy request retracted, delete notification (query notification using data from JSONB field)
 * Create notification for budget invitations sent
 * Create notification for budget invitations accepted
+* If budget invitation retracted, delete notification
 * Document notification types
 
 *By 9/16*

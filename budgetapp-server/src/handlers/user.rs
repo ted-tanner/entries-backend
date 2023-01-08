@@ -394,7 +394,7 @@ pub async fn send_buddy_request(
         user_dao.create_notification(
             buddy_request.recipient_user_id,
             "buddy_request",
-            &notification_payload.to_string(),
+            &notification_payload,
         )
     })
     .await?

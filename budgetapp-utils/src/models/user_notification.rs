@@ -17,7 +17,7 @@ pub struct UserNotification {
     pub is_unread: bool,
 
     pub notification_type: String,
-    pub payload: String,
+    pub payload: serde_json::Value,
 
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,
@@ -33,7 +33,7 @@ pub struct NewUserNotification<'a> {
     pub is_unread: bool,
 
     pub notification_type: &'a str,
-    pub payload: &'a str,
+    pub payload: &'a serde_json::Value,
 
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,

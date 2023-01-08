@@ -124,7 +124,7 @@ table! {
         is_pristine -> Bool,
         is_unread -> Bool,
         notification_type -> Varchar,
-        payload -> Text,
+        payload -> Jsonb,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }

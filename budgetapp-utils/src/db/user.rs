@@ -291,7 +291,7 @@ impl Dao {
         &mut self,
         user_id: Uuid,
         notification_type: &str,
-        payload: &str,
+        payload: &serde_json::Value,
     ) -> Result<UserNotification, DaoError> {
         let new_notification = NewUserNotification {
             id: Uuid::new_v4(),

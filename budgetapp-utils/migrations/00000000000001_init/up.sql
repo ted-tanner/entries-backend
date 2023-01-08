@@ -149,7 +149,7 @@ CREATE TABLE user_notifications (
     is_unread BOOLEAN NOT NULL, -- Hasn't been seen
 
     notification_type VARCHAR(40) NOT NULL,
-    payload TEXT NOT NULL, -- A JSON structure
+    payload JSONB NOT NULL, -- A JSON structure
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
