@@ -1,6 +1,7 @@
 use diesel::{
     dsl, sql_query, sql_types, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
+use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -309,6 +310,35 @@ impl Dao {
     }
 
     // TODO: Test
+    pub fn get_unread_notifications(
+        &mut self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserNotification>, DaoError> {
+        Ok(user_notifications
+            .filter(user_notification_fields::user_id.eq(user_id))
+            .order_by(user_notification_fields::created_timestamp.asc())
+            .get_results::<UserNotification>(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn mark_notifications_read(
+        &mut self,
+        notification_ids: HashSet<Uuid>,
+        user_id: Uuid,
+    ) -> Result<usize, DaoError> {
+        Ok(dsl::update(
+            user_notifications
+                .filter(user_notification_fields::id.eq_any(notification_ids))
+                .filter(user_notification_fields::user_id.eq(user_id)),
+        )
+        .set((
+            user_notification_fields::is_unread.eq(false),
+            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
     pub fn mark_notification_touched(
         &mut self,
         notification_id: Uuid,
@@ -325,34 +355,6 @@ impl Dao {
             user_notification_fields::modified_timestamp.eq(SystemTime::now()),
         ))
         .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn mark_notifications_read(
-        &mut self,
-        notification_ids: Vec<Uuid>,
-        user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(dsl::update(
-            user_notifications
-                .filter(user_notification_fields::id.eq_any(notification_ids))
-                .filter(user_notification_fields::user_id.eq(user_id)),
-        )
-        .set((
-            user_notification_fields::is_unread.eq(false),
-            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
-        ))
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn get_unread_notifications(
-        &mut self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserNotification>, DaoError> {
-        Ok(user_notifications
-            .filter(user_notification_fields::user_id.eq(user_id))
-            .get_results::<UserNotification>(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test

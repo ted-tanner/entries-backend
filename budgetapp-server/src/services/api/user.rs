@@ -48,6 +48,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/delete_buddy_relationship",
                 web::delete().to(handlers::user::delete_buddy_relationship),
             )
-            .route("/get_buddies", web::get().to(handlers::user::get_buddies)),
+            .route("/get_buddies", web::get().to(handlers::user::get_buddies))
+            .route(
+                "/get_unread_notifications",
+                web::get().to(handlers::user::get_unread_notifications),
+            )
+            .route(
+                "/mark_notifications_read",
+                web::put().to(handlers::user::mark_notifications_read),
+            )
+            .route(
+                "/mark_notification_touched",
+                web::put().to(handlers::user::mark_notification_touched),
+            ),
     );
 }

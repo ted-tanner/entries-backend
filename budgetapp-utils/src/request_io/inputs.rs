@@ -145,3 +145,13 @@ pub struct InputEntry {
     pub category_id: Option<Uuid>,
     pub note: Option<String>,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputNotificationId {
+    pub notification_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputNotificationIdList {
+    pub notification_ids: Vec<Uuid>,
+}

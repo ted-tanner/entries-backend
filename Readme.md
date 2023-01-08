@@ -435,14 +435,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::mark_notification_touched`
 * `budgetapp_utils::db::user::mark_notifications_read`
 * `budgetapp_utils::db::user::get_unread_notifications`
+* `budgetapp_server::handlers::user::mark_notification_touched`
+* `budgetapp_server::handlers::user::mark_notifications_read`
+* `budgetapp_server::handlers::user::get_unread_notifications`
 
 ### Minimum Viable Product
 
 * User notifications
 * Create notification for budget invitations and buddy requests
-* Create endpoint for getting unread notifications for a user
-* Create endpoint that accepts a list of notifications that are no longer pristine
-* Create endpoint for marking an endpoint as touched
+* Job to delete read notifications that were edited more than X time ago
 
 *By 9/16*
 
