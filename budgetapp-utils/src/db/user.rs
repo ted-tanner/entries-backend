@@ -18,6 +18,10 @@ use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
 use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
+use crate::schema::budgets as budget_fields;
+use crate::schema::budgets::dsl::budgets;
+use crate::schema::user_budgets as user_budget_fields;
+use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_notifications as user_notification_fields;
@@ -159,9 +163,12 @@ impl Dao {
         &mut self,
         request_id: Uuid,
     ) -> Result<usize, DaoError> {
-        Ok(diesel::delete(user_notifications.filter(
-            dsl::sql::<sql_types::Bool>("payload->>'buddy_request_id' = '$1'").bind::<sql_types::Uuid, _>(request_id),
-        ))
+        Ok(diesel::delete(
+            user_notifications.filter(
+                dsl::sql::<sql_types::Bool>("payload->>'buddy_request_id' = '$1'")
+                    .bind::<sql_types::Uuid, _>(request_id),
+            ),
+        )
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
@@ -407,14 +414,15 @@ impl Dao {
             .values(&new_tombstone)
             .execute(&mut db_connection)?;
 
-        let delete_budgets_query = "DELETE FROM budgets b \
-                                    WHERE ( \
-                                    SELECT COUNT(*) FROM user_budgets ub WHERE ub.user_id = $1 \
-                                    AND b.id = ub.budget_id \
-                                    ) = 1";
-
-        sql_query(delete_budgets_query)
-            .bind::<sql_types::Uuid, _>(request.user_id)
+        diesel::delete(budgets)
+            .filter(
+                user_budgets
+                    .filter(user_budget_fields::user_id.eq(request.user_id))
+                    .filter(budget_fields::id.eq(user_budget_fields::budget_id))
+                    .count()
+                    .single_value()
+                    .eq(1),
+            )
             .execute(&mut db_connection)?;
 
         let delete_user_res =
