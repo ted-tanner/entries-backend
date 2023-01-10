@@ -6,10 +6,11 @@ use std::io::Read;
 pub struct Conf {
     pub connections: Connections,
     pub runner: RunnerConf,
-    pub clear_otp_attempts_job: ClearOtpAttemptsJob,
-    pub clear_password_attempts_job: ClearPasswordAttemptsJob,
-    pub delete_users_job: DeleteUsersJob,
-    pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJob,
+    pub clear_old_notifications_job: ClearOldNotificationsJobConf,
+    pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
+    pub clear_password_attempts_job: ClearPasswordAttemptsJobConf,
+    pub delete_users_job: DeleteUsersJobConf,
+    pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJobConf,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -26,24 +27,30 @@ pub struct RunnerConf {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ClearOtpAttemptsJob {
+pub struct ClearOldNotificationsJobConf {
+    pub job_frequency_secs: u64,
+    pub max_notification_age_days: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClearOtpAttemptsJobConf {
     pub job_frequency_secs: u64,
     pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ClearPasswordAttemptsJob {
+pub struct ClearPasswordAttemptsJobConf {
     pub job_frequency_secs: u64,
     pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct DeleteUsersJob {
+pub struct DeleteUsersJobConf {
     pub job_frequency_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct UnblacklistExpiredRefreshTokensJob {
+pub struct UnblacklistExpiredRefreshTokensJobConf {
     pub job_frequency_secs: u64,
 }
 

@@ -376,6 +376,16 @@ impl Dao {
     }
 
     // TODO: Test
+    pub fn clear_old_notifications(&mut self, max_age: Duration) -> Result<usize, DaoError> {
+        Ok(diesel::delete(
+            user_notifications
+                .filter(user_notification_fields::created_timestamp.lt(SystemTime::now() - max_age))
+                .filter(user_notification_fields::is_unread.eq(false)),
+        )
+        .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
     pub fn initiate_user_deletion(
         &mut self,
         user_id: Uuid,

@@ -9,8 +9,12 @@ update_frequency_secs = 10
 worker_threads = 2
 max_blocking_threads = 32
 
+[clear_old_notifications_job]
+job_frequency_secs = 604800 # One week
+max_notification_age_days = 90
+
 [clear_otp_attempts_job]
-job_frequency_secs = 120
+job_frequency_secs = 120 
 attempts_lifetime_mins = 15
 
 [clear_password_attempts_job]
@@ -18,7 +22,7 @@ job_frequency_secs = 120
 attempts_lifetime_mins = 15
 
 [delete_users_job]
-job_frequency_secs = 86400
+job_frequency_secs = 86400 # One day
 
 [unblacklist_expired_refresh_tokens_job]
-job_frequency_secs = 86400
+job_frequency_secs = 86400 # One day
