@@ -381,37 +381,6 @@ pub async fn send_buddy_request(
         },
     };
 
-    // TODO: Test notification created
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
-    let buddy_request_id = buddy_request.id;
-
-    match web::block(move || {
-        let notification_payload = json!({
-            "buddy_request_id": buddy_request.id,
-            "requester_user_id": buddy_request.sender_user_id,
-        });
-
-        user_dao.create_notification(
-            buddy_request.recipient_user_id,
-            "buddy_request",
-            &notification_payload,
-        )
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!(
-                "Created buddy request {}, but failed to send notification: {}",
-                buddy_request_id,
-                e
-            );
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Created buddy request, but failed to send notification",
-            ))));
-        }
-    };
-
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -447,8 +416,6 @@ pub async fn retract_buddy_request(
             }
         },
     }
-
-    // TODO: user_dao.delete_buddy_request_notification()
 
     Ok(HttpResponse::Ok().finish())
 }

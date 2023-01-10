@@ -439,7 +439,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_server::handlers::user::mark_notification_touched`
 * `budgetapp_server::handlers::user::mark_notifications_read`
 * `budgetapp_server::handlers::user::get_unread_notifications`
-* Test notification gets created during execution of `budgetapp_server::handlers::user::send_buddy_request`
 
 ### Minimum Viable Product
 
@@ -450,6 +449,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Create notification for budget invitations accepted
 * If budget invitation retracted, delete notification
 * Document notification types
+
+- Maybe make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 
 *By 9/16*
 
