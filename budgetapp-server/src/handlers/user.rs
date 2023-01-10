@@ -8,7 +8,6 @@ use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpRequest, HttpResponse};
-use serde_json::json;
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -361,12 +360,12 @@ pub async fn send_buddy_request(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let buddy_request = match web::block(move || {
+    match web::block(move || {
         user_dao.send_buddy_request(other_user_id.user_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(req) => req,
+        Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
@@ -379,7 +378,7 @@ pub async fn send_buddy_request(
                 ))));
             }
         },
-    };
+    }
 
     Ok(HttpResponse::Ok().finish())
 }
