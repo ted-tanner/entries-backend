@@ -45,6 +45,7 @@ pub struct SigninToken {
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
+    pub server_time: u128,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

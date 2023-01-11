@@ -453,18 +453,19 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_server::handlers::user::mark_notifications_read`
 * `budgetapp_server::handlers::user::get_unread_notifications`
 * Test all token error cases in `budgetapp_server::handlers::auth`. Test sending blacklisted token, expired token, etc. and make sure the proper HTTP status is returned and user does not get authenticated
+* Test the `server_time` returned by all handlers in `budgetapp_server::handlers::auth` that return a token pair.
 
 ### Minimum Viable Product
 
-* Record user's last refresh token time (whether that is login or just refreshing)
-* Send server time on login. The client will use this for determining the staleness of data.
-* Send the server's time in the heartbeat
+* Save time TOTP was created in a user model and use that to validate TOTP
+* Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.
   - Tombstones need to be associated with a user_id for security and for deletion purposes.
   - The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted. Make sure this only works with the proper authorization and user_id from a token.
   - `item_id` in `tombstone` table is the primary key and the ID of the deleted item
   - Tombstones should be cleared after 366 days
 * Password reset flow
+* Send the server's time in the heartbeat?
 
 *By 9/16*
 

@@ -283,6 +283,10 @@ pub async fn verify_otp_for_signin(
     let token_pair = TokenPair {
         access_token: token_pair.access_token.to_string(),
         refresh_token: token_pair.refresh_token.to_string(),
+        server_time: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_millis(),
     };
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -383,6 +387,10 @@ pub async fn refresh_tokens(
     let token_pair = TokenPair {
         access_token: token_pair.access_token.to_string(),
         refresh_token: token_pair.refresh_token.to_string(),
+        server_time: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_millis(),
     };
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
