@@ -112,6 +112,7 @@ CREATE TABLE users (
     date_of_birth TIMESTAMP NOT NULL,
     currency VARCHAR(3) NOT NULL,
 
+    last_token_refresh_timestamp TIMESTAMP NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
 );

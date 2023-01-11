@@ -148,6 +148,7 @@ table! {
         last_name -> Varchar,
         date_of_birth -> Timestamp,
         currency -> Varchar,
+        last_token_refresh_timestamp -> Timestamp,
         modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }

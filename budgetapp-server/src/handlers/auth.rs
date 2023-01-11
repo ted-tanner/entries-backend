@@ -155,6 +155,11 @@ pub async fn verify_otp_for_signin(
                     "Token has expired",
                 ))));
             }
+            auth_token::TokenError::TokenBlacklisted => {
+                return Err(ServerError::UserUnauthorized(Some(String::from(
+                    "Token has been blacklisted",
+                ))));
+            }
             auth_token::TokenError::WrongTokenType => {
                 return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Incorrect token type",
@@ -169,8 +174,9 @@ pub async fn verify_otp_for_signin(
         },
     };
 
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
     let attempts = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_and_increment_otp_verification_count(
             token_claims.uid,
             Duration::from_secs(env::CONF.security.otp_attempts_reset_mins * 60),
@@ -279,6 +285,15 @@ pub async fn verify_otp_for_signin(
         refresh_token: token_pair.refresh_token.to_string(),
     };
 
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+
+    // TODO: Test this
+    // TODO: Make it so users don't have to wait for this
+    match web::block(move || user_dao.set_last_token_refresh_now(token_claims.uid)).await? {
+        Ok(_) => (),
+        Err(e) => log::error!("{}", e),
+    };
+
     Ok(HttpResponse::Ok().json(token_pair))
 }
 
@@ -368,6 +383,15 @@ pub async fn refresh_tokens(
     let token_pair = TokenPair {
         access_token: token_pair.access_token.to_string(),
         refresh_token: token_pair.refresh_token.to_string(),
+    };
+
+    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+
+    // TODO: Test this
+    // TODO: Make it so users don't have to wait for this
+    match web::block(move || user_dao.set_last_token_refresh_now(claims.uid)).await? {
+        Ok(_) => (),
+        Err(e) => log::error!("{}", e),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))

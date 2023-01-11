@@ -71,14 +71,22 @@ impl Dao {
             first_name: &user_data.first_name,
             last_name: &user_data.last_name,
             date_of_birth: user_data.date_of_birth,
+            currency: &user_data.currency,
+            last_token_refresh_timestamp: current_time,
             modified_timestamp: current_time,
             created_timestamp: current_time,
-            currency: &user_data.currency,
         };
 
         Ok(dsl::insert_into(users)
             .values(&new_user)
             .get_result::<User>(&mut self.db_thread_pool.get()?)?)
+    }
+
+    // TODO: Test
+    pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
+        Ok(dsl::update(users.find(user_id))
+            .set(user_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
+            .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn edit_user(
@@ -377,7 +385,9 @@ impl Dao {
     pub fn clear_old_notifications(&mut self, max_age: Duration) -> Result<usize, DaoError> {
         Ok(diesel::delete(
             user_notifications
-                .filter(user_notification_fields::modified_timestamp.lt(SystemTime::now() - max_age))
+                .filter(
+                    user_notification_fields::modified_timestamp.lt(SystemTime::now() - max_age),
+                )
                 .filter(user_notification_fields::is_unread.eq(false)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
@@ -690,9 +700,7 @@ pub mod tests {
         assert_eq!(&user_after.last_name, &user_before.last_name);
         assert_eq!(&user_after.date_of_birth, &user_before.date_of_birth);
         assert_eq!(&user_after.currency, &user_before.currency);
-
         assert_eq!(&user_after.password_hash, &user_before.password_hash);
-
         assert_eq!(&user_after.first_name, &user_edits.first_name);
     }
 
@@ -739,7 +747,6 @@ pub mod tests {
         let user_after = dao.get_user_by_id(user_before.id).unwrap();
 
         assert_eq!(&user_after.password_hash, &user_before.password_hash);
-
         assert_eq!(&user_after.email, &new_user.email);
         assert_eq!(&user_after.first_name, &user_edits.first_name);
         assert_eq!(&user_after.last_name, &user_edits.last_name);
@@ -838,9 +845,7 @@ pub mod tests {
 
         assert_eq!(created_buddy_request.recipient_user_id, created_user2.id);
         assert_eq!(created_buddy_request.sender_user_id, created_user1.id);
-
         assert!(!created_buddy_request.accepted);
-
         assert!(created_buddy_request.created_timestamp < SystemTime::now());
         assert_eq!(created_buddy_request.accepted_declined_timestamp, None);
     }

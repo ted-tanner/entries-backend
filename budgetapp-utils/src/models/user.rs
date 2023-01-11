@@ -17,6 +17,7 @@ pub struct User {
     pub date_of_birth: SystemTime,
     pub currency: String,
 
+    pub last_token_refresh_timestamp: SystemTime,
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,
 }
@@ -33,6 +34,7 @@ pub struct NewUser<'a> {
     pub date_of_birth: SystemTime,
     pub currency: &'a str,
 
+    pub last_token_refresh_timestamp: SystemTime,
     pub modified_timestamp: SystemTime,
     pub created_timestamp: SystemTime,
 }

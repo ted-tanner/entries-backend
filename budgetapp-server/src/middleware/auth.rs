@@ -78,6 +78,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
@@ -130,6 +131,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
@@ -165,6 +167,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
@@ -203,6 +206,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
@@ -240,6 +244,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
@@ -282,6 +287,7 @@ mod tests {
             date_of_birth: UNIX_EPOCH
                 + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
             currency: "USD",
+            last_token_refresh_timestamp: timestamp,
             modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };

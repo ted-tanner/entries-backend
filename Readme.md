@@ -447,13 +447,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::mark_notification_touched`
 * `budgetapp_utils::db::user::mark_notifications_read`
 * `budgetapp_utils::db::user::get_unread_notifications`
+* `budgetapp_utils::db::user::set_last_token_refresh_now`
+* Test set_last_token_refresh_now works in `budgetapp_server::handlers::auth::verify_otp_for_signin` and `budgetapp_server::handlers::auth::refresh_tokens`
 * `budgetapp_server::handlers::user::mark_notification_touched`
 * `budgetapp_server::handlers::user::mark_notifications_read`
 * `budgetapp_server::handlers::user::get_unread_notifications`
+* Test all token error cases in `budgetapp_server::handlers::auth`. Test sending blacklisted token, expired token, etc. and make sure the proper HTTP status is returned and user does not get authenticated
 
 ### Minimum Viable Product
 
-* Remove `is_premium` and `premium_expiration` fields for users
 * Record user's last refresh token time (whether that is login or just refreshing)
 * Send server time on login. The client will use this for determining the staleness of data.
 * Send the server's time in the heartbeat
@@ -506,6 +508,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Reactions to said comments
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
 * Validation for `budgetapp_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
+* Use lifetimes to reduce they copying of strings (e.g. TokenPair, TokenClaims, perhaps some of the OutputX structs, etc)
 * Budget user get request logic should be handled in a query to eliminate multiple queries
 * Create mock in Dao to test DB stuff in budgetapp-utils
 * Replace lazy_static with OnceCell
