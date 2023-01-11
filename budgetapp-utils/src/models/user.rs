@@ -11,9 +11,6 @@ pub struct User {
     pub id: Uuid,
     pub password_hash: String,
 
-    pub is_premium: bool,
-    pub premium_expiration: Option<SystemTime>,
-
     pub email: String,
     pub first_name: String,
     pub last_name: String,
@@ -29,9 +26,6 @@ pub struct User {
 pub struct NewUser<'a> {
     pub id: Uuid,
     pub password_hash: &'a str,
-
-    pub is_premium: bool,
-    pub premium_expiration: Option<SystemTime>,
 
     pub email: &'a str,
     pub first_name: &'a str,

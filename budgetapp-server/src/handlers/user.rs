@@ -47,8 +47,6 @@ pub async fn get(
     if user.id == auth_user_claims.0.uid {
         let output_user = OutputUserPrivate {
             id: user.id,
-            is_premium: user.is_premium,
-            premium_expiration: user.premium_expiration,
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,
@@ -70,7 +68,6 @@ pub async fn get(
     if are_buddies {
         let output_user = OutputUserForBuddies {
             id: user.id,
-            is_premium: user.is_premium,
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,

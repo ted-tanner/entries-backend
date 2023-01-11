@@ -422,6 +422,17 @@ This list is not comprehensive; it's mostly just a "don't forget to do this" lis
 find . -name "*.rs" | xargs grep -n "TODO"
 ```
 
+### Client
+
+* Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
+* Premium user status is only verified client-side
+* Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
+
+#### IMPORTANT Data syncronization stuff
+* All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON HEARTBEAT.
+  - THIS DELTA SHOULD BE USED FOR CHECKING TOKEN EXPIRATIONS AS WELL.
+* If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
+
 ### Tests
 
 * All methods for `budgetapp_job_scheduler::jobs::delete_users::DeleteUsersJob`
@@ -442,15 +453,16 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Job to delete read notifications that were edited more than X time ago
-* Create notification for buddy request accepted
-* If buddy request retracted, delete notification (query notification using data from JSONB field)
-* Create notification for budget invitations sent
-* Create notification for budget invitations accepted
-* If budget invitation retracted, delete notification
-* Document notification types
-
-- Maybe make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
+* Remove `is_premium` and `premium_expiration` fields for users
+* Record user's last refresh token time (whether that is login or just refreshing)
+* Send server time on login. The client will use this for determining the staleness of data.
+* Send the server's time in the heartbeat
+* Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.
+  - Tombstones need to be associated with a user_id for security and for deletion purposes.
+  - The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted. Make sure this only works with the proper authorization and user_id from a token.
+  - `item_id` in `tombstone` table is the primary key and the ID of the deleted item
+  - Tombstones should be cleared after 366 days
+* Password reset flow
 
 *By 9/16*
 
@@ -472,14 +484,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
   * Forgot Password
 * Forgot password endpoint
  
-*By 11/11*
-
-* Account for deleted users when doing things like creating a `budget_share_event`, adding to a budget, sending buddy request, accepting buddy request, etc
-* Verify SQL injection is not possible with any endpoint
-
 *By 11/25*
 
-* `OutputX` structs shouldn't be used by db utils, just handlers (i.e. `utils::db::budget::get_budget_by_id` shouldn't be creating an `OutputBudget`). Instead, pass fields as params
 * Security check endpoints: make sure users can't access other users' data
 
 *By 12/9*
@@ -492,6 +498,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`)
 * Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Replace all Diesel `sql_query`s with Diesel's DSL syntax

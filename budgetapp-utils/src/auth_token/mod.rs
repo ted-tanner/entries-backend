@@ -515,8 +515,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -565,8 +563,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -615,8 +611,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -665,8 +659,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -737,8 +729,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -846,8 +836,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -920,8 +908,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -997,8 +983,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1069,8 +1053,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1152,8 +1134,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1223,8 +1203,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1302,8 +1280,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1351,8 +1327,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1394,8 +1368,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1430,8 +1402,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),
@@ -1466,8 +1436,6 @@ mod tests {
         let timestamp = SystemTime::now();
         let new_user = NewUser {
             id: user_id,
-            is_premium: false,
-            premium_expiration: Option::None,
             email: &format!("test_user{}@test.com", &user_number),
             password_hash: "test_hash",
             first_name: &format!("Test-{}", &user_number),

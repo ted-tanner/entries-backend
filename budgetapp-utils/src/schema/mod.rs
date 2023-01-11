@@ -143,8 +143,6 @@ table! {
     users (id) {
         id -> Uuid,
         password_hash -> Text,
-        is_premium -> Bool,
-        premium_expiration -> Nullable<Timestamp>,
         email -> Varchar,
         first_name -> Varchar,
         last_name -> Varchar,

@@ -9,9 +9,6 @@ use crate::models::entry::Entry;
 pub struct OutputUserPrivate {
     pub id: Uuid,
 
-    pub is_premium: bool,
-    pub premium_expiration: Option<SystemTime>,
-
     pub email: String,
     pub first_name: String,
     pub last_name: String,
@@ -25,7 +22,6 @@ pub struct OutputUserPrivate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserForBuddies {
     pub id: Uuid,
-    pub is_premium: bool,
     pub email: String,
     pub first_name: String,
     pub last_name: String,

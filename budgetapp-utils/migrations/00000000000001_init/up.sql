@@ -106,9 +106,6 @@ CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     password_hash TEXT NOT NULL,
 
-    is_premium BOOLEAN NOT NULL,
-    premium_expiration TIMESTAMP,
-
     email VARCHAR(255) UNIQUE NOT NULL,
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
@@ -149,7 +146,7 @@ CREATE TABLE user_notifications (
     is_unread BOOLEAN NOT NULL, -- Hasn't been seen
 
     notification_type VARCHAR(40) NOT NULL,
-    payload JSONB NOT NULL, -- A JSON structure
+    payload JSONB NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
