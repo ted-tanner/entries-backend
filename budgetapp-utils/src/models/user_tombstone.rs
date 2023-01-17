@@ -6,12 +6,11 @@ use uuid::Uuid;
 use crate::schema::user_tombstones;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[diesel(table_name = user_tombstones)]
+#[diesel(table_name = user_tombstones, primary_key(user_id))]
 pub struct UserTombstone {
-    pub id: i32,
     pub user_id: Uuid,
     pub deletion_request_time: SystemTime,
-    pub deletion_time: SystemTime,
+    pub deletion_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -19,5 +18,5 @@ pub struct UserTombstone {
 pub struct NewUserTombstone {
     pub user_id: Uuid,
     pub deletion_request_time: SystemTime,
-    pub deletion_time: SystemTime,
+    pub deletion_timestamp: SystemTime,
 }

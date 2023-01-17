@@ -100,6 +100,15 @@ table! {
 }
 
 table! {
+    tombstones (item_id) {
+        item_id -> Uuid,
+        related_user_id -> Uuid,
+        origin_table -> Varchar,
+        deletion_timestamp -> Timestamp,
+    }
+}
+
+table! {
     user_budgets (id) {
         id -> Int4,
         created_timestamp -> Timestamp,
@@ -131,11 +140,10 @@ table! {
 }
 
 table! {
-    user_tombstones (id) {
-        id -> Int4,
+    user_tombstones (user_id) {
         user_id -> Uuid,
         deletion_request_time -> Timestamp,
-        deletion_time -> Timestamp,
+        deletion_timestamp -> Timestamp,
     }
 }
 
@@ -166,6 +174,7 @@ allow_tables_to_appear_in_same_query!(
     entries,
     otp_attempts,
     password_attempts,
+    tombstones,
     user_budgets,
     user_deletion_requests,
     user_notifications,

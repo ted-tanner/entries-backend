@@ -428,8 +428,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Premium user status is only verified client-side
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
 
-#### IMPORTANT Data syncronization stuff
-* All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON HEARTBEAT.
+#### IMPORTANT Data Syncronization Stuff
+* All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
   - THIS DELTA SHOULD BE USED FOR CHECKING TOKEN EXPIRATIONS AS WELL.
 * If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
 
@@ -457,15 +457,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Save time TOTP was created in a user model and use that to validate TOTP
-* Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
+* Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`). This can be done by simply making a multicolumn primary key (see https://docs.diesel.rs/master/diesel/associations/derive.Identifiable.html for Diesel implementation). Be sure to replace `.filter()`s with `.find()`s.
 * Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.
   - Tombstones need to be associated with a user_id for security and for deletion purposes.
-  - The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted. Make sure this only works with the proper authorization and user_id from a token.
+  - The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted with an HTTP "410 Gone" (do this for the `user_tombstone` too). Make sure this only works with the proper authorization and user_id from a token.
   - `item_id` in `tombstone` table is the primary key and the ID of the deleted item
   - Tombstones should be cleared after 366 days
 * Password reset flow
 * Send the server's time in the heartbeat?
+* Endpoint for checking if user is listed for deletion
 
 *By 9/16*
 
@@ -493,15 +493,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 *By 12/9*
 
-* In-app purchases
-  - Cancel subscription if user is deleted
 * Email notifications for the following:
   - User deletion initiated
   - Budget shared? Users need a way to turn off this notification
 
 ### Do it later
 
-* Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`)
+* Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Replace all Diesel `sql_query`s with Diesel's DSL syntax

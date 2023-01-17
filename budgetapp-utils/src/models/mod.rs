@@ -7,6 +7,7 @@ pub mod category;
 pub mod entry;
 pub mod otp_attempts;
 pub mod password_attempts;
+pub mod tombstone;
 pub mod user;
 pub mod user_budget;
 pub mod user_deletion_request;

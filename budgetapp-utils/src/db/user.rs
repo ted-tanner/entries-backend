@@ -425,7 +425,7 @@ impl Dao {
         let new_tombstone = NewUserTombstone {
             user_id: request.user_id,
             deletion_request_time: request.deletion_request_time,
-            deletion_time: SystemTime::now(),
+            deletion_timestamp: SystemTime::now(),
         };
 
         dsl::insert_into(user_tombstones)

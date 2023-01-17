@@ -102,6 +102,13 @@ CREATE TABLE password_attempts (
     expiration_time TIMESTAMP NOT NULL
 );
 
+CREATE TABLE tombstones (
+    item_id UUID PRIMARY KEY,
+    related_user_id UUID NOT NULL,
+    origin_table VARCHAR(32) NOT NULL,
+    deletion_timestamp TIMESTAMP NOT NULL
+);
+
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     password_hash TEXT NOT NULL,
@@ -132,13 +139,6 @@ CREATE TABLE user_deletion_requests (
     ready_for_deletion_time TIMESTAMP NOT NULL
 );
 
-CREATE TABLE user_tombstones (
-    id SERIAL PRIMARY KEY,
-    user_id UUID UNIQUE NOT NULL,
-    deletion_request_time TIMESTAMP NOT NULL,
-    deletion_time TIMESTAMP NOT NULL
-);
-
 CREATE TABLE user_notifications (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     user_id UUID NOT NULL,
@@ -151,6 +151,12 @@ CREATE TABLE user_notifications (
 
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
+);
+
+CREATE TABLE user_tombstones (
+    user_id UUID PRIMARY KEY,
+    deletion_request_time TIMESTAMP NOT NULL,
+    deletion_timestamp TIMESTAMP NOT NULL
 );
 
 -- Foreign keys
@@ -169,6 +175,7 @@ ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES user
 ALTER TABLE entries ADD CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE user_notifications ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
