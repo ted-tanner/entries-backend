@@ -435,6 +435,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Tests
 
+* Tombstone DAO in its entirety
 * All methods for `budgetapp_job_scheduler::jobs::delete_users::DeleteUsersJob`
 * `budgetapp_utils::db::user::initiate_user_deletion`
 * `budgetapp_utils::db::user::cancel_user_deletion`

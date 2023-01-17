@@ -297,7 +297,7 @@ impl Dao {
     }
 
     pub fn check_are_buddies(&mut self, user1_id: Uuid, user2_id: Uuid) -> Result<bool, DaoError> {
-        Ok(diesel::dsl::select(diesel::dsl::exists(
+        Ok(dsl::select(dsl::exists(
             buddy_relationships.filter(
                 buddy_relationship_fields::user1_id
                     .eq(user1_id)
