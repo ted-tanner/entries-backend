@@ -10,10 +10,7 @@ mod env;
 mod jobs;
 mod runner;
 
-use jobs::{
-    ClearOldNotificationsJob, ClearOtpAttemptsJob, ClearPasswordAttemptsJob, DeleteUsersJob,
-    UnblacklistExpiredRefreshTokensJob,
-};
+use jobs::{ClearOtpAttemptsJob, ClearPasswordAttemptsJob, DeleteUsersJob, UnblacklistExpiredRefreshTokensJob};
 
 fn main() {
     Logger::with(LogSpecification::info())
@@ -54,17 +51,6 @@ fn main() {
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
             let mut job_runner = env::runner::JOB_RUNNER.lock().await;
-
-            job_runner.register(Box::new(ClearOldNotificationsJob::new(
-                Duration::from_secs(env::CONF.clear_old_notifications_job.job_frequency_secs),
-                Duration::from_secs(
-                    env::CONF
-                        .clear_old_notifications_job
-                        .max_notification_age_days
-                        * 86400,
-                ),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
 
             job_runner.register(Box::new(ClearOtpAttemptsJob::new(
                 Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),

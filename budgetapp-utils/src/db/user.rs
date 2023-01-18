@@ -1,7 +1,6 @@
 use diesel::{
-    dsl, sql_query, sql_types, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
+    dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -10,7 +9,6 @@ use crate::models::buddy_relationship::{BuddyRelationship, NewBuddyRelationship}
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
-use crate::models::user_notification::{NewUserNotification, UserNotification};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
 use crate::request_io::{InputEditUser, InputUser};
@@ -24,8 +22,6 @@ use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
-use crate::schema::user_notifications as user_notification_fields;
-use crate::schema::user_notifications::dsl::user_notifications;
 use crate::schema::user_tombstones as user_tombstone_fields;
 use crate::schema::user_tombstones::dsl::user_tombstones;
 use crate::schema::users as user_fields;
@@ -164,20 +160,6 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
-    pub fn delete_buddy_request_notification(
-        &mut self,
-        request_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
-            user_notifications.filter(
-                dsl::sql::<sql_types::Bool>("payload->>'buddy_request_id' = '$1'")
-                    .bind::<sql_types::Uuid, _>(request_id),
-            ),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn mark_buddy_request_accepted(
         &mut self,
         request_id: Uuid,
@@ -308,89 +290,6 @@ impl Dao {
             ),
         ))
         .get_result(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn create_notification(
-        &mut self,
-        user_id: Uuid,
-        notification_type: &str,
-        payload: &serde_json::Value,
-    ) -> Result<UserNotification, DaoError> {
-        let new_notification = NewUserNotification {
-            id: Uuid::new_v4(),
-            user_id,
-            is_pristine: true,
-            is_unread: true,
-            notification_type,
-            payload,
-            modified_timestamp: SystemTime::now(),
-            created_timestamp: SystemTime::now(),
-        };
-
-        Ok(dsl::insert_into(user_notifications)
-            .values(&new_notification)
-            .get_result::<UserNotification>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn get_unread_notifications(
-        &mut self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserNotification>, DaoError> {
-        Ok(user_notifications
-            .filter(user_notification_fields::user_id.eq(user_id))
-            .order_by(user_notification_fields::created_timestamp.asc())
-            .get_results::<UserNotification>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn mark_notifications_read(
-        &mut self,
-        notification_ids: HashSet<Uuid>,
-        user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(dsl::update(
-            user_notifications
-                .filter(user_notification_fields::id.eq_any(notification_ids))
-                .filter(user_notification_fields::user_id.eq(user_id)),
-        )
-        .set((
-            user_notification_fields::is_unread.eq(false),
-            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
-        ))
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn mark_notification_touched(
-        &mut self,
-        notification_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(dsl::update(
-            user_notifications
-                .find(notification_id)
-                .filter(user_notification_fields::user_id.eq(user_id)),
-        )
-        .set((
-            user_notification_fields::is_pristine.eq(false),
-            user_notification_fields::is_unread.eq(false),
-            user_notification_fields::modified_timestamp.eq(SystemTime::now()),
-        ))
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    // TODO: Test
-    pub fn clear_old_notifications(&mut self, max_age: Duration) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
-            user_notifications
-                .filter(
-                    user_notification_fields::modified_timestamp.lt(SystemTime::now() - max_age),
-                )
-                .filter(user_notification_fields::is_unread.eq(false)),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     // TODO: Test

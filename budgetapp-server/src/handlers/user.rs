@@ -1,14 +1,12 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputNotificationId,
-    InputNotificationIdList, InputOptionalUserId, InputUser, InputUserId, OutputUserForBuddies,
+    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser, InputUserId, OutputUserForBuddies,
     OutputUserPrivate, OutputUserPublic, SigninToken,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
 use actix_web::{web, HttpRequest, HttpResponse};
-use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -637,94 +635,6 @@ pub async fn get_buddies(
     };
 
     Ok(HttpResponse::Ok().json(buddies))
-}
-
-// TODO: Add to services
-// TODO: Test
-pub async fn get_unread_notifications(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
-) -> Result<HttpResponse, ServerError> {
-    let notifications = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_unread_notifications(auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to get user notifications",
-            ))));
-        }
-    };
-
-    Ok(HttpResponse::Ok().json(notifications))
-}
-
-// TODO: Add to services (PUT)
-// TODO: Test
-pub async fn mark_notifications_read(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    notification_ids: web::Json<InputNotificationIdList>,
-) -> Result<HttpResponse, ServerError> {
-    let notification_ids = HashSet::from_iter(notification_ids.0.notification_ids.into_iter());
-    let notification_id_count = notification_ids.len();
-
-    let marked_notification_count = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.mark_notifications_read(notification_ids, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to mark notification as read",
-            ))));
-        }
-    };
-
-    if marked_notification_count != notification_id_count {
-        log::error!(
-            "Incorrect number of notifications marked as read. Expected {}, got {}.",
-            marked_notification_count,
-            notification_id_count,
-        );
-        return Err(ServerError::DatabaseTransactionError(Some(String::from(
-            "Some notificaitons were not marked as read",
-        ))));
-    }
-
-    Ok(HttpResponse::Ok().finish())
-}
-
-// TODO: Add to services (PUT)
-// TODO: Test
-pub async fn mark_notification_touched(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    notification_id: web::Query<InputNotificationId>,
-) -> Result<HttpResponse, ServerError> {
-    match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.mark_notification_touched(notification_id.notification_id, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to mark notification as touched",
-            ))));
-        }
-    };
-
-    Ok(HttpResponse::Ok().finish())
 }
 
 async fn check_are_buddies(

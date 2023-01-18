@@ -6,7 +6,6 @@ use std::io::Read;
 pub struct Conf {
     pub connections: Connections,
     pub runner: RunnerConf,
-    pub clear_old_notifications_job: ClearOldNotificationsJobConf,
     pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
     pub clear_password_attempts_job: ClearPasswordAttemptsJobConf,
     pub delete_users_job: DeleteUsersJobConf,
@@ -24,12 +23,6 @@ pub struct RunnerConf {
     pub update_frequency_secs: u64,
     pub worker_threads: Option<usize>,
     pub max_blocking_threads: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ClearOldNotificationsJobConf {
-    pub job_frequency_secs: u64,
-    pub max_notification_age_days: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

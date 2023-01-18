@@ -127,19 +127,6 @@ table! {
 }
 
 table! {
-    user_notifications (id) {
-        id -> Uuid,
-        user_id -> Uuid,
-        is_pristine -> Bool,
-        is_unread -> Bool,
-        notification_type -> Varchar,
-        payload -> Jsonb,
-        modified_timestamp -> Timestamp,
-        created_timestamp -> Timestamp,
-    }
-}
-
-table! {
     user_tombstones (user_id) {
         user_id -> Uuid,
         deletion_request_time -> Timestamp,
@@ -177,7 +164,6 @@ allow_tables_to_appear_in_same_query!(
     tombstones,
     user_budgets,
     user_deletion_requests,
-    user_notifications,
     user_tombstones,
     users,
 );

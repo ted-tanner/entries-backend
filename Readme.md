@@ -427,6 +427,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 * Premium user status is only verified client-side
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
+* Verify user age
+* Warn a user that they cannot unshare a budget once it is shared
 
 #### IMPORTANT Data Syncronization Stuff
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
@@ -443,21 +445,31 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
 * `budgetapp_utils::db::user::get_user_tombstone`
 * Test creating an entry and associating it with a budget
-* `budgetapp_utils::db::user::create_notification`
-* `budgetapp_utils::db::user::delete_buddy_request_notification`
-* `budgetapp_utils::db::user::mark_notification_touched`
-* `budgetapp_utils::db::user::mark_notifications_read`
-* `budgetapp_utils::db::user::get_unread_notifications`
 * `budgetapp_utils::db::user::set_last_token_refresh_now`
 * Test set_last_token_refresh_now works in `budgetapp_server::handlers::auth::verify_otp_for_signin` and `budgetapp_server::handlers::auth::refresh_tokens`
-* `budgetapp_server::handlers::user::mark_notification_touched`
-* `budgetapp_server::handlers::user::mark_notifications_read`
-* `budgetapp_server::handlers::user::get_unread_notifications`
 * Test all token error cases in `budgetapp_server::handlers::auth`. Test sending blacklisted token, expired token, etc. and make sure the proper HTTP status is returned and user does not get authenticated
 * Test the `server_time` returned by all handlers in `budgetapp_server::handlers::auth` that return a token pair.
 
+### End-to-end Encryption Scheme
+* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash) and once with the recovery key. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* Authentication string for sign in is a separate PBKDF2 hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
+* Encrypt user preferences using a user's key
+* All user data (budgets, entries, user preferences, etc.) should be stored as an ID, associated_id (optional, e.g. a budget_id for an entry), a modified_timestamp, and an encrypted blob
+  - Tombstones should still exist
+* Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
+* Encrypt user's private key using the user's password. Public key will be shared publicly along with user info
+  - Clients should rotate keys every once-in-a-while
+* When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server).
+* When a user leaves a budget share, they simply delete the key. Users who share the budget must be warned that those invited to a budget will potentially always have access to it.
+* A user's key_table should be synchronized frequently
+* To synchronize data, the server should send a list of existing IDs of a type (e.g. the IDs of all budgets a user belongs to) along with the `modified_timestamp`. The client can request data as needed. Tombstones should exist so user can check if data has been deleted.
+
 ### Minimum Viable Product
 
+* We don't need to store the user's name or date of birth. Just a `user_preferences` model that stores their currency preference and other similar data (and that gets encrypted)
+* Remove `origin_table` field from tombstones
+* End-to-end encryption
+* Create a single `web::block` per handler (where possible). DB calls may be synchronous inside the block.
 * Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`). This can be done by simply making a multicolumn primary key (see https://docs.diesel.rs/master/diesel/associations/derive.Identifiable.html for Diesel implementation). Be sure to replace `.filter()`s with `.find()`s.
 * Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.
   - Tombstones need to be associated with a user_id for security and for deletion purposes.
@@ -467,6 +479,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Password reset flow
 * Send the server's time in the heartbeat?
 * Endpoint for checking if user is listed for deletion
+* Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
+* White paper, security audit
 
 *By 9/16*
 
@@ -488,10 +502,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
   * Forgot Password
 * Forgot password endpoint
  
-*By 11/25*
-
-* Security check endpoints: make sure users can't access other users' data
-
 *By 12/9*
 
 * Email notifications for the following:

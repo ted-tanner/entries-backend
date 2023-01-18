@@ -139,20 +139,6 @@ CREATE TABLE user_deletion_requests (
     ready_for_deletion_time TIMESTAMP NOT NULL
 );
 
-CREATE TABLE user_notifications (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    user_id UUID NOT NULL,
-
-    is_pristine BOOLEAN NOT NULL, -- Hasn't been tapped on
-    is_unread BOOLEAN NOT NULL, -- Hasn't been seen
-
-    notification_type VARCHAR(40) NOT NULL,
-    payload JSONB NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
-);
-
 CREATE TABLE user_tombstones (
     user_id UUID PRIMARY KEY,
     deletion_request_time TIMESTAMP NOT NULL,
@@ -178,4 +164,3 @@ ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFER
 ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE user_notifications ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
