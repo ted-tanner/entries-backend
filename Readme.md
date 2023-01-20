@@ -424,6 +424,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
+* Currency may be specified on each budget
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 * Premium user status is only verified client-side
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
@@ -451,7 +452,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Test the `server_time` returned by all handlers in `budgetapp_server::handlers::auth` that return a token pair.
 
 ### End-to-end Encryption Scheme
-* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash) and once with the recovery key. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* Recovery key is a 32-character alphanumeric string. It gets hashed with PBKDF2 using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
 * Authentication string for sign in is a separate PBKDF2 hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
 * Encrypt user preferences using a user's key
 * All user data (budgets, entries, user preferences, etc.) should be stored as an ID, associated_id (optional, e.g. a budget_id for an entry), a modified_timestamp, and an encrypted blob
@@ -459,16 +461,24 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
 * Encrypt user's private key using the user's password. Public key will be shared publicly along with user info
   - Clients should rotate keys every once-in-a-while
-* When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server).
-* When a user leaves a budget share, they simply delete the key. Users who share the budget must be warned that those invited to a budget will potentially always have access to it.
-* A user's key_table should be synchronized frequently
+* When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server). The key gets saved in in the `user_budgets` table for the user.
+* When a user leaves a budget share, they simply delete the key.
 * To synchronize data, the server should send a list of existing IDs of a type (e.g. the IDs of all budgets a user belongs to) along with the `modified_timestamp`. The client can request data as needed. Tombstones should exist so user can check if data has been deleted.
+* Things that aren't encrypted:
+  - User's email address
+  - A list of users one shares budgets with
+  - A user's list of buddies
+  - A count of how many budgets a user has
+  - A count of how many entries are in a budget
+  - Timestamps of when data was last modified
+  - Timestamp of user's last login
 
 ### Minimum Viable Product
 
-* We don't need to store the user's name or date of birth. Just a `user_preferences` model that stores their currency preference and other similar data (and that gets encrypted)
 * Remove `origin_table` field from tombstones
 * End-to-end encryption
+* Delete buddy request once accepted or declined
+* Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized
 * Create a single `web::block` per handler (where possible). DB calls may be synchronous inside the block.
 * Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`). This can be done by simply making a multicolumn primary key (see https://docs.diesel.rs/master/diesel/associations/derive.Identifiable.html for Diesel implementation). Be sure to replace `.filter()`s with `.find()`s.
 * Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.

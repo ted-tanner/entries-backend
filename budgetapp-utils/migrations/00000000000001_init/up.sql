@@ -1,49 +1,38 @@
 CREATE TABLE blacklisted_tokens (
-    id SERIAL PRIMARY KEY,
-    token VARCHAR(800) UNIQUE NOT NULL,
+    token VARCHAR(800) PRIMARY KEY,
     user_id UUID NOT NULL,
     token_expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE buddy_relationships (
-    id SERIAL PRIMARY KEY,
-    created_timestamp TIMESTAMP NOT NULL,
-    user1_id UUID NOT NULL,
-    user2_id UUID NOT NULL,
-    UNIQUE (user1_id, user2_id)
+    user1_id UUID NOT NULL, 
+    user2_id UUID NOT NULL, 
+    PRIMARY KEY (user1_id, user2_id)
 );
 
 CREATE TABLE buddy_requests (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     
     recipient_user_id UUID NOT NULL,
     sender_user_id UUID NOT NULL,
     
     accepted BOOLEAN NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL,
-    accepted_declined_timestamp TIMESTAMP,
     
     UNIQUE (recipient_user_id, sender_user_id),
     CHECK (recipient_user_id != sender_user_id)
 );
 
+CREATE INDEX ON buddy_requests (recipient_user_id);
+CREATE INDEX ON buddy_requests (sender_user_id);
+
 CREATE TABLE budgets (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
-    is_deleted BOOLEAN NOT NULL,
-
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-
-    start_date TIMESTAMP NOT NULL,
-    end_date TIMESTAMP NOT NULL CHECK(end_date >= start_date),
-
-    latest_entry_time TIMESTAMP NOT NULL,
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
+    id UUID PRIMARY KEY,
+    encrypted_blob TEXT NOT NULL,
+    modified_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE budget_share_invites (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     
     recipient_user_id UUID NOT NULL,
     sender_user_id UUID NOT NULL,
@@ -51,92 +40,93 @@ CREATE TABLE budget_share_invites (
     budget_id UUID NOT NULL,
     accepted BOOLEAN NOT NULL,
 
-    created_timestamp TIMESTAMP NOT NULL,
-    accepted_declined_timestamp TIMESTAMP,
-    
+    -- This should never get sent to the recipient user until the invite has been accepted
+    encrypted_encryption_key TEXT NOT NULL,
+
     UNIQUE (recipient_user_id, sender_user_id, budget_id),
     CHECK (recipient_user_id != sender_user_id)
 );
+
+CREATE INDEX ON budget_share_invites (recipient_user_id);
+CREATE INDEX ON budget_share_invites (sender_user_id);
 
 CREATE TABLE categories (
     id UUID NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
 
-    name VARCHAR(120) NOT NULL,
-    limit_cents BIGINT NOT NULL,
-    color VARCHAR(9) NOT NULL,
+    encrypted_blob TEXT NOT NULL,
 
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
+    modified_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE entries (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     budget_id UUID NOT NULL,
-    user_id UUID,
-    
-    is_deleted BOOLEAN NOT NULL,
 
-    amount_cents BIGINT NOT NULL,
-    date TIMESTAMP NOT NULL,
-    name VARCHAR(120),
-    note TEXT,
+    encrypted_blob TEXT NOT NULL,
 
-    category_id UUID,
-
-    modified_timestamp TIMESTAMP NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
+    modified_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE otp_attempts (
-    id SERIAL PRIMARY KEY,
-    user_id UUID UNIQUE NOT NULL,
+    user_id UUID PRIMARY KEY,
     attempt_count SMALLINT NOT NULL,
     expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE password_attempts (
-    id SERIAL PRIMARY KEY,
-    user_id UUID UNIQUE NOT NULL,
+    user_id UUID PRIMARY KEY,
     attempt_count SMALLINT NOT NULL,
     expiration_time TIMESTAMP NOT NULL
 );
 
 CREATE TABLE tombstones (
-    item_id UUID PRIMARY KEY,
+    item_id UUID NOT NULL,
     related_user_id UUID NOT NULL,
-    origin_table VARCHAR(32) NOT NULL,
-    deletion_timestamp TIMESTAMP NOT NULL
+    deletion_timestamp TIMESTAMP NOT NULL,
+    PRIMARY KEY (item_id, related_user_id)
 );
 
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
-    password_hash TEXT NOT NULL,
+
+    auth_string_hash TEXT NOT NULL,
+
+    auth_string_salt TEXT NOT NULL,
+    password_encryption_salt TEXT NOT NULL,
+    recovery_key_salt TEXT NOT NULL,
+
+    encryption_key_user_password_encrypted TEXT NOT NULL,
+    encryption_key_recovery_key_encrypted TEXT NOT NULL,
+
+    public_rsa_key TEXT NOT NULL,
+    public_rsa_key_created_timestamp TEXT NOT NULL,
 
     email VARCHAR(255) UNIQUE NOT NULL,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    date_of_birth TIMESTAMP NOT NULL,
-    currency VARCHAR(3) NOT NULL,
 
     last_token_refresh_timestamp TIMESTAMP NOT NULL,
+
     modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE user_budgets (
-    id SERIAL PRIMARY KEY,
-    created_timestamp TIMESTAMP NOT NULL,
     user_id UUID NOT NULL,
     budget_id UUID NOT NULL,
-    UNIQUE (user_id, budget_id)
+    encrypted_encryption_key TEXT NOT NULL,
+    PRIMARY KEY (user_id, budget_id)
 );
 
 CREATE TABLE user_deletion_requests (
-    id SERIAL PRIMARY KEY,
-    user_id UUID UNIQUE NOT NULL,
+    user_id UUID PRIMARY KEY,
     deletion_request_time TIMESTAMP NOT NULL,
     ready_for_deletion_time TIMESTAMP NOT NULL
+);
+
+CREATE TABLE user_preferences (
+    user_id UUID PRIMARY KEY,
+    encrypted_blob TEXT NOT NULL,
+    modified_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE user_tombstones (
@@ -157,10 +147,9 @@ ALTER TABLE budget_share_invites ADD CONSTRAINT sender_key FOREIGN KEY(sender_us
 ALTER TABLE budget_share_invites ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entries ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
-ALTER TABLE entries ADD CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
+ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
