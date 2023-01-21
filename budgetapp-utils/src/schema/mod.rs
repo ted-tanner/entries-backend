@@ -29,7 +29,7 @@ table! {
         sender_user_id -> Uuid,
         budget_id -> Uuid,
         accepted -> Bool,
-        encrypted_encryption_key -> Text,
+        encryption_key_encrypted -> Text,
     }
 }
 
@@ -87,7 +87,8 @@ table! {
     user_budgets (user_id, budget_id) {
         user_id -> Uuid,
         budget_id -> Uuid,
-        encrypted_encryption_key -> Text,
+        encryption_key_encrypted -> Text,
+        modified_timestamp -> Timestamp,
     }
 }
 
@@ -108,6 +109,25 @@ table! {
 }
 
 table! {
+    user_security_data (user_id) {
+        user_id -> Uuid,
+        auth_string_hash -> Text,
+        auth_string_salt -> Text,
+        auth_string_iters -> Int4,
+        password_encryption_salt -> Text,
+        password_encryption_iters -> Int4,
+        recovery_key_salt -> Text,
+        recovery_key_iters -> Int4,
+        encryption_key_user_password_encrypted -> Text,
+        encryption_key_recovery_key_encrypted -> Text,
+        public_rsa_key -> Text,
+        public_rsa_key_created_timestamp -> Text,
+        last_token_refresh_timestamp -> Timestamp,
+        modified_timestamp -> Timestamp,
+    }
+}
+
+table! {
     user_tombstones (user_id) {
         user_id -> Uuid,
         deletion_request_time -> Timestamp,
@@ -118,17 +138,7 @@ table! {
 table! {
     users (id) {
         id -> Uuid,
-        auth_string_hash -> Text,
-        auth_string_salt -> Text,
-        password_encryption_salt -> Text,
-        recovery_key_salt -> Text,
-        encryption_key_user_password_encrypted -> Text,
-        encryption_key_recovery_key_encrypted -> Text,
-        public_rsa_key -> Text,
-        public_rsa_key_created_timestamp -> Text,
         email -> Varchar,
-        last_token_refresh_timestamp -> Timestamp,
-        modified_timestamp -> Timestamp,
         created_timestamp -> Timestamp,
     }
 }
@@ -147,6 +157,7 @@ allow_tables_to_appear_in_same_query!(
     user_budgets,
     user_deletion_requests,
     user_preferences,
+    user_security_data,
     user_tombstones,
     users,
 );

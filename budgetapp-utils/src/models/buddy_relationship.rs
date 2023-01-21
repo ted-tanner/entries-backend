@@ -10,18 +10,15 @@ use crate::schema::buddy_relationships;
 #[diesel(belongs_to(User, foreign_key = user1_id))]
 // Diesel does not support multiple foreign keys to a single table
 // #[diesel(belongs_to(User, foreign_key = user2_id))]
-#[diesel(table_name = buddy_relationships)]
+#[diesel(table_name = buddy_relationships, primary_key(user1_id, user2_id))]
 pub struct BuddyRelationship {
-    pub id: i32,
-    pub created_timestamp: SystemTime,
     pub user1_id: Uuid,
     pub user2_id: Uuid,
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = buddy_relationships)]
+#[diesel(table_name = buddy_relationships, primary_key(user1_id, user2_id))]
 pub struct NewBuddyRelationship {
-    pub created_timestamp: SystemTime,
     pub user1_id: Uuid,
     pub user2_id: Uuid,
 }

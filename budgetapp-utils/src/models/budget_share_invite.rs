@@ -16,13 +16,13 @@ pub struct BudgetShareInvite {
     pub budget_id: Uuid,
     pub accepted: bool,
 
-    pub created_timestamp: SystemTime,
-    pub accepted_declined_timestamp: Option<SystemTime>,
+    // This should never get sent to the recipient user until the invite has been accepted
+    pub encryption_key_encrypted: String,
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = budget_share_invites)]
-pub struct NewBudgetShareInvite {
+pub struct NewBudgetShareInvite<'a> {
     pub id: Uuid,
 
     pub recipient_user_id: Uuid,
@@ -31,6 +31,5 @@ pub struct NewBudgetShareInvite {
     pub budget_id: Uuid,
     pub accepted: bool,
 
-    pub created_timestamp: SystemTime,
-    pub accepted_declined_timestamp: Option<SystemTime>,
+    pub encryption_key_encrypted: &'a str,
 }

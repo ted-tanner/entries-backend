@@ -10,18 +10,19 @@ use crate::schema::user_budgets;
 #[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable)]
 #[diesel(belongs_to(User, foreign_key = user_id))]
 #[diesel(belongs_to(Budget, foreign_key = budget_id))]
-#[diesel(table_name = user_budgets)]
+#[diesel(table_name = user_budgets, primary_key(user_id, budget_id))]
 pub struct UserBudget {
-    pub id: i32,
-    pub created_timestamp: SystemTime,
     pub user_id: Uuid,
     pub budget_id: Uuid,
+    pub encryption_key_encrypted: String,
+    pub modified_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = user_budgets)]
-pub struct NewUserBudget {
-    pub created_timestamp: SystemTime,
+#[diesel(table_name = user_budgets, primary_key(user_id, budget_id))]
+pub struct NewUserBudget<'a> {
     pub user_id: Uuid,
     pub budget_id: Uuid,
+    pub encryption_key_encrypted: &'a str,
+    pub modified_timestamp: SystemTime,
 }

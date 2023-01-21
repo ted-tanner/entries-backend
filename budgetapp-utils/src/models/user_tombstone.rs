@@ -14,7 +14,7 @@ pub struct UserTombstone {
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = user_tombstones)]
+#[diesel(table_name = user_tombstones, primary_key(user_id))]
 pub struct NewUserTombstone {
     pub user_id: Uuid,
     pub deletion_request_time: SystemTime,

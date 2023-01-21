@@ -14,9 +14,6 @@ pub struct BuddyRequest {
     pub sender_user_id: Uuid,
 
     pub accepted: bool,
-
-    pub created_timestamp: SystemTime,
-    pub accepted_declined_timestamp: Option<SystemTime>,
 }
 
 #[derive(Debug, Insertable)]
@@ -28,7 +25,4 @@ pub struct NewBuddyRequest {
     pub sender_user_id: Uuid,
 
     pub accepted: bool,
-
-    pub created_timestamp: SystemTime,
-    pub accepted_declined_timestamp: Option<SystemTime>,
 }

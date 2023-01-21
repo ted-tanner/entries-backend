@@ -12,11 +12,8 @@ use crate::schema::categories;
 pub struct Category {
     pub id: Uuid,
     pub budget_id: Uuid,
-    pub name: String,
-    pub limit_cents: i64,
-    pub color: String,
+    pub encrypted_blob: String,
     pub modified_timestamp: SystemTime,
-    pub created_timestamp: SystemTime,
 }
 
 #[derive(Clone, Debug, Insertable)]
@@ -24,9 +21,6 @@ pub struct Category {
 pub struct NewCategory<'a> {
     pub id: Uuid,
     pub budget_id: Uuid,
-    pub name: &'a str,
-    pub limit_cents: i64,
-    pub color: &'a str,
+    pub encrypted_blob: &'a str,
     pub modified_timestamp: SystemTime,
-    pub created_timestamp: SystemTime,
 }

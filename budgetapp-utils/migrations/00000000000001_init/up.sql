@@ -41,7 +41,7 @@ CREATE TABLE budget_share_invites (
     accepted BOOLEAN NOT NULL,
 
     -- This should never get sent to the recipient user until the invite has been accepted
-    encrypted_encryption_key TEXT NOT NULL,
+    encryption_key_encrypted TEXT NOT NULL,
 
     UNIQUE (recipient_user_id, sender_user_id, budget_id),
     CHECK (recipient_user_id != sender_user_id)
@@ -89,31 +89,15 @@ CREATE TABLE tombstones (
 
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
-
-    auth_string_hash TEXT NOT NULL,
-
-    auth_string_salt TEXT NOT NULL,
-    password_encryption_salt TEXT NOT NULL,
-    recovery_key_salt TEXT NOT NULL,
-
-    encryption_key_user_password_encrypted TEXT NOT NULL,
-    encryption_key_recovery_key_encrypted TEXT NOT NULL,
-
-    public_rsa_key TEXT NOT NULL,
-    public_rsa_key_created_timestamp TEXT NOT NULL,
-
     email VARCHAR(255) UNIQUE NOT NULL,
-
-    last_token_refresh_timestamp TIMESTAMP NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE user_budgets (
     user_id UUID NOT NULL,
     budget_id UUID NOT NULL,
-    encrypted_encryption_key TEXT NOT NULL,
+    encryption_key_encrypted TEXT NOT NULL,
+    modified_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (user_id, budget_id)
 );
 
@@ -126,6 +110,31 @@ CREATE TABLE user_deletion_requests (
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob TEXT NOT NULL,
+    modified_timestamp TIMESTAMP NOT NULL
+);
+
+CREATE TABLE user_security_data (
+    user_id UUID PRIMARY KEY,
+
+    auth_string_hash TEXT NOT NULL,
+
+    auth_string_salt TEXT NOT NULL,
+    auth_string_iters INT NOT NULL,
+
+    password_encryption_salt TEXT NOT NULL,
+    password_encryption_iters INT NOT NULL,
+
+    recovery_key_salt TEXT NOT NULL,
+    recovery_key_iters INT NOT NULL,
+
+    encryption_key_user_password_encrypted TEXT NOT NULL,
+    encryption_key_recovery_key_encrypted TEXT NOT NULL,
+
+    public_rsa_key TEXT NOT NULL,
+    public_rsa_key_created_timestamp TEXT NOT NULL,
+
+    last_token_refresh_timestamp TIMESTAMP NOT NULL,
+
     modified_timestamp TIMESTAMP NOT NULL
 );
 
@@ -153,3 +162,4 @@ ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFE
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

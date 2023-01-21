@@ -460,9 +460,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Tombstones should still exist
 * Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
 * Encrypt user's private key using the user's password. Public key will be shared publicly along with user info
-  - Clients should rotate keys every once-in-a-while
+  - Clients should rotate RSA keys every once-in-a-while. All budget encryption keys will need to be re-encrypted, as will `budget_share_invites` keys
 * When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server). The key gets saved in in the `user_budgets` table for the user.
 * When a user leaves a budget share, they simply delete the key.
+  - Perhaps send new key to all other users (and update key in budget_share_invite)
 * To synchronize data, the server should send a list of existing IDs of a type (e.g. the IDs of all budgets a user belongs to) along with the `modified_timestamp`. The client can request data as needed. Tombstones should exist so user can check if data has been deleted.
 * Things that aren't encrypted:
   - User's email address
@@ -475,8 +476,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Remove `origin_table` field from tombstones
 * End-to-end encryption
+* For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
+* Store currency with budget, default currency in user_preferences
 * Delete buddy request once accepted or declined
 * Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized
 * Create a single `web::block` per handler (where possible). DB calls may be synchronous inside the block.
@@ -491,6 +493,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoint for checking if user is listed for deletion
 * Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * White paper, security audit
+* Clear `budget_share_invites` and `buddy_requests` that are greater than 3 months old (even if they are false)
 
 *By 9/16*
 

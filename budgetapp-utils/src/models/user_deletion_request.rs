@@ -6,16 +6,15 @@ use uuid::Uuid;
 use crate::schema::user_deletion_requests;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[diesel(table_name = user_deletion_requests)]
+#[diesel(table_name = user_deletion_requests, primary_key(user_id))]
 pub struct UserDeletionRequest {
-    pub id: i32,
     pub user_id: Uuid,
     pub deletion_request_time: SystemTime,
     pub ready_for_deletion_time: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = user_deletion_requests)]
+#[diesel(table_name = user_deletion_requests, primary_key(user_id))]
 pub struct NewUserDeletionRequest {
     pub user_id: Uuid,
     pub deletion_request_time: SystemTime,
