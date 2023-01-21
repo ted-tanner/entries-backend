@@ -477,6 +477,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * End-to-end encryption
+* Rename `request_io` to `partial_models`
 * For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
 * Store currency with budget, default currency in user_preferences
 * Delete buddy request once accepted or declined

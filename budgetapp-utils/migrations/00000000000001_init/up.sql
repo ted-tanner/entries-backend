@@ -17,6 +17,8 @@ CREATE TABLE buddy_requests (
     sender_user_id UUID NOT NULL,
     
     accepted BOOLEAN NOT NULL,
+
+    sender_name_encrypted TEXT NOT NULL,
     
     UNIQUE (recipient_user_id, sender_user_id),
     CHECK (recipient_user_id != sender_user_id)
@@ -40,6 +42,7 @@ CREATE TABLE budget_share_invites (
     budget_id UUID NOT NULL,
     accepted BOOLEAN NOT NULL,
 
+    sender_name_encrypted TEXT NOT NULL,
     -- This should never get sent to the recipient user until the invite has been accepted
     encryption_key_encrypted TEXT NOT NULL,
 

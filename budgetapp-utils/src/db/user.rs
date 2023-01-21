@@ -1,6 +1,4 @@
-use diesel::{
-    dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
-};
+use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -38,16 +36,20 @@ impl Dao {
         }
     }
 
-    pub fn get_user_by_id(&mut self, user_id: Uuid) -> Result<User, DaoError> {
+    // TODO: Test
+    pub fn get_user_email(&mut self, user_id: Uuid) -> Result<String, DaoError> {
         Ok(users
+            .select(user_fields::email)
             .find(user_id)
-            .first::<User>(&mut self.db_thread_pool.get()?)?)
+            .first::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_user_by_email(&mut self, user_email: &str) -> Result<User, DaoError> {
+    // TODO: Test
+    pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
         Ok(users
+            .select(user_fields::id)
             .filter(user_fields::email.eq(user_email.to_lowercase()))
-            .first::<User>(&mut self.db_thread_pool.get()?)?)
+            .first::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(

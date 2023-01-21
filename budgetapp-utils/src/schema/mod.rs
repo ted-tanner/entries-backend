@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     blacklisted_tokens (token) {
         token -> Varchar,
         user_id -> Uuid,
@@ -6,34 +8,36 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     buddy_relationships (user1_id, user2_id) {
         user1_id -> Uuid,
         user2_id -> Uuid,
     }
 }
 
-table! {
+diesel::table! {
     buddy_requests (id) {
         id -> Uuid,
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
         accepted -> Bool,
+        sender_name_encrypted -> Text,
     }
 }
 
-table! {
+diesel::table! {
     budget_share_invites (id) {
         id -> Uuid,
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
         budget_id -> Uuid,
         accepted -> Bool,
+        sender_name_encrypted -> Text,
         encryption_key_encrypted -> Text,
     }
 }
 
-table! {
+diesel::table! {
     budgets (id) {
         id -> Uuid,
         encrypted_blob -> Text,
@@ -41,7 +45,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     categories (id) {
         id -> Uuid,
         budget_id -> Uuid,
@@ -50,7 +54,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     entries (id) {
         id -> Uuid,
         budget_id -> Uuid,
@@ -59,7 +63,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     otp_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
@@ -67,7 +71,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     password_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
@@ -75,7 +79,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     tombstones (item_id, related_user_id) {
         item_id -> Uuid,
         related_user_id -> Uuid,
@@ -83,7 +87,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_budgets (user_id, budget_id) {
         user_id -> Uuid,
         budget_id -> Uuid,
@@ -92,7 +96,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_deletion_requests (user_id) {
         user_id -> Uuid,
         deletion_request_time -> Timestamp,
@@ -100,7 +104,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Text,
@@ -108,7 +112,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_security_data (user_id) {
         user_id -> Uuid,
         auth_string_hash -> Text,
@@ -127,7 +131,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_tombstones (user_id) {
         user_id -> Uuid,
         deletion_request_time -> Timestamp,
@@ -135,7 +139,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     users (id) {
         id -> Uuid,
         email -> Varchar,
@@ -143,7 +147,7 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
     buddy_relationships,
     buddy_requests,
