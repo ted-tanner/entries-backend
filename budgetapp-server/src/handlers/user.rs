@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser, InputUserId, OutputUserForBuddies,
-    OutputUserPrivate, OutputUserPublic, SigninToken,
+    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
+    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -162,12 +162,14 @@ pub async fn create(
     }
 
     let user = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(
-            &user_data,
+        let password_hash = password_hasher::hash_password(
+            &user_data.password,
             &env::PASSWORD_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
-        )
+        );
+
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.create_user(&user_data, &password_hash)
     })
     .await?
     {
@@ -313,13 +315,14 @@ pub async fn change_password(
     };
 
     web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.change_password(
-            auth_user_claims.0.uid,
-            &password_pair.new_password,
+        let password_hash = password_hasher::hash_password(
+            &user_data.password,
             &env::PASSWORD_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
-        )
+        );
+
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.change_password(auth_user_claims.0.uid, &password_hash)
     })
     .await
     .map(|_| HttpResponse::Ok().finish())

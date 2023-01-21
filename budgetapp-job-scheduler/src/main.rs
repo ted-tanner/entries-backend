@@ -10,7 +10,10 @@ mod env;
 mod jobs;
 mod runner;
 
-use jobs::{ClearOtpAttemptsJob, ClearPasswordAttemptsJob, DeleteUsersJob, UnblacklistExpiredRefreshTokensJob};
+use jobs::{
+    ClearOtpAttemptsJob, ClearPasswordAttemptsJob, DeleteUsersJob,
+    UnblacklistExpiredRefreshTokensJob,
+};
 
 fn main() {
     Logger::with(LogSpecification::info())

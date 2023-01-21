@@ -55,17 +55,14 @@ impl Dao {
     pub fn create_user(
         &mut self,
         user_data: &InputUser,
-        hash_params: &password_hasher::HashParams,
-        hashing_secret_key: &[u8],
+        password_hash: &str,
     ) -> Result<User, DaoError> {
-        let hashed_password =
-            password_hasher::hash_password(&user_data.password, hash_params, hashing_secret_key);
         let current_time = SystemTime::now();
 
         let new_user = NewUser {
             id: Uuid::new_v4(),
             email: &user_data.email.to_lowercase(),
-            password_hash: &hashed_password,
+            password_hash: &password_hash,
             first_name: &user_data.first_name,
             last_name: &user_data.last_name,
             date_of_birth: user_data.date_of_birth,
@@ -106,15 +103,10 @@ impl Dao {
     pub fn change_password(
         &mut self,
         user_id: Uuid,
-        new_password: &str,
-        hash_params: &password_hasher::HashParams,
-        hashing_secret_key: &[u8],
+        new_password_hash: &str,
     ) -> Result<(), DaoError> {
-        let hashed_password =
-            password_hasher::hash_password(new_password, hash_params, hashing_secret_key);
-
         dsl::update(users.find(user_id))
-            .set(user_fields::password_hash.eq(hashed_password))
+            .set(user_fields::password_hash.eq(new_password_hash))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
