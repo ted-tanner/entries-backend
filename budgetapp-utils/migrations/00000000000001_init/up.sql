@@ -99,7 +99,12 @@ CREATE TABLE users (
 CREATE TABLE user_budgets (
     user_id UUID NOT NULL,
     budget_id UUID NOT NULL,
+
+    -- Key should be re-encrypted with AES-256 rather than RSA at earliest possible moment
+    -- after exchange
     encryption_key_encrypted TEXT NOT NULL,
+    encryption_key_is_encrypted_with_aes_not_rsa BOOLEAN NOT NULL,
+
     modified_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (user_id, budget_id)
 );

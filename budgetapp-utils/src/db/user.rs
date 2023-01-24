@@ -7,6 +7,8 @@ use crate::models::buddy_relationship::{BuddyRelationship, NewBuddyRelationship}
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
+use crate::models::user_preferences::{NewUserPreferences};
+use crate::models::user_security_data::{NewUserSecurityData, UserSecurityData};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
 use crate::request_io::{InputEditUser, InputUser};
@@ -20,6 +22,9 @@ use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+use crate::schema::user_preferences::dsl::user_preferences;
+use crate::schema::user_security_data as user_security_data_fields;
+use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::user_tombstones as user_tombstone_fields;
 use crate::schema::user_tombstones::dsl::user_tombstones;
 use crate::schema::users as user_fields;
@@ -52,61 +57,92 @@ impl Dao {
             .first::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
+    // TODO: Test
     pub fn create_user(
         &mut self,
         user_data: &InputUser,
-        password_hash: &str,
-    ) -> Result<User, DaoError> {
+        auth_string_hash: &str,
+    ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
+        let user_id = Uuid::new_v4();
 
         let new_user = NewUser {
-            id: Uuid::new_v4(),
+            id: user_id,
             email: &user_data.email.to_lowercase(),
-            password_hash: &password_hash,
-            first_name: &user_data.first_name,
-            last_name: &user_data.last_name,
-            date_of_birth: user_data.date_of_birth,
-            currency: &user_data.currency,
-            last_token_refresh_timestamp: current_time,
-            modified_timestamp: current_time,
             created_timestamp: current_time,
         };
 
-        Ok(dsl::insert_into(users)
-            .values(&new_user)
-            .get_result::<User>(&mut self.db_thread_pool.get()?)?)
+        let new_user_security_data = NewUserSecurityData {
+            user_id,
+
+            auth_string_hash: &auth_string_hash,
+            auth_string_salt: &user_data.auth_string_salt,
+            auth_string_iters: user_data.auth_string_iters,
+
+            password_encryption_salt: &user_data.password_encryption_salt,
+            password_encryption_iters: user_data.password_encryption_iters,
+
+            recovery_key_salt: &user_data.recovery_key_salt,
+            recovery_key_iters: user_data.recovery_key_iters,
+
+            encryption_key_user_password_encrypted: &user_data.encryption_key_user_password_encrypted,
+            encryption_key_recovery_key_encrypted: &user_data.encryption_key_recovery_key_encrypted,
+
+            public_rsa_key: &user_data.public_rsa_key,
+            public_rsa_key_created_timestamp: user_data.public_rsa_key_created_timestamp,
+
+            last_token_refresh_timestamp: current_time,
+            modified_timestamp: current_time,
+        };
+
+        let new_user_preferences = NewUserPreferences {
+            user_id,
+            encrypted_blob: &user_data.preferences_encrypted,
+            modified_timestamp: current_time,
+        };
+
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction()
+            .run(|conn| {
+                dsl::insert_into(users)
+                    .values(&new_user)
+                    .execute(&mut conn)?;
+
+                dsl::insert_into(user_security_data)
+                    .values(&new_user_security_data)
+                    .execute(&mut conn)?;
+
+                dsl::insert_into(user_preferences)
+                    .values(&new_user_preferences)
+                    .execute(&mut conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(user_id)
     }
 
     // TODO: Test
     pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
-        Ok(dsl::update(users.find(user_id))
-            .set(user_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
+        Ok(dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+            .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
             .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn edit_user(
-        &mut self,
-        user_id: Uuid,
-        edited_user_data: &InputEditUser,
-    ) -> Result<usize, DaoError> {
-        Ok(dsl::update(users.find(user_id))
-            .set((
-                user_fields::modified_timestamp.eq(SystemTime::now()),
-                user_fields::first_name.eq(&edited_user_data.first_name),
-                user_fields::last_name.eq(&edited_user_data.last_name),
-                user_fields::date_of_birth.eq(&edited_user_data.date_of_birth),
-                user_fields::currency.eq(&edited_user_data.currency),
-            ))
-            .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn change_password(
+    // TODO: Test
+    // TODO: Everything needs to be reuploaded
+    pub fn update_password(
         &mut self,
         user_id: Uuid,
         new_password_hash: &str,
+        encrypted_encryption_key: &str,
     ) -> Result<(), DaoError> {
-        dsl::update(users.find(user_id))
-            .set(user_fields::password_hash.eq(new_password_hash))
+        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+            .set((
+                user_security_data_fields::auth_string_hash.eq(new_password_hash),
+                user_security_data_fields::encryption_key_user_password_encrypted.eq(encrypted_encryption_key),
+            ))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())

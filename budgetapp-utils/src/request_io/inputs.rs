@@ -57,26 +57,29 @@ pub struct InputDateRange {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputUser {
     pub email: String,
-    pub password: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub date_of_birth: SystemTime,
-    pub currency: String,
+
+    pub auth_string: String,
+
+    pub auth_string_salt: String,
+    pub auth_string_iters: i32,
+
+    pub password_encyption_salt: String,
+    pub password_encyption_iters: i32,
+
+    pub recovery_key_salt: String,
+    pub recovery_key_iters: i32,
+
+    pub encryption_key_user_password_encrypted: String,
+    pub encryption_key_recovery_key_encrypted: String,
+
+    pub public_rsa_key: String,
+
+    pub preferences_encrypted: String,
 }
 
 impl InputUser {
     pub fn validate_email_address(&self) -> validators::Validity {
         validators::validate_email_address(&self.email)
-    }
-
-    pub fn validate_strong_password(&self, min_password_len: usize) -> validators::Validity {
-        validators::validate_strong_password(
-            &self.password,
-            &self.email,
-            &self.first_name,
-            &self.last_name,
-            min_password_len,
-        )
     }
 }
 

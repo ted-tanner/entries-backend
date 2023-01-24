@@ -90,6 +90,7 @@ table! {
         user_id -> Uuid,
         budget_id -> Uuid,
         encryption_key_encrypted -> Text,
+        encryption_key_is_encrypted_with_aes_not_rsa -> Bool,
         modified_timestamp -> Timestamp,
     }
 }
