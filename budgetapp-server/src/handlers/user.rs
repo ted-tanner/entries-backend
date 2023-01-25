@@ -239,6 +239,9 @@ pub async fn change_password(
     })
 }
 
+// TODO: Initiate reset password by sending an email with a code ("forgot password")
+// TODO: This endpoint should be throttled by email
+
 pub async fn send_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,

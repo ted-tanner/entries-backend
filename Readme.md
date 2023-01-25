@@ -478,7 +478,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Change password via a token ("reset password" instead of "change password")
+* Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Get user security data in various endpoints
 * End-to-end encryption
 * Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
