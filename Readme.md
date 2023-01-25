@@ -479,6 +479,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
+* Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
+  - Schedule a job that clears out old records of forgot password endpoint hits
 * Get user security data in various endpoints
 * End-to-end encryption
 * Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
@@ -531,6 +533,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Exchange names in an encrypted manner when sharing buddies
+* Duplicate a budget, including entries (perhaps make including entries optional)
+* Create a concept of budget ownership. Ownership can be transferred (and *must* be transferred before leaving a budget). Owners can delete a budget or boot people out of a budget.
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made

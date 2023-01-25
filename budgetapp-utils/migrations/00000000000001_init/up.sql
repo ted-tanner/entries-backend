@@ -5,8 +5,8 @@ CREATE TABLE blacklisted_tokens (
 );
 
 CREATE TABLE buddy_relationships (
-    user1_id UUID NOT NULL, 
-    user2_id UUID NOT NULL, 
+    user1_id UUID NOT NULL,
+    user2_id UUID NOT NULL,
     PRIMARY KEY (user1_id, user2_id)
 );
 

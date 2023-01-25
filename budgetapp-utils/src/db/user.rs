@@ -211,8 +211,6 @@ impl Dao {
                 )
                     .get_result(&mut db_connection)?;
 
-                
-
                 dsl::insert_into(buddy_relationships)
                     .values(&relationship)
                     .get_result::<BuddyRelationship>(&mut db_connection)?;
@@ -272,8 +270,8 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<User>, DaoError> {
-        let query = "SELECT u.* FROM users AS u, buddy_relationships AS br \
+    pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<Uuid>, DaoError> {
+        let query = "SELECT u.id FROM users AS u, buddy_relationships AS br \
                      WHERE (br.user1_id = $1 AND u.id = br.user2_id) \
                      OR (br.user2_id = $1 AND u.id = br.user1_id)";
 

@@ -302,19 +302,15 @@ pub async fn retract_buddy_request(
     })
     .await?
     {
-        Ok(count) => {
+        Ok(0) | Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
             if count == 0 {
                 return Err(ServerError::NotFound(Some(String::from(
                     "No buddy request with provided ID was made by user",
                 ))));
             }
         }
+        Ok(_) => ()
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID",
-                ))));
-            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -336,7 +332,7 @@ pub async fn accept_buddy_request(
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     let buddy_request_data = match web::block(move || {
-        user_dao.mark_buddy_request_accepted(request_id, auth_user_claims.0.uid)
+        user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -356,22 +352,6 @@ pub async fn accept_buddy_request(
         },
     };
 
-    match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao
-            .create_buddy_relationship(buddy_request_data.sender_user_id, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to accept buddy request",
-            ))));
-        }
-    }
-
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -382,27 +362,23 @@ pub async fn decline_buddy_request(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.mark_buddy_request_declined(request_id.buddy_request_id, auth_user_claims.0.uid)
+        user_dao.delete_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(count) => {
+        Ok(0) | Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
             if count == 0 {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID",
+                    "No buddy request with provided ID was sent to user",
                 ))));
             }
         }
+        Ok(_) => ()
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID",
-                ))));
-            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to decline buddy request",
+                    "Failed to decline request",
                 ))));
             }
         },
@@ -476,7 +452,8 @@ pub async fn get_buddy_request(
 ) -> Result<HttpResponse, ServerError> {
     let request = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        // The user DAO returns a not found if requestor isn't the sender or recipient
+        // The user DAO returns a diesel::result::Error::NotFound if requestor isn't the sender
+        // or recipient
         user_dao.get_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
     })
     .await?
