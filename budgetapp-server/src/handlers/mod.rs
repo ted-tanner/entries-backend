@@ -30,7 +30,7 @@ pub mod error {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 ServerError::InvalidFormat(msg) => format_err(f, "Invalid request format", msg),
-                ServerError::InputRejected(msg) => format_err(f, "Insecure password", msg),
+                ServerError::InputRejected(msg) => format_err(f, "Input rejected", msg),
                 ServerError::AlreadyExists(msg) => format_err(f, "Already exists", msg),
                 ServerError::UserUnauthorized(msg) => format_err(f, "User unauthorized", msg),
                 ServerError::AccessForbidden(msg) => format_err(f, "Access forbidden", msg),
@@ -85,7 +85,7 @@ pub mod error {
     ) -> fmt::Result {
         write!(
             f,
-            "{}{}",
+            "{ \"error_msg\": \"{}{}\" }",
             error_txt,
             if msg.is_some() {
                 format!(": {}", msg.as_ref().unwrap())

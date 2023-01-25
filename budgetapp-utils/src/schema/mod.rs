@@ -18,8 +18,7 @@ table! {
         id -> Uuid,
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
-        accepted -> Bool,
-        sender_name_encrypted -> Text,
+        sender_name_encrypted -> Nullable<Text>,
     }
 }
 
@@ -29,8 +28,7 @@ table! {
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
         budget_id -> Uuid,
-        accepted -> Bool,
-        sender_name_encrypted -> Text,
+        sender_name_encrypted -> Nullable<Text>,
         encryption_key_encrypted -> Text,
     }
 }
@@ -133,7 +131,6 @@ table! {
 table! {
     user_tombstones (user_id) {
         user_id -> Uuid,
-        deletion_request_time -> Timestamp,
         deletion_timestamp -> Timestamp,
     }
 }

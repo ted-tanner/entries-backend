@@ -1,7 +1,8 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
-    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
+    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken, OutputEmail,
+    InputEmail,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -14,176 +15,88 @@ use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware;
 
-pub async fn get(
+pub async fn get_user_email(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    input_user_data: web::Query<InputOptionalUserId>,
+    user_id: web::Query<InputOptionalUserId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_id = input_user_data.user_id.unwrap_or(auth_user_claims.0.uid);
 
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
-
-    let user = match web::block(move || user_dao.get_user_by_id(user_id)).await? {
-        Ok(u) => u,
+    let email = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_user_email(user_id)
+    }).await? {
+        Ok(eml) => eml,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None))
-            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from("User not found"))))
             }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get user data",
+                    "Failed to get user email",
                 ))));
             }
         },
     };
 
-    if user.id == auth_user_claims.0.uid {
-        let output_user = OutputUserPrivate {
-            id: user.id,
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            date_of_birth: user.date_of_birth,
-            currency: user.currency,
-            modified_timestamp: user.modified_timestamp,
-            created_timestamp: user.created_timestamp,
-        };
-
-        return Ok(HttpResponse::Ok().json(output_user));
-    }
-
-    let are_buddies = if let Some(true) = input_user_data.get_buddy_profile {
-        check_are_buddies(&db_thread_pool, auth_user_claims.0.uid, user.id).await?
-    } else {
-        false
-    };
-
-    if are_buddies {
-        let output_user = OutputUserForBuddies {
-            id: user.id,
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            currency: user.currency,
-        };
-
-        Ok(HttpResponse::Ok().json(output_user))
-    } else {
-        let output_user = OutputUserPublic {
-            id: user.id,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            currency: user.currency,
-        };
-
-        Ok(HttpResponse::Ok().json(output_user))
-    }
+    Ok(HttpResponse::Ok().json(OutputEmail { email }))
 }
 
-pub async fn get_user_by_email(
-    req: HttpRequest,
+pub async fn lookup_user_id_by_email(
     db_thread_pool: web::Data<DbThreadPool>,
     _auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    email: web::Query<InputEmail>
 ) -> Result<HttpResponse, ServerError> {
-    // Using a header to accept email address so email address gets encrypted over HTTPS (it
-    // wouldn't if sent in URL query) and so a payload doesn't need to be sent with an HTTP
-    // GET request
-    let email_addr = if let Some(email_val) = req.headers().get("user-email") {
-        if let Ok(email) = email_val.to_str() {
-            if !validators::validate_email_address(email).is_valid() {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "Invalid email address",
-                ))));
-            }
+    let email = email.email;
 
-            String::from(email)
-        } else {
-            return Err(ServerError::InputRejected(Some(String::from(
-                "Invalid email address",
-            ))));
-        }
-    } else {
-        return Err(ServerError::InvalidFormat(Some(String::from(
-            "user-email header not provided",
-        ))));
-    };
+    if let Validity::Invalid(msg) = validators::validate_email_address(&email) {
+        return Err(ServerError::InvalidFormat(Some(msg)));
+    }
 
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
-
-    let user = match web::block(move || user_dao.get_user_by_email(&email_addr)).await? {
-        Ok(u) => u,
+    let id = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.lookup_user_id_by_email(&email)
+    }).await? {
+        Ok(id) => i,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None))
-            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from("User not found"))))
             }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get user data",
+                    "Failed to get user ID",
                 ))));
             }
         },
     };
 
-    let output_user = OutputUserPublic {
-        id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        currency: user.currency,
-    };
-
-    Ok(HttpResponse::Ok().json(output_user))
+    Ok(HttpResponse::Ok().json(OutputEmail { email }))
 }
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
-    if !user_data.0.validate_email_address().is_valid() {
-        return Err(ServerError::InvalidFormat(Some(String::from(
-            "Invalid email address",
-        ))));
-    }
-
-    if let Validity::Invalid(msg) = user_data
-        .0
-        .validate_strong_password(env::CONF.security.password_min_len_chars)
-    {
-        return Err(ServerError::InputRejected(Some(msg)));
-    }
+    if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
+        return Err(ServerError::InvalidFormat(Some(msg)));
+    }n
 
     let user = match web::block(move || {
-        let password_hash = password_hasher::hash_password(
-            &user_data.password,
+        let auth_string_hash = password_hasher::hash_password(
+            &user_data.auth_string,
             &env::PASSWORD_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data, &password_hash)
+        user_dao.create_user(&user_data, &auth_string_hash)
     })
     .await?
     {
         Ok(u) => u,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::AccessForbidden(Some(String::from(
-                    "No user with ID",
-                ))));
-            }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
@@ -200,6 +113,8 @@ pub async fn create(
             }
         },
     };
+
+    // TODO: Send verification email
 
     let signin_token = auth_token::generate_signin_token(
         &auth_token::TokenParams {

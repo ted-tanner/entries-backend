@@ -519,6 +519,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   * OTP
   * Forgot Password
 * Forgot password endpoint
+* Email confirmation for user creation
  
 *By 12/9*
 

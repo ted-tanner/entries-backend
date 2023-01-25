@@ -41,7 +41,6 @@ impl Dao {
         }
     }
 
-    // TODO: Test
     pub fn get_user_email(&mut self, user_id: Uuid) -> Result<String, DaoError> {
         Ok(users
             .select(user_fields::email)
@@ -49,7 +48,6 @@ impl Dao {
             .first::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
     pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
         Ok(users
             .select(user_fields::id)
@@ -57,7 +55,6 @@ impl Dao {
             .first::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
     pub fn create_user(
         &mut self,
         user_data: &InputUser,
@@ -123,15 +120,12 @@ impl Dao {
         Ok(user_id)
     }
 
-    // TODO: Test
     pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
         Ok(dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
             .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
             .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
-    // TODO: Everything needs to be reuploaded
     pub fn update_password(
         &mut self,
         user_id: Uuid,
@@ -152,14 +146,13 @@ impl Dao {
         &mut self,
         recipient_user_id: Uuid,
         sender_user_id: Uuid,
+        sender_name_encrypted: Option<&str>,
     ) -> Result<BuddyRequest, DaoError> {
         let request = NewBuddyRequest {
             id: Uuid::new_v4(),
             recipient_user_id,
             sender_user_id,
-            accepted: false,
-            created_timestamp: SystemTime::now(),
-            accepted_declined_timestamp: None,
+            sender_name_encrypted,
         };
 
         Ok(dsl::insert_into(buddy_requests)
@@ -169,11 +162,7 @@ impl Dao {
                 buddy_request_fields::sender_user_id,
             ))
             .do_update()
-            .set((
-                buddy_request_fields::accepted.eq(false),
-                buddy_request_fields::created_timestamp.eq(SystemTime::now()),
-                buddy_request_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
-            ))
+            .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
             .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
@@ -190,38 +179,35 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn mark_buddy_request_accepted(
+    pub fn accept_buddy_request(
         &mut self,
         request_id: Uuid,
         recipient_user_id: Uuid,
-    ) -> Result<BuddyRequest, DaoError> {
-        Ok(diesel::update(
-            buddy_requests
-                .find(request_id)
-                .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
-        )
-        .set((
-            buddy_request_fields::accepted.eq(true),
-            buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
-        ))
-        .get_result(&mut self.db_thread_pool.get()?)?)
-    }
+    ) -> Result<(), DaoError> {
+        let relationship = NewBuddyRelationship {
+            user1_id,
+            user2_id,
+        };
 
-    pub fn mark_buddy_request_declined(
-        &mut self,
-        request_id: Uuid,
-        recipient_user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(diesel::update(
-            buddy_requests
-                .find(request_id)
-                .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
-        )
-        .set((
-            buddy_request_fields::accepted.eq(false),
-            buddy_request_fields::accepted_declined_timestamp.eq(SystemTime::now()),
-        ))
-        .execute(&mut self.db_thread_pool.get()?)?)
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction()
+            .run(|conn| {
+                diesel::delete(
+                    buddy_requests
+                        .find(request_id)
+                        .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
+                )
+                    .get_result(&mut db_connection)?;
+
+                
+
+                dsl::insert_into(buddy_relationships)
+                    .values(&relationship)
+                    .get_result::<BuddyRelationship>(&mut db_connection)?;
+            })?;
+
+        Ok(())
     }
 
     pub fn get_all_pending_buddy_requests_for_user(
@@ -230,8 +216,6 @@ impl Dao {
     ) -> Result<Vec<BuddyRequest>, DaoError> {
         Ok(buddy_requests
             .filter(buddy_request_fields::recipient_user_id.eq(user_id))
-            .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
-            .order(buddy_request_fields::created_timestamp.asc())
             .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
@@ -241,8 +225,6 @@ impl Dao {
     ) -> Result<Vec<BuddyRequest>, DaoError> {
         Ok(buddy_requests
             .filter(buddy_request_fields::sender_user_id.eq(user_id))
-            .filter(buddy_request_fields::accepted_declined_timestamp.is_null())
-            .order(buddy_request_fields::created_timestamp.asc())
             .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
@@ -259,24 +241,6 @@ impl Dao {
                     .or(buddy_request_fields::recipient_user_id.eq(user_id)),
             )
             .first::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn create_buddy_relationship(
-        &mut self,
-        user1_id: Uuid,
-        user2_id: Uuid,
-    ) -> Result<BuddyRelationship, DaoError> {
-        let current_time = SystemTime::now();
-
-        let relationship = NewBuddyRelationship {
-            created_timestamp: current_time,
-            user1_id,
-            user2_id,
-        };
-
-        Ok(dsl::insert_into(buddy_relationships)
-            .values(&relationship)
-            .get_result::<BuddyRelationship>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_relationship(
@@ -300,8 +264,7 @@ impl Dao {
     pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<User>, DaoError> {
         let query = "SELECT u.* FROM users AS u, buddy_relationships AS br \
                      WHERE (br.user1_id = $1 AND u.id = br.user2_id) \
-                     OR (br.user2_id = $1 AND u.id = br.user1_id) \
-                     ORDER BY br.created_timestamp";
+                     OR (br.user2_id = $1 AND u.id = br.user1_id)";
 
         Ok(sql_query(query)
             .bind::<diesel::sql_types::Uuid, _>(user_id)
@@ -322,7 +285,6 @@ impl Dao {
         .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
     pub fn initiate_user_deletion(
         &mut self,
         user_id: Uuid,
@@ -339,7 +301,6 @@ impl Dao {
             .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
     pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
         Ok(diesel::delete(
             user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user_id)),
@@ -347,8 +308,7 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
-    pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<usize, DaoError> {
+    pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let new_tombstone = NewUserTombstone {
@@ -357,39 +317,35 @@ impl Dao {
             deletion_timestamp: SystemTime::now(),
         };
 
-        dsl::insert_into(user_tombstones)
-            .values(&new_tombstone)
-            .execute(&mut db_connection)?;
+        db_connection.build_transaction()
+            .run(|conn| {
+                dsl::insert_into(user_tombstones)
+                    .values(&new_tombstone)
+                    .execute(&mut db_connection)?;
 
-        diesel::delete(budgets)
-            .filter(
-                user_budgets
-                    .filter(user_budget_fields::user_id.eq(request.user_id))
-                    .filter(budget_fields::id.eq(user_budget_fields::budget_id))
-                    .count()
-                    .single_value()
-                    .eq(1),
-            )
-            .execute(&mut db_connection)?;
+                diesel::delete(budgets)
+                    .filter(
+                        user_budgets
+                            .filter(user_budget_fields::user_id.eq(request.user_id))
+                            .filter(budget_fields::id.eq(user_budget_fields::budget_id))
+                            .count()
+                            .single_value()
+                            .eq(1),
+                    )
+                    .execute(&mut db_connection)?;
 
-        let delete_user_res =
-            diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
+                diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
 
-        // Do this last. If there is an error before this point, the request will still be
-        // present.
-        //
-        // NOTE: Future changes to the error handling of a failed deletion may necessitate the
-        //       deletion of the request FIRST rather than last.
-        diesel::delete(
-            user_deletion_requests
-                .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
-        )
-        .execute(&mut db_connection)?;
+                diesel::delete(
+                    user_deletion_requests
+                        .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
+                )
+                    .execute(&mut db_connection)?;
+            })?;
 
-        Ok(delete_user_res)
+        Ok(())
     }
 
-    // TODO: Test
     pub fn get_all_users_ready_for_deletion(
         &mut self,
     ) -> Result<Vec<UserDeletionRequest>, DaoError> {
@@ -398,7 +354,6 @@ impl Dao {
             .get_results(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Test
     pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
         Ok(user_tombstones
             .filter(user_tombstone_fields::user_id.eq(user_id))

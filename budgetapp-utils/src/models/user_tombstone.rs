@@ -9,7 +9,6 @@ use crate::schema::user_tombstones;
 #[diesel(table_name = user_tombstones, primary_key(user_id))]
 pub struct UserTombstone {
     pub user_id: Uuid,
-    pub deletion_request_time: SystemTime,
     pub deletion_timestamp: SystemTime,
 }
 
@@ -17,6 +16,5 @@ pub struct UserTombstone {
 #[diesel(table_name = user_tombstones, primary_key(user_id))]
 pub struct NewUserTombstone {
     pub user_id: Uuid,
-    pub deletion_request_time: SystemTime,
     pub deletion_timestamp: SystemTime,
 }

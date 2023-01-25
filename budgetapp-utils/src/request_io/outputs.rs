@@ -6,6 +6,11 @@ use crate::models::category::Category;
 use crate::models::entry::Entry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputEmail {
+    email: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputUserPrivate {
     pub id: Uuid,
 

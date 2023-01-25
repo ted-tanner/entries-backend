@@ -16,9 +16,7 @@ CREATE TABLE buddy_requests (
     recipient_user_id UUID NOT NULL,
     sender_user_id UUID NOT NULL,
     
-    accepted BOOLEAN NOT NULL,
-
-    sender_name_encrypted TEXT NOT NULL,
+    sender_name_encrypted TEXT,
     
     UNIQUE (recipient_user_id, sender_user_id),
     CHECK (recipient_user_id != sender_user_id)
@@ -38,11 +36,9 @@ CREATE TABLE budget_share_invites (
     
     recipient_user_id UUID NOT NULL,
     sender_user_id UUID NOT NULL,
-
     budget_id UUID NOT NULL,
-    accepted BOOLEAN NOT NULL,
 
-    sender_name_encrypted TEXT NOT NULL,
+    sender_name_encrypted TEXT,
     -- This should never get sent to the recipient user until the invite has been accepted
     encryption_key_encrypted TEXT NOT NULL,
 
@@ -148,7 +144,6 @@ CREATE TABLE user_security_data (
 
 CREATE TABLE user_tombstones (
     user_id UUID PRIMARY KEY,
-    deletion_request_time TIMESTAMP NOT NULL,
     deletion_timestamp TIMESTAMP NOT NULL
 );
 

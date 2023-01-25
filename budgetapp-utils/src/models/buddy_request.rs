@@ -13,16 +13,16 @@ pub struct BuddyRequest {
     pub recipient_user_id: Uuid,
     pub sender_user_id: Uuid,
 
-    pub accepted: bool,
+    pub sender_name_encrypted: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = buddy_requests)]
-pub struct NewBuddyRequest {
+pub struct NewBuddyRequest<'a> {
     pub id: Uuid,
 
     pub recipient_user_id: Uuid,
     pub sender_user_id: Uuid,
 
-    pub accepted: bool,
+    pub sender_name_encrypted: Option<&'a str>
 }

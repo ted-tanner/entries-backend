@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::validators;
 
+// TODO: Can these Strings be &str?
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CredentialPair {
     pub email: String,
@@ -24,7 +25,11 @@ pub struct InputUserId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputOptionalUserId {
     pub user_id: Option<Uuid>,
-    pub get_buddy_profile: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEmail {
+    pub email: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
