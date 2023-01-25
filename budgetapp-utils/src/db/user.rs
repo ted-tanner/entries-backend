@@ -48,6 +48,13 @@ impl Dao {
             .first::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
+    pub fn get_user_auth_string_hash(&mut self, user_id: Uuid) -> Result<String, DaoError> {
+        Ok(users
+            .select(user_fields::auth_string_hash)
+            .find(user_id)
+            .first::<String>(&mut self.db_thread_pool.get()?)?)
+    }
+
     pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
         Ok(users
             .select(user_fields::id)
@@ -129,12 +136,16 @@ impl Dao {
     pub fn update_password(
         &mut self,
         user_id: Uuid,
-        new_password_hash: &str,
+        new_auth_string_hash: &str,
+        new_auth_string_salt: &str,
+        new_auth_string_iters: i32,
         encrypted_encryption_key: &str,
     ) -> Result<(), DaoError> {
         dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
             .set((
                 user_security_data_fields::auth_string_hash.eq(new_password_hash),
+                user_security_data_fields::auth_string_salt.eq(new_auth_string_salt),
+                user_security_data_fields::auth_string_iters.eq(new_auth_string_iters),
                 user_security_data_fields::encryption_key_user_password_encrypted.eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;

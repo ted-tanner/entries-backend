@@ -2,7 +2,7 @@ use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
     InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken, OutputEmail,
-    InputEmail,
+    InputEmail, InputNewAuthStringAndEncryptedPassword,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -186,11 +186,20 @@ pub async fn edit(
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    password_pair: web::Json<CurrentAndNewPasswordPair>,
+    new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
+    let current_auth_string = new_password_data.current_auth_string.clone();
 
-    let user = match web::block(move || user_dao.get_user_by_id(auth_user_claims.0.uid)).await? {
+    let does_current_auth_match = match web::block(move || {
+        let saved_auth_string = user_dao.get_user_auth_string_hash(auth_user_claims.0.uid)?;
+
+        password_hasher::verify_hash(
+            &current_auth_string,
+            &saved_auth_string,
+            env::CONF.keys.hashing_key.as_bytes(),
+        )
+    }).await? {
         Ok(u) => u,
         Err(e) => {
             log::error!("{}", e);
@@ -200,44 +209,27 @@ pub async fn change_password(
         }
     };
 
-    let current_password = password_pair.current_password.clone();
-
-    let does_password_match_hash = web::block(move || {
-        password_hasher::verify_hash(
-            &current_password,
-            &user.password_hash,
-            env::CONF.keys.hashing_key.as_bytes(),
-        )
-    })
-    .await?;
-
-    if !does_password_match_hash {
+    if !does_current_auth_match {
         return Err(ServerError::UserUnauthorized(Some(String::from(
             "Current password was incorrect",
         ))));
     }
 
-    let new_password_validity = validators::validate_strong_password(
-        &password_pair.new_password,
-        &user.email,
-        &user.first_name,
-        &user.last_name,
-        env::CONF.security.password_min_len_chars,
-    );
-
-    if let Validity::Invalid(msg) = new_password_validity {
-        return Err(ServerError::InputRejected(Some(msg)));
-    };
-
     web::block(move || {
-        let password_hash = password_hasher::hash_password(
-            &user_data.password,
+        let auth_string_hash = password_hasher::hash_password(
+            &new_password_data.new_auth_string,
             &env::PASSWORD_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.change_password(auth_user_claims.0.uid, &password_hash)
+        user_dao.update_password(
+            auth_user_claims.0.uid,
+            &new_password_data.auth_string_hash,
+            &new_password_data.auth_string_salt,
+            &new_password_data.auth_string_iters,
+            &new_password_data.encrypted_encryption_key,
+        )
     })
     .await
     .map(|_| HttpResponse::Ok().finish())

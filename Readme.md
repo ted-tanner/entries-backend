@@ -478,6 +478,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Change password via a token ("reset password" instead of "change password")
+* Get user security data in various endpoints
 * End-to-end encryption
 * Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
 * Rename `password_hasher` to `argon2_hasher`
@@ -529,7 +531,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Update encrypted names
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made

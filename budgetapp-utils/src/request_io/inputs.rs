@@ -82,12 +82,6 @@ pub struct InputUser {
     pub preferences_encrypted: String,
 }
 
-impl InputUser {
-    pub fn validate_email_address(&self) -> validators::Validity {
-        validators::validate_email_address(&self.email)
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUser {
     pub first_name: String,
@@ -108,9 +102,14 @@ pub struct SigninTokenOtpPair {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CurrentAndNewPasswordPair {
-    pub current_password: String,
-    pub new_password: String,
+pub struct InputNewAuthStringAndEncryptedPassword {
+    pub current_auth_string: String,
+
+    pub new_auth_string: String,
+    pub auth_string_salt: String,
+    pub auth_string_iters: i32,
+
+    pub encrypted_encryption_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
