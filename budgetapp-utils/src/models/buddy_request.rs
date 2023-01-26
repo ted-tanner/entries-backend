@@ -24,5 +24,5 @@ pub struct NewBuddyRequest<'a> {
     pub recipient_user_id: Uuid,
     pub sender_user_id: Uuid,
 
-    pub sender_name_encrypted: Option<&'a str>
+    pub sender_name_encrypted: Option<&'a str>,
 }

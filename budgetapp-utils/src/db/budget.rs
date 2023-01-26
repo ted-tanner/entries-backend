@@ -13,7 +13,9 @@ use crate::models::budget_share_invite::{BudgetShareInvite, NewBudgetShareInvite
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
-use crate::request_io::{InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame};
+use crate::request_io::{
+    InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame,
+};
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
 use crate::schema::budgets as budget_fields;
@@ -79,7 +81,7 @@ impl Dao {
 
         let loaded_budgets = sql_query(query)
             .bind::<sql_types::Uuid, _>(user_id)
-            .bind::<sql_types::Uuid, _>(budget_ids);
+            .bind::<sql_types::Uuid, _>(budget_ids)
             .load::<Budget>(&mut db_connection)?;
         let loaded_categories = Category::belonging_to(&loaded_budgets)
             .order(category_fields::name.asc())
@@ -189,7 +191,7 @@ impl Dao {
             encryption_key_is_encrypted_with_aes_not_rsa: true,
             modified_timestamp: current_time,
         };
-        
+
         let mut budget_categories = Vec::new();
         let mut budget_category_temp_ids = Vec::new();
 
@@ -222,50 +224,44 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction()
-            .run(|conn| {
-                dsl::insert_into(budgets)
-                    .values(&new_budget)
-                    .execute(&mut db_connection)?;
+        db_connection.build_transaction().run(|conn| {
+            dsl::insert_into(budgets)
+                .values(&new_budget)
+                .execute(&mut db_connection)?;
 
-                dsl::insert_into(categories)
-                    .values(budget_categories)
-                    .execute(&mut db_connection)?;
+            dsl::insert_into(categories)
+                .values(budget_categories)
+                .execute(&mut db_connection)?;
 
-                dsl::insert_into(user_budgets)
-                    .values(&new_user_budget_association)
-                    .execute(&mut db_connection)?;
+            dsl::insert_into(user_budgets)
+                .values(&new_user_budget_association)
+                .execute(&mut db_connection)?;
 
-                Ok(())
-            })?;
+            Ok(())
+        })?;
 
         Ok(output_budget)
     }
 
     pub fn edit_budget(
         &mut self,
-        edited_budget_data: &InputEditBudget,
+        budget_id: Uuid,
+        edited_budget_data: &str,
         user_id: Uuid,
     ) -> Result<usize, DaoError> {
         Ok(diesel::sql_query(
             "UPDATE budgets AS b \
              SET modified_timestamp = $1, \
-             name = $2, \
-             description = $3, \
-             start_date = $4, \
-             end_date = $5 \
+             encrypted_blob = $2
              FROM user_budgets AS ub \
-             WHERE ub.user_id = $6 \
+             WHERE ub.user_id = $3 \
              AND b.id = ub.budget_id \
-             AND b.id = $7",
+             AND b.id = $4",
         )
         .bind::<Timestamp, _>(SystemTime::now())
-        .bind::<VarChar, _>(&edited_budget_data.name)
-        .bind::<Nullable<Text>, _>(&edited_budget_data.description)
-        .bind::<Timestamp, _>(&edited_budget_data.start_date)
-        .bind::<Timestamp, _>(&edited_budget_data.end_date)
+        .bind::<Text, _>(edited_budget_data)
         .bind::<sql_types::Uuid, _>(user_id)
-        .bind::<sql_types::Uuid, _>(&edited_budget_data.id)
+        .bind::<sql_types::Uuid, _>(budget_id)
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
@@ -274,15 +270,16 @@ impl Dao {
         budget_id: Uuid,
         recipient_user_id: Uuid,
         sender_user_id: Uuid,
+        sender_name_encrypted: Option<&str>,
+        encryption_key_encrypted: &str,
     ) -> Result<usize, DaoError> {
         let budget_share_invite = NewBudgetShareInvite {
             id: Uuid::new_v4(),
             recipient_user_id,
             sender_user_id,
             budget_id,
-            accepted: false,
-            created_timestamp: SystemTime::now(),
-            accepted_declined_timestamp: None,
+            sender_name_encrypted,
+            encryption_key_encrypted,
         };
 
         Ok(dsl::insert_into(budget_share_invites)
@@ -294,9 +291,8 @@ impl Dao {
             ))
             .do_update()
             .set((
-                budget_share_invite_fields::accepted.eq(false),
-                budget_share_invite_fields::created_timestamp.eq(SystemTime::now()),
-                budget_share_invite_fields::accepted_declined_timestamp.eq(None::<SystemTime>),
+                budget_share_invite_fields::sender_name_encrypted.eq(sender_name_encrypted),
+                budget_share_invite_fields::encryption_key_encrypted.eq(encryption_key_encrypted),
             ))
             .execute(&mut self.db_thread_pool.get()?)?)
     }

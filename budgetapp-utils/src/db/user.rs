@@ -7,7 +7,7 @@ use crate::models::buddy_relationship::{BuddyRelationship, NewBuddyRelationship}
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::user::{NewUser, User};
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
-use crate::models::user_preferences::{NewUserPreferences};
+use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::{NewUserSecurityData, UserSecurityData};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
@@ -89,7 +89,8 @@ impl Dao {
             recovery_key_salt: &user_data.recovery_key_salt,
             recovery_key_iters: user_data.recovery_key_iters,
 
-            encryption_key_user_password_encrypted: &user_data.encryption_key_user_password_encrypted,
+            encryption_key_user_password_encrypted: &user_data
+                .encryption_key_user_password_encrypted,
             encryption_key_recovery_key_encrypted: &user_data.encryption_key_recovery_key_encrypted,
 
             public_rsa_key: &user_data.public_rsa_key,
@@ -107,30 +108,31 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction()
-            .run(|conn| {
-                dsl::insert_into(users)
-                    .values(&new_user)
-                    .execute(&mut conn)?;
+        db_connection.build_transaction().run(|conn| {
+            dsl::insert_into(users)
+                .values(&new_user)
+                .execute(&mut conn)?;
 
-                dsl::insert_into(user_security_data)
-                    .values(&new_user_security_data)
-                    .execute(&mut conn)?;
+            dsl::insert_into(user_security_data)
+                .values(&new_user_security_data)
+                .execute(&mut conn)?;
 
-                dsl::insert_into(user_preferences)
-                    .values(&new_user_preferences)
-                    .execute(&mut conn)?;
+            dsl::insert_into(user_preferences)
+                .values(&new_user_preferences)
+                .execute(&mut conn)?;
 
-                Ok(())
-            })?;
+            Ok(())
+        })?;
 
         Ok(user_id)
     }
 
     pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
-        Ok(dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
-            .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
-            .execute(&mut self.db_thread_pool.get()?)?)
+        Ok(
+            dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+                .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
+                .execute(&mut self.db_thread_pool.get()?)?,
+        )
     }
 
     pub fn update_password(
@@ -146,7 +148,8 @@ impl Dao {
                 user_security_data_fields::auth_string_hash.eq(new_password_hash),
                 user_security_data_fields::auth_string_salt.eq(new_auth_string_salt),
                 user_security_data_fields::auth_string_iters.eq(new_auth_string_iters),
-                user_security_data_fields::encryption_key_user_password_encrypted.eq(encrypted_encryption_key),
+                user_security_data_fields::encryption_key_user_password_encrypted
+                    .eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;
 
@@ -195,26 +198,22 @@ impl Dao {
         request_id: Uuid,
         recipient_user_id: Uuid,
     ) -> Result<(), DaoError> {
-        let relationship = NewBuddyRelationship {
-            user1_id,
-            user2_id,
-        };
+        let relationship = NewBuddyRelationship { user1_id, user2_id };
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction()
-            .run(|conn| {
-                diesel::delete(
-                    buddy_requests
-                        .find(request_id)
-                        .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
-                )
-                    .execute(&mut db_connection)?;
+        db_connection.build_transaction().run(|conn| {
+            diesel::delete(
+                buddy_requests
+                    .find(request_id)
+                    .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
+            )
+            .execute(&mut db_connection)?;
 
-                dsl::insert_into(buddy_relationships)
-                    .values(&relationship)
-                    .execute(&mut db_connection)?;
-            })?;
+            dsl::insert_into(buddy_relationships)
+                .values(&relationship)
+                .execute(&mut db_connection)?;
+        })?;
 
         Ok(())
     }
@@ -326,31 +325,30 @@ impl Dao {
             deletion_timestamp: SystemTime::now(),
         };
 
-        db_connection.build_transaction()
-            .run(|conn| {
-                dsl::insert_into(user_tombstones)
-                    .values(&new_tombstone)
-                    .execute(&mut db_connection)?;
+        db_connection.build_transaction().run(|conn| {
+            dsl::insert_into(user_tombstones)
+                .values(&new_tombstone)
+                .execute(&mut db_connection)?;
 
-                diesel::delete(budgets)
-                    .filter(
-                        user_budgets
-                            .filter(user_budget_fields::user_id.eq(request.user_id))
-                            .filter(budget_fields::id.eq(user_budget_fields::budget_id))
-                            .count()
-                            .single_value()
-                            .eq(1),
-                    )
-                    .execute(&mut db_connection)?;
-
-                diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
-
-                diesel::delete(
-                    user_deletion_requests
-                        .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
+            diesel::delete(budgets)
+                .filter(
+                    user_budgets
+                        .filter(user_budget_fields::user_id.eq(request.user_id))
+                        .filter(budget_fields::id.eq(user_budget_fields::budget_id))
+                        .count()
+                        .single_value()
+                        .eq(1),
                 )
-                    .execute(&mut db_connection)?;
-            })?;
+                .execute(&mut db_connection)?;
+
+            diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
+
+            diesel::delete(
+                user_deletion_requests
+                    .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
+            )
+            .execute(&mut db_connection)?;
+        })?;
 
         Ok(())
     }

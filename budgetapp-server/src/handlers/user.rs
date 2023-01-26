@@ -1,8 +1,8 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputOptionalUserId, InputUser,
-    InputUserId, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken, OutputEmail,
-    InputEmail, InputNewAuthStringAndEncryptedPassword,
+    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputEmail,
+    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputUser, InputUserId,
+    OutputEmail, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -25,7 +25,9 @@ pub async fn get_user_email(
     let email = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_email(user_id)
-    }).await? {
+    })
+    .await?
+    {
         Ok(eml) => eml,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -46,7 +48,7 @@ pub async fn get_user_email(
 pub async fn lookup_user_id_by_email(
     db_thread_pool: web::Data<DbThreadPool>,
     _auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    email: web::Query<InputEmail>
+    email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
     let email = email.email;
 
@@ -57,7 +59,9 @@ pub async fn lookup_user_id_by_email(
     let id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.lookup_user_id_by_email(&email)
-    }).await? {
+    })
+    .await?
+    {
         Ok(id) => i,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -81,7 +85,7 @@ pub async fn create(
 ) -> Result<HttpResponse, ServerError> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
         return Err(ServerError::InvalidFormat(Some(msg)));
-    }n
+    }
 
     let user = match web::block(move || {
         let auth_string_hash = password_hasher::hash_password(
@@ -199,7 +203,9 @@ pub async fn change_password(
             &saved_auth_string,
             env::CONF.keys.hashing_key.as_bytes(),
         )
-    }).await? {
+    })
+    .await?
+    {
         Ok(u) => u,
         Err(e) => {
             log::error!("{}", e);
@@ -309,7 +315,7 @@ pub async fn retract_buddy_request(
                 ))));
             }
         }
-        Ok(_) => ()
+        Ok(_) => (),
         Err(e) => match e {
             _ => {
                 log::error!("{}", e);
@@ -331,26 +337,25 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let buddy_request_data = match web::block(move || {
-        user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(req_data) => req_data,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID",
-                ))));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to accept buddy request",
-                ))));
-            }
-        },
-    };
+    let buddy_request_data =
+        match web::block(move || user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid))
+            .await?
+        {
+            Ok(req_data) => req_data,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(ServerError::NotFound(Some(String::from(
+                        "No buddy request with provided ID",
+                    ))));
+                }
+                _ => {
+                    log::error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                        "Failed to accept buddy request",
+                    ))));
+                }
+            },
+        };
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -373,7 +378,7 @@ pub async fn decline_buddy_request(
                 ))));
             }
         }
-        Ok(_) => ()
+        Ok(_) => (),
         Err(e) => match e {
             _ => {
                 log::error!("{}", e);
