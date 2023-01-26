@@ -408,40 +408,32 @@ impl Dao {
             .first::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
+    pub fn leave_budget(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction().run(|conn| {
+            diesel::delete(
+                user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(user_budget_fields::budget_id.eq(budget_id)),
+            )
+            .execute(&mut conn)?;
+
+            let users_remaining_in_budget = user_budgets
+                .filter(user_budget_fields::budget_id.eq(budget_id))
+                .execute(&mut conn)?;
+
+            if users_remaining_in_budget == 0 {
+                diesel::delete(budgets.find(budget_id)).execute(&mut conn)?;
+            }
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
     /////////////////////////// TODO: Everything below this ///////////////////////////
-    pub fn add_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
-        let current_time = SystemTime::now();
-
-        let new_user_budget_association = NewUserBudget {
-            created_timestamp: current_time,
-            user_id,
-            budget_id,
-        };
-
-        Ok(dsl::insert_into(user_budgets)
-            .values(&new_user_budget_association)
-            .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn remove_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
-            user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(budget_id)),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn count_users_remaining_in_budget(&mut self, budget_id: Uuid) -> Result<usize, DaoError> {
-        Ok(user_budgets
-            .filter(user_budget_fields::budget_id.eq(budget_id))
-            .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn delete_budget(&mut self, budget_id: Uuid) -> Result<usize, DaoError> {
-        Ok(diesel::delete(budgets.find(budget_id)).execute(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn create_entry(
         &mut self,
         entry_data: &InputEntry,
@@ -478,6 +470,13 @@ impl Dao {
 
         Ok(entry)
     }
+
+    // TODO: Add entry with new category
+    // TODO: Edit entry
+    // TODO: Delete entry
+    // TODO: Add category
+    // TODO: Edit category
+    // TODO: Delete category
 }
 
 #[cfg(test)]
