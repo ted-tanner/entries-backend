@@ -28,6 +28,7 @@ table! {
         recipient_user_id -> Uuid,
         sender_user_id -> Uuid,
         budget_id -> Uuid,
+        budget_name_encrypted -> Text,
         sender_name_encrypted -> Nullable<Text>,
         encryption_key_encrypted -> Text,
     }

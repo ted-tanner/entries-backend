@@ -14,6 +14,7 @@ pub struct BudgetShareInvite {
     pub sender_user_id: Uuid,
     pub budget_id: Uuid,
 
+    pub budget_name_encrypted: String,
     pub sender_name_encrypted: Option<String>,
 
     // This should never get sent to the recipient user until the invite has been accepted
@@ -29,6 +30,7 @@ pub struct NewBudgetShareInvite<'a> {
     pub sender_user_id: Uuid,
     pub budget_id: Uuid,
 
+    pub budget_name_encrypted: &'a str,
     pub sender_name_encrypted: Option<&'a str>,
 
     pub encryption_key_encrypted: &'a str,

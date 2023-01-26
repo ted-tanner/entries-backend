@@ -430,6 +430,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
 * Verify user age
 * Warn a user that they cannot unshare a budget once it is shared
+* Mention that buddy requests adn budget share invites will be deleted after 30 days
 
 #### IMPORTANT Data Syncronization Stuff
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
@@ -484,6 +485,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Get user security data in various endpoints
 * End-to-end encryption
+* Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
 * Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
 * Rename `password_hasher` to `argon2_hasher`
 * Rename `request_io` to `partial_models`
@@ -503,7 +505,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoint for checking if user is listed for deletion
 * Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * White paper, security audit
-* Clear `budget_share_invites` and `buddy_requests` that are greater than a month old
 
 *By 9/16*
 

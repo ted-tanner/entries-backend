@@ -206,8 +206,8 @@ impl Dao {
                     .find(request_id)
                     .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
             )
-                .returning(buddy_request_fields:::sender_user_id)
-                .execute(&mut conn)?;
+            .returning(buddy_request_fields::sender_user_id)
+            .execute(&mut conn)?;
 
             let relationship = NewBuddyRelationship {
                 user1_id: sender_user_id,

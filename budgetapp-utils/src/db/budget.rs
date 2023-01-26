@@ -15,7 +15,7 @@ use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
     InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame,
-    OutputBudgetIdAndEncryptionKey,
+    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
@@ -269,6 +269,7 @@ impl Dao {
     pub fn invite_user(
         &mut self,
         budget_id: Uuid,
+        budget_name_encrypted: &str,
         recipient_user_id: Uuid,
         sender_user_id: Uuid,
         sender_name_encrypted: Option<&str>,
@@ -279,6 +280,7 @@ impl Dao {
             recipient_user_id,
             sender_user_id,
             budget_id,
+            budget_name_encrypted,
             sender_name_encrypted,
             encryption_key_encrypted,
         };
@@ -292,6 +294,7 @@ impl Dao {
             ))
             .do_update()
             .set((
+                budget_share_invite_fields::budget_name_encrypted.eq(budget_name_encrypted),
                 budget_share_invite_fields::sender_name_encrypted.eq(sender_name_encrypted),
                 budget_share_invite_fields::encryption_key_encrypted.eq(encryption_key_encrypted),
             ))
@@ -324,11 +327,11 @@ impl Dao {
                     .find(invitation_id)
                     .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
             )
-                .returning((
-                    budget_share_invite_fields::budget_id,
-                    budget_share_invite_fields::encryption_key_encrypted,
-                ))
-                .get_result::<OutputBudgetIdAndEncryptionKey>(&mut conn)?;
+            .returning((
+                budget_share_invite_fields::budget_id,
+                budget_share_invite_fields::encryption_key_encrypted,
+            ))
+            .get_result::<OutputBudgetIdAndEncryptionKey>(&mut conn)?;
 
             let user_budget_relation = NewUserBudget {
                 user_id: recipient_user_id,
@@ -348,62 +351,64 @@ impl Dao {
         Ok(budget_id_and_key)
     }
 
-    /////////////////////////// TODO: Everything below this ///////////////////////////
-
-    pub fn mark_invitation_declined(
-        &mut self,
-        invitation_id: Uuid,
-        recipient_user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(diesel::update(
-            budget_share_invites
-                .find(invitation_id)
-                .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
-        )
-        .set((
-            budget_share_invite_fields::accepted.eq(false),
-            budget_share_invite_fields::accepted_declined_timestamp.eq(SystemTime::now()),
-        ))
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn get_all_pending_invitations_for_user(
         &mut self,
         user_id: Uuid,
-    ) -> Result<Vec<BudgetShareInvite>, DaoError> {
+    ) -> Result<Vec<OutputBudgetShareInviteWithoutKey>, DaoError> {
         Ok(budget_share_invites
+            .select((
+                budget_share_invite_fields::id,
+                budget_share_invite_fields::recipient_user_id,
+                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::budget_id,
+                budget_share_invite_fields::budget_name_encrypted,
+                budget_share_invite_fields::sender_name_encrypted,
+            ))
             .filter(budget_share_invite_fields::recipient_user_id.eq(user_id))
-            .filter(budget_share_invite_fields::accepted_declined_timestamp.is_null())
-            .order(budget_share_invite_fields::created_timestamp.asc())
-            .load::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
+            .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_invitations_made_by_user(
         &mut self,
         user_id: Uuid,
-    ) -> Result<Vec<BudgetShareInvite>, DaoError> {
+    ) -> Result<Vec<OutputBudgetShareInviteWithoutKey>, DaoError> {
         Ok(budget_share_invites
+            .select((
+                budget_share_invite_fields::id,
+                budget_share_invite_fields::recipient_user_id,
+                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::budget_id,
+                budget_share_invite_fields::budget_name_encrypted,
+                budget_share_invite_fields::sender_name_encrypted,
+            ))
             .filter(budget_share_invite_fields::sender_user_id.eq(user_id))
-            .filter(budget_share_invite_fields::accepted_declined_timestamp.is_null())
-            .order(budget_share_invite_fields::created_timestamp.asc())
-            .load::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
+            .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_invitation(
         &mut self,
         invitation_id: Uuid,
         user_id: Uuid,
-    ) -> Result<BudgetShareInvite, DaoError> {
+    ) -> Result<OutputBudgetShareInviteWithoutKey, DaoError> {
         Ok(budget_share_invites
+            .select((
+                budget_share_invite_fields::id,
+                budget_share_invite_fields::recipient_user_id,
+                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::budget_id,
+                budget_share_invite_fields::budget_name_encrypted,
+                budget_share_invite_fields::sender_name_encrypted,
+            ))
             .find(invitation_id)
             .filter(
                 budget_share_invite_fields::sender_user_id
                     .eq(user_id)
                     .or(budget_share_invite_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<BudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
+            .first::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
+    /////////////////////////// TODO: Everything below this ///////////////////////////
     pub fn add_user(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<usize, DaoError> {
         let current_time = SystemTime::now();
 
@@ -485,7 +490,6 @@ pub mod tests {
 
     use crate::db::user;
     use crate::models::budget::Budget;
-    use crate::models::budget_share_invite::BudgetShareInvite;
     use crate::models::category::Category;
     use crate::models::user::User;
     use crate::models::user_budget::UserBudget;
