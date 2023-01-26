@@ -315,11 +315,11 @@ impl Dao {
         &mut self,
         invitation_id: Uuid,
         recipient_user_id: Uuid,
-    ) -> Result<Uuid, DaoError> {
+    ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let budget_id = db_connection.build_transaction().run(|conn| {
-            let (budget_id, key_encrypted) = diesel::delete(
+        let budget_id_and_key = db_connection.build_transaction().run(|conn| {
+            let budget_id_and_key = diesel::delete(
                 budget_share_invites
                     .find(invitation_id)
                     .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
@@ -327,26 +327,25 @@ impl Dao {
                 .returning((
                     budget_share_invite_fields::budget_id,
                     budget_share_invite_fields::encryption_key_encrypted,
-                    SystemTime::now(),
                 ))
-                .get_result::<(Uuid, String)>(&mut conn)?;
+                .get_result::<OutputBudgetIdAndEncryptionKey>(&mut conn)?;
 
             let user_budget_relation = NewUserBudget {
                 user_id: recipient_user_id,
-                budget_id: budget_id,
-                encryption_key_encrypted: &key_encrypted,
+                budget_id: budget_id_and_key.budget_id,
+                encryption_key_encrypted: &budget_id_and_key.encryption_key_encrypted,
                 encryption_key_is_encrypted_with_aes_not_rsa: false,
-                modified_timestamp: budget_id_and_key.modified_timestamp,
+                modified_timestamp: SystemTime::now(),
             };
 
             dsl::insert_into(user_budgets)
                 .values(&user_budget_relation)
                 .execute(&mut conn)?;
 
-            Ok(budget_id)
+            Ok(budget_id_and_key)
         })?;
 
-        Ok(budget_id)
+        Ok(budget_id_and_key)
     }
 
     /////////////////////////// TODO: Everything below this ///////////////////////////

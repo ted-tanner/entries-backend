@@ -77,6 +77,12 @@ pub struct OutputBudgetFrame {
     pub modified_timestamp: SystemTime,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputBudgetIdAndEncryptionKey {
+    budget_id: Uuid,
+    encryption_key_encrypted: String,
+}
+
 // TODO: Can these Strings be &str?
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CredentialPair {
