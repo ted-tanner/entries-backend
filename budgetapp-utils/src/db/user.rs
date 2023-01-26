@@ -209,11 +209,11 @@ impl Dao {
                         .find(request_id)
                         .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
                 )
-                    .get_result(&mut db_connection)?;
+                    .execute(&mut db_connection)?;
 
                 dsl::insert_into(buddy_relationships)
                     .values(&relationship)
-                    .get_result::<BuddyRelationship>(&mut db_connection)?;
+                    .execute(&mut db_connection)?;
             })?;
 
         Ok(())

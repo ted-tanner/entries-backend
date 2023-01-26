@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::validators;
 
+// TODO: Sort these struct defs alphabetically
 // TODO: Can these Strings be &str?
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CredentialPair {
     pub email: String,
@@ -40,6 +42,11 @@ pub struct InputBuddyRequestId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputBudgetIdList {
+    pub budget_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -112,20 +119,20 @@ pub struct InputNewAuthStringAndEncryptedPassword {
     pub encrypted_encryption_key: String,
 }
 
+// temp_id is an ID the client generates that allows the server to differentiate between
+// categories when multiple are sent to the server simultaneously. The server doesn't have any
+// other way of differentiating them because they are encrypted.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputCategory {
-    pub name: String,
-    pub limit_cents: i64,
-    pub color: String,
+pub struct InputCategoryWithTempId {
+    pub temp_id: i32,
+    pub encrypted_blob_b64: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
-    pub name: String,
-    pub description: Option<String>,
-    pub categories: Vec<InputCategory>,
-    pub start_date: SystemTime,
-    pub end_date: SystemTime,
+    pub encrypted_blob_b64: String,
+    pub encryption_key_encrypted_b64: String,
+    pub categories: Vec<InputCategoryWithTempId>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

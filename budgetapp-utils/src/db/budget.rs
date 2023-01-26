@@ -13,7 +13,7 @@ use crate::models::budget_share_invite::{BudgetShareInvite, NewBudgetShareInvite
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
-use crate::request_io::{InputBudget, InputEditBudget, InputEntry, OutputBudget};
+use crate::request_io::{InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame};
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
 use crate::schema::budgets as budget_fields;
@@ -43,18 +43,12 @@ impl Dao {
     ) -> Result<OutputBudget, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let mut loaded_budgets = budgets
+        let mut budget = budgets
             .select(budget_fields::all_columns)
             .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
             .filter(budget_fields::id.eq(budget_id))
             .filter(user_budget_fields::user_id.eq(user_id))
-            .load::<Budget>(&mut db_connection)?;
-
-        if loaded_budgets.len() != 1 {
-            return Err(diesel::result::Error::NotFound.into());
-        }
-
-        let budget = loaded_budgets.remove(0);
+            .first::<Budget>(&mut db_connection)?;
 
         let loaded_categories = Category::belonging_to(&budget)
             .order(category_fields::name.asc())
@@ -64,20 +58,55 @@ impl Dao {
             .load::<Entry>(&mut db_connection)?;
 
         let output_budget = OutputBudget {
-            id: budget.id,
-            is_deleted: budget.is_deleted,
-            name: budget.name,
-            description: budget.description,
             categories: loaded_categories,
             entries: loaded_entries,
-            start_date: budget.start_date,
-            end_date: budget.end_date,
-            latest_entry_time: budget.latest_entry_time,
-            modified_timestamp: budget.modified_timestamp,
-            created_timestamp: budget.created_timestamp,
+            ..budget
         };
 
         Ok(output_budget)
+    }
+
+    pub fn get_budgets_by_id(
+        &mut self,
+        budget_ids: Vec<Uuid>,
+        user_id: Uuid,
+    ) -> Result<Vec<OutputBudget>, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let query = "SELECT budgets.* FROM user_budgets, budgets \
+                     WHERE user_budgets.user_id = $1 \
+                     AND user_budgets.budget_id IN $2";
+
+        let loaded_budgets = sql_query(query)
+            .bind::<sql_types::Uuid, _>(user_id)
+            .bind::<sql_types::Uuid, _>(budget_ids);
+            .load::<Budget>(&mut db_connection)?;
+        let loaded_categories = Category::belonging_to(&loaded_budgets)
+            .order(category_fields::name.asc())
+            .load::<Category>(&mut db_connection)?
+            .grouped_by(&loaded_budgets);
+        let loaded_entries = Entry::belonging_to(&loaded_budgets)
+            .order(entry_fields::date.asc())
+            .load::<Entry>(&mut db_connection)?
+            .grouped_by(&loaded_budgets);
+
+        let zipped_budgets = loaded_budgets
+            .into_iter()
+            .zip(loaded_categories.into_iter())
+            .zip(loaded_entries.into_iter());
+        let mut output_budgets = Vec::new();
+
+        for ((budget, budget_categories), budget_entries) in zipped_budgets {
+            let output_budget = OutputBudget {
+                categories: budget_categories,
+                entries: budget_entries,
+                ..budget
+            };
+
+            output_budgets.push(output_budget);
+        }
+
+        Ok(output_budgets)
     }
 
     pub fn get_all_budgets_for_user(
@@ -88,8 +117,7 @@ impl Dao {
 
         let query = "SELECT budgets.* FROM user_budgets, budgets \
                      WHERE user_budgets.user_id = $1 \
-                     AND user_budgets.budget_id = budgets.id \
-	             ORDER BY budgets.start_date";
+                     AND user_budgets.budget_id = budgets.id";
 
         let loaded_budgets = sql_query(query)
             .bind::<sql_types::Uuid, _>(user_id)
@@ -111,73 +139,9 @@ impl Dao {
 
         for ((budget, budget_categories), budget_entries) in zipped_budgets {
             let output_budget = OutputBudget {
-                id: budget.id,
-                is_deleted: budget.is_deleted,
-                name: budget.name,
-                description: budget.description,
                 categories: budget_categories,
                 entries: budget_entries,
-                start_date: budget.start_date,
-                end_date: budget.end_date,
-                latest_entry_time: budget.latest_entry_time,
-                modified_timestamp: budget.modified_timestamp,
-                created_timestamp: budget.created_timestamp,
-            };
-
-            output_budgets.push(output_budget);
-        }
-
-        Ok(output_budgets)
-    }
-
-    pub fn get_all_budgets_for_user_between_dates(
-        &mut self,
-        user_id: Uuid,
-        start_date: SystemTime,
-        end_date: SystemTime,
-    ) -> Result<Vec<OutputBudget>, DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
-
-        let query = "SELECT budgets.* FROM user_budgets, budgets \
-                     WHERE user_budgets.user_id = $1 \
-                     AND user_budgets.budget_id = budgets.id \
-                     AND budgets.end_date >= $2 \
-                     AND budgets.start_date <= $3 \
-                     ORDER BY budgets.start_date";
-
-        let loaded_budgets = sql_query(query)
-            .bind::<sql_types::Uuid, _>(user_id)
-            .bind::<Timestamp, _>(start_date)
-            .bind::<Timestamp, _>(end_date)
-            .load::<Budget>(&mut db_connection)?;
-        let loaded_categories = Category::belonging_to(&loaded_budgets)
-            .order(category_fields::name.asc())
-            .load::<Category>(&mut db_connection)?
-            .grouped_by(&loaded_budgets);
-        let loaded_entries = Entry::belonging_to(&loaded_budgets)
-            .order(entry_fields::date.asc())
-            .load::<Entry>(&mut db_connection)?
-            .grouped_by(&loaded_budgets);
-
-        let zipped_budgets = loaded_budgets
-            .into_iter()
-            .zip(loaded_categories.into_iter())
-            .zip(loaded_entries.into_iter());
-        let mut output_budgets = Vec::new();
-
-        for ((budget, budget_categories), budget_entries) in zipped_budgets {
-            let output_budget = OutputBudget {
-                id: budget.id,
-                is_deleted: budget.is_deleted,
-                name: budget.name,
-                description: budget.description,
-                categories: budget_categories,
-                entries: budget_entries,
-                start_date: budget.start_date,
-                end_date: budget.end_date,
-                latest_entry_time: budget.latest_entry_time,
-                modified_timestamp: budget.modified_timestamp,
-                created_timestamp: budget.created_timestamp,
+                ..budget
             };
 
             output_budgets.push(output_budget);
@@ -197,13 +161,8 @@ impl Dao {
             .execute(&mut self.db_thread_pool.get()?)
         {
             Ok(count) => count > 0,
-            Err(e) => {
-                if e == diesel::result::Error::NotFound {
-                    false
-                } else {
-                    return Err(e.into());
-                }
-            }
+            Err(diesel::result::Error::NotFound) => false,
+            Err(e) => return Err(e.into()),
         };
 
         Ok(association_exists)
@@ -213,72 +172,72 @@ impl Dao {
         &mut self,
         budget_data: &InputBudget,
         user_id: Uuid,
-    ) -> Result<OutputBudget, DaoError> {
+    ) -> Result<OutputBudgetFrame, DaoError> {
         let current_time = SystemTime::now();
-        let mut db_connection = self.db_thread_pool.get()?;
-
         let budget_id = Uuid::new_v4();
-        let description = budget_data.description.as_deref();
 
         let new_budget = NewBudget {
             id: budget_id,
-            is_deleted: false,
-            name: &budget_data.name,
-            description,
-            start_date: budget_data.start_date,
-            end_date: budget_data.end_date,
-            latest_entry_time: current_time,
+            encrypted_blob: &budget_data.encrypted_blob_b64,
             modified_timestamp: current_time,
-            created_timestamp: current_time,
         };
-
-        let budget = dsl::insert_into(budgets)
-            .values(&new_budget)
-            .get_result::<Budget>(&mut db_connection)?;
 
         let new_user_budget_association = NewUserBudget {
-            created_timestamp: current_time,
             user_id,
             budget_id,
+            encryption_key_encrypted: &budget_data.encryption_key_encrypted_b64,
+            encryption_key_is_encrypted_with_aes_not_rsa: true,
+            modified_timestamp: current_time,
         };
-
-        dsl::insert_into(user_budgets)
-            .values(&new_user_budget_association)
-            .execute(&mut db_connection)?;
-
+        
         let mut budget_categories = Vec::new();
+        let mut budget_category_temp_ids = Vec::new();
 
         for category in &budget_data.categories {
             let new_category = NewCategory {
                 budget_id,
                 id: Uuid::new_v4(),
-                name: &category.name,
-                limit_cents: category.limit_cents,
-                color: &category.color,
-                modified_timestamp: budget.modified_timestamp,
-                created_timestamp: budget.created_timestamp,
+                encrypted_blob: category.encrypted_blob_b64,
+                modified_timestamp: current_time,
             };
 
             budget_categories.push(new_category);
+            budget_category_temp_ids.push(category.temp_id);
         }
 
-        let inserted_categories = dsl::insert_into(categories)
-            .values(budget_categories)
-            .get_results::<Category>(&mut db_connection)?;
-
-        let output_budget = OutputBudget {
-            id: budget.id,
-            is_deleted: budget.is_deleted,
-            name: budget.name,
-            description: budget.description,
-            categories: inserted_categories,
-            entries: Vec::new(),
-            start_date: budget.start_date,
-            end_date: budget.end_date,
-            latest_entry_time: budget.latest_entry_time,
-            modified_timestamp: budget.modified_timestamp,
-            created_timestamp: budget.created_timestamp,
+        let mut output_budget = OutputBudgetFrame {
+            id: budget_id,
+            categories: Vec::with_capacity(budget_categories.len()),
+            modified_timestamp: current_time,
         };
+
+        for i in 0..budget_categories.len() {
+            let category_frame = OutputBudgetFrameCategory {
+                temp_id: budget_category_temp_ids[i],
+                real_id: budget_categories[i].id,
+            };
+
+            output_budget.categories.push(category_frame);
+        }
+
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction()
+            .run(|conn| {
+                dsl::insert_into(budgets)
+                    .values(&new_budget)
+                    .execute(&mut db_connection)?;
+
+                dsl::insert_into(categories)
+                    .values(budget_categories)
+                    .execute(&mut db_connection)?;
+
+                dsl::insert_into(user_budgets)
+                    .values(&new_user_budget_association)
+                    .execute(&mut db_connection)?;
+
+                Ok(())
+            })?;
 
         Ok(output_budget)
     }
