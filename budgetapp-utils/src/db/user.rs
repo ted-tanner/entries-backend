@@ -197,25 +197,31 @@ impl Dao {
         &mut self,
         request_id: Uuid,
         recipient_user_id: Uuid,
-    ) -> Result<(), DaoError> {
-        let relationship = NewBuddyRelationship { user1_id, user2_id };
-
+    ) -> Result<Uuid, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            diesel::delete(
+        let sender_user_id = db_connection.build_transaction().run(|conn| {
+            let sender_user_id = diesel::delete(
                 buddy_requests
                     .find(request_id)
                     .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
             )
-            .execute(&mut db_connection)?;
+                .returning(buddy_request_fields:::sender_user_id)
+                .execute(&mut conn)?;
+
+            let relationship = NewBuddyRelationship {
+                user1_id: sender_user_id,
+                user2_id: recipient_user_id,
+            };
 
             dsl::insert_into(buddy_relationships)
                 .values(&relationship)
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
+
+            Ok(sender_user_id)
         })?;
 
-        Ok(())
+        Ok(sender_user_id)
     }
 
     pub fn get_all_pending_buddy_requests_for_user(
@@ -328,7 +334,7 @@ impl Dao {
         db_connection.build_transaction().run(|conn| {
             dsl::insert_into(user_tombstones)
                 .values(&new_tombstone)
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
 
             diesel::delete(budgets)
                 .filter(
@@ -339,15 +345,15 @@ impl Dao {
                         .single_value()
                         .eq(1),
                 )
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
 
-            diesel::delete(users.find(request.user_id)).execute(&mut db_connection)?;
+            diesel::delete(users.find(request.user_id)).execute(&mut conn)?;
 
             diesel::delete(
                 user_deletion_requests
                     .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
             )
-            .execute(&mut db_connection)?;
+            .execute(&mut conn)?;
         })?;
 
         Ok(())

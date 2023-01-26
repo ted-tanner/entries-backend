@@ -478,6 +478,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits

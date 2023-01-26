@@ -15,6 +15,7 @@ use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
     InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame,
+    OutputBudgetIdAndEncryptionKey,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
@@ -227,15 +228,15 @@ impl Dao {
         db_connection.build_transaction().run(|conn| {
             dsl::insert_into(budgets)
                 .values(&new_budget)
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
 
             dsl::insert_into(categories)
                 .values(budget_categories)
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
 
             dsl::insert_into(user_budgets)
                 .values(&new_user_budget_association)
-                .execute(&mut db_connection)?;
+                .execute(&mut conn)?;
 
             Ok(())
         })?;
@@ -310,22 +311,45 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn mark_invitation_accepted(
+    pub fn accept_invitation(
         &mut self,
         invitation_id: Uuid,
         recipient_user_id: Uuid,
-    ) -> Result<BudgetShareInvite, DaoError> {
-        Ok(diesel::update(
-            budget_share_invites
-                .find(invitation_id)
-                .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
-        )
-        .set((
-            budget_share_invite_fields::accepted.eq(true),
-            budget_share_invite_fields::accepted_declined_timestamp.eq(SystemTime::now()),
-        ))
-        .get_result(&mut self.db_thread_pool.get()?)?)
+    ) -> Result<Uuid, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let budget_id = db_connection.build_transaction().run(|conn| {
+            let (budget_id, key_encrypted) = diesel::delete(
+                budget_share_invites
+                    .find(invitation_id)
+                    .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
+            )
+                .returning((
+                    budget_share_invite_fields::budget_id,
+                    budget_share_invite_fields::encryption_key_encrypted,
+                    SystemTime::now(),
+                ))
+                .get_result::<(Uuid, String)>(&mut conn)?;
+
+            let user_budget_relation = NewUserBudget {
+                user_id: recipient_user_id,
+                budget_id: budget_id,
+                encryption_key_encrypted: &key_encrypted,
+                encryption_key_is_encrypted_with_aes_not_rsa: false,
+                modified_timestamp: budget_id_and_key.modified_timestamp,
+            };
+
+            dsl::insert_into(user_budgets)
+                .values(&user_budget_relation)
+                .execute(&mut conn)?;
+
+            Ok(budget_id)
+        })?;
+
+        Ok(budget_id)
     }
+
+    /////////////////////////// TODO: Everything below this ///////////////////////////
 
     pub fn mark_invitation_declined(
         &mut self,
