@@ -570,34 +570,34 @@ pub async fn remove_budget(
     Ok(HttpResponse::Ok().finish())
 }
 
-async fn check_user_in_budget(
-    db_thread_pool: &DbThreadPool,
-    user_id: Uuid,
-    budget_id: Uuid,
-) -> Result<bool, ServerError> {
-    let db_thread_pool_clone = db_thread_pool.clone();
+// async fn check_user_in_budget(
+//     db_thread_pool: &DbThreadPool,
+//     user_id: Uuid,
+//     budget_id: Uuid,
+// ) -> Result<bool, ServerError> {
+//     let db_thread_pool_clone = db_thread_pool.clone();
 
-    match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
-        budget_dao.check_user_in_budget(user_id, budget_id)
-    })
-    .await?
-    {
-        Ok(b) => Ok(b),
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                Err(ServerError::InvalidFormat(None))
-            }
-            _ => {
-                log::error!("{}", e);
-                Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get budget data",
-                ))))
-            }
-        },
-    }
-}
+//     match web::block(move || {
+//         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
+//         budget_dao.check_user_in_budget(user_id, budget_id)
+//     })
+//     .await?
+//     {
+//         Ok(b) => Ok(b),
+//         Err(e) => match e {
+//             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
+//             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
+//                 Err(ServerError::InvalidFormat(None))
+//             }
+//             _ => {
+//                 log::error!("{}", e);
+//                 Err(ServerError::DatabaseTransactionError(Some(String::from(
+//                     "Failed to get budget data",
+//                 ))))
+//             }
+//         },
+//     }
+// }
 
 #[cfg(test)]
 pub mod tests {

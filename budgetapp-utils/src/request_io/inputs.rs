@@ -153,9 +153,5 @@ pub struct UserInvitationToBudget {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntry {
     pub budget_id: Uuid,
-    pub amount_cents: i64,
-    pub date: SystemTime,
-    pub name: Option<String>,
-    pub category_id: Option<Uuid>,
-    pub note: Option<String>,
+    pub encrypted_blob_b64: String,
 }

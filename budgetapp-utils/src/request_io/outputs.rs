@@ -93,3 +93,9 @@ pub struct OutputBudgetShareInviteWithoutKey {
 
     pub sender_name_encrypted: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputEntryIdAndCategoryId {
+    entry_id: Uuid,
+    category_id: String,
+}

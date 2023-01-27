@@ -424,7 +424,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
-* Currency may be specified on each budget
+* Currency should be specified on each budget
+* The client needs to be prepared for a category to be deleted. Budgets will still have a reference to the deleted categories.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 * Premium user status is only verified client-side
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing
@@ -479,6 +480,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
