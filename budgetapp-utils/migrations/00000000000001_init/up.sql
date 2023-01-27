@@ -83,6 +83,7 @@ CREATE TABLE password_attempts (
 CREATE TABLE tombstones (
     item_id UUID NOT NULL,
     related_user_id UUID NOT NULL,
+    origin_table VARCHAR(40) NOT NULL,
     deletion_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (item_id, related_user_id)
 );

@@ -583,6 +583,18 @@ impl Dao {
 
             if is_user_in_budget {
                 diesel::delete(entries.find(entry_id)).execute(&mut conn)?;
+
+                let new_tombstone = NewTombstone {
+                    entry_id,
+                    user_id,
+                    "entries",
+                    deletion_timestamp: SystemTime::now(),
+                };
+
+                dsl::insert_into(tombstones)
+                    .values(&new_tombstone)
+                    .execute(&mut conn)?;
+
                 Ok(())
             } else {
                 Err(diesel::result::Error::NotFound)
@@ -592,9 +604,121 @@ impl Dao {
         Ok(())
     }
 
-    // TODO: Add category
-    // TODO: Edit category
-    // TODO: Delete category
+    pub fn create_category(
+        &mut self,
+        category_data: &InputCategory,
+        user_id: Uuid,
+    ) -> Result<Uuid, DaoError> {
+        let current_time = SystemTime::now();
+        let category_id = Uuid::new_v4();
+
+        let new_category = NewCategory {
+            id: category_id,
+            budget_id: category_data.budget_id,
+            encrypted_blob: category_data.encrypted_blob_b64,
+            modified_timestamp: current_time,
+        };
+
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction().run(|conn| {
+            let is_user_in_budget = user_budgets
+                .filter(user_budget_fields::user_id.eq(user_id))
+                .filter(user_budget_fields::budget_id.eq(category_data.budget_id))
+                .count()
+                .execute(&mut conn)?
+                != 0;
+
+            if is_user_in_budget {
+                dsl::insert_into(categories)
+                    .values(&new_category)
+                    .execute(&mut conn)?;
+
+                Ok(())
+            } else {
+                Err(diesel::result::Error::NotFound)
+            }
+        })?;
+
+        Ok(category_id)
+    }
+
+    pub fn update_category(
+        &mut self,
+        category_id: Uuid,
+        category_encrypted_blob: &str,
+        user_id: Uuid,
+    ) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction().run(|conn| {
+            let is_user_in_budget = user_budgets
+                .filter(user_budget_fields::user_id.eq(user_id))
+                .filter(
+                    user_budget_fields::budget_id.eq(categories
+                        .select(category_fields::budget_id)
+                        .find(category_id)
+                        .single_value()),
+                )
+                .count()
+                .execute(&mut conn)?
+                != 0;
+
+            if is_user_in_budget {
+                diesel::update(categories.find(category_id))
+                    .set((
+                        category_fields::encrypted_blob.eq(category_encrypted_blob),
+                        category_fields::modified_timestamp.eq(SystemTime::now()),
+                    ))
+                    .execute(&mut conn)?;
+
+                Ok(())
+            } else {
+                Err(diesel::result::Error::NotFound)
+            }
+        })?;
+
+        Ok(())
+    }
+
+    pub fn delete_category(&mut self, category_id: Uuid, user_id: Uuid) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection.build_transaction().run(|conn| {
+            let is_user_in_budget = user_budgets
+                .filter(user_budget_fields::user_id.eq(user_id))
+                .filter(
+                    user_budget_fields::budget_id.eq(categories
+                        .select(category_fields::budget_id)
+                        .find(category_id)
+                        .single_value()),
+                )
+                .count()
+                .execute(&mut conn)?
+                != 0;
+
+            if is_user_in_budget {
+                diesel::delete(categories.find(category_id)).execute(&mut conn)?;
+
+                let new_tombstone = NewTombstone {
+                    category_id,
+                    user_id,
+                    "categories",
+                    deletion_timestamp: SystemTime::now(),
+                };
+
+                dsl::insert_into(tombstones)
+                    .values(&new_tombstone)
+                    .execute(&mut conn)?;
+
+                Ok(())
+            } else {
+                Err(diesel::result::Error::NotFound)
+            }
+        })?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

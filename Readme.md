@@ -425,7 +425,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Client
 
 * Currency should be specified on each budget
-* The client needs to be prepared for a category to be deleted. Budgets will still have a reference to the deleted categories.
+* The client needs to be prepared for a category to be deleted. Entries will still have a reference to the deleted categories, so check for the category tombstone and handle the case where the category doesn't exist.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 * Premium user status is only verified client-side
 * Premium usership should have teirs: perhaps $2.99/month unlocks the number of budget entries while $3.99/month unlocks number of entires *and* budget sharing

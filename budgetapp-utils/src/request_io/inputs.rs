@@ -155,3 +155,9 @@ pub struct InputEntry {
     pub budget_id: Uuid,
     pub encrypted_blob_b64: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputCategory {
+    pub budget_id: Uuid,
+    pub encrypted_blob_b64: String,
+}
