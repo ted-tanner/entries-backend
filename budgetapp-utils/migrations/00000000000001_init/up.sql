@@ -22,8 +22,8 @@ CREATE TABLE buddy_requests (
     CHECK (recipient_user_id != sender_user_id)
 );
 
-CREATE INDEX ON buddy_requests (recipient_user_id);
-CREATE INDEX ON buddy_requests (sender_user_id);
+CREATE INDEX ON buddy_requests USING HASH (recipient_user_id);
+CREATE INDEX ON buddy_requests USING HASH (sender_user_id);
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
@@ -47,8 +47,8 @@ CREATE TABLE budget_share_invites (
     CHECK (recipient_user_id != sender_user_id)
 );
 
-CREATE INDEX ON budget_share_invites (recipient_user_id);
-CREATE INDEX ON budget_share_invites (sender_user_id);
+CREATE INDEX ON budget_share_invites USING HASH (recipient_user_id);
+CREATE INDEX ON budget_share_invites USING HASH (sender_user_id);
 
 CREATE TABLE categories (
     id UUID NOT NULL PRIMARY KEY,
@@ -87,6 +87,8 @@ CREATE TABLE tombstones (
     deletion_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (item_id, related_user_id)
 );
+
+CREATE INDEX ON tombstones USING HASH (related_user_id);
 
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,

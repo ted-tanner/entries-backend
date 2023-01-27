@@ -587,7 +587,7 @@ impl Dao {
                 let new_tombstone = NewTombstone {
                     entry_id,
                     user_id,
-                    "entries",
+                    origin_table: "entries",
                     deletion_timestamp: SystemTime::now(),
                 };
 
@@ -703,7 +703,7 @@ impl Dao {
                 let new_tombstone = NewTombstone {
                     category_id,
                     user_id,
-                    "categories",
+                    origin_table: "categories",
                     deletion_timestamp: SystemTime::now(),
                 };
 

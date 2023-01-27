@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::tombstone::NewTombstone;
+use crate::models::tombstone::{NewTombstone, Tombstone};
 use crate::schema::tombstones as tombstone_fields;
 use crate::schema::tombstones::dsl::tombstones;
 
@@ -18,24 +18,6 @@ impl Dao {
         }
     }
 
-    pub fn create_tombstone(
-        &mut self,
-        item_id: Uuid,
-        related_user_id: Uuid,
-        origin_table: &str,
-    ) -> Result<usize, DaoError> {
-        let new_tombstone = NewTombstone {
-            item_id,
-            related_user_id,
-            origin_table,
-            deletion_timestamp: SystemTime::now(),
-        };
-
-        Ok(dsl::insert_into(tombstones)
-            .values(&new_tombstone)
-            .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn check_tombstone_exists(
         &mut self,
         item_id: Uuid,
@@ -43,9 +25,20 @@ impl Dao {
     ) -> Result<bool, DaoError> {
         Ok(dsl::select(dsl::exists(
             tombstones
-                .filter(tombstone_fields::related_user_id.eq(user_id))
-                .find(item_id),
+                .find(item_id)
+                .filter(tombstone_fields::related_user_id.eq(user_id)),
         ))
         .get_result(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn get_tombstones_since(
+        &mut self,
+        from_time: SystemTime,
+        user_id: Uuid,
+    ) -> Result<bool, DaoError> {
+        Ok(tombstones
+            .filter(tombstone_fields::related_user_id.eq(user_id))
+            .filter(tombstone_fields::deletion_timestamp.gt(from_time))
+            .get_results::<Tombstone>(&mut self.db_thread_pool.get()?)?)
     }
 }

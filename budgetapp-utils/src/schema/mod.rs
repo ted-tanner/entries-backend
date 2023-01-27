@@ -80,6 +80,7 @@ table! {
     tombstones (item_id, related_user_id) {
         item_id -> Uuid,
         related_user_id -> Uuid,
+        origin_table -> Varchar,
         deletion_timestamp -> Timestamp,
     }
 }
