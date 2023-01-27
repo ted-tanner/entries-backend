@@ -90,14 +90,6 @@ pub struct InputUser {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEditUser {
-    pub first_name: String,
-    pub last_name: String,
-    pub date_of_birth: SystemTime,
-    pub currency: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RefreshToken {
     pub token: String,
 }
@@ -138,10 +130,7 @@ pub struct InputBudget {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
     pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub start_date: SystemTime,
-    pub end_date: SystemTime,
+    pub encrypted_blob_b64: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

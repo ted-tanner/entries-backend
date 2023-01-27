@@ -42,24 +42,23 @@ pub async fn get(
     Ok(HttpResponse::Ok().json(budget))
 }
 
-pub async fn get_all(
+pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    budget_ids: web::Query<InputBudgetIdList>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_budgets_for_user(auth_user_claims.0.uid)
+        budget_dao.get_multiple_budgets_by_id(budget_ids.budget_ids, auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
+                return Err(ServerError::NotFound(Some(String::from(
+                    "One of the provided IDs did not match a budget",
+                ))));
             }
             _ => {
                 log::error!("{}", e);
@@ -73,27 +72,18 @@ pub async fn get_all(
     Ok(HttpResponse::Ok().json(budgets))
 }
 
-pub async fn get_all_between_dates(
+pub async fn get_all(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    date_range: web::Query<InputDateRange>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_budgets_for_user_between_dates(
-            auth_user_claims.0.uid,
-            UNIX_EPOCH + Duration::from_secs(date_range.start_date),
-            UNIX_EPOCH + Duration::from_secs(date_range.end_date),
-        )
+        budget_dao.get_all_budgets_for_user(auth_user_claims.0.uid)
     })
     .await?
     {
         Ok(b) => b,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None))
-            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
             }
@@ -122,10 +112,6 @@ pub async fn create(
     {
         Ok(b) => b,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -143,15 +129,13 @@ pub async fn edit(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    if budget_data.start_date > budget_data.end_date {
-        return Err(ServerError::InputRejected(Some(String::from(
-            "End date cannot come before start date",
-        ))));
-    }
-
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.edit_budget(&budget_data, auth_user_claims.0.uid)
+        budget_dao.edit_budget(
+            budget_data.id,
+            budget_data.encrypted_blob_b64,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -198,10 +182,6 @@ pub async fn add_entry(
         Ok(b) => b,
         Err(e) => match e {
             // TODO: Handle not found
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -265,10 +245,6 @@ pub async fn invite_user(
         Ok(_) => (),
         Err(e) => match e {
             // TODO: Handle not found
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -568,35 +544,6 @@ pub async fn remove_budget(
 
     Ok(HttpResponse::Ok().finish())
 }
-
-// async fn check_user_in_budget(
-//     db_thread_pool: &DbThreadPool,
-//     user_id: Uuid,
-//     budget_id: Uuid,
-// ) -> Result<bool, ServerError> {
-//     let db_thread_pool_clone = db_thread_pool.clone();
-
-//     match web::block(move || {
-//         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_clone);
-//         budget_dao.check_user_in_budget(user_id, budget_id)
-//     })
-//     .await?
-//     {
-//         Ok(b) => Ok(b),
-//         Err(e) => match e {
-//             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-//             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-//                 Err(ServerError::InvalidFormat(None))
-//             }
-//             _ => {
-//                 log::error!("{}", e);
-//                 Err(ServerError::DatabaseTransactionError(Some(String::from(
-//                     "Failed to get budget data",
-//                 ))))
-//             }
-//         },
-//     }
-// }
 
 #[cfg(test)]
 pub mod tests {

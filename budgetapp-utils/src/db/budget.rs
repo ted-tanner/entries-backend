@@ -69,7 +69,7 @@ impl Dao {
         })?
     }
 
-    pub fn get_budgets_by_id(
+    pub fn get_multiple_budgets_by_id(
         &mut self,
         budget_ids: Vec<Uuid>,
         user_id: Uuid,
