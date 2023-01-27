@@ -184,7 +184,9 @@ impl Dao {
             ));
 
             if are_buddies {
-                return Err(diesel::result::DatabaseErrorKind::UniqueViolation);
+                return Err(diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                ));
             }
 
             dsl::insert_into(buddy_requests)

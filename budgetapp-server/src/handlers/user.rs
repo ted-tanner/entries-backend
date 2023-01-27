@@ -268,9 +268,12 @@ pub async fn send_buddy_request(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+            )) => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Sender and recipient are already buddies",
+                ))));
             }
             _ => {
                 log::error!("{}", e);
