@@ -169,15 +169,36 @@ impl Dao {
             sender_name_encrypted,
         };
 
-        Ok(dsl::insert_into(buddy_requests)
-            .values(&request)
-            .on_conflict((
-                buddy_request_fields::recipient_user_id,
-                buddy_request_fields::sender_user_id,
-            ))
-            .do_update()
-            .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
-            .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let buddy_request = db_connection.build_transaction().run(|conn| {
+            let are_buddies = dsl::select(dsl::exists(
+                buddy_relationships.filter(
+                    buddy_relationship_fields::user1_id
+                        .eq(sender_user_id)
+                        .and(buddy_relationship_fields::user2_id.eq(recipient_user_id))
+                        .or(buddy_relationship_fields::user1_id
+                            .eq(recipient_user_id)
+                            .and(buddy_relationship_fields::user2_id.eq(sender_user_id))),
+                ),
+            ));
+
+            if are_buddies {
+                return Err(diesel::result::DatabaseErrorKind::UniqueViolation);
+            }
+
+            dsl::insert_into(buddy_requests)
+                .values(&request)
+                .on_conflict((
+                    buddy_request_fields::recipient_user_id,
+                    buddy_request_fields::sender_user_id,
+                ))
+                .do_update()
+                .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
+                .get_result::<BuddyRequest>(&mut conn)?
+        })?;
+
+        Ok(buddy_request)
     }
 
     pub fn delete_buddy_request(

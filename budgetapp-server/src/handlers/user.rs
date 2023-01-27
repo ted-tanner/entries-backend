@@ -259,19 +259,6 @@ pub async fn send_buddy_request(
         ))));
     }
 
-    let are_buddies = check_are_buddies(
-        &db_thread_pool,
-        auth_user_claims.0.uid,
-        other_user_id.user_id,
-    )
-    .await?;
-
-    if are_buddies {
-        return Err(ServerError::InputRejected(Some(String::from(
-            "Sender and recipient are already buddies",
-        ))));
-    }
-
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     match web::block(move || {
@@ -530,29 +517,6 @@ pub async fn get_buddies(
     };
 
     Ok(HttpResponse::Ok().json(buddies))
-}
-
-async fn check_are_buddies(
-    db_thread_pool: &DbThreadPool,
-    user1_id: Uuid,
-    user2_id: Uuid,
-) -> Result<bool, ServerError> {
-    let db_thread_pool = db_thread_pool.clone();
-
-    match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_are_buddies(user1_id, user2_id)
-    })
-    .await?
-    {
-        Ok(buddies) => Ok(buddies),
-        Err(e) => {
-            log::error!("{}", e);
-            Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to get user data",
-            ))))
-        }
-    }
 }
 
 #[cfg(test)]
