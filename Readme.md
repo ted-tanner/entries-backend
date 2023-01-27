@@ -483,6 +483,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
+* Key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Get user security data in various endpoints
@@ -544,7 +545,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
-* Replace all Diesel `sql_query`s with Diesel's DSL syntax
 * Budget comments, entry comments
   - Reactions to said comments
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).

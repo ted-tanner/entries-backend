@@ -127,12 +127,12 @@ impl Dao {
         Ok(user_id)
     }
 
-    pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
-        Ok(
-            dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
-                .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
-                .execute(&mut self.db_thread_pool.get()?)?,
-        )
+    pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+            .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn update_password(
@@ -207,13 +207,15 @@ impl Dao {
         &mut self,
         request_id: Uuid,
         sender_user_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
+    ) -> Result<(), DaoError> {
+        diesel::delete(
             buddy_requests
                 .find(request_id)
                 .filter(buddy_request_fields::sender_user_id.eq(sender_user_id)),
         )
-        .execute(&mut self.db_thread_pool.get()?)?)
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn accept_buddy_request(
@@ -284,8 +286,8 @@ impl Dao {
         &mut self,
         user1_id: Uuid,
         user2_id: Uuid,
-    ) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
+    ) -> Result<(), DaoError> {
+        diesel::delete(
             buddy_relationships.filter(
                 buddy_relationship_fields::user1_id
                     .eq(user1_id)
@@ -295,17 +297,26 @@ impl Dao {
                         .and(buddy_relationship_fields::user2_id.eq(user1_id))),
             ),
         )
-        .execute(&mut self.db_thread_pool.get()?)?)
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<Uuid>, DaoError> {
-        let query = "SELECT u.id FROM users AS u, buddy_relationships AS br \
-                     WHERE (br.user1_id = $1 AND u.id = br.user2_id) \
-                     OR (br.user2_id = $1 AND u.id = br.user1_id)";
-
-        Ok(sql_query(query)
-            .bind::<diesel::sql_types::Uuid, _>(user_id)
-            .load(&mut self.db_thread_pool.get()?)?)
+        Ok(users
+            .select(user_fields::id)
+            .left_join(
+                buddy_relationships.on(buddy_relationship_fields::user1_id.eq(user_fields::id)),
+            )
+            .left_join(
+                buddy_relationships.on(buddy_relationship_fields::user2_id.eq(user_fields::id)),
+            )
+            .filter(
+                buddy_relationship_fields::user1_id
+                    .eq(user_id)
+                    .or(buddy_relationship_fields::user2_id.eq(user_id)),
+            )
+            .get_results::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn check_are_buddies(&mut self, user1_id: Uuid, user2_id: Uuid) -> Result<bool, DaoError> {
@@ -326,23 +337,27 @@ impl Dao {
         &mut self,
         user_id: Uuid,
         time_until_deletion: Duration,
-    ) -> Result<usize, DaoError> {
+    ) -> Result<(), DaoError> {
         let new_request = NewUserDeletionRequest {
             user_id,
             deletion_request_time: SystemTime::now(),
             ready_for_deletion_time: SystemTime::now() + time_until_deletion,
         };
 
-        Ok(dsl::insert_into(user_deletion_requests)
+        dsl::insert_into(user_deletion_requests)
             .values(&new_request)
-            .execute(&mut self.db_thread_pool.get()?)?)
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
-    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<usize, DaoError> {
-        Ok(diesel::delete(
+    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(
             user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user_id)),
         )
-        .execute(&mut self.db_thread_pool.get()?)?)
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<(), DaoError> {

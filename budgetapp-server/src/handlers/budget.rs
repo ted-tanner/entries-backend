@@ -25,10 +25,6 @@ pub async fn get(
     {
         Ok(b) => b,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
-            | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
-                return Err(ServerError::InvalidFormat(None));
-            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
                     "No budget with provided ID",
@@ -201,6 +197,7 @@ pub async fn add_entry(
     {
         Ok(b) => b,
         Err(e) => match e {
+            // TODO: Handle not found
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
@@ -230,6 +227,7 @@ pub async fn invite_user(
         ))));
     }
 
+    // TODO: Transfer this to db utils
     let is_sender_in_budget_future =
         check_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id);
 
@@ -266,6 +264,7 @@ pub async fn invite_user(
     {
         Ok(_) => (),
         Err(e) => match e {
+            // TODO: Handle not found
             DaoError::QueryFailure(diesel::result::Error::InvalidCString(_))
             | DaoError::QueryFailure(diesel::result::Error::DeserializationError(_)) => {
                 return Err(ServerError::InvalidFormat(None));
