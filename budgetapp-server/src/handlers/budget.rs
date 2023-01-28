@@ -1,6 +1,6 @@
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareInviteId,
-    OutputBudget, UserInvitationToBudget,
+    OutputBudget, UserInvitationToBudget, OutputBudgetShareInviteWithoutKey,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
@@ -351,9 +351,7 @@ pub async fn get_all_pending_invitations_for_user(
         Ok(invites) => invites,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No share invites for user",
-                ))));
+                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInviteWithoutKey>::new()));
             }
             _ => {
                 log::error!("{}", e);
@@ -380,9 +378,7 @@ pub async fn get_all_pending_invitations_made_by_user(
         Ok(invites) => invites,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No share invites made by user",
-                ))));
+                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInviteWithoutKey>::new()));
             }
             _ => {
                 log::error!("{}", e);
@@ -426,7 +422,8 @@ pub async fn get_invitation(
     Ok(HttpResponse::Ok().json(invite))
 }
 
-pub async fn remove_budget(
+// TODO: Continue from this point
+pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_id: web::Query<InputBudgetId>,
