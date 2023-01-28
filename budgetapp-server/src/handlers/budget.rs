@@ -164,14 +164,9 @@ pub async fn add_entry(
 ) -> Result<HttpResponse, ServerError> {
     let budget_id = entry_data.budget_id;
 
-    let is_user_in_budget =
-        check_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
+    check_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
 
-    if !is_user_in_budget {
-        return Err(ServerError::NotFound(Some(String::from(
-            "User has no budget with provided ID",
-        ))));
-    }
+    if !is_user_in_budget {}
 
     let new_entry = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -181,7 +176,11 @@ pub async fn add_entry(
     {
         Ok(b) => b,
         Err(e) => match e {
-            // TODO: Handle not found
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "User has no budget with provided ID",
+                ))));
+            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -207,44 +206,33 @@ pub async fn invite_user(
         ))));
     }
 
-    // TODO: Transfer this to db utils
-    let is_sender_in_budget_future =
-        check_user_in_budget(&db_thread_pool, inviting_user_id, invitation_info.budget_id);
-
-    let is_receiver_in_budget_future = check_user_in_budget(
-        &db_thread_pool,
-        invitation_info.invitee_user_id,
-        invitation_info.budget_id,
-    );
-
-    let (is_sender_in_budget, is_receiver_in_budget) =
-        try_join!(is_sender_in_budget_future, is_receiver_in_budget_future)?;
-
-    if !is_sender_in_budget {
-        return Err(ServerError::NotFound(Some(String::from(
-            "User has no budget with provided ID",
-        ))));
-    };
-
-    if is_receiver_in_budget {
-        return Err(ServerError::InputRejected(Some(String::from(
-            "User already has access to budget",
-        ))));
-    }
-
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             invitation_info.budget_id,
+            &invitation_info.budget_name_encrypted_b64,
             invitation_info.invitee_user_id,
             inviting_user_id,
+            invitation_info.sender_name_encrypted_b64.as_ref(),
+            &invitation_info.budget_encryption_key_encrypted_b64,
         )
     })
     .await?
     {
         Ok(_) => (),
         Err(e) => match e {
-            // TODO: Handle not found
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "Sending user has no budget with provided ID",
+                ))));
+            }
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+            )) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "User already has access to budget",
+                ))));
+            }
             _ => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -268,13 +256,7 @@ pub async fn retract_invitation(
     })
     .await?
     {
-        Ok(count) => {
-            if count == 0 {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No share invite belonging to user with provided ID",
-                ))));
-            }
-        }
+        Ok() => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -301,13 +283,13 @@ pub async fn accept_invitation(
     let db_thread_pool_ref = db_thread_pool.clone();
     let share_invite_id = invitation_id.share_invite_id;
 
-    let budget_id = match web::block(move || {
+    let budget_key = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
-        budget_dao.mark_invitation_accepted(share_invite_id, auth_user_claims.0.uid)
+        budget_dao.accept_invitation(share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(share_invite) => share_invite.budget_id,
+        Ok(key) => key,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -323,22 +305,7 @@ pub async fn accept_invitation(
         },
     };
 
-    match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.add_user(budget_id, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to accept invitation",
-            ))));
-        }
-    }
-
-    Ok(HttpResponse::Ok().finish())
+    Ok(HttpResponse::Ok().json(budget_key))
 }
 
 pub async fn decline_invitation(
@@ -352,13 +319,7 @@ pub async fn decline_invitation(
     })
     .await?
     {
-        Ok(count) => {
-            if count == 0 {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No share invite with provided ID",
-                ))));
-            }
-        }
+        Ok() => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(

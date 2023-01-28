@@ -275,7 +275,7 @@ impl Dao {
                 .execute(&mut conn)?
                 != 0;
 
-            if !is_sender_in_budget {
+            if is_recipient_in_budget {
                 return Err(diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
                 ));
@@ -314,12 +314,15 @@ impl Dao {
     pub fn delete_invitation(
         &mut self,
         invitation_id: Uuid,
-        sender_user_id: Uuid,
+        sender_or_recipient_user_id: Uuid,
     ) -> Result<(), DaoError> {
         diesel::delete(
-            budget_share_invites
-                .find(invitation_id)
-                .filter(budget_share_invite_fields::sender_user_id.eq(sender_user_id)),
+            budget_share_invites.find(invitation_id).filter(
+                budget_share_invite_fields::sender_user_id
+                    .eq(sender_or_recipient_user_id)
+                    .or(budget_share_invite_fields::recipient_user_id_user_id
+                        .eq(sender_or_recipient_user_id)),
+            ),
         )
         .execute(&mut self.db_thread_pool.get()?)?;
 

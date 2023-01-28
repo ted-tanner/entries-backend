@@ -206,12 +206,14 @@ impl Dao {
     pub fn delete_buddy_request(
         &mut self,
         request_id: Uuid,
-        sender_user_id: Uuid,
+        sender_or_recipient_user_id: Uuid,
     ) -> Result<(), DaoError> {
         diesel::delete(
-            buddy_requests
-                .find(request_id)
-                .filter(buddy_request_fields::sender_user_id.eq(sender_user_id)),
+            buddy_requests.find(request_id).filter(
+                buddy_request_fields::sender_user_id
+                    .eq(sender_or_recipient_user_id)
+                    .or(buddy_request_fields::recipient_user_id.eq(sender_or_recipient_user_id)),
+            ),
         )
         .execute(&mut self.db_thread_pool.get()?)?;
 

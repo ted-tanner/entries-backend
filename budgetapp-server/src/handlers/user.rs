@@ -361,14 +361,14 @@ pub async fn decline_buddy_request(
     })
     .await?
     {
-        Ok(0) | Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+        Ok(_) => (),
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
             if count == 0 {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID was sent to user",
+                    "No buddy request exists with provided ID",
                 ))));
             }
         }
-        Ok(_) => (),
         Err(e) => match e {
             _ => {
                 log::error!("{}", e);
