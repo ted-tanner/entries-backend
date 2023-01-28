@@ -16,6 +16,7 @@ use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
     InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame,
     OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
+    InputEntryAndCategory,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
@@ -226,7 +227,7 @@ impl Dao {
         Ok(output_budget)
     }
 
-    pub fn edit_budget(
+    pub fn update_budget(
         &mut self,
         budget_id: Uuid,
         edited_budget_data: &str,
@@ -489,8 +490,7 @@ impl Dao {
 
     pub fn create_entry_and_category(
         &mut self,
-        entry_data: &InputEntry,
-        category_encrypted_blob: &str,
+        entry_and_category_data: &InputEntryAndCategory,
         user_id: Uuid,
     ) -> Result<OutputEntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
@@ -499,15 +499,15 @@ impl Dao {
 
         let new_entry = NewEntry {
             id: entry_id,
-            budget_id: entry_data.budget_id,
-            encrypted_blob: entry_data.encrypted_blob_b64,
+            budget_id: entry_and_category_data.budget_id,
+            encrypted_blob: &entry_and_category_data.entry_encrypted_blob_b64,
             modified_timestamp: current_time,
         };
 
         let new_category = NewCategory {
             id: category_id,
-            budget_id: entry_data.budget_id,
-            encrypted_blob: category_encrypted_blob,
+            budget_id: entry_and_category_data.budget_id,
+            encrypted_blob: &entry_and_category_data.category_encrypted_blob_b64,
             modified_timestamp: current_time,
         };
 

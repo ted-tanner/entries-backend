@@ -129,7 +129,7 @@ pub struct InputBudget {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
-    pub id: Uuid,
+    pub budget_id: Uuid,
     pub encrypted_blob_b64: String,
 }
 
@@ -143,7 +143,36 @@ pub struct UserInvitationToBudget {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEntryId {
+    pub entry_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntry {
+    pub budget_id: Uuid,
+    pub encrypted_blob_b64: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEntryAndCategory {
+    pub budget_id: Uuid,
+    pub entry_encrypted_blob_b64: String,
+    pub category_encrypted_blob_b64: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEditEntry {
+    pub entry_id: Uuid,
+    pub encrypted_blob_b64: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputCategoryId {
+    pub category_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputCategory {
     pub budget_id: Uuid,
     pub encrypted_blob_b64: String,
 }
@@ -151,5 +180,11 @@ pub struct InputEntry {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategory {
     pub budget_id: Uuid,
+    pub encrypted_blob_b64: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEditCategory {
+    pub category_id: Uuid,
     pub encrypted_blob_b64: String,
 }

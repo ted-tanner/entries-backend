@@ -17,6 +17,7 @@ pub struct Dao {
     db_thread_pool: DbThreadPool,
 }
 
+// TODO: EE2E changes
 impl Dao {
     pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {

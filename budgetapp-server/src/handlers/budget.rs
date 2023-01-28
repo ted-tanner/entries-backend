@@ -1,6 +1,7 @@
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareInviteId,
-    OutputBudget, UserInvitationToBudget, OutputBudgetShareInviteWithoutKey,
+    OutputBudget, UserInvitationToBudget, OutputBudgetShareInviteWithoutKey, InputEntryAndCategory,
+    OutputEntryId, OutputCategoryId, OutputEntryIdAndCategoryId,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
@@ -131,8 +132,8 @@ pub async fn edit(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.edit_budget(
-            budget_data.id,
+        budget_dao.update_budget(
+            budget_data.budget_id,
             budget_data.encrypted_blob_b64,
             auth_user_claims.0.uid,
         )
@@ -155,42 +156,6 @@ pub async fn edit(
             ))))
         }
     }
-}
-
-pub async fn add_entry(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    entry_data: web::Json<InputEntry>,
-) -> Result<HttpResponse, ServerError> {
-    let budget_id = entry_data.budget_id;
-
-    check_user_in_budget(&db_thread_pool, auth_user_claims.0.uid, budget_id).await?;
-
-    if !is_user_in_budget {}
-
-    let new_entry = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(&entry_data, auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "User has no budget with provided ID",
-                ))));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to create entry",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Created().json(new_entry))
 }
 
 pub async fn invite_user(
@@ -422,22 +387,18 @@ pub async fn get_invitation(
     Ok(HttpResponse::Ok().json(invite))
 }
 
-// TODO: Continue from this point
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id_clone = budget_id.0.clone();
-    let budget_id_second_clone = budget_id.0.clone();
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-
-    let rows_affected_count = match web::block(move || {
-        budget_dao.remove_user(budget_id.budget_id, auth_user_claims.0.uid)
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.leave_budget(budget_id.budget_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(count) => count,
+        Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -453,58 +414,223 @@ pub async fn leave_budget(
         },
     };
 
-    if rows_affected_count == 0 {
-        return Err(ServerError::NotFound(Some(String::from(
-            "User budget association not found",
-        ))));
-    }
+    Ok(HttpResponse::Ok().finish())
+}
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-
-    // TODO: Perhaps user shouldn't have to wait for this (make it non-blocking). Users have
-    //       already been removed from the budget, so the handler can return without finishing
-    //       deleting the budget.
-    //
-    //       Perhaps create a thread or threadpool (in another module) with a queue. The thread
-    //       just polls the queue and executes closures from the queue. This delete operation
-    //       could be added to that queue.
-    let remaining_users_in_budget = match web::block(move || {
-        budget_dao.count_users_remaining_in_budget(budget_id_clone.budget_id)
+pub async fn create_entry(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    entry_data: web::Query<InputEntry>,
+) -> Result<HttpResponse, ServerError> {
+    let entry_id = match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.create_entry(&entry_data.0, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!(
-                "Failed to get count of how many users are left in budget with ID '{}': {}",
-                budget_id_clone.budget_id,
-                e
-            );
-            10
-        }
+        Ok(id) => id,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to create entry",
+                ))));
+            }
+        },
     };
 
-    if remaining_users_in_budget == 0 {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    Ok(HttpResponse::Created().json(OutputEntryId { entry_id }))
+}
 
-        match web::block(move || budget_dao.delete_budget(budget_id_second_clone.budget_id)).await?
-        {
-            Ok(_) => (),
-            Err(e) => {
-                log::error!(
-                    "Failed to delete budget with ID '{}': {}",
-                    budget_id_second_clone.budget_id,
-                    e
-                );
+pub async fn create_entry_and_category(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    entry_and_category_data: web::Query<InputEntryAndCategory>,
+) -> Result<HttpResponse, ServerError> {
+    let entry_and_category_ids = match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.create_entry_and_category(&entry_and_category_data.0, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(ids) => ids,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
             }
-        };
-    }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to create entry",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Created().json(entry_and_category_ids))
+}
+
+pub async fn edit_entry(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    entry_data: web::Query<InputEditEntry>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.update_entry(entry_data.entry_id, &entry_data.encrypted_blob_b64, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No entry with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update entry",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn delete_entry(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    entry_id: web::Query<InputEntryId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.delete_entry(entry_id, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(id) => (id),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No entry with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to delete entry",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn create_category(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    category_data: web::Query<InputCategory>,
+) -> Result<HttpResponse, ServerError> {
+    let category_id = match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.create_category(&category_data.0, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(id) => id,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to create category",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Created().json(OutputCategoryId { category_id }))
+}
+
+pub async fn edit_category(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    category_data: web::Query<InputEditCategory>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.update_category(category_data.category_id, &category_data.encrypted_blob_b64, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No category with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update category",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn delete_category(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    category_id: web::Query<InputCategoryId>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.delete_category(category_id, auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(id) => (id),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No category with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to delete category",
+                ))));
+            }
+        },
+    };
 
     Ok(HttpResponse::Ok().finish())
 }
 
 #[cfg(test)]
 pub mod tests {
+    use super::*;
+
     use budgetapp_utils::auth_token::TokenClaims;
     use budgetapp_utils::models::budget::Budget;
     use budgetapp_utils::models::budget_share_invite::BudgetShareInvite;

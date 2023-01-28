@@ -480,6 +480,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Input structs should be moved inot DB utils instead of taking a reference
 * Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Change password via a token ("reset password"/"forgot password" instead of "change password")

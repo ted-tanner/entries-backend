@@ -99,3 +99,13 @@ pub struct OutputEntryIdAndCategoryId {
     entry_id: Uuid,
     category_id: String,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputEntryId {
+    entry_id: Uuid,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputCategoryId {
+    category_id: Uuid,
+}
