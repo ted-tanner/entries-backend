@@ -46,7 +46,7 @@ pub async fn get(
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    budget_ids: web::Query<InputBudgetIdList>,
+    budget_ids: web::Json<InputBudgetIdList>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);

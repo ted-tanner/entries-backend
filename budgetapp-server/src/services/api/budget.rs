@@ -6,15 +6,17 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/budget")
             .route("/get", web::get().to(handlers::budget::get))
-            .route("/get_all", web::get().to(handlers::budget::get_all))
             .route(
-                "/get_all_between_dates",
-                web::get().to(handlers::budget::get_all_between_dates),
+                "/get_multiple",
+                web::put().to(handlers::budget::get_multiple),
             )
+            .route("/get_all", web::get().to(handlers::budget::get_all))
             .route("/create", web::post().to(handlers::budget::create))
             .route("/edit", web::put().to(handlers::budget::edit))
-            .route("/add_entry", web::post().to(handlers::budget::add_entry))
-            .route("/invite", web::post().to(handlers::budget::invite_user))
+            .route(
+                "/invite_user",
+                web::post().to(handlers::budget::invite_user),
+            )
             .route(
                 "/retract_invitation",
                 web::delete().to(handlers::budget::retract_invitation),
@@ -40,8 +42,33 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::get().to(handlers::budget::get_invitation),
             )
             .route(
-                "/remove_budget",
-                web::delete().to(handlers::budget::remove_budget),
+                "/leave_budget",
+                web::delete().to(handlers::budget::leave_budget),
+            )
+            .route(
+                "/create_entry",
+                web::post().to(handlers::budget::create_entry),
+            )
+            .route(
+                "/create_entry_and_category",
+                web::post().to(handlers::budget::create_entry_and_category),
+            )
+            .route("/edit_entry", web::put().to(handlers::budget::edit_entry))
+            .route(
+                "/delete_entry",
+                web::delete().to(handlers::budget::delete_entry),
+            )
+            .route(
+                "/create_category",
+                web::post().to(handlers::budget::create_category),
+            )
+            .route(
+                "/edit_category",
+                web::put().to(handlers::budget::edit_category),
+            )
+            .route(
+                "/delete_category",
+                web::delete().to(handlers::budget::delete_category),
             ),
     );
 }

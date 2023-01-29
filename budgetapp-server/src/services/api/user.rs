@@ -5,10 +5,13 @@ use crate::handlers;
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/user")
-            .route("/get", web::get().to(handlers::user::get))
             .route(
-                "/get_user_by_email",
-                web::get().to(handlers::user::get_user_by_email),
+                "/get_user_email",
+                web::get().to(handlers::user::get_user_email),
+            )
+            .route(
+                "/lookup_user_id_by_email",
+                web::get().to(handlers::user::lookup_user_id_by_email),
             )
             .route("/create", web::post().to(handlers::user::create))
             .route("/edit", web::put().to(handlers::user::edit))
