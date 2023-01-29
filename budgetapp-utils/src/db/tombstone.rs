@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::tombstone::{NewTombstone, Tombstone};
+use crate::request_io::OutputTombstone;
 use crate::schema::tombstones as tombstone_fields;
 use crate::schema::tombstones::dsl::tombstones;
 
@@ -35,10 +36,15 @@ impl Dao {
         &mut self,
         from_time: SystemTime,
         user_id: Uuid,
-    ) -> Result<bool, DaoError> {
+    ) -> Result<Vec<OutputTombstone>, DaoError> {
         Ok(tombstones
+            .select((
+                tombstone_fields::item_id,
+                tombstone_fields::origin_table,
+                tombstone_fields::deletion_timestamp,
+            ))
             .filter(tombstone_fields::related_user_id.eq(user_id))
             .filter(tombstone_fields::deletion_timestamp.gt(from_time))
-            .get_results::<Tombstone>(&mut self.db_thread_pool.get()?)?)
+            .get_results::<OutputTombstone>(&mut self.db_thread_pool.get()?)?)
     }
 }

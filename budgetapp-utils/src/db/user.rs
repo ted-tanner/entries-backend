@@ -48,13 +48,6 @@ impl Dao {
             .first::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_user_auth_string_hash(&mut self, user_id: Uuid) -> Result<String, DaoError> {
-        Ok(users
-            .select(user_fields::auth_string_hash)
-            .find(user_id)
-            .first::<String>(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
         Ok(users
             .select(user_fields::id)

@@ -480,6 +480,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Endpoint for checking tombstones
 * Input structs should be moved inot DB utils instead of taking a reference
 * Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
@@ -492,6 +493,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
 * Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
 * Rename `password_hasher` to `argon2_hasher`
+* Rename password_attempts (job, data model, etc.) to authorization_attempts
 * Rename `request_io` to `partial_models`
 * For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
 * Store currency with budget, default currency in user_preferences

@@ -2,7 +2,8 @@ use budgetapp_utils::db::DbThreadPool;
 use budgetapp_utils::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
-use budgetapp_utils::{auth_token, db, otp, password_hasher};
+use budgetapp_utils::Validity;
+use budgetapp_utils::{auth_token, db, otp, password_hasher, validators};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -15,31 +16,16 @@ pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, ServerError> {
-    const INVALID_CREDENTIALS_MSG: &str = "Incorrect email or password";
-
-    if !credentials.validate_email_address().is_valid() {
-        return Err(ServerError::InvalidFormat(Some(String::from(
-            "Invalid email address",
-        ))));
+    if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
+        return Err(ServerError::InvalidFormat(Some(msg)));
     }
 
     let user_email = credentials.email.clone();
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let user = match web::block(move || user_dao.get_user_by_email(&user_email)).await? {
-        Ok(u) => u,
-        Err(_) => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                INVALID_CREDENTIALS_MSG,
-            ))))
-        }
-    };
-
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-
-    let attempts = match web::block(move || {
-        auth_dao.get_and_increment_password_attempt_count(
-            user.id,
+    let hash_and_attempts = match web::block(move || {
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.get_user_auth_string_hash_and_mark_attempt(
+            &user_email,
             Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
         )
     })
@@ -54,8 +40,8 @@ pub async fn sign_in(
         }
     };
 
-    if attempts.attempt_count > env::CONF.security.password_max_attempts
-        && attempts.expiration_time >= SystemTime::now()
+    if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
+        && hash_and_attempts.attempt_count >= SystemTime::now()
     {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many login attempts. Try again in a few minutes.",
@@ -64,8 +50,8 @@ pub async fn sign_in(
 
     let does_password_match_hash = web::block(move || {
         password_hasher::verify_hash(
-            &credentials.password,
-            &user.password_hash,
+            &credentials.auth_string,
+            &hash_and_attempts.auth_string_hash,
             env::CONF.keys.hashing_key.as_bytes(),
         )
     })
@@ -76,7 +62,6 @@ pub async fn sign_in(
             &auth_token::TokenParams {
                 user_id: &user.id,
                 user_email: &user.email,
-                user_currency: &user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -126,7 +111,7 @@ pub async fn sign_in(
         Ok(HttpResponse::Ok().json(signin_token))
     } else {
         Err(ServerError::UserUnauthorized(Some(String::from(
-            INVALID_CREDENTIALS_MSG,
+            "Incorrect email or password",
         ))))
     }
 }
@@ -291,7 +276,6 @@ pub async fn verify_otp_for_signin(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    // TODO: Test this
     // TODO: Make it so users don't have to wait for this
     match web::block(move || user_dao.set_last_token_refresh_now(token_claims.uid)).await? {
         Ok(_) => (),
@@ -395,7 +379,6 @@ pub async fn refresh_tokens(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    // TODO: Test this
     // TODO: Make it so users don't have to wait for this
     match web::block(move || user_dao.set_last_token_refresh_now(claims.uid)).await? {
         Ok(_) => (),

@@ -14,9 +14,9 @@ use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
-    InputBudget, InputEditBudget, InputEntry, OutputBudget, OutputBudgetFrame,
-    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
-    InputEntryAndCategory,
+    InputBudget, InputEditBudget, InputEntry, InputEntryAndCategory, OutputBudget,
+    OutputBudgetFrame, OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey,
+    OutputEntryIdAndCategoryId,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;

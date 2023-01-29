@@ -81,7 +81,6 @@ impl std::convert::From<TokenType> for u8 {
 pub struct TokenParams<'a> {
     pub user_id: &'a Uuid,
     pub user_email: &'a str,
-    pub user_currency: &'a str,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -89,7 +88,6 @@ pub struct TokenClaims {
     pub exp: u64,    // Expiration in time since UNIX epoch
     pub uid: Uuid,   // User ID
     pub eml: String, // User email address
-    pub cur: String, // User currency
     pub typ: u8,     // Token type (Access=0, Refresh=1, SignIn=2)
     pub slt: u32,    // Random salt (makes it so two tokens generated in the same
                      //              second are different--useful for testing)
@@ -270,7 +268,6 @@ fn generate_token(
         exp: expiration,
         uid: *params.user_id,
         eml: params.user_email.to_string(),
-        cur: params.user_currency.to_string(),
         typ: kind.into(),
         slt: salt,
     };

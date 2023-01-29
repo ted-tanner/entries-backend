@@ -1,7 +1,7 @@
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputShareInviteId,
-    OutputBudget, UserInvitationToBudget, OutputBudgetShareInviteWithoutKey, InputEntryAndCategory,
-    OutputEntryId, OutputCategoryId, OutputEntryIdAndCategoryId,
+    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputEntryAndCategory,
+    InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
+    OutputEntryId, OutputEntryIdAndCategoryId, UserInvitationToBudget,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
@@ -484,7 +484,11 @@ pub async fn edit_entry(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_entry(entry_data.entry_id, &entry_data.encrypted_blob_b64, auth_user_claims.0.uid)
+        budget_dao.update_entry(
+            entry_data.entry_id,
+            &entry_data.encrypted_blob_b64,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {
@@ -574,7 +578,11 @@ pub async fn edit_category(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_category(category_data.category_id, &category_data.encrypted_blob_b64, auth_user_claims.0.uid)
+        budget_dao.update_category(
+            category_data.category_id,
+            &category_data.encrypted_blob_b64,
+            auth_user_claims.0.uid,
+        )
     })
     .await?
     {

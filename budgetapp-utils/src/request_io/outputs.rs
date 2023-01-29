@@ -109,3 +109,10 @@ pub struct OutputEntryId {
 pub struct OutputCategoryId {
     category_id: Uuid,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputTombstone {
+    item_id: Uuid,
+    origin_table: String,
+    deletion_timestamp: SystemTime,
+}

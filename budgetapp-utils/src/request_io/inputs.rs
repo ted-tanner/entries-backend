@@ -10,13 +10,7 @@ use crate::validators;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CredentialPair {
     pub email: String,
-    pub password: String,
-}
-
-impl CredentialPair {
-    pub fn validate_email_address(&self) -> validators::Validity {
-        validators::validate_email_address(&self.email)
-    }
+    pub auth_string: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -169,12 +163,6 @@ pub struct InputEditEntry {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategoryId {
     pub category_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputCategory {
-    pub budget_id: Uuid,
-    pub encrypted_blob_b64: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

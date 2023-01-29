@@ -13,16 +13,61 @@ use crate::schema::otp_attempts::dsl::otp_attempts;
 use crate::schema::password_attempts as password_attempt_fields;
 use crate::schema::password_attempts::dsl::password_attempts;
 
+pub struct UserAuthStringHashAndAuthAttempts {
+    pub auth_string_hash: String,
+    pub attempt_count: i16,
+    pub expiration_time: SystemTime,
+}
+
 pub struct Dao {
     db_thread_pool: DbThreadPool,
 }
 
-// TODO: EE2E changes
 impl Dao {
     pub fn new(db_thread_pool: &DbThreadPool) -> Self {
         Self {
             db_thread_pool: db_thread_pool.clone(),
         }
+    }
+
+    pub fn get_user_auth_string_hash_and_mark_attempt(
+        &mut self,
+        user_email: &str,
+        attempts_lifetime: Duration,
+    ) -> Result<UserAuthStringHashAndAuthAttempts, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let hash_and_attempts = db_connection.build_transaction().run(|conn| {
+            let (user_id, auth_string_hash) = users
+                .select((user_fields::id, user_fields::auth_string_hash))
+                .find(user_id)
+                .first::<(Uuid, String)>(&mut conn)?;
+
+            let expiration_time = SystemTime::now() + attempts_lifetime;
+
+            let new_attempt = NewPasswordAttempts {
+                user_id,
+                attempt_count: 1,
+                expiration_time,
+            };
+
+            let attempts = dsl::insert_into(password_attempts)
+                .values(&new_attempt)
+                .on_conflict(password_attempt_fields::user_id)
+                .do_update()
+                .set(
+                    password_attempt_fields::attempt_count
+                        .eq(password_attempt_fields::attempt_count + 1),
+                )
+                .get_result::<PasswordAttempts>(&mut conn)?;
+
+            Ok(UserAuthStringHashAndAuthAttempts {
+                auth_string_hash,
+                ..attempts
+            })
+        })?;
+
+        Ok(hash_and_attempts)
     }
 
     pub fn create_blacklisted_token(
@@ -107,30 +152,6 @@ impl Dao {
             .do_update()
             .set(otp_attempt_fields::attempt_count.eq(otp_attempt_fields::attempt_count + 1))
             .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn get_and_increment_password_attempt_count(
-        &mut self,
-        user_id: Uuid,
-        attempts_lifetime: Duration,
-    ) -> Result<PasswordAttempts, DaoError> {
-        let expiration_time = SystemTime::now() + attempts_lifetime;
-
-        let new_attempt = NewPasswordAttempts {
-            user_id,
-            attempt_count: 1,
-            expiration_time,
-        };
-
-        Ok(dsl::insert_into(password_attempts)
-            .values(&new_attempt)
-            .on_conflict(password_attempt_fields::user_id)
-            .do_update()
-            .set(
-                password_attempt_fields::attempt_count
-                    .eq(password_attempt_fields::attempt_count + 1),
-            )
-            .get_result::<PasswordAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 }
 
