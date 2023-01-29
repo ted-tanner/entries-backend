@@ -69,8 +69,8 @@ pub struct InputUser {
     pub auth_string_salt: String,
     pub auth_string_iters: i32,
 
-    pub password_encyption_salt: String,
-    pub password_encyption_iters: i32,
+    pub password_encryption_salt: String,
+    pub password_encryption_iters: i32,
 
     pub recovery_key_salt: String,
     pub recovery_key_iters: i32,
@@ -79,6 +79,7 @@ pub struct InputUser {
     pub encryption_key_recovery_key_encrypted: String,
 
     pub public_rsa_key: String,
+    pub private_rsa_key_encrypted: String,
 
     pub preferences_encrypted: String,
 }

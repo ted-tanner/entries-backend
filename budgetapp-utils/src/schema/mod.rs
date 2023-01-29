@@ -124,7 +124,8 @@ table! {
         encryption_key_user_password_encrypted -> Text,
         encryption_key_recovery_key_encrypted -> Text,
         public_rsa_key -> Text,
-        public_rsa_key_created_timestamp -> Text,
+        private_rsa_key_encrypted -> Text,
+        rsa_key_created_timestamp -> Timestamp,
         last_token_refresh_timestamp -> Timestamp,
         modified_timestamp -> Timestamp,
     }

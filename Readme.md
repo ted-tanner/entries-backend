@@ -480,7 +480,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Endpoint for updating user_preferences
 * Endpoint for checking tombstones
+* Endpoints for getting and updating user_security_data
 * Input structs should be moved inot DB utils instead of taking a reference
 * Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one

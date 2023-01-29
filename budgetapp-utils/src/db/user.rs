@@ -1,4 +1,6 @@
-use diesel::{dsl, sql_query, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl, sql_query, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl,
+};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -11,7 +13,7 @@ use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::{NewUserSecurityData, UserSecurityData};
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 use crate::password_hasher;
-use crate::request_io::{InputEditUser, InputUser};
+use crate::request_io::InputUser;
 use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
 use crate::schema::buddy_requests as buddy_request_fields;
@@ -45,14 +47,14 @@ impl Dao {
         Ok(users
             .select(user_fields::email)
             .find(user_id)
-            .first::<String>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
         Ok(users
             .select(user_fields::id)
             .filter(user_fields::email.eq(user_email.to_lowercase()))
-            .first::<Uuid>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(
@@ -87,7 +89,8 @@ impl Dao {
             encryption_key_recovery_key_encrypted: &user_data.encryption_key_recovery_key_encrypted,
 
             public_rsa_key: &user_data.public_rsa_key,
-            public_rsa_key_created_timestamp: user_data.public_rsa_key_created_timestamp,
+            private_rsa_key_encrypted: &user_data.private_rsa_key_encrypted,
+            rsa_key_created_timestamp: SystemTime::now(),
 
             last_token_refresh_timestamp: current_time,
             modified_timestamp: current_time,
@@ -101,21 +104,21 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            dsl::insert_into(users)
-                .values(&new_user)
-                .execute(&mut conn)?;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                dsl::insert_into(users).values(&new_user).execute(conn)?;
 
-            dsl::insert_into(user_security_data)
-                .values(&new_user_security_data)
-                .execute(&mut conn)?;
+                dsl::insert_into(user_security_data)
+                    .values(&new_user_security_data)
+                    .execute(conn)?;
 
-            dsl::insert_into(user_preferences)
-                .values(&new_user_preferences)
-                .execute(&mut conn)?;
+                dsl::insert_into(user_preferences)
+                    .values(&new_user_preferences)
+                    .execute(conn)?;
 
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
         Ok(user_id)
     }
@@ -138,7 +141,7 @@ impl Dao {
     ) -> Result<(), DaoError> {
         dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
             .set((
-                user_security_data_fields::auth_string_hash.eq(new_password_hash),
+                user_security_data_fields::auth_string_hash.eq(new_auth_string_hash),
                 user_security_data_fields::auth_string_salt.eq(new_auth_string_salt),
                 user_security_data_fields::auth_string_iters.eq(new_auth_string_iters),
                 user_security_data_fields::encryption_key_user_password_encrypted
@@ -164,34 +167,35 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let buddy_request = db_connection.build_transaction().run(|conn| {
-            let are_buddies = dsl::select(dsl::exists(
-                buddy_relationships.filter(
-                    buddy_relationship_fields::user1_id
-                        .eq(sender_user_id)
-                        .and(buddy_relationship_fields::user2_id.eq(recipient_user_id))
-                        .or(buddy_relationship_fields::user1_id
-                            .eq(recipient_user_id)
-                            .and(buddy_relationship_fields::user2_id.eq(sender_user_id))),
-                ),
-            ));
-
-            if are_buddies {
-                return Err(diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::UniqueViolation,
-                ));
-            }
-
-            dsl::insert_into(buddy_requests)
-                .values(&request)
-                .on_conflict((
-                    buddy_request_fields::recipient_user_id,
-                    buddy_request_fields::sender_user_id,
+        let buddy_request = db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let are_buddies = dsl::select(dsl::exists(
+                    buddy_relationships.filter(
+                        buddy_relationship_fields::user1_id
+                            .eq(sender_user_id)
+                            .and(buddy_relationship_fields::user2_id.eq(recipient_user_id))
+                            .or(buddy_relationship_fields::user1_id
+                                .eq(recipient_user_id)
+                                .and(buddy_relationship_fields::user2_id.eq(sender_user_id))),
+                    ),
                 ))
-                .do_update()
-                .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
-                .get_result::<BuddyRequest>(&mut conn)?
-        })?;
+                .get_result::<bool>(conn)?;
+
+                if are_buddies {
+                    return Err(DaoError::WontRunQuery);
+                }
+
+                Ok(dsl::insert_into(buddy_requests)
+                    .values(&request)
+                    .on_conflict((
+                        buddy_request_fields::recipient_user_id,
+                        buddy_request_fields::sender_user_id,
+                    ))
+                    .do_update()
+                    .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
+                    .get_result::<BuddyRequest>(conn)?)
+            })?;
 
         Ok(buddy_request)
     }
@@ -220,26 +224,28 @@ impl Dao {
     ) -> Result<Uuid, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let sender_user_id = db_connection.build_transaction().run(|conn| {
-            let sender_user_id = diesel::delete(
-                buddy_requests
-                    .find(request_id)
-                    .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
-            )
-            .returning(buddy_request_fields::sender_user_id)
-            .execute(&mut conn)?;
+        let sender_user_id = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let sender_user_id = diesel::delete(
+                    buddy_requests
+                        .find(request_id)
+                        .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
+                )
+                .returning(buddy_request_fields::sender_user_id)
+                .get_result::<Uuid>(conn)?;
 
-            let relationship = NewBuddyRelationship {
-                user1_id: sender_user_id,
-                user2_id: recipient_user_id,
-            };
+                let relationship = NewBuddyRelationship {
+                    user1_id: sender_user_id,
+                    user2_id: recipient_user_id,
+                };
 
-            dsl::insert_into(buddy_relationships)
-                .values(&relationship)
-                .execute(&mut conn)?;
+                dsl::insert_into(buddy_relationships)
+                    .values(&relationship)
+                    .execute(conn)?;
 
-            Ok(sender_user_id)
-        })?;
+                Ok(sender_user_id)
+            })?;
 
         Ok(sender_user_id)
     }
@@ -274,7 +280,7 @@ impl Dao {
                     .eq(user_id)
                     .or(buddy_request_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_buddy_relationship(
@@ -301,10 +307,9 @@ impl Dao {
         Ok(users
             .select(user_fields::id)
             .left_join(
-                buddy_relationships.on(buddy_relationship_fields::user1_id.eq(user_fields::id)),
-            )
-            .left_join(
-                buddy_relationships.on(buddy_relationship_fields::user2_id.eq(user_fields::id)),
+                buddy_relationships.on(buddy_relationship_fields::user1_id
+                    .eq(user_fields::id)
+                    .or(buddy_relationship_fields::user2_id.eq(user_fields::id))),
             )
             .filter(
                 buddy_relationship_fields::user1_id
@@ -360,34 +365,37 @@ impl Dao {
 
         let new_tombstone = NewUserTombstone {
             user_id: request.user_id,
-            deletion_request_time: request.deletion_request_time,
             deletion_timestamp: SystemTime::now(),
         };
 
-        db_connection.build_transaction().run(|conn| {
-            dsl::insert_into(user_tombstones)
-                .values(&new_tombstone)
-                .execute(&mut conn)?;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                dsl::insert_into(user_tombstones)
+                    .values(&new_tombstone)
+                    .execute(conn)?;
 
-            diesel::delete(budgets)
-                .filter(
-                    user_budgets
-                        .filter(user_budget_fields::user_id.eq(request.user_id))
-                        .filter(budget_fields::id.eq(user_budget_fields::budget_id))
-                        .count()
-                        .single_value()
-                        .eq(1),
+                diesel::delete(budgets)
+                    .filter(
+                        user_budgets
+                            .filter(user_budget_fields::user_id.eq(request.user_id))
+                            .filter(budget_fields::id.eq(user_budget_fields::budget_id))
+                            .count()
+                            .single_value()
+                            .eq(1),
+                    )
+                    .execute(conn)?;
+
+                diesel::delete(users.find(request.user_id)).execute(conn)?;
+
+                diesel::delete(
+                    user_deletion_requests
+                        .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
                 )
-                .execute(&mut conn)?;
+                    .execute(conn)?;
 
-            diesel::delete(users.find(request.user_id)).execute(&mut conn)?;
-
-            diesel::delete(
-                user_deletion_requests
-                    .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
-            )
-            .execute(&mut conn)?;
-        })?;
+                Ok(())
+            })?;
 
         Ok(())
     }
@@ -403,7 +411,7 @@ impl Dao {
     pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
         Ok(user_tombstones
             .filter(user_tombstone_fields::user_id.eq(user_id))
-            .first::<UserTombstone>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<UserTombstone>(&mut self.db_thread_pool.get()?)?)
     }
 }
 

@@ -24,12 +24,10 @@ impl Dao {
         item_id: Uuid,
         user_id: Uuid,
     ) -> Result<bool, DaoError> {
-        Ok(dsl::select(dsl::exists(
-            tombstones
-                .find(item_id)
-                .filter(tombstone_fields::related_user_id.eq(user_id)),
-        ))
-        .get_result(&mut self.db_thread_pool.get()?)?)
+        Ok(
+            dsl::select(dsl::exists(tombstones.find((item_id, user_id))))
+                .get_result(&mut self.db_thread_pool.get()?)?,
+        )
     }
 
     pub fn get_tombstones_since(

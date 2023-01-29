@@ -1,8 +1,8 @@
 use diesel::associations::GroupedBy;
-use diesel::sql_types::{self, Nullable, Text, Timestamp, VarChar};
+use diesel::sql_types::{self, Timestamp, VarChar};
 use diesel::{
-    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl,
-    RunQueryDsl,
+    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
+    NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
 use std::time::SystemTime;
 use uuid::Uuid;
@@ -12,11 +12,12 @@ use crate::models::budget::{Budget, NewBudget};
 use crate::models::budget_share_invite::{BudgetShareInvite, NewBudgetShareInvite};
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
+use crate::models::tombstone::NewTombstone;
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
-    InputBudget, InputEditBudget, InputEntry, InputEntryAndCategory, OutputBudget,
-    OutputBudgetFrame, OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey,
-    OutputEntryIdAndCategoryId,
+    InputBudget, InputCategory, InputEditBudget, InputEditCategory, InputEntry,
+    InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
+    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
@@ -26,6 +27,8 @@ use crate::schema::categories as category_fields;
 use crate::schema::categories::dsl::categories;
 use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
+use crate::schema::tombstones as tombstone_fields;
+use crate::schema::tombstones::dsl::tombstones;
 use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 
@@ -47,27 +50,28 @@ impl Dao {
     ) -> Result<OutputBudget, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let budget = budgets
-                .select(budget_fields::all_columns)
-                .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
-                .filter(budget_fields::id.eq(budget_id))
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .first::<Budget>(&mut conn)?;
+        let output_budget = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let budget = budgets
+                    .select(budget_fields::all_columns)
+                    .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
+                    .filter(budget_fields::id.eq(budget_id))
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .get_result::<Budget>(conn)?;
+                let loaded_categories = Category::belonging_to(&budget).load::<Category>(conn)?;
+                let loaded_entries = Entry::belonging_to(&budget).load::<Entry>(conn)?;
 
-            let loaded_categories = Category::belonging_to(&budget)
-                .order(category_fields::name.asc())
-                .load::<Category>(&mut conn)?;
-            let loaded_entries = Entry::belonging_to(&budget)
-                .order(entry_fields::date.asc())
-                .load::<Entry>(&mut conn)?;
+                Ok(OutputBudget {
+                    id: budget.id,
+                    encrypted_blob: budget.encrypted_blob,
+                    modified_timestamp: budget.modified_timestamp,
+                    categories: loaded_categories,
+                    entries: loaded_entries,
+                })
+            })?;
 
-            Ok(OutputBudget {
-                categories: loaded_categories,
-                entries: loaded_entries,
-                ..budget
-            })
-        })?
+        Ok(output_budget)
     }
 
     pub fn get_multiple_budgets_by_id(
@@ -77,40 +81,44 @@ impl Dao {
     ) -> Result<Vec<OutputBudget>, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let loaded_budgets = budgets
-                .select(budget_fields::all_columns)
-                .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_fields::id)))
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(budget_fields::id.eq(budget_ids))
-                .get_results::<Budget>(&mut conn)?;
-            let loaded_categories = Category::belonging_to(&loaded_budgets)
-                .order(category_fields::name.asc())
-                .load::<Category>(&mut conn)?
-                .grouped_by(&loaded_budgets);
-            let loaded_entries = Entry::belonging_to(&loaded_budgets)
-                .order(entry_fields::date.asc())
-                .load::<Entry>(&mut conn)?
-                .grouped_by(&loaded_budgets);
+        let output_budgets = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let loaded_budgets = budgets
+                    .select(budget_fields::all_columns)
+                    .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_fields::id)))
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(budget_fields::id.eq_any(budget_ids))
+                    .get_results::<Budget>(conn)?;
+                let loaded_categories = Category::belonging_to(&loaded_budgets)
+                    .load::<Category>(conn)?
+                    .grouped_by(&loaded_budgets);
+                let loaded_entries = Entry::belonging_to(&loaded_budgets)
+                    .load::<Entry>(conn)?
+                    .grouped_by(&loaded_budgets);
 
-            let zipped_budgets = loaded_budgets
-                .into_iter()
-                .zip(loaded_categories.into_iter())
-                .zip(loaded_entries.into_iter());
-            let mut output_budgets = Vec::new();
+                let zipped_budgets = loaded_budgets
+                    .into_iter()
+                    .zip(loaded_categories.into_iter())
+                    .zip(loaded_entries.into_iter());
+                let mut output_budgets = Vec::new();
 
-            for ((budget, budget_categories), budget_entries) in zipped_budgets {
-                let output_budget = OutputBudget {
-                    categories: budget_categories,
-                    entries: budget_entries,
-                    ..budget
-                };
+                for ((budget, budget_categories), budget_entries) in zipped_budgets {
+                    let output_budget = OutputBudget {
+                        id: budget.id,
+                        encrypted_blob: budget.encrypted_blob,
+                        modified_timestamp: budget.modified_timestamp,
+                        categories: budget_categories,
+                        entries: budget_entries,
+                    };
 
-                output_budgets.push(output_budget);
-            }
+                    output_budgets.push(output_budget);
+                }
 
-            Ok(output_budgets)
-        })?
+                Ok(output_budgets)
+            })?;
+
+        Ok(output_budgets)
     }
 
     pub fn get_all_budgets_for_user(
@@ -119,39 +127,43 @@ impl Dao {
     ) -> Result<Vec<OutputBudget>, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let loaded_budgets = budgets
-                .select(budget_fields::all_columns)
-                .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_fields::id)))
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .get_results::<Budget>(&mut conn)?;
-            let loaded_categories = Category::belonging_to(&loaded_budgets)
-                .order(category_fields::name.asc())
-                .load::<Category>(&mut conn)?
-                .grouped_by(&loaded_budgets);
-            let loaded_entries = Entry::belonging_to(&loaded_budgets)
-                .order(entry_fields::date.asc())
-                .load::<Entry>(&mut conn)?
-                .grouped_by(&loaded_budgets);
+        let output_budgets = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let loaded_budgets = budgets
+                    .select(budget_fields::all_columns)
+                    .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_fields::id)))
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .get_results::<Budget>(conn)?;
+                let loaded_categories = Category::belonging_to(&loaded_budgets)
+                    .load::<Category>(conn)?
+                    .grouped_by(&loaded_budgets);
+                let loaded_entries = Entry::belonging_to(&loaded_budgets)
+                    .load::<Entry>(conn)?
+                    .grouped_by(&loaded_budgets);
 
-            let zipped_budgets = loaded_budgets
-                .into_iter()
-                .zip(loaded_categories.into_iter())
-                .zip(loaded_entries.into_iter());
-            let mut output_budgets = Vec::new();
+                let zipped_budgets = loaded_budgets
+                    .into_iter()
+                    .zip(loaded_categories.into_iter())
+                    .zip(loaded_entries.into_iter());
+                let mut output_budgets = Vec::new();
 
-            for ((budget, budget_categories), budget_entries) in zipped_budgets {
-                let output_budget = OutputBudget {
-                    categories: budget_categories,
-                    entries: budget_entries,
-                    ..budget
-                };
+                for ((budget, budget_categories), budget_entries) in zipped_budgets {
+                    let output_budget = OutputBudget {
+                        id: budget.id,
+                        encrypted_blob: budget.encrypted_blob,
+                        modified_timestamp: budget.modified_timestamp,
+                        categories: budget_categories,
+                        entries: budget_entries,
+                    };
 
-                output_budgets.push(output_budget);
-            }
+                    output_budgets.push(output_budget);
+                }
 
-            Ok(output_budgets)
-        })?
+                Ok(output_budgets)
+            })?;
+
+        Ok(output_budgets)
     }
 
     pub fn create_budget(
@@ -183,7 +195,7 @@ impl Dao {
             let new_category = NewCategory {
                 budget_id,
                 id: Uuid::new_v4(),
-                encrypted_blob: category.encrypted_blob_b64,
+                encrypted_blob: &category.encrypted_blob_b64,
                 modified_timestamp: current_time,
             };
 
@@ -208,21 +220,23 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            dsl::insert_into(budgets)
-                .values(&new_budget)
-                .execute(&mut conn)?;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                dsl::insert_into(budgets)
+                    .values(&new_budget)
+                    .execute(conn)?;
 
-            dsl::insert_into(categories)
-                .values(budget_categories)
-                .execute(&mut conn)?;
+                dsl::insert_into(categories)
+                    .values(budget_categories)
+                    .execute(conn)?;
 
-            dsl::insert_into(user_budgets)
-                .values(&new_user_budget_association)
-                .execute(&mut conn)?;
+                dsl::insert_into(user_budgets)
+                    .values(&new_user_budget_association)
+                    .execute(conn)?;
 
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
         Ok(output_budget)
     }
@@ -233,17 +247,20 @@ impl Dao {
         edited_budget_data: &str,
         user_id: Uuid,
     ) -> Result<(), DaoError> {
-        dsl::update(
-            budgets
-                .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_fields::id)))
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(budget_fields::id.eq(budget_id)),
+        diesel::sql_query(
+            "UPDATE budgets AS b \
+             SET modified_timestamp = $1, \
+             encrypted_blob = $2 \
+             FROM user_budgets AS ub \
+             WHERE ub.user_id = $3 \
+             AND b.id = ub.budget_id \
+             AND b.id = $4",
         )
-        .set((
-            budget_fields::modified_timestamp.eq(SystemTime::now()),
-            budget_fields::encrypted_blob.eq(edited_budget_data),
-        ))
-        .execute(&mut conn)?;
+        .bind::<Timestamp, _>(SystemTime::now())
+        .bind::<VarChar, _>(edited_budget_data)
+        .bind::<sql_types::Uuid, _>(user_id)
+        .bind::<sql_types::Uuid, _>(budget_id)
+        .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -257,57 +274,61 @@ impl Dao {
         sender_name_encrypted: Option<&str>,
         encryption_key_encrypted: &str,
     ) -> Result<(), DaoError> {
-        db_connection.build_transaction().run(|conn| {
-            let is_sender_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        let mut db_connection = self.db_thread_pool.get()?;
 
-            if !is_sender_in_budget {
-                return Err(diesel::result::Error::NotFound);
-            }
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let is_sender_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(sender_user_id))
+                    .filter(user_budget_fields::budget_id.eq(budget_id))
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            let is_recipient_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
-                .count()
-                .execute(&mut conn)?
-                != 0;
+                if !is_sender_in_budget {
+                    return Err(DaoError::QueryFailure(diesel::result::Error::NotFound));
+                }
 
-            if is_recipient_in_budget {
-                return Err(diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::UniqueViolation,
-                ));
-            }
+                let is_recipient_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(recipient_user_id))
+                    .filter(user_budget_fields::budget_id.eq(budget_id))
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            let budget_share_invite = NewBudgetShareInvite {
-                id: Uuid::new_v4(),
-                recipient_user_id,
-                sender_user_id,
-                budget_id,
-                budget_name_encrypted,
-                sender_name_encrypted,
-                encryption_key_encrypted,
-            };
+                if is_recipient_in_budget {
+                    return Err(DaoError::WontRunQuery);
+                }
 
-            dsl::insert_into(budget_share_invites)
-                .values(&budget_share_invite)
-                .on_conflict((
-                    budget_share_invite_fields::recipient_user_id,
-                    budget_share_invite_fields::sender_user_id,
-                    budget_share_invite_fields::budget_id,
-                ))
-                .do_update()
-                .set((
-                    budget_share_invite_fields::budget_name_encrypted.eq(budget_name_encrypted),
-                    budget_share_invite_fields::sender_name_encrypted.eq(sender_name_encrypted),
-                    budget_share_invite_fields::encryption_key_encrypted
-                        .eq(encryption_key_encrypted),
-                ))
-                .execute(&mut conn)?;
-        })?;
+                let budget_share_invite = NewBudgetShareInvite {
+                    id: Uuid::new_v4(),
+                    recipient_user_id,
+                    sender_user_id,
+                    budget_id,
+                    budget_name_encrypted,
+                    sender_name_encrypted,
+                    encryption_key_encrypted,
+                };
+
+                dsl::insert_into(budget_share_invites)
+                    .values(&budget_share_invite)
+                    .on_conflict((
+                        budget_share_invite_fields::recipient_user_id,
+                        budget_share_invite_fields::sender_user_id,
+                        budget_share_invite_fields::budget_id,
+                    ))
+                    .do_update()
+                    .set((
+                        budget_share_invite_fields::budget_name_encrypted.eq(budget_name_encrypted),
+                        budget_share_invite_fields::sender_name_encrypted.eq(sender_name_encrypted),
+                        budget_share_invite_fields::encryption_key_encrypted
+                            .eq(encryption_key_encrypted),
+                    ))
+                    .execute(conn)?;
+
+                Ok(())
+            })?;
 
         Ok(())
     }
@@ -321,7 +342,7 @@ impl Dao {
             budget_share_invites.find(invitation_id).filter(
                 budget_share_invite_fields::sender_user_id
                     .eq(sender_or_recipient_user_id)
-                    .or(budget_share_invite_fields::recipient_user_id_user_id
+                    .or(budget_share_invite_fields::recipient_user_id
                         .eq(sender_or_recipient_user_id)),
             ),
         )
@@ -337,32 +358,33 @@ impl Dao {
     ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let budget_id_and_key = db_connection.build_transaction().run(|conn| {
-            let budget_id_and_key = diesel::delete(
-                budget_share_invites
-                    .find(invitation_id)
-                    .filter(budget_share_invite_fields::recipient_user_id.eq(recipient_user_id)),
-            )
-            .returning((
-                budget_share_invite_fields::budget_id,
-                budget_share_invite_fields::encryption_key_encrypted,
-            ))
-            .get_result::<OutputBudgetIdAndEncryptionKey>(&mut conn)?;
+        let budget_id_and_key = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let budget_id_and_key =
+                    diesel::delete(budget_share_invites.find(invitation_id).filter(
+                        budget_share_invite_fields::recipient_user_id.eq(recipient_user_id),
+                    ))
+                    .returning((
+                        budget_share_invite_fields::budget_id,
+                        budget_share_invite_fields::encryption_key_encrypted,
+                    ))
+                    .get_result::<OutputBudgetIdAndEncryptionKey>(conn)?;
 
-            let user_budget_relation = NewUserBudget {
-                user_id: recipient_user_id,
-                budget_id: budget_id_and_key.budget_id,
-                encryption_key_encrypted: &budget_id_and_key.encryption_key_encrypted,
-                encryption_key_is_encrypted_with_aes_not_rsa: false,
-                modified_timestamp: SystemTime::now(),
-            };
+                let user_budget_relation = NewUserBudget {
+                    user_id: recipient_user_id,
+                    budget_id: budget_id_and_key.budget_id,
+                    encryption_key_encrypted: &budget_id_and_key.encryption_key_encrypted,
+                    encryption_key_is_encrypted_with_aes_not_rsa: false,
+                    modified_timestamp: SystemTime::now(),
+                };
 
-            dsl::insert_into(user_budgets)
-                .values(&user_budget_relation)
-                .execute(&mut conn)?;
+                dsl::insert_into(user_budgets)
+                    .values(&user_budget_relation)
+                    .execute(conn)?;
 
-            Ok(budget_id_and_key)
-        })?;
+                Ok(budget_id_and_key)
+            })?;
 
         Ok(budget_id_and_key)
     }
@@ -421,30 +443,32 @@ impl Dao {
                     .eq(user_id)
                     .or(budget_share_invite_fields::recipient_user_id.eq(user_id)),
             )
-            .first::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn leave_budget(&mut self, budget_id: Uuid, user_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            diesel::delete(
-                user_budgets
-                    .filter(user_budget_fields::user_id.eq(user_id))
-                    .filter(user_budget_fields::budget_id.eq(budget_id)),
-            )
-            .execute(&mut conn)?;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                diesel::delete(
+                    user_budgets
+                        .filter(user_budget_fields::user_id.eq(user_id))
+                        .filter(user_budget_fields::budget_id.eq(budget_id)),
+                )
+                .execute(conn)?;
 
-            let users_remaining_in_budget = user_budgets
-                .filter(user_budget_fields::budget_id.eq(budget_id))
-                .execute(&mut conn)?;
+                let users_remaining_in_budget = user_budgets
+                    .filter(user_budget_fields::budget_id.eq(budget_id))
+                    .execute(conn)?;
 
-            if users_remaining_in_budget == 0 {
-                diesel::delete(budgets.find(budget_id)).execute(&mut conn)?;
-            }
+                if users_remaining_in_budget == 0 {
+                    diesel::delete(budgets.find(budget_id)).execute(conn)?;
+                }
 
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
         Ok(())
     }
@@ -460,30 +484,30 @@ impl Dao {
         let new_entry = NewEntry {
             id: entry_id,
             budget_id: entry_data.budget_id,
-            encrypted_blob: entry_data.encrypted_blob_b64,
+            encrypted_blob: &entry_data.encrypted_blob_b64,
             modified_timestamp: current_time,
         };
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                dsl::insert_into(entries)
-                    .values(&new_entry)
-                    .execute(&mut conn)?;
+                if is_user_in_budget {
+                    dsl::insert_into(entries).values(&new_entry).execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(entry_id)
     }
@@ -513,28 +537,28 @@ impl Dao {
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(user_budget_fields::budget_id.eq(entry_and_category_data.budget_id))
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                dsl::insert_into(entries)
-                    .values(&new_entry)
-                    .execute(&mut conn)?;
+                if is_user_in_budget {
+                    dsl::insert_into(entries).values(&new_entry).execute(conn)?;
 
-                dsl::insert_into(categories)
-                    .values(&new_category)
-                    .execute(&mut conn)?;
+                    dsl::insert_into(categories)
+                        .values(&new_category)
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(OutputEntryIdAndCategoryId {
             entry_id,
@@ -550,32 +574,34 @@ impl Dao {
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(
-                    user_budget_fields::budget_id.eq(entries
-                        .select(entry_fields::budget_id)
-                        .find(entry_id)
-                        .single_value()),
-                )
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(
+                        user_budget_fields::budget_id.nullable().eq(entries
+                            .select(entry_fields::budget_id)
+                            .find(entry_id)
+                            .single_value()),
+                    )
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                diesel::update(entries.find(entry_id))
-                    .set((
-                        entry_fields::encrypted_blob.eq(entry_encrypted_blob),
-                        entry_fields::modified_timestamp.eq(SystemTime::now()),
-                    ))
-                    .execute(&mut conn)?;
+                if is_user_in_budget {
+                    diesel::update(entries.find(entry_id))
+                        .set((
+                            entry_fields::encrypted_blob.eq(entry_encrypted_blob),
+                            entry_fields::modified_timestamp.eq(SystemTime::now()),
+                        ))
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(())
     }
@@ -583,38 +609,40 @@ impl Dao {
     pub fn delete_entry(&mut self, entry_id: Uuid, user_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(
-                    user_budget_fields::budget_id.eq(entries
-                        .select(entry_fields::budget_id)
-                        .find(entry_id)
-                        .single_value()),
-                )
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(
+                        user_budget_fields::budget_id.nullable().eq(entries
+                            .select(entry_fields::budget_id)
+                            .find(entry_id)
+                            .single_value()),
+                    )
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                diesel::delete(entries.find(entry_id)).execute(&mut conn)?;
+                if is_user_in_budget {
+                    diesel::delete(entries.find(entry_id)).execute(conn)?;
 
-                let new_tombstone = NewTombstone {
-                    entry_id,
-                    user_id,
-                    origin_table: "entries",
-                    deletion_timestamp: SystemTime::now(),
-                };
+                    let new_tombstone = NewTombstone {
+                        item_id: entry_id,
+                        related_user_id: user_id,
+                        origin_table: "entries",
+                        deletion_timestamp: SystemTime::now(),
+                    };
 
-                dsl::insert_into(tombstones)
-                    .values(&new_tombstone)
-                    .execute(&mut conn)?;
+                    dsl::insert_into(tombstones)
+                        .values(&new_tombstone)
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(())
     }
@@ -630,30 +658,32 @@ impl Dao {
         let new_category = NewCategory {
             id: category_id,
             budget_id: category_data.budget_id,
-            encrypted_blob: category_data.encrypted_blob_b64,
+            encrypted_blob: &category_data.encrypted_blob_b64,
             modified_timestamp: current_time,
         };
 
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(user_budget_fields::budget_id.eq(category_data.budget_id))
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(user_budget_fields::budget_id.eq(category_data.budget_id))
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                dsl::insert_into(categories)
-                    .values(&new_category)
-                    .execute(&mut conn)?;
+                if is_user_in_budget {
+                    dsl::insert_into(categories)
+                        .values(&new_category)
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(category_id)
     }
@@ -666,32 +696,34 @@ impl Dao {
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(
-                    user_budget_fields::budget_id.eq(categories
-                        .select(category_fields::budget_id)
-                        .find(category_id)
-                        .single_value()),
-                )
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(
+                        user_budget_fields::budget_id.nullable().eq(categories
+                            .select(category_fields::budget_id)
+                            .find(category_id)
+                            .single_value()),
+                    )
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                diesel::update(categories.find(category_id))
-                    .set((
-                        category_fields::encrypted_blob.eq(category_encrypted_blob),
-                        category_fields::modified_timestamp.eq(SystemTime::now()),
-                    ))
-                    .execute(&mut conn)?;
+                if is_user_in_budget {
+                    diesel::update(categories.find(category_id))
+                        .set((
+                            category_fields::encrypted_blob.eq(category_encrypted_blob),
+                            category_fields::modified_timestamp.eq(SystemTime::now()),
+                        ))
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(())
     }
@@ -699,38 +731,40 @@ impl Dao {
     pub fn delete_category(&mut self, category_id: Uuid, user_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        db_connection.build_transaction().run(|conn| {
-            let is_user_in_budget = user_budgets
-                .filter(user_budget_fields::user_id.eq(user_id))
-                .filter(
-                    user_budget_fields::budget_id.eq(categories
-                        .select(category_fields::budget_id)
-                        .find(category_id)
-                        .single_value()),
-                )
-                .count()
-                .execute(&mut conn)?
-                != 0;
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let is_user_in_budget = user_budgets
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .filter(
+                        user_budget_fields::budget_id.nullable().eq(categories
+                            .select(category_fields::budget_id)
+                            .find(category_id)
+                            .single_value()),
+                    )
+                    .count()
+                    .execute(conn)?
+                    != 0;
 
-            if is_user_in_budget {
-                diesel::delete(categories.find(category_id)).execute(&mut conn)?;
+                if is_user_in_budget {
+                    diesel::delete(categories.find(category_id)).execute(conn)?;
 
-                let new_tombstone = NewTombstone {
-                    category_id,
-                    user_id,
-                    origin_table: "categories",
-                    deletion_timestamp: SystemTime::now(),
-                };
+                    let new_tombstone = NewTombstone {
+                        item_id: category_id,
+                        related_user_id: user_id,
+                        origin_table: "categories",
+                        deletion_timestamp: SystemTime::now(),
+                    };
 
-                dsl::insert_into(tombstones)
-                    .values(&new_tombstone)
-                    .execute(&mut conn)?;
+                    dsl::insert_into(tombstones)
+                        .values(&new_tombstone)
+                        .execute(conn)?;
 
-                Ok(())
-            } else {
-                Err(diesel::result::Error::NotFound)
-            }
-        })?;
+                    Ok(())
+                } else {
+                    Err(diesel::result::Error::NotFound)
+                }
+            })?;
 
         Ok(())
     }

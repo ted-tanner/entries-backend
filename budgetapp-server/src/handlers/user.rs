@@ -272,6 +272,11 @@ pub async fn send_buddy_request(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
             )) => {
                 return Err(ServerError::InputRejected(Some(String::from(
+                    "Request was already sent",
+                ))));
+            }
+            DaoError::WontRunQuery => {
+                return Err(ServerError::InputRejected(Some(String::from(
                     "Sender and recipient are already buddies",
                 ))));
             }

@@ -3,9 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
+use crate::models::user::User;
 use crate::schema::user_security_data;
 
-#[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
+#[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, Associations, QueryableByName)]
+#[diesel(belongs_to(User, foreign_key = user_id))]
 #[diesel(table_name = user_security_data, primary_key(user_id))]
 pub struct UserSecurityData {
     pub user_id: Uuid,
@@ -25,10 +27,11 @@ pub struct UserSecurityData {
     pub encryption_key_recovery_key_encrypted: String,
 
     pub public_rsa_key: String,
-    pub public_rsa_key_created_timestamp: String,
+    pub private_rsa_key_encrypted: String,
+    pub rsa_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,
-    
+
     pub modified_timestamp: SystemTime,
 }
 
@@ -36,7 +39,7 @@ pub struct UserSecurityData {
 #[diesel(table_name = user_security_data, primary_key(user_id))]
 pub struct NewUserSecurityData<'a> {
     pub user_id: Uuid,
-    
+
     pub auth_string_hash: &'a str,
 
     pub auth_string_salt: &'a str,
@@ -52,7 +55,8 @@ pub struct NewUserSecurityData<'a> {
     pub encryption_key_recovery_key_encrypted: &'a str,
 
     pub public_rsa_key: &'a str,
-    pub public_rsa_key_created_timestamp: &'a str,
+    pub private_rsa_key_encrypted: &'a str,
+    pub rsa_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,
 

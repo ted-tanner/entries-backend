@@ -1,3 +1,4 @@
+use diesel::Queryable;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
@@ -7,38 +8,7 @@ use crate::models::entry::Entry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputEmail {
-    email: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OutputUserPrivate {
-    pub id: Uuid,
-
     pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub date_of_birth: SystemTime,
-    pub currency: String,
-
-    pub modified_timestamp: SystemTime,
-    pub created_timestamp: SystemTime,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OutputUserForBuddies {
-    pub id: Uuid,
-    pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub currency: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OutputUserPublic {
-    pub id: Uuid,
-    pub first_name: String,
-    pub last_name: String,
-    pub currency: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -77,42 +47,43 @@ pub struct OutputBudgetFrame {
     pub modified_timestamp: SystemTime,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputBudgetIdAndEncryptionKey {
-    budget_id: Uuid,
-    encryption_key_encrypted: String,
+    pub budget_id: Uuid,
+    pub encryption_key_encrypted: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputBudgetShareInviteWithoutKey {
     pub id: Uuid,
 
     pub recipient_user_id: Uuid,
     pub sender_user_id: Uuid,
     pub budget_id: Uuid,
+    pub budget_name_encrypted: String,
 
     pub sender_name_encrypted: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputEntryIdAndCategoryId {
-    entry_id: Uuid,
-    category_id: String,
+    pub entry_id: Uuid,
+    pub category_id: Uuid,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputEntryId {
-    entry_id: Uuid,
+    pub entry_id: Uuid,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputCategoryId {
-    category_id: Uuid,
+    pub category_id: Uuid,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputTombstone {
-    item_id: Uuid,
-    origin_table: String,
-    deletion_timestamp: SystemTime,
+    pub item_id: Uuid,
+    pub origin_table: String,
+    pub deletion_timestamp: SystemTime,
 }

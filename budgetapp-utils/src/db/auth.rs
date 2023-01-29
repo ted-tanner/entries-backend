@@ -1,4 +1,4 @@
-use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -12,6 +12,10 @@ use crate::schema::otp_attempts as otp_attempt_fields;
 use crate::schema::otp_attempts::dsl::otp_attempts;
 use crate::schema::password_attempts as password_attempt_fields;
 use crate::schema::password_attempts::dsl::password_attempts;
+use crate::schema::user_security_data as user_security_data_fields;
+use crate::schema::user_security_data::dsl::user_security_data;
+use crate::schema::users as user_fields;
+use crate::schema::users::dsl::users;
 
 pub struct UserAuthStringHashAndAuthAttempts {
     pub auth_string_hash: String,
@@ -37,35 +41,51 @@ impl Dao {
     ) -> Result<UserAuthStringHashAndAuthAttempts, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let hash_and_attempts = db_connection.build_transaction().run(|conn| {
-            let (user_id, auth_string_hash) = users
-                .select((user_fields::id, user_fields::auth_string_hash))
-                .find(user_id)
-                .first::<(Uuid, String)>(&mut conn)?;
+        let hash_and_attempts = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let (user_id, auth_string_hash) = users
+                    .left_join(
+                        user_security_data
+                            .on(user_security_data_fields::user_id.eq(user_fields::id)),
+                    )
+                    .select((
+                        user_fields::id,
+                        user_security_data_fields::auth_string_hash.nullable(),
+                    ))
+                    .filter(user_fields::email.eq(user_email))
+                    .get_result::<(Uuid, Option<String>)>(conn)?;
 
-            let expiration_time = SystemTime::now() + attempts_lifetime;
+                let auth_string_hash = auth_string_hash.unwrap_or(String::new());
 
-            let new_attempt = NewPasswordAttempts {
-                user_id,
-                attempt_count: 1,
-                expiration_time,
-            };
+                if auth_string_hash.len() == 0 {
+                    return Err(diesel::result::Error::NotFound);
+                }
 
-            let attempts = dsl::insert_into(password_attempts)
-                .values(&new_attempt)
-                .on_conflict(password_attempt_fields::user_id)
-                .do_update()
-                .set(
-                    password_attempt_fields::attempt_count
-                        .eq(password_attempt_fields::attempt_count + 1),
-                )
-                .get_result::<PasswordAttempts>(&mut conn)?;
+                let expiration_time = SystemTime::now() + attempts_lifetime;
 
-            Ok(UserAuthStringHashAndAuthAttempts {
-                auth_string_hash,
-                ..attempts
-            })
-        })?;
+                let new_attempt = NewPasswordAttempts {
+                    user_id,
+                    attempt_count: 1,
+                    expiration_time,
+                };
+
+                let attempts = dsl::insert_into(password_attempts)
+                    .values(&new_attempt)
+                    .on_conflict(password_attempt_fields::user_id)
+                    .do_update()
+                    .set(
+                        password_attempt_fields::attempt_count
+                            .eq(password_attempt_fields::attempt_count + 1),
+                    )
+                    .get_result::<PasswordAttempts>(conn)?;
+
+                Ok(UserAuthStringHashAndAuthAttempts {
+                    auth_string_hash,
+                    attempt_count: attempts.attempt_count,
+                    expiration_time: attempts.expiration_time,
+                })
+            })?;
 
         Ok(hash_and_attempts)
     }

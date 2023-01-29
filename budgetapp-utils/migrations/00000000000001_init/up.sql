@@ -139,7 +139,8 @@ CREATE TABLE user_security_data (
     encryption_key_recovery_key_encrypted TEXT NOT NULL,
 
     public_rsa_key TEXT NOT NULL,
-    public_rsa_key_created_timestamp TEXT NOT NULL,
+    private_rsa_key_encrypted TEXT NOT NULL,
+    rsa_key_created_timestamp TIMESTAMP NOT NULL,
 
     last_token_refresh_timestamp TIMESTAMP NOT NULL,
 

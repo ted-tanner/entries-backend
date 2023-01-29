@@ -194,8 +194,13 @@ pub async fn invite_user(
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
             )) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "User already has access to budget",
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Invitatino was already sent",
+                ))));
+            }
+            DaoError::WontRunQuery => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "This budget is already shared with this user",
                 ))));
             }
             _ => {

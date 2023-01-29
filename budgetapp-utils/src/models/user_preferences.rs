@@ -3,9 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
+use crate::models::user::User;
 use crate::schema::user_preferences;
 
-#[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
+#[derive(Debug, Serialize, Deserialize, Identifiable, Associations, Queryable, QueryableByName)]
+#[diesel(belongs_to(User, foreign_key = user_id))]
 #[diesel(table_name = user_preferences, primary_key(user_id))]
 pub struct UserPreferences {
     pub user_id: Uuid,

@@ -25,6 +25,7 @@ pub fn create_db_thread_pool(database_uri: &str, max_db_connections: Option<u32>
 pub enum DaoError {
     DbThreadPoolFailure(r2d2::Error),
     QueryFailure(diesel::result::Error),
+    WontRunQuery, // This error indicates that the DAO refuses to run a query
 }
 
 impl std::error::Error for DaoError {}
@@ -37,6 +38,9 @@ impl fmt::Display for DaoError {
             }
             DaoError::QueryFailure(e) => {
                 write!(f, "DaoError: Query failed: {}", e)
+            }
+            DaoError::WontRunQuery => {
+                write!(f, "DaoError: DAO will not run query")
             }
         }
     }
