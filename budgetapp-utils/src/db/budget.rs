@@ -1,7 +1,7 @@
 use diesel::associations::GroupedBy;
 use diesel::sql_types::{self, Timestamp, VarChar};
 use diesel::{
-    dsl, sql_query, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
+    dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
     NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
 use std::time::SystemTime;
@@ -9,15 +9,15 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::budget::{Budget, NewBudget};
-use crate::models::budget_share_invite::{BudgetShareInvite, NewBudgetShareInvite};
+use crate::models::budget_share_invite::NewBudgetShareInvite;
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::models::tombstone::NewTombstone;
 use crate::models::user_budget::NewUserBudget;
 use crate::request_io::{
-    InputBudget, InputCategory, InputEditBudget, InputEditCategory, InputEntry,
-    InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
-    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
+    InputBudget, InputCategory, InputEntry, InputEntryAndCategory, OutputBudget, OutputBudgetFrame,
+    OutputBudgetFrameCategory, OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey,
+    OutputEntryIdAndCategoryId,
 };
 use crate::schema::budget_share_invites as budget_share_invite_fields;
 use crate::schema::budget_share_invites::dsl::budget_share_invites;
@@ -27,7 +27,7 @@ use crate::schema::categories as category_fields;
 use crate::schema::categories::dsl::categories;
 use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
-use crate::schema::tombstones as tombstone_fields;
+
 use crate::schema::tombstones::dsl::tombstones;
 use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;

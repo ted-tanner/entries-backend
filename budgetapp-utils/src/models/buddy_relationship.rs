@@ -1,6 +1,6 @@
 use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
+
 use uuid::Uuid;
 
 use crate::models::user::User;

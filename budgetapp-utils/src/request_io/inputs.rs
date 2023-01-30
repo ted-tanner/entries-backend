@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
-use uuid::Uuid;
 
-use crate::validators;
+use uuid::Uuid;
 
 // TODO: Sort these struct defs alphabetically
 // TODO: Can these Strings be &str?

@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::models::budget::Budget;
-use crate::models::user::User;
+
 use crate::schema::entries;
 
 #[derive(

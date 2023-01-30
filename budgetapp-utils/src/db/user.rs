@@ -1,18 +1,16 @@
-use diesel::{
-    dsl, sql_query, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl,
-};
+use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::buddy_relationship::{BuddyRelationship, NewBuddyRelationship};
+use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
-use crate::models::user::{NewUser, User};
+use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_preferences::NewUserPreferences;
-use crate::models::user_security_data::{NewUserSecurityData, UserSecurityData};
+use crate::models::user_security_data::NewUserSecurityData;
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
-use crate::password_hasher;
+
 use crate::request_io::InputUser;
 use crate::schema::buddy_relationships as buddy_relationship_fields;
 use crate::schema::buddy_relationships::dsl::buddy_relationships;
@@ -392,7 +390,7 @@ impl Dao {
                     user_deletion_requests
                         .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
                 )
-                    .execute(conn)?;
+                .execute(conn)?;
 
                 Ok(())
             })?;

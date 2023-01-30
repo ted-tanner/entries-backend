@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::tombstone::{NewTombstone, Tombstone};
+
 use crate::request_io::OutputTombstone;
 use crate::schema::tombstones as tombstone_fields;
 use crate::schema::tombstones::dsl::tombstones;
