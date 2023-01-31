@@ -6,9 +6,8 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
 
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -59,7 +58,7 @@ pub async fn lookup_user_id_by_email(
 
     let email_clone = email.email.clone();
 
-    let id = match web::block(move || {
+    let _id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.lookup_user_id_by_email(&email.email)
     })
@@ -219,7 +218,7 @@ pub async fn change_password(
     }
 
     web::block(move || {
-        let auth_string_hash = password_hasher::hash_password(
+        let _auth_string_hash = password_hasher::hash_password(
             &new_password_data.new_auth_string,
             &env::PASSWORD_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
@@ -332,7 +331,7 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let buddy_request_data =
+    let _buddy_request_data =
         match web::block(move || user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid))
             .await?
         {

@@ -1,14 +1,12 @@
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputDateRange,
-    InputEditBudget, InputEditCategory, InputEditEntry, InputEntry, InputEntryAndCategory,
-    InputEntryId, InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey,
-    OutputCategoryId, OutputEntryId, OutputEntryIdAndCategoryId, UserInvitationToBudget,
+    InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputEditBudget,
+    InputEditCategory, InputEditEntry, InputEntry, InputEntryAndCategory, InputEntryId,
+    InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
+    OutputEntryId, UserInvitationToBudget,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
-use std::time::{Duration, UNIX_EPOCH};
-use uuid::Uuid;
 
 use crate::handlers::error::ServerError;
 use crate::middleware;
@@ -522,7 +520,7 @@ pub async fn delete_entry(
     })
     .await?
     {
-        Ok(id) => (id),
+        Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -616,7 +614,7 @@ pub async fn delete_category(
     })
     .await?
     {
-        Ok(id) => (id),
+        Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
