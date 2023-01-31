@@ -85,7 +85,7 @@ pub mod error {
     ) -> fmt::Result {
         write!(
             f,
-            "{ \"error_msg\": \"{}{}\" }",
+            "{{ \"error_msg\": \"{}{}\" }}",
             error_txt,
             if msg.is_some() {
                 format!(": {}", msg.as_ref().unwrap())

@@ -432,6 +432,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Verify user age
 * Warn a user that they cannot unshare a budget once it is shared
 * Mention that buddy requests adn budget share invites will be deleted after 30 days
+* Handle too many attempts for both sign in and change password
 
 #### IMPORTANT Data Syncronization Stuff
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.

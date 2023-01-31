@@ -14,7 +14,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::get().to(handlers::user::lookup_user_id_by_email),
             )
             .route("/create", web::post().to(handlers::user::create))
-            .route("/edit", web::put().to(handlers::user::edit))
             .route(
                 "/change_password",
                 web::put().to(handlers::user::change_password),

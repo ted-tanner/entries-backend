@@ -18,6 +18,7 @@ use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
 pub struct UserAuthStringHashAndAuthAttempts {
+    pub user_id: Uuid,
     pub auth_string_hash: String,
     pub attempt_count: i16,
     pub expiration_time: SystemTime,
@@ -81,6 +82,7 @@ impl Dao {
                     .get_result::<PasswordAttempts>(conn)?;
 
                 Ok(UserAuthStringHashAndAuthAttempts {
+                    user_id,
                     auth_string_hash,
                     attempt_count: attempts.attempt_count,
                     expiration_time: attempts.expiration_time,

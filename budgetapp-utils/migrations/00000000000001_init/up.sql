@@ -96,6 +96,8 @@ CREATE TABLE users (
     created_timestamp TIMESTAMP NOT NULL
 );
 
+CREATE INDEX ON users USING HASH (email);        
+
 CREATE TABLE user_budgets (
     user_id UUID NOT NULL,
     budget_id UUID NOT NULL,

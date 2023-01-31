@@ -1,12 +1,12 @@
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputDateRange, InputEditBudget, InputEntry, InputEntryAndCategory,
-    InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
-    OutputEntryId, OutputEntryIdAndCategoryId, UserInvitationToBudget,
+    InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputDateRange,
+    InputEditBudget, InputEditCategory, InputEditEntry, InputEntry, InputEntryAndCategory,
+    InputEntryId, InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey,
+    OutputCategoryId, OutputEntryId, OutputEntryIdAndCategoryId, UserInvitationToBudget,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
-use futures::try_join;
 use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -50,7 +50,7 @@ pub async fn get_multiple(
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_multiple_budgets_by_id(budget_ids.budget_ids, auth_user_claims.0.uid)
+        budget_dao.get_multiple_budgets_by_id(budget_ids.0.budget_ids, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -134,28 +134,22 @@ pub async fn edit(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
             budget_data.budget_id,
-            budget_data.encrypted_blob_b64,
+            &budget_data.encrypted_blob_b64,
             auth_user_claims.0.uid,
         )
     })
     .await?
     {
-        Ok(count) => {
-            if count == 0 {
-                Err(ServerError::NotFound(Some(String::from(
-                    "Budget not found or no changes were made",
-                ))))
-            } else {
-                Ok(HttpResponse::Ok().finish())
-            }
-        }
+        Ok(_) => (),
         Err(e) => {
             log::error!("{}", e);
-            Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to edit budget",
-            ))))
+            ))));
         }
-    }
+    };
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 pub async fn invite_user(
@@ -178,7 +172,7 @@ pub async fn invite_user(
             &invitation_info.budget_name_encrypted_b64,
             invitation_info.invitee_user_id,
             inviting_user_id,
-            invitation_info.sender_name_encrypted_b64.as_ref(),
+            invitation_info.sender_name_encrypted_b64.as_deref(),
             &invitation_info.budget_encryption_key_encrypted_b64,
         )
     })
@@ -193,6 +187,7 @@ pub async fn invite_user(
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
             )) => {
                 return Err(ServerError::InputRejected(Some(String::from(
                     "Invitatino was already sent",
@@ -226,7 +221,7 @@ pub async fn retract_invitation(
     })
     .await?
     {
-        Ok() => (),
+        Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -285,11 +280,11 @@ pub async fn decline_invitation(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.mark_invitation_declined(invitation_id.share_invite_id, auth_user_claims.0.uid)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
     })
     .await?
     {
-        Ok() => (),
+        Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
@@ -523,7 +518,7 @@ pub async fn delete_entry(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id, auth_user_claims.0.uid)
+        budget_dao.delete_entry(entry_id.0.entry_id, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -617,7 +612,7 @@ pub async fn delete_category(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id, auth_user_claims.0.uid)
+        budget_dao.delete_category(category_id.0.category_id, auth_user_claims.0.uid)
     })
     .await?
     {

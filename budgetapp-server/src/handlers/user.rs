@@ -1,8 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CurrentAndNewPasswordPair, InputBuddyRequestId, InputEditUser, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputUser, InputUserId,
-    OutputEmail, OutputUserForBuddies, OutputUserPrivate, OutputUserPublic, SigninToken,
+    InputBuddyRequest, InputBuddyRequestId, InputEmail, InputNewAuthStringAndEncryptedPassword,
+    InputOptionalUserId, InputUser, InputUserId, OutputEmail, SigninToken,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -20,26 +19,30 @@ pub async fn get_user_email(
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     user_id: web::Query<InputOptionalUserId>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_id = input_user_data.user_id.unwrap_or(auth_user_claims.0.uid);
+    let user_id = user_id.user_id.unwrap_or(auth_user_claims.0.uid);
 
-    let email = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_email(user_id)
-    })
-    .await?
-    {
-        Ok(eml) => eml,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from("User not found"))))
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get user email",
-                ))));
-            }
-        },
+    let email = if user_id == auth_user_claims.0.uid {
+        auth_user_claims.0.eml
+    } else {
+        match web::block(move || {
+            let mut user_dao = db::user::Dao::new(&db_thread_pool);
+            user_dao.get_user_email(user_id)
+        })
+        .await?
+        {
+            Ok(eml) => eml,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(ServerError::NotFound(Some(String::from("User not found"))))
+                }
+                _ => {
+                    log::error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                        "Failed to get user email",
+                    ))));
+                }
+            },
+        }
     };
 
     Ok(HttpResponse::Ok().json(OutputEmail { email }))
@@ -50,19 +53,19 @@ pub async fn lookup_user_id_by_email(
     _auth_user_claims: middleware::auth::AuthorizedUserClaims,
     email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
-    let email = email.email;
-
-    if let Validity::Invalid(msg) = validators::validate_email_address(&email) {
+    if let Validity::Invalid(msg) = validators::validate_email_address(&email.email) {
         return Err(ServerError::InvalidFormat(Some(msg)));
     }
 
+    let email_clone = email.email.clone();
+
     let id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.lookup_user_id_by_email(&email)
+        user_dao.lookup_user_id_by_email(&email.email)
     })
     .await?
     {
-        Ok(id) => i,
+        Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from("User not found"))))
@@ -76,7 +79,7 @@ pub async fn lookup_user_id_by_email(
         },
     };
 
-    Ok(HttpResponse::Ok().json(OutputEmail { email }))
+    Ok(HttpResponse::Ok().json(OutputEmail { email: email_clone }))
 }
 
 pub async fn create(
@@ -87,7 +90,9 @@ pub async fn create(
         return Err(ServerError::InvalidFormat(Some(msg)));
     }
 
-    let user = match web::block(move || {
+    let email = user_data.email.clone();
+
+    let user_id = match web::block(move || {
         let auth_string_hash = password_hasher::hash_password(
             &user_data.auth_string,
             &env::PASSWORD_HASHING_PARAMS,
@@ -99,7 +104,7 @@ pub async fn create(
     })
     .await?
     {
-        Ok(u) => u,
+        Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -122,9 +127,8 @@ pub async fn create(
 
     let signin_token = auth_token::generate_signin_token(
         &auth_token::TokenParams {
-            user_id: &user.id,
-            user_email: &user.email,
-            user_currency: &user.currency,
+            user_id: &user_id,
+            user_email: &email,
         },
         Duration::from_secs(env::CONF.lifetimes.signin_token_lifetime_mins * 60),
         env::CONF.keys.token_signing_key.as_bytes(),
@@ -150,7 +154,7 @@ pub async fn create(
         .as_secs();
 
     let otp = match otp::generate_otp(
-        user.id,
+        user_id,
         current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
         Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
         env::CONF.keys.otp_key.as_bytes(),
@@ -170,50 +174,43 @@ pub async fn create(
     Ok(HttpResponse::Created().json(signin_token))
 }
 
-pub async fn edit(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    user_data: web::Json<InputEditUser>,
-) -> Result<HttpResponse, ServerError> {
-    web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.edit_user(auth_user_claims.0.uid, &user_data)
-    })
-    .await
-    .map(|_| HttpResponse::Ok().finish())
-    .map_err(|e| {
-        log::error!("{}", e);
-        ServerError::DatabaseTransactionError(Some(String::from("Failed to edit user")))
-    })
-}
-
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
 
-    let does_current_auth_match = match web::block(move || {
-        let saved_auth_string = user_dao.get_user_auth_string_hash(auth_user_claims.0.uid)?;
+    let does_current_auth_match = web::block(move || {
+        let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
+            &auth_user_claims.0.eml,
+            Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
+        ) {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to check password attempt count",
+                ))));
+            }
+        };
 
-        password_hasher::verify_hash(
-            &current_auth_string,
-            &saved_auth_string,
-            env::CONF.keys.hashing_key.as_bytes(),
-        )
-    })
-    .await?
-    {
-        Ok(u) => u,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InputRejected(Some(String::from(
-                "User not found",
+        if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
+            && hash_and_attempts.expiration_time >= SystemTime::now()
+        {
+            return Err(ServerError::AccessForbidden(Some(String::from(
+                "Too many login attempts. Try again in a few minutes.",
             ))));
         }
-    };
+
+        Ok(password_hasher::verify_hash(
+            &current_auth_string,
+            &hash_and_attempts.auth_string_hash,
+            env::CONF.keys.hashing_key.as_bytes(),
+        ))
+    })
+    .await??;
 
     if !does_current_auth_match {
         return Err(ServerError::UserUnauthorized(Some(String::from(
@@ -231,10 +228,10 @@ pub async fn change_password(
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
             auth_user_claims.0.uid,
-            &new_password_data.auth_string_hash,
-            &new_password_data.auth_string_salt,
-            &new_password_data.auth_string_iters,
-            &new_password_data.encrypted_encryption_key,
+            &new_password_data.0.new_auth_string,
+            &new_password_data.0.auth_string_salt,
+            new_password_data.0.auth_string_iters,
+            &new_password_data.0.encrypted_encryption_key,
         )
     })
     .await
@@ -251,9 +248,9 @@ pub async fn change_password(
 pub async fn send_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: middleware::auth::AuthorizedUserClaims,
-    other_user_id: web::Json<InputUserId>,
+    buddy_request: web::Json<InputBuddyRequest>,
 ) -> Result<HttpResponse, ServerError> {
-    if other_user_id.user_id == auth_user_claims.0.uid {
+    if buddy_request.other_user_id == auth_user_claims.0.uid {
         return Err(ServerError::InputRejected(Some(String::from(
             "Requester and recipient have the same ID",
         ))));
@@ -262,7 +259,11 @@ pub async fn send_buddy_request(
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     match web::block(move || {
-        user_dao.send_buddy_request(other_user_id.user_id, auth_user_claims.0.uid)
+        user_dao.send_buddy_request(
+            buddy_request.0.other_user_id,
+            auth_user_claims.0.uid,
+            buddy_request.0.sender_name_encrypted_b64.as_deref(),
+        )
     })
     .await?
     {
@@ -270,6 +271,7 @@ pub async fn send_buddy_request(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
             )) => {
                 return Err(ServerError::InputRejected(Some(String::from(
                     "Request was already sent",
@@ -303,14 +305,12 @@ pub async fn retract_buddy_request(
     })
     .await?
     {
-        Ok(0) | Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            if count == 0 {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request with provided ID was made by user",
-                ))));
-            }
-        }
         Ok(_) => (),
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(ServerError::NotFound(Some(String::from(
+                "No buddy request with provided ID was made by user",
+            ))));
+        }
         Err(e) => match e {
             _ => {
                 log::error!("{}", e);
@@ -368,11 +368,9 @@ pub async fn decline_buddy_request(
     {
         Ok(_) => (),
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            if count == 0 {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No buddy request exists with provided ID",
-                ))));
-            }
+            return Err(ServerError::NotFound(Some(String::from(
+                "No buddy request exists with provided ID",
+            ))));
         }
         Err(e) => match e {
             _ => {
@@ -488,7 +486,8 @@ pub async fn delete_buddy_relationship(
     })
     .await?
     {
-        Ok(0) | Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+        Ok(_) => (),
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
             return Err(ServerError::NotFound(Some(String::from(
                 "Buddy relationship not found",
             ))));
@@ -499,7 +498,6 @@ pub async fn delete_buddy_relationship(
                 "Failed to delete buddy relationship",
             ))));
         }
-        Ok(_) => (),
     };
 
     Ok(HttpResponse::Ok().finish())

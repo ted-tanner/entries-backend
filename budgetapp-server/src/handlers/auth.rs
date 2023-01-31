@@ -1,8 +1,8 @@
-use budgetapp_utils::db::DbThreadPool;
+use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
-use budgetapp_utils::Validity;
+use budgetapp_utils::validators::Validity;
 use budgetapp_utils::{auth_token, db, otp, password_hasher, validators};
 
 use actix_web::{web, HttpResponse};
@@ -20,18 +20,22 @@ pub async fn sign_in(
         return Err(ServerError::InvalidFormat(Some(msg)));
     }
 
-    let user_email = credentials.email.clone();
+    let user_email_clone1 = credentials.email.clone();
+    let user_email_clone2 = credentials.email.clone();
 
     let hash_and_attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_email,
+            &user_email_clone1,
             Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
         )
     })
     .await?
     {
         Ok(a) => a,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(ServerError::NotFound(Some(String::from("User not found"))));
+        }
         Err(e) => {
             log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
@@ -41,7 +45,7 @@ pub async fn sign_in(
     };
 
     if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
-        && hash_and_attempts.attempt_count >= SystemTime::now()
+        && hash_and_attempts.expiration_time >= SystemTime::now()
     {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Too many login attempts. Try again in a few minutes.",
@@ -60,8 +64,8 @@ pub async fn sign_in(
     if does_password_match_hash {
         let signin_token = auth_token::generate_signin_token(
             &auth_token::TokenParams {
-                user_id: &user.id,
-                user_email: &user.email,
+                user_id: &hash_and_attempts.user_id,
+                user_email: &user_email_clone2,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -91,7 +95,7 @@ pub async fn sign_in(
         // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
         // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
         let otp = match otp::generate_otp(
-            user.id,
+            hash_and_attempts.user_id,
             current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
             Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
             env::CONF.keys.otp_key.as_bytes(),
@@ -248,7 +252,6 @@ pub async fn verify_otp_for_signin(
         &auth_token::TokenParams {
             user_id: &token_claims.uid,
             user_email: &token_claims.eml,
-            user_currency: &token_claims.cur,
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
         Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
@@ -351,7 +354,6 @@ pub async fn refresh_tokens(
         &auth_token::TokenParams {
             user_id: &claims.uid,
             user_email: &claims.eml,
-            user_currency: &claims.cur,
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
         Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
