@@ -481,7 +481,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Endpoint for updating user_preferences
+* Verification email for createing user
 * Endpoint for checking tombstones
 * Endpoints for getting and updating user_security_data
 * Input structs should be moved inot DB utils instead of taking a reference

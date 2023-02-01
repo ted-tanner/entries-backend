@@ -22,6 +22,7 @@ use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+use crate::schema::user_preferences as user_preferences_fields;
 use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
@@ -119,6 +120,21 @@ impl Dao {
             })?;
 
         Ok(user_id)
+    }
+
+    pub fn update_user_prefs(
+        &mut self,
+        user_id: Uuid,
+        prefs_encrypted_blob: &str,
+    ) -> Result<(), DaoError> {
+        dsl::update(user_preferences.find(user_id))
+            .set((
+                user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
+                user_preferences_fields::modified_timestamp.eq(SystemTime::now()),
+            ))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<(), DaoError> {

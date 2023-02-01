@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputBuddyRequest, InputBuddyRequestId, InputEmail, InputNewAuthStringAndEncryptedPassword,
-    InputOptionalUserId, InputUser, InputUserId, OutputEmail, SigninToken,
+    InputOptionalUserId, InputUser, InputUserId, OutputEmail, SigninToken, InputEditUserPrefs
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -171,6 +171,39 @@ pub async fn create(
     println!("\n\nOTP: {}\n\n", &otp);
 
     Ok(HttpResponse::Created().json(signin_token))
+}
+
+pub async fn edit_preferences(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    new_prefs: web::Query<InputEditUserPrefs>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.update_user_prefs(
+            auth_user_claims.0.uid,
+            &new_prefs.encrypted_blob_b64,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update user preferences",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 pub async fn change_password(
