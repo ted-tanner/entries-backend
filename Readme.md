@@ -481,9 +481,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Verification email for createing user
-* Endpoint for checking tombstones
+* Endpoints for checking tombstones and getting user's tombstones since date
+* Verification email for users (user doesn't get created until their email is verified)
 * Endpoints for getting and updating user_security_data
+  - Auth string + password_encryption_salt and iters + encryption_key_user_password
 * Input structs should be moved inot DB utils instead of taking a reference
 * Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
@@ -544,10 +545,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Exchange names in an encrypted manner when sharing buddies
-* Duplicate a budget, including entries (perhaps make including entries optional)
-* Create a concept of budget ownership. Ownership can be transferred (and *must* be transferred before leaving a budget). Owners can delete a budget or boot people out of a budget.
+* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
+* Duplicate a budget, including entries (perhaps make including entries optional)
+* Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
+* Create a concept of budget ownership. Ownership can be transferred (and *must* be transferred before leaving a budget). Owners can delete a budget or boot people out of a budget.
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this

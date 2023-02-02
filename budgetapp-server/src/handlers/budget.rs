@@ -6,14 +6,13 @@ use budgetapp_utils::request_io::{
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
-use actix_web::{web, HttpResponse};
-
 use crate::handlers::error::ServerError;
-use crate::middleware;
+use crate::middleware::auth::AuthorizedUserClaims;
+use actix_web::{web, HttpResponse};
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let budget = match web::block(move || {
@@ -43,7 +42,7 @@ pub async fn get(
 
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     budget_ids: web::Json<InputBudgetIdList>,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
@@ -73,7 +72,7 @@ pub async fn get_multiple(
 
 pub async fn get_all(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -100,7 +99,7 @@ pub async fn get_all(
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
@@ -125,7 +124,7 @@ pub async fn create(
 
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -152,7 +151,7 @@ pub async fn edit(
 
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let inviting_user_id = auth_user_claims.0.uid;
@@ -210,7 +209,7 @@ pub async fn invite_user(
 
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -240,7 +239,7 @@ pub async fn retract_invitation(
 
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let db_thread_pool_ref = db_thread_pool.clone();
@@ -273,7 +272,7 @@ pub async fn accept_invitation(
 
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -303,7 +302,7 @@ pub async fn decline_invitation(
 
 pub async fn get_all_pending_invitations_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -330,7 +329,7 @@ pub async fn get_all_pending_invitations_for_user(
 
 pub async fn get_all_pending_invitations_made_by_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -357,7 +356,7 @@ pub async fn get_all_pending_invitations_made_by_user(
 
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
@@ -387,7 +386,7 @@ pub async fn get_invitation(
 
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -417,7 +416,7 @@ pub async fn leave_budget(
 
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     entry_data: web::Query<InputEntry>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_id = match web::block(move || {
@@ -447,7 +446,7 @@ pub async fn create_entry(
 
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     entry_and_category_data: web::Query<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_and_category_ids = match web::block(move || {
@@ -477,7 +476,7 @@ pub async fn create_entry_and_category(
 
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     entry_data: web::Query<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -511,7 +510,7 @@ pub async fn edit_entry(
 
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -541,7 +540,7 @@ pub async fn delete_entry(
 
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     category_data: web::Query<InputCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let category_id = match web::block(move || {
@@ -571,7 +570,7 @@ pub async fn create_category(
 
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     category_data: web::Query<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -605,7 +604,7 @@ pub async fn edit_category(
 
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {

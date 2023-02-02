@@ -87,3 +87,8 @@ pub struct OutputTombstone {
     pub origin_table: String,
     pub deletion_timestamp: SystemTime,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+pub struct OutputTombstoneDoesExist {
+    pub does_exist: bool,
+}

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-
+use std::time::SystemTime;
 use uuid::Uuid;
 
 // TODO: Sort these struct defs alphabetically
@@ -185,4 +185,14 @@ pub struct InputCategory {
 pub struct InputEditCategory {
     pub category_id: Uuid,
     pub encrypted_blob_b64: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputTombstoneId {
+    pub item_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputTime {
+    pub time: SystemTime,
 }

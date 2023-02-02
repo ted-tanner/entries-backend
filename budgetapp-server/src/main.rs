@@ -100,7 +100,7 @@ async fn main() -> std::io::Result<()> {
                 "{:5} | {} | {}:{} | {}",
                 record.level(),
                 now.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
-                record.file().unwrap_or("<unknown>"),
+                record.module_path().unwrap_or("<unknown>"),
                 record.line().unwrap_or(0),
                 record.args()
             )

@@ -2,6 +2,7 @@ use actix_web::web;
 
 mod auth;
 mod budget;
+mod tombstone;
 mod user;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -9,6 +10,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api")
             .configure(auth::configure)
             .configure(budget::configure)
+            .configure(tombstone::configure)
             .configure(user::configure),
     );
 }

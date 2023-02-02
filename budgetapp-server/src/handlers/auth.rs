@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
 use crate::handlers::error::ServerError;
-use crate::middleware;
+use crate::middleware::auth::AuthorizedUserClaims;
 
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -392,7 +392,7 @@ pub async fn refresh_tokens(
 
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token_clone = refresh_token.token.clone();

@@ -1,7 +1,8 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputBuddyRequest, InputBuddyRequestId, InputEmail, InputNewAuthStringAndEncryptedPassword,
-    InputOptionalUserId, InputUser, InputUserId, OutputEmail, SigninToken, InputEditUserPrefs
+    InputBuddyRequest, InputBuddyRequestId, InputEditUserPrefs, InputEmail,
+    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputUser, InputUserId,
+    OutputEmail, SigninToken,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{auth_token, db, otp, password_hasher};
@@ -11,11 +12,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
 use crate::handlers::error::ServerError;
-use crate::middleware;
+use crate::middleware::auth::AuthorizedUserClaims;
 
 pub async fn get_user_email(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     user_id: web::Query<InputOptionalUserId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_id = user_id.user_id.unwrap_or(auth_user_claims.0.uid);
@@ -49,7 +50,7 @@ pub async fn get_user_email(
 
 pub async fn lookup_user_id_by_email(
     db_thread_pool: web::Data<DbThreadPool>,
-    _auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    _auth_user_claims: AuthorizedUserClaims,
     email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&email.email) {
@@ -122,8 +123,6 @@ pub async fn create(
         },
     };
 
-    // TODO: Send verification email
-
     let signin_token = auth_token::generate_signin_token(
         &auth_token::TokenParams {
             user_id: &user_id,
@@ -167,7 +166,7 @@ pub async fn create(
         }
     };
 
-    // TODO: Don't log this, email it!
+    // TODO: Don't log this, email it! (Verification email)
     println!("\n\nOTP: {}\n\n", &otp);
 
     Ok(HttpResponse::Created().json(signin_token))
@@ -175,15 +174,12 @@ pub async fn create(
 
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     new_prefs: web::Query<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_user_prefs(
-            auth_user_claims.0.uid,
-            &new_prefs.encrypted_blob_b64,
-        )
+        user_dao.update_user_prefs(auth_user_claims.0.uid, &new_prefs.encrypted_blob_b64)
     })
     .await?
     {
@@ -208,7 +204,7 @@ pub async fn edit_preferences(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
@@ -279,7 +275,7 @@ pub async fn change_password(
 
 pub async fn send_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     buddy_request: web::Json<InputBuddyRequest>,
 ) -> Result<HttpResponse, ServerError> {
     if buddy_request.other_user_id == auth_user_claims.0.uid {
@@ -328,7 +324,7 @@ pub async fn send_buddy_request(
 
 pub async fn retract_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -358,7 +354,7 @@ pub async fn retract_buddy_request(
 
 pub async fn accept_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     let request_id = request_id.buddy_request_id;
@@ -389,7 +385,7 @@ pub async fn accept_buddy_request(
 
 pub async fn decline_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -419,7 +415,7 @@ pub async fn decline_buddy_request(
 
 pub async fn get_all_pending_buddy_requests_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -448,7 +444,7 @@ pub async fn get_all_pending_buddy_requests_for_user(
 
 pub async fn get_all_pending_buddy_requests_made_by_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -477,7 +473,7 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
 
 pub async fn get_buddy_request(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     request_id: web::Query<InputBuddyRequestId>,
 ) -> Result<HttpResponse, ServerError> {
     let request = match web::block(move || {
@@ -509,7 +505,7 @@ pub async fn get_buddy_request(
 
 pub async fn delete_buddy_relationship(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
     other_user_id: web::Query<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -537,7 +533,7 @@ pub async fn delete_buddy_relationship(
 
 pub async fn get_buddies(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: middleware::auth::AuthorizedUserClaims,
+    auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let buddies = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);

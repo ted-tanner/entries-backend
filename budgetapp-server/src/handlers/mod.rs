@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod budget;
 pub mod index;
+pub mod tombstone;
 pub mod user;
 
 pub mod error {
