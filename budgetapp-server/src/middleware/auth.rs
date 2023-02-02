@@ -61,7 +61,7 @@ mod tests {
 
     use actix_web::test;
     use rand::prelude::*;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
     #[actix_rt::test]
@@ -72,14 +72,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -87,7 +79,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -125,14 +116,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -140,7 +123,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -161,14 +143,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -176,7 +150,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -200,14 +173,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -215,7 +180,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -238,14 +202,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -253,7 +209,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
@@ -281,14 +236,6 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
-            password_hash: "test_hash",
-            first_name: &format!("Test-{}", &user_number),
-            last_name: &format!("User-{}", &user_number),
-            date_of_birth: UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(0..1_000_000_000)),
-            currency: "USD",
-            last_token_refresh_timestamp: timestamp,
-            modified_timestamp: timestamp,
             created_timestamp: timestamp,
         };
 
@@ -296,7 +243,6 @@ mod tests {
             &auth_token::TokenParams {
                 user_id: &new_user.id,
                 user_email: new_user.email,
-                user_currency: new_user.currency,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),

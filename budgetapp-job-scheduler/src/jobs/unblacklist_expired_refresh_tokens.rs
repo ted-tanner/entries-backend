@@ -70,7 +70,6 @@ mod tests {
     use budgetapp_utils::auth_token;
     use budgetapp_utils::db::user;
     use budgetapp_utils::models::blacklisted_token::NewBlacklistedToken;
-    use budgetapp_utils::password_hasher;
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
@@ -113,38 +112,37 @@ mod tests {
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
-            password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
-            first_name: format!("Test-{}", &user_number),
-            last_name: format!("User-{}", &user_number),
-            date_of_birth: SystemTime::UNIX_EPOCH
-                + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
-            currency: String::from("USD"),
+
+            auth_string: String::new(),
+
+            auth_string_salt: String::new(),
+            auth_string_iters: 1000000,
+
+            password_encryption_salt: String::new(),
+            password_encryption_iters: 5000000,
+
+            recovery_key_salt: String::new(),
+            recovery_key_iters: 10000000,
+
+            encryption_key_user_password_encrypted: String::new(),
+            encryption_key_recovery_key_encrypted: String::new(),
+
+            public_rsa_key: String::new(),
+            private_rsa_key_encrypted: String::new(),
+
+            preferences_encrypted: String::new(),
         };
 
-        let hash_params = password_hasher::HashParams {
-            salt_len: 16,
-            hash_len: 32,
-            hash_iterations: 2,
-            hash_mem_size_kib: 128,
-            hash_lanes: 2,
-        };
-
-        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
-
-        user_dao
+        let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
             .create_user(
                 &new_user,
-                &hash_params,
-                vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+                "Test",
             )
             .unwrap();
-
-        let user_id = user_dao.get_user_by_email(&new_user.email).unwrap().id;
 
         let token_params = auth_token::TokenParams {
             user_id: &user_id,
             user_email: &new_user.email,
-            user_currency: &new_user.currency,
         };
 
         let pretend_expired_token = auth_token::generate_refresh_token(

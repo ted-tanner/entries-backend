@@ -78,7 +78,6 @@ mod tests {
 
     use budgetapp_utils::db::user;
     use budgetapp_utils::models::otp_attempts::OtpAttempts;
-    use budgetapp_utils::password_hasher;
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::otp_attempts as otp_attempts_fields;
     use budgetapp_utils::schema::otp_attempts::dsl::otp_attempts;
@@ -126,34 +125,38 @@ mod tests {
 
             let new_user = InputUser {
                 email: format!("test_user{}@test.com", &user_number),
-                password: String::from("OAgZbc6d&ARg*Wq#NPe3"),
-                first_name: format!("Test-{}", &user_number),
-                last_name: format!("User-{}", &user_number),
-                date_of_birth: SystemTime::UNIX_EPOCH
-                    + Duration::from_secs(rand::thread_rng().gen_range(700_000_000..900_000_000)),
-                currency: String::from("USD"),
+
+                auth_string: String::new(),
+
+                auth_string_salt: String::new(),
+                auth_string_iters: 1000000,
+
+                password_encryption_salt: String::new(),
+                password_encryption_iters: 5000000,
+
+                recovery_key_salt: String::new(),
+                recovery_key_iters: 10000000,
+
+                encryption_key_user_password_encrypted: String::new(),
+                encryption_key_recovery_key_encrypted: String::new(),
+
+                public_rsa_key: String::new(),
+                private_rsa_key_encrypted: String::new(),
+
+                preferences_encrypted: String::new(),
             };
 
-            let hash_params = password_hasher::HashParams {
-                salt_len: 16,
-                hash_len: 32,
-                hash_iterations: 2,
-                hash_mem_size_kib: 128,
-                hash_lanes: 2,
-            };
-
-            let user = user::Dao::new(&env::db::DB_THREAD_POOL)
+            let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
                 .create_user(
                     &new_user,
-                    &hash_params,
-                    vec![32, 4, 23, 53, 75, 23, 43, 10, 11].as_slice(),
+                    "Test",
                 )
                 .unwrap();
 
-            user_ids.push(user.id);
+            user_ids.push(user_id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_and_increment_otp_verification_count(user.id, Duration::from_millis(1))
+                dao.get_and_increment_otp_verification_count(user_id, Duration::from_millis(1))
                     .unwrap();
             }
         }
