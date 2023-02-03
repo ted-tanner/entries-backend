@@ -1,14 +1,14 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputBuddyRequest, InputBuddyRequestId, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputUser, InputUserId,
-    OutputEmail, SigninToken,
+    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputToken, InputUser,
+    InputUserId, OutputEmail, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
-use budgetapp_utils::{auth_token, db, otp, password_hasher};
+use budgetapp_utils::{auth_token, db, password_hasher};
 
 use actix_web::{web, HttpResponse};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -123,53 +123,155 @@ pub async fn create(
         },
     };
 
-    let signin_token = auth_token::generate_signin_token(
+    let token_lifetime_hours = env::CONF.lifetimes.user_creation_token_lifetime_days * 24;
+    let user_creation_token = auth_token::generate_user_creation_token(
         &auth_token::TokenParams {
             user_id: &user_id,
             user_email: &email,
         },
-        Duration::from_secs(env::CONF.lifetimes.signin_token_lifetime_mins * 60),
+        Duration::from_secs(token_lifetime_hours * 60 * 60),
         env::CONF.keys.token_signing_key.as_bytes(),
     );
 
-    let signin_token = match signin_token {
-        Ok(signin_token) => signin_token,
+    let user_creation_token = match user_creation_token {
+        Ok(t) => t,
         Err(e) => {
             log::error!("{}", e);
             return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate sign-in token for user",
+                "Failed to generate user creation token",
             ))));
         }
     };
 
-    let signin_token = SigninToken {
-        signin_token: signin_token.to_string(),
-    };
+    // TODO: Don't print user creation token; email it!
+    println!("\n\nUser Creation Token: {}\n\n", user_creation_token);
 
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Failed to fetch system time")
-        .as_secs();
+    Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
+        email_sent: true,
+        email_token_lifetime_hours: token_lifetime_hours,
+    }))
+}
 
-    let otp = match otp::generate_otp(
-        user_id,
-        current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
-        Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-        env::CONF.keys.otp_key.as_bytes(),
+pub async fn verify_creation(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_creation_token: web::Query<InputToken>,
+) -> Result<HttpResponse, ServerError> {
+    let claims = match auth_token::validate_user_creation_token(
+        user_creation_token.token.as_str(),
+        env::CONF.keys.token_signing_key.as_bytes(),
     ) {
-        Ok(p) => p,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate OTP",
-            ))));
-        }
+        Ok(c) => c,
+        Err(e) => match e {
+            auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                     <html> \
+                     <head> \
+                     <title>The Budget App User Verification</title> \
+                     </head> \
+                     <body> \
+                     <h1>Could not verify account. Is the URL correct?</h1> \
+                     </body> \
+                     </html>",
+                    )));
+            }
+            auth_token::TokenError::TokenExpired => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                     <html> \
+                     <head> \
+                     <title>The Budget App User Verification</title> \
+                     </head> \
+                     <body> \
+                     <h1>This link has expired. You will need to recreate your account.</h1> \
+                     </body> \
+                     </html>",
+                    )));
+            }
+            e => {
+                log::error!("User verification endpoint: {}", e);
+                return Ok(HttpResponse::InternalServerError()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                     <html> \
+                     <head> \
+                     <title>The Budget App User Verification</title> \
+                     </head> \
+                     <body> \
+                     <h1>Could not verify account due to an error.</h1> \
+                     <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
+                     </body> \
+                     </html>",
+                    )));
+            }
+        },
     };
 
-    // TODO: Don't log this, email it! (Verification email)
-    println!("\n\nOTP: {}\n\n", &otp);
+    let user_id = claims.uid;
 
-    Ok(HttpResponse::Created().json(signin_token))
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.verify_user_creation(user_id)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                     <html> \
+                     <head> \
+                     <title>The Budget App User Verification</title> \
+                     </head> \
+                     <body> \
+                     <h1>Could not find the correct account. Is the URL correct?</h1> \
+                     </body> \
+                     </html>",
+                    )));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Ok(HttpResponse::InternalServerError()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                     <html> \
+                     <head> \
+                     <title>The Budget App User Verification</title> \
+                     </head> \
+                     <body> \
+                     <h1>Could not verify account due to an error.</h1> \
+                     <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
+                     </body> \
+                     </html>",
+                    )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(format!(
+        "<!DOCTYPE html> \
+             <html> \
+             <head> \
+             <title>The Budget App User Verification</title> \
+             </head> \
+             <body> \
+             <h1>User verified</h1> \
+             <h2>User email address: {}</h2> \
+             <h2>You can now sign into The Budget App using your email address and password.</h2> \
+             <h2>Happy budgeting!</h2> \
+             </body> \
+             </html>",
+        claims.eml,
+    )))
 }
 
 pub async fn edit_preferences(

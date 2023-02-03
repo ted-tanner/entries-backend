@@ -37,6 +37,8 @@ pub enum TokenType {
     Access,
     Refresh,
     SignIn,
+    UserCreation,
+    UserDeletion,
 }
 
 #[derive(Debug)]
@@ -62,6 +64,8 @@ impl std::convert::TryFrom<u8> for TokenType {
             0 => Ok(TokenType::Access),
             1 => Ok(TokenType::Refresh),
             2 => Ok(TokenType::SignIn),
+            3 => Ok(TokenType::UserCreation),
+            4 => Ok(TokenType::UserDeletion),
             v => Err(TokenTypeError::NoMatchForValue(v)),
         }
     }
@@ -73,6 +77,8 @@ impl std::convert::From<TokenType> for u8 {
             TokenType::Access => 0,
             TokenType::Refresh => 1,
             TokenType::SignIn => 2,
+            TokenType::UserCreation => 3,
+            TokenType::UserDeletion => 4,
         }
     }
 }
@@ -178,23 +184,6 @@ pub struct Token {
     token_type: TokenType,
 }
 
-impl Token {
-    #[allow(dead_code)]
-    fn is_access_token(&self) -> bool {
-        matches!(self.token_type, TokenType::Access)
-    }
-
-    #[allow(dead_code)]
-    fn is_refresh_token(&self) -> bool {
-        matches!(self.token_type, TokenType::Refresh)
-    }
-
-    #[allow(dead_code)]
-    fn is_signin_token(&self) -> bool {
-        matches!(self.token_type, TokenType::SignIn)
-    }
-}
-
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.token)
@@ -232,6 +221,24 @@ pub fn generate_signin_token(
     signing_key: &[u8],
 ) -> Result<Token, TokenError> {
     generate_token(params, TokenType::SignIn, lifetime, signing_key)
+}
+
+#[inline]
+pub fn generate_user_creation_token(
+    params: &TokenParams,
+    lifetime: Duration,
+    signing_key: &[u8],
+) -> Result<Token, TokenError> {
+    generate_token(params, TokenType::UserCreation, lifetime, signing_key)
+}
+
+#[inline]
+pub fn generate_user_deletion_token(
+    params: &TokenParams,
+    lifetime: Duration,
+    signing_key: &[u8],
+) -> Result<Token, TokenError> {
+    generate_token(params, TokenType::UserDeletion, lifetime, signing_key)
 }
 
 #[inline]
@@ -301,6 +308,22 @@ pub fn validate_refresh_token(
 #[inline]
 pub fn validate_signin_token(token: &str, signing_key: &[u8]) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::SignIn, signing_key)
+}
+
+#[inline]
+pub fn validate_user_creation_token(
+    token: &str,
+    signing_key: &[u8],
+) -> Result<TokenClaims, TokenError> {
+    validate_token(token, TokenType::UserCreation, signing_key)
+}
+
+#[inline]
+pub fn validate_user_deletion_token(
+    token: &str,
+    signing_key: &[u8],
+) -> Result<TokenClaims, TokenError> {
+    validate_token(token, TokenType::UserDeletion, signing_key)
 }
 
 fn validate_token(

@@ -93,6 +93,7 @@ CREATE INDEX ON tombstones USING HASH (related_user_id);
 CREATE TABLE users (
     id UUID UNIQUE NOT NULL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
+    is_verified BOOLEAN NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
 );
 

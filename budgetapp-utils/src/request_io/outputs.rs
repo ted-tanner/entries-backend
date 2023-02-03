@@ -92,3 +92,9 @@ pub struct OutputTombstone {
 pub struct OutputTombstoneDoesExist {
     pub does_exist: bool,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+pub struct OutputVerificationEmailSent {
+    pub email_sent: bool,
+    pub email_token_lifetime_hours: u64,
+}

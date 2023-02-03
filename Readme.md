@@ -481,8 +481,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Endpoints for checking tombstones and getting user's tombstones since date
 * Verification email for users (user doesn't get created until their email is verified)
+  - Endpoint for verifying user creation
+* When deleting user, require a verification email
+* Job for deleting users that have not been verified after a week
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
 * Input structs should be moved inot DB utils instead of taking a reference
@@ -492,6 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
+* Return error codes from the API with the message (i.e. a number indicating what the failure was). ServerError should take a code
 * Get user security data in various endpoints
 * End-to-end encryption
 * Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
@@ -550,6 +553,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Duplicate a budget, including entries (perhaps make including entries optional)
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
 * Create a concept of budget ownership. Ownership can be transferred (and *must* be transferred before leaving a budget). Owners can delete a budget or boot people out of a budget.
+* Don't reach out to db as part of validating refresh token in the auth_token module. Instead, check blacklisted token explicitly from the handler
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
@@ -571,6 +575,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Admin console
 * If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `budgetapp_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
 * Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
+* Languages/localization
 
 ### Note on timezones
 

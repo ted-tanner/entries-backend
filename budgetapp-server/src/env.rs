@@ -41,6 +41,8 @@ pub struct Lifetimes {
     pub access_token_lifetime_mins: u64,
     pub refresh_token_lifetime_days: u64,
     pub signin_token_lifetime_mins: u64,
+    pub user_creation_token_lifetime_days: u64,
+    pub user_deletion_token_lifetime_days: u64,
     pub otp_lifetime_mins: u64,
 }
 

@@ -67,6 +67,7 @@ impl Dao {
         let new_user = NewUser {
             id: user_id,
             email: &user_data.email.to_lowercase(),
+            is_verified: false,
             created_timestamp: current_time,
         };
 
@@ -120,6 +121,14 @@ impl Dao {
             })?;
 
         Ok(user_id)
+    }
+
+    pub fn verify_user_creation(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+        dsl::update(users.find(user_id))
+            .set(user_fields::is_verified.eq(true))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn update_user_prefs(

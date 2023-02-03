@@ -1,5 +1,5 @@
 use diesel::{dsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
@@ -19,6 +19,7 @@ use crate::schema::users::dsl::users;
 
 pub struct UserAuthStringHashAndAuthAttempts {
     pub user_id: Uuid,
+    pub is_user_verified: bool,
     pub auth_string_hash: String,
     pub attempt_count: i16,
     pub expiration_time: SystemTime,
@@ -45,17 +46,28 @@ impl Dao {
         let hash_and_attempts = db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let (user_id, auth_string_hash) = users
+                let (user_id, is_user_verified, auth_string_hash) = users
                     .left_join(
                         user_security_data
                             .on(user_security_data_fields::user_id.eq(user_fields::id)),
                     )
                     .select((
                         user_fields::id,
+                        user_fields::is_verified,
                         user_security_data_fields::auth_string_hash.nullable(),
                     ))
                     .filter(user_fields::email.eq(user_email))
-                    .get_result::<(Uuid, Option<String>)>(conn)?;
+                    .get_result::<(Uuid, bool, Option<String>)>(conn)?;
+
+                if !is_user_verified {
+                    return Ok(UserAuthStringHashAndAuthAttempts {
+                        user_id,
+                        is_user_verified,
+                        auth_string_hash: String::new(),
+                        attempt_count: 0,
+                        expiration_time: UNIX_EPOCH,
+                    });
+                }
 
                 let auth_string_hash = auth_string_hash.unwrap_or(String::new());
 
@@ -83,6 +95,7 @@ impl Dao {
 
                 Ok(UserAuthStringHashAndAuthAttempts {
                     user_id,
+                    is_user_verified,
                     auth_string_hash,
                     attempt_count: attempts.attempt_count,
                     expiration_time: attempts.expiration_time,

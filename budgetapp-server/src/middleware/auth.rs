@@ -72,6 +72,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 
@@ -116,6 +117,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 
@@ -143,6 +145,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 
@@ -173,6 +176,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 
@@ -202,6 +206,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 
@@ -236,6 +241,7 @@ mod tests {
         let new_user = NewUser {
             id: user_id,
             email: &format!("test_user{}@test.com", &user_number),
+            is_verified: true,
             created_timestamp: timestamp,
         };
 

@@ -142,6 +142,7 @@ table! {
     users (id) {
         id -> Uuid,
         email -> Varchar,
+        is_verified -> Bool,
         created_timestamp -> Timestamp,
     }
 }

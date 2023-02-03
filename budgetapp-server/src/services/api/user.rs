@@ -15,6 +15,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             )
             .route("/create", web::post().to(handlers::user::create))
             .route(
+                "/verify_creation",
+                web::get().to(handlers::user::verify_creation),
+            )
+            .route(
                 "/edit_preferences",
                 web::put().to(handlers::user::edit_preferences),
             )

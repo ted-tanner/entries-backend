@@ -44,6 +44,12 @@ pub async fn sign_in(
         }
     };
 
+    if !hash_and_attempts.is_user_verified {
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "User has not accepted verification email",
+        ))));
+    }
+
     if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {

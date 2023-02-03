@@ -10,6 +10,7 @@ use crate::schema::users;
 pub struct User {
     pub id: Uuid,
     pub email: String,
+    pub is_verified: bool,
     pub created_timestamp: SystemTime,
 }
 
@@ -18,5 +19,6 @@ pub struct User {
 pub struct NewUser<'a> {
     pub id: Uuid,
     pub email: &'a str,
+    pub is_verified: bool,
     pub created_timestamp: SystemTime,
 }

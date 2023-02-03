@@ -196,3 +196,8 @@ pub struct InputTombstoneId {
 pub struct InputTime {
     pub time: SystemTime,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputToken {
+    pub token: String,
+}

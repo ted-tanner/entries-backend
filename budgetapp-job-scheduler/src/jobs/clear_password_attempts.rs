@@ -147,17 +147,17 @@ mod tests {
             };
 
             let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(
-                    &new_user,
-                    "Test",
-                )
+                .create_user(&new_user, "Test")
                 .unwrap();
 
             user_ids.push(user_id);
 
             for _ in 0..rand::thread_rng().gen_range::<u32, _>(1..4) {
-                dao.get_user_auth_string_hash_and_mark_attempt(&new_user.email, Duration::from_millis(1))
-                    .unwrap();
+                dao.get_user_auth_string_hash_and_mark_attempt(
+                    &new_user.email,
+                    Duration::from_millis(1),
+                )
+                .unwrap();
             }
         }
 
