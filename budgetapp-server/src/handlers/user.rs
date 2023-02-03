@@ -654,3 +654,208 @@ pub async fn get_buddies(
 
     Ok(HttpResponse::Ok().json(buddies))
 }
+
+pub async fn init_delete(
+    auth_user_claims: AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let token_lifetime_hours = env::CONF.lifetimes.user_deletion_token_lifetime_days * 24;
+    let user_deletion_token = auth_token::generate_user_deletion_token(
+        &auth_token::TokenParams {
+            user_id: &auth_user_claims.0.uid,
+            user_email: &auth_user_claims.0.eml,
+        },
+        Duration::from_secs(token_lifetime_hours * 60 * 60),
+        env::CONF.keys.token_signing_key.as_bytes(),
+    );
+
+    let user_deletion_token = match user_deletion_token {
+        Ok(t) => t,
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::InternalError(Some(String::from(
+                "Failed to generate user deletion token",
+            ))));
+        }
+    };
+
+    // TODO: Don't print user deletion token; email it!
+    println!("\n\nUser Deletion Token: {}\n\n", user_deletion_token);
+
+    Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
+        email_sent: true,
+        email_token_lifetime_hours: token_lifetime_hours,
+    }))
+}
+
+pub async fn delete(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_deletion_token: web::Query<InputToken>,
+) -> Result<HttpResponse, ServerError> {
+    let claims = match auth_token::validate_user_deletion_token(
+        user_deletion_token.token.as_str(),
+        env::CONF.keys.token_signing_key.as_bytes(),
+    ) {
+        Ok(c) => c,
+        Err(e) => match e {
+            auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                         <html> \
+                         <head> \
+                         <title>The Budget App Account Deletion</title> \
+                         </head> \
+                         <body> \
+                         <h1>Could not verify account deletion. Is the URL correct?</h1> \
+                         </body> \
+                         </html>",
+                    )));
+            }
+            auth_token::TokenError::TokenExpired => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                               <html> \
+                               <head> \
+                               <title>The Budget App Account Deletion</title> \
+                               </head> \
+                               <body> \
+                               <h1>This link has expired.</h1> \
+                               </body> \
+                               </html>",
+                    )));
+            }
+            e => {
+                log::error!("User deletion endpoint: {}", e);
+                return Ok(HttpResponse::InternalServerError()
+                          .content_type("text/html")
+                          .body(format!(
+                              "<!DOCTYPE html> \
+                               <html> \
+                               <head> \
+                               <title>The Budget App Account Deletion</title> \
+                               </head> \
+                               <body> \
+                               <h1>Could not verify account deletion due to an error.</h1> \
+                               <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
+                               </body> \
+                               </html>",
+                          )));
+            }
+        },
+    };
+
+    let user_id = claims.uid;
+    let days_until_deletion = env::CONF.time_delays.user_deletion_delay_days;
+
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.initiate_user_deletion(
+            user_id,
+            Duration::from_secs(days_until_deletion * 24 * 60 * 60),
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                               <html> \
+                               <head> \
+                               <title>The Budget App Account Deletion</title> \
+                               </head> \
+                               <body> \
+                               <h1>Account is already scheduled to be deleted.</h1> \
+                               </body> \
+                               </html>",
+                    )));
+            }
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(format!(
+                        "<!DOCTYPE html> \
+                               <html> \
+                               <head> \
+                               <title>The Budget App Account Deletion</title> \
+                               </head> \
+                               <body> \
+                               <h1>Could not find the correct account. Is the URL correct?</h1> \
+                               </body> \
+                               </html>",
+                    )));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Ok(HttpResponse::InternalServerError()
+                          .content_type("text/html")
+                          .body(format!(
+                              "<!DOCTYPE html> \
+                               <html> \
+                               <head> \
+                               <title>The Budget App Account Deletion</title> \
+                               </head> \
+                               <body> \
+                               <h1>Could not verify account deletion due to an error.</h1> \
+                               <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
+                               </body> \
+                               </html>",
+                          )));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(format!(
+        "<!DOCTYPE html> \
+         <html> \
+         <head> \
+         <title>The Budget App Account Deletion</title> \
+         </head> \
+         <body> \
+         <h1>Your account has been scheduled for deletion.</h1> \
+         <h2>User email address: {}</h2> \
+         <h2>Your account will be deleted in about {} days. You can cancel your account deletion from the app.</h2> \
+         </body> \
+         </html>",
+        claims.eml,
+        days_until_deletion,
+    )))
+}
+
+pub async fn cancel_delete(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.cancel_user_deletion(auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to cancel user deletion",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}

@@ -31,5 +31,8 @@ password_max_attempts = 12
 password_attempts_reset_mins = 15
 password_min_len_chars = 12
 
+[time_delays]
+user_deletion_delay_days = 7
+
 [workers]
 actix_workers = 12

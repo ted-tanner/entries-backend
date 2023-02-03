@@ -375,10 +375,8 @@ impl Dao {
     }
 
     pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<(), DaoError> {
-        diesel::delete(
-            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user_id)),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?;
+        diesel::delete(user_deletion_requests.find(user_id))
+            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }

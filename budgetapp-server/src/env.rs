@@ -11,6 +11,7 @@ pub struct Conf {
     pub keys: Keys,
     pub lifetimes: Lifetimes,
     pub security: Security,
+    pub time_delays: TimeDelays,
     pub workers: Workers,
 }
 
@@ -53,6 +54,11 @@ pub struct Security {
     pub password_max_attempts: i16,
     pub password_attempts_reset_mins: u64,
     pub password_min_len_chars: usize,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct TimeDelays {
+    pub user_deletion_delay_days: u64,
 }
 
 #[derive(Deserialize, Serialize)]

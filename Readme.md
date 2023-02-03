@@ -481,9 +481,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Verification email for users (user doesn't get created until their email is verified)
-  - Endpoint for verifying user creation
-* When deleting user, require a verification email
 * Job for deleting users that have not been verified after a week
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
@@ -535,8 +532,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
 *By 10/28* 
  
 * Get email delivery set up
-  * OTP
+  * OTP for sign in
+  * OTP for change password
   * Forgot Password
+  * OTP for forgot password
+  * User creation verification
+  * User deletion verification
 * Forgot password endpoint
 * Email confirmation for user creation
  
