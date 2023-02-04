@@ -11,7 +11,7 @@ mod jobs;
 mod runner;
 
 use jobs::{
-    ClearOtpAttemptsJob, ClearPasswordAttemptsJob, DeleteUsersJob,
+    ClearOtpAttemptsJob, ClearAuthorizationAttemptsJob, DeleteUsersJob,
     UnblacklistExpiredRefreshTokensJob,
 };
 
@@ -61,10 +61,10 @@ fn main() {
                 env::db::DB_THREAD_POOL.clone(),
             )));
 
-            job_runner.register(Box::new(ClearPasswordAttemptsJob::new(
+            job_runner.register(Box::new(ClearAuthorizationAttemptsJob::new(
                 Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
                 Duration::from_secs(
-                    env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60,
+                    env::CONF.clear_authorization_attempts_job.attempts_lifetime_mins * 60,
                 ),
                 env::db::DB_THREAD_POOL.clone(),
             )));

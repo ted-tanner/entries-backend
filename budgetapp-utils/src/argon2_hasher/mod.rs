@@ -393,7 +393,7 @@ impl BinaryHash {
 }
 
 #[inline]
-pub fn hash_password(password: &str, hash_params: &HashParams, hashing_key: &[u8]) -> String {
+pub fn hash_auth_string(auth_string: &str, hash_params: &HashParams, hashing_key: &[u8]) -> String {
     let mut salt = vec![0u8; hash_params.salt_len];
 
     SECURE_RANDOM_GENERATOR
@@ -401,7 +401,7 @@ pub fn hash_password(password: &str, hash_params: &HashParams, hashing_key: &[u8
         .expect("Failed to generate secure random numbers for hashing salt");
 
     hash_argon2id(
-        password,
+        auth_string,
         hashing_key,
         &salt[..],
         hash_params.hash_len,
@@ -413,12 +413,12 @@ pub fn hash_password(password: &str, hash_params: &HashParams, hashing_key: &[u8
 }
 
 #[inline]
-pub fn verify_hash(password: &str, hash: &str, hashing_key: &[u8]) -> bool {
-    verify_argon2id(password, hash, hashing_key)
+pub fn verify_hash(auth_string: &str, hash: &str, hashing_key: &[u8]) -> bool {
+    verify_argon2id(auth_string, hash, hashing_key)
 }
 
 pub fn hash_argon2id(
-    password: &str,
+    auth_string: &str,
     key: &[u8],
     salt: &[u8],
     hash_len: u32,
@@ -430,11 +430,11 @@ pub fn hash_argon2id(
 
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),
-        outlen: u32::try_from(hash_buffer.len()).expect("Password hash is too long"),
-        pwd: password.as_bytes() as *const _ as *mut _,
-        pwdlen: u32::try_from(password.len()).expect("Password is too long"),
+        outlen: u32::try_from(hash_buffer.len()).expect("Auth_String hash is too long"),
+        pwd: auth_string.as_bytes() as *const _ as *mut _,
+        pwdlen: u32::try_from(auth_string.len()).expect("Auth_String is too long"),
         salt: salt.as_ptr() as *mut _,
-        saltlen: u32::try_from(salt.len()).expect("Password salt is too long"),
+        saltlen: u32::try_from(salt.len()).expect("Auth_String salt is too long"),
         secret: key.as_ptr() as *mut _,
         secretlen: u32::try_from(key.len()).expect("Key is too long"),
         ad: std::ptr::null_mut(),
@@ -452,7 +452,7 @@ pub fn hash_argon2id(
     let result = unsafe { argon2id_ctx(&mut ctx as *mut Argon2_Context) };
 
     if result != Argon2_ErrorCodes_ARGON2_OK {
-        let err_msg = format!("Failed to hash password: {}", unsafe {
+        let err_msg = format!("Failed to hash auth_string: {}", unsafe {
             std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
         });
         error!("{}", err_msg);
@@ -469,7 +469,7 @@ pub fn hash_argon2id(
     }
 }
 
-pub fn verify_argon2id(password: &str, hash: &str, key: &[u8]) -> bool {
+pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
         Err(_) => {
@@ -483,8 +483,8 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &[u8]) -> bool {
     let decoded_hash = base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD)
         .expect("Failed to decode hash");
 
-    let hashed_password = hash_argon2id(
-        password,
+    let hashed_auth_string = hash_argon2id(
+        auth_string,
         key,
         &decoded_salt[..],
         decoded_hash.len().try_into().expect("Hash is too long"),
@@ -493,20 +493,20 @@ pub fn verify_argon2id(password: &str, hash: &str, key: &[u8]) -> bool {
         tokenized_hash.lanes,
     );
 
-    if hashed_password.v != tokenized_hash.v {
+    if hashed_auth_string.v != tokenized_hash.v {
         return false;
     }
 
     let mut is_valid = 0u8;
 
-    if decoded_hash.len() != hashed_password.hash.len() || decoded_hash.is_empty() {
+    if decoded_hash.len() != hashed_auth_string.hash.len() || decoded_hash.is_empty() {
         return false;
     }
 
     // Do bitwise comparison to prevent timing attacks (entire length of string must be
     // compared)
     for (i, decoded_hash_byte) in decoded_hash.iter().enumerate() {
-        is_valid |= decoded_hash_byte ^ hashed_password.hash[i];
+        is_valid |= decoded_hash_byte ^ hashed_auth_string.hash[i];
     }
 
     is_valid == 0
@@ -687,8 +687,8 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_password() {
-        let password = "@Pa$$20rd-Test";
+    fn test_hash_auth_string() {
+        let auth_string = "@Pa$$20rd-Test";
 
         let hash_params = HashParams {
             salt_len: 16,
@@ -698,18 +698,18 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_password(
-            password,
+        let hash = hash_auth_string(
+            auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
         );
 
-        assert!(!hash.contains(password));
+        assert!(!hash.contains(auth_string));
     }
 
     #[test]
     fn test_verify_hash() {
-        let password = "@Pa$$20rd-Test";
+        let auth_string = "@Pa$$20rd-Test";
 
         let hash_params = HashParams {
             salt_len: 16,
@@ -719,22 +719,22 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_password(
-            password,
+        let hash = hash_auth_string(
+            auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
         );
 
         assert!(verify_hash(
-            password,
+            auth_string,
             &hash,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice()
         ));
     }
 
     #[test]
-    fn test_verify_incorrect_password() {
-        let password = "@Pa$$20rd-Test";
+    fn test_verify_incorrect_auth_string() {
+        let auth_string = "@Pa$$20rd-Test";
 
         let hash_params = HashParams {
             salt_len: 16,
@@ -744,8 +744,8 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_password(
-            password,
+        let hash = hash_auth_string(
+            auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
         );
@@ -759,7 +759,7 @@ mod tests {
 
     #[test]
     fn test_verify_incorrect_key() {
-        let password = "@Pa$$20rd-Test";
+        let auth_string = "@Pa$$20rd-Test";
 
         let hash_params = HashParams {
             salt_len: 16,
@@ -769,14 +769,14 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_password(
-            password,
+        let hash = hash_auth_string(
+            auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
         );
 
         assert!(!verify_hash(
-            password,
+            auth_string,
             &hash,
             vec![30, 23, 4, 2, 4, 56, 56].as_slice()
         ));

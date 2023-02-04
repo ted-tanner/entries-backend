@@ -74,7 +74,7 @@ CREATE TABLE otp_attempts (
     expiration_time TIMESTAMP NOT NULL
 );
 
-CREATE TABLE password_attempts (
+CREATE TABLE authorization_attempts (
     user_id UUID PRIMARY KEY,
     attempt_count SMALLINT NOT NULL,
     expiration_time TIMESTAMP NOT NULL
@@ -168,7 +168,7 @@ ALTER TABLE budget_share_invites ADD CONSTRAINT budget_key FOREIGN KEY(budget_id
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE password_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE authorization_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;

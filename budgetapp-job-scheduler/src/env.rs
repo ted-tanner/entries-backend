@@ -7,7 +7,7 @@ pub struct Conf {
     pub connections: Connections,
     pub runner: RunnerConf,
     pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
-    pub clear_password_attempts_job: ClearPasswordAttemptsJobConf,
+    pub clear_authorization_attempts_job: ClearAuthorizationAttemptsJobConf,
     pub delete_users_job: DeleteUsersJobConf,
     pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJobConf,
 }
@@ -32,7 +32,7 @@ pub struct ClearOtpAttemptsJobConf {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ClearPasswordAttemptsJobConf {
+pub struct ClearAuthorizationAttemptsJobConf {
     pub job_frequency_secs: u64,
     pub attempts_lifetime_mins: u64,
 }

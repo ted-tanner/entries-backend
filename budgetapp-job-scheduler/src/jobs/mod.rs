@@ -1,10 +1,10 @@
 mod clear_otp_attempts;
-mod clear_password_attempts;
+mod clear_authorization_attempts;
 mod delete_users;
 mod unblacklist_expired_refresh_tokens;
 
 pub use clear_otp_attempts::ClearOtpAttemptsJob;
-pub use clear_password_attempts::ClearPasswordAttemptsJob;
+pub use clear_authorization_attempts::ClearAuthorizationAttemptsJob;
 pub use delete_users::DeleteUsersJob;
 pub use unblacklist_expired_refresh_tokens::UnblacklistExpiredRefreshTokensJob;
 

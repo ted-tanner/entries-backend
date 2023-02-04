@@ -15,7 +15,7 @@ pub mod db;
 pub mod definitions;
 pub mod models;
 pub mod otp;
-pub mod password_hasher;
+pub mod argon2_hasher;
 pub mod request_io;
 pub mod schema;
 pub mod validators;

@@ -3,7 +3,7 @@ use budgetapp_utils::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use budgetapp_utils::validators::Validity;
-use budgetapp_utils::{auth_token, db, otp, password_hasher, validators};
+use budgetapp_utils::{auth_token, db, otp, argon2_hasher, validators};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,7 +27,7 @@ pub async fn sign_in(
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
             &user_email_clone1,
-            Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
+            Duration::from_secs(env::CONF.security.authorization_attempts_reset_mins * 60),
         )
     })
     .await?
@@ -39,7 +39,7 @@ pub async fn sign_in(
         Err(e) => {
             log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to check password attempt count",
+                "Failed to check authorization attempt count",
             ))));
         }
     };
@@ -50,7 +50,7 @@ pub async fn sign_in(
         ))));
     }
 
-    if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
+    if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {
         return Err(ServerError::AccessForbidden(Some(String::from(
@@ -58,8 +58,8 @@ pub async fn sign_in(
         ))));
     }
 
-    let does_password_match_hash = web::block(move || {
-        password_hasher::verify_hash(
+    let does_auth_string_match_hash = web::block(move || {
+        argon2_hasher::verify_hash(
             &credentials.auth_string,
             &hash_and_attempts.auth_string_hash,
             env::CONF.keys.hashing_key.as_bytes(),
@@ -67,7 +67,7 @@ pub async fn sign_in(
     })
     .await?;
 
-    if does_password_match_hash {
+    if does_auth_string_match_hash {
         let signin_token = auth_token::generate_signin_token(
             &auth_token::TokenParams {
                 user_id: &hash_and_attempts.user_id,
@@ -121,7 +121,7 @@ pub async fn sign_in(
         Ok(HttpResponse::Ok().json(signin_token))
     } else {
         Err(ServerError::UserUnauthorized(Some(String::from(
-            "Incorrect email or password",
+            "Incorrect email or auth string",
         ))))
     }
 }

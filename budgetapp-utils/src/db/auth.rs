@@ -5,13 +5,13 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
-use crate::models::password_attempts::{NewPasswordAttempts, PasswordAttempts};
+use crate::models::authorization_attempts::{NewAuthorizationAttempts, AuthorizationAttempts};
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::otp_attempts as otp_attempt_fields;
 use crate::schema::otp_attempts::dsl::otp_attempts;
-use crate::schema::password_attempts as password_attempt_fields;
-use crate::schema::password_attempts::dsl::password_attempts;
+use crate::schema::authorization_attempts as authorization_attempt_fields;
+use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
@@ -77,21 +77,21 @@ impl Dao {
 
                 let expiration_time = SystemTime::now() + attempts_lifetime;
 
-                let new_attempt = NewPasswordAttempts {
+                let new_attempt = NewAuthorizationAttempts {
                     user_id,
                     attempt_count: 1,
                     expiration_time,
                 };
 
-                let attempts = dsl::insert_into(password_attempts)
+                let attempts = dsl::insert_into(authorization_attempts)
                     .values(&new_attempt)
-                    .on_conflict(password_attempt_fields::user_id)
+                    .on_conflict(authorization_attempt_fields::user_id)
                     .do_update()
                     .set(
-                        password_attempt_fields::attempt_count
-                            .eq(password_attempt_fields::attempt_count + 1),
+                        authorization_attempt_fields::attempt_count
+                            .eq(authorization_attempt_fields::attempt_count + 1),
                     )
-                    .get_result::<PasswordAttempts>(conn)?;
+                    .get_result::<AuthorizationAttempts>(conn)?;
 
                 Ok(UserAuthStringHashAndAuthAttempts {
                     user_id,
@@ -155,15 +155,15 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn clear_password_attempt_count(
+    pub fn clear_authorization_attempt_count(
         &mut self,
         attempts_lifetime: Duration,
     ) -> Result<usize, DaoError> {
         let expiration_cut_off = SystemTime::now() - attempts_lifetime;
 
         Ok(diesel::delete(
-            password_attempts
-                .filter(password_attempt_fields::expiration_time.lt(expiration_cut_off)),
+            authorization_attempts
+                .filter(authorization_attempt_fields::expiration_time.lt(expiration_cut_off)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }

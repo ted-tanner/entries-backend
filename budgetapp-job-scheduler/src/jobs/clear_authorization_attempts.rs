@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::jobs::{Job, JobError};
 
-pub struct ClearPasswordAttemptsJob {
+pub struct ClearAuthorizationAttemptsJob {
     pub job_frequency: Duration,
     pub attempts_lifetime: Duration,
 
@@ -15,7 +15,7 @@ pub struct ClearPasswordAttemptsJob {
     last_run_time: SystemTime,
 }
 
-impl ClearPasswordAttemptsJob {
+impl ClearAuthorizationAttemptsJob {
     pub fn new(
         job_frequency: Duration,
         attempts_lifetime: Duration,
@@ -32,9 +32,9 @@ impl ClearPasswordAttemptsJob {
 }
 
 #[async_trait]
-impl Job for ClearPasswordAttemptsJob {
+impl Job for ClearAuthorizationAttemptsJob {
     fn name(&self) -> &'static str {
-        "Clear Password Attempts"
+        "Clear Authorization Attempts"
     }
 
     fn run_frequency(&self) -> Duration {
@@ -65,7 +65,7 @@ impl Job for ClearPasswordAttemptsJob {
         let attempts_lifetime = self.attempts_lifetime;
         let mut dao = AuthDao::new(&self.db_thread_pool);
 
-        tokio::task::spawn_blocking(move || dao.clear_password_attempt_count(attempts_lifetime))
+        tokio::task::spawn_blocking(move || dao.clear_authorization_attempt_count(attempts_lifetime))
             .await??;
 
         Ok(())
@@ -77,10 +77,10 @@ mod tests {
     use super::*;
 
     use budgetapp_utils::db::user;
-    use budgetapp_utils::models::password_attempts::PasswordAttempts;
+    use budgetapp_utils::models::authorization_attempts::AuthorizationAttempts;
     use budgetapp_utils::request_io::InputUser;
-    use budgetapp_utils::schema::password_attempts as password_attempts_fields;
-    use budgetapp_utils::schema::password_attempts::dsl::password_attempts;
+    use budgetapp_utils::schema::authorization_attempts as authorization_attempts_fields;
+    use budgetapp_utils::schema::authorization_attempts::dsl::authorization_attempts;
 
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
@@ -93,7 +93,7 @@ mod tests {
         let before = SystemTime::now();
 
         thread::sleep(Duration::from_millis(1));
-        let mut job = ClearPasswordAttemptsJob::new(
+        let mut job = ClearAuthorizationAttemptsJob::new(
             Duration::from_millis(1),
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
@@ -164,13 +164,13 @@ mod tests {
         let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
 
         for user_id in &user_ids {
-            let user_password_attempts = password_attempts
-                .filter(password_attempts_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_password_attempts.is_ok());
+            let user_authorization_attempts = authorization_attempts
+                .filter(authorization_attempts_fields::user_id.eq(user_id))
+                .first::<AuthorizationAttempts>(&mut db_connection);
+            assert!(user_authorization_attempts.is_ok());
         }
 
-        let mut job = ClearPasswordAttemptsJob::new(
+        let mut job = ClearAuthorizationAttemptsJob::new(
             Duration::from_secs(1),
             Duration::from_secs(1),
             env::db::DB_THREAD_POOL.clone(),
@@ -179,25 +179,25 @@ mod tests {
         job.run_handler_func().await.unwrap();
 
         for user_id in &user_ids {
-            let user_password_attempts = password_attempts
-                .filter(password_attempts_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_password_attempts.is_ok());
+            let user_authorization_attempts = authorization_attempts
+                .filter(authorization_attempts_fields::user_id.eq(user_id))
+                .first::<AuthorizationAttempts>(&mut db_connection);
+            assert!(user_authorization_attempts.is_ok());
         }
 
         for user_id in &user_ids {
-            dsl::update(password_attempts.filter(password_attempts_fields::user_id.eq(user_id)))
+            dsl::update(authorization_attempts.filter(authorization_attempts_fields::user_id.eq(user_id)))
                 .set(
-                    password_attempts_fields::expiration_time.eq(SystemTime::now()
+                    authorization_attempts_fields::expiration_time.eq(SystemTime::now()
                         - Duration::from_secs(
-                            env::CONF.clear_password_attempts_job.attempts_lifetime_mins * 60 + 1,
+                            env::CONF.clear_authorization_attempts_job.attempts_lifetime_mins * 60 + 1,
                         )),
                 )
                 .execute(&mut db_connection)
                 .unwrap();
         }
 
-        let mut job = ClearPasswordAttemptsJob::new(
+        let mut job = ClearAuthorizationAttemptsJob::new(
             Duration::from_millis(1),
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
@@ -205,10 +205,10 @@ mod tests {
         job.run_handler_func().await.unwrap();
 
         for user_id in user_ids {
-            let user_password_attempts = password_attempts
-                .filter(password_attempts_fields::user_id.eq(user_id))
-                .first::<PasswordAttempts>(&mut db_connection);
-            assert!(user_password_attempts.is_err());
+            let user_authorization_attempts = authorization_attempts
+                .filter(authorization_attempts_fields::user_id.eq(user_id))
+                .first::<AuthorizationAttempts>(&mut db_connection);
+            assert!(user_authorization_attempts.is_err());
         }
     }
 }

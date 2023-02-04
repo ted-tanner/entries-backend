@@ -1,4 +1,4 @@
-use budgetapp_utils::password_hasher::HashParams;
+use budgetapp_utils::argon2_hasher::HashParams;
 
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -51,9 +51,8 @@ pub struct Lifetimes {
 pub struct Security {
     pub otp_max_attempts: i16,
     pub otp_attempts_reset_mins: u64,
-    pub password_max_attempts: i16,
-    pub password_attempts_reset_mins: u64,
-    pub password_min_len_chars: usize,
+    pub authorization_max_attempts: i16,
+    pub authorization_attempts_reset_mins: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -69,7 +68,7 @@ pub struct Workers {
 lazy_static! {
     pub static ref APP_NAME: &'static str = "Budget App";
     pub static ref CONF: Conf = build_conf();
-    pub static ref PASSWORD_HASHING_PARAMS: HashParams = HashParams {
+    pub static ref AUTH_STRING_HASHING_PARAMS: HashParams = HashParams {
         salt_len: CONF.hashing.salt_length_bytes,
         hash_len: CONF.hashing.hash_length,
         hash_iterations: CONF.hashing.hash_iterations,

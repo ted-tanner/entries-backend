@@ -424,7 +424,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
-* Currency should be specified on each budget
+* Currency should be specified on each budget, default currency in user_preferences
 * The client needs to be prepared for a category to be deleted. Entries will still have a reference to the deleted categories, so check for the category tombstone and handle the case where the category doesn't exist.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
 * Premium user status is only verified client-side
@@ -472,6 +472,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * To synchronize data, the server should send a list of existing IDs of a type (e.g. the IDs of all budgets a user belongs to) along with the `modified_timestamp`. The client can request data as needed. Tombstones should exist so user can check if data has been deleted.
 * Things that aren't encrypted:
   - User's email address
+  - Which version of the app 
   - A list of users one shares budgets with
   - A user's list of buddies
   - A count of how many budgets a user has
@@ -484,72 +485,36 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Job for deleting users that have not been verified after a week
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
-* Input structs should be moved inot DB utils instead of taking a reference
-* Associate tombstones with users and give them a deletion date. Users should be able to request all tombstones after a given date.
+* Input structs should be moved into DB utils instead of taking a reference
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
+* Endpoint for checking if user is listed for deletion
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
-* Key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Return error codes from the API with the message (i.e. a number indicating what the failure was). ServerError should take a code
-* Get user security data in various endpoints
-* End-to-end encryption
 * Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
-* Use `TransactionBuilder` for multi-query functions. Consolidate database operations in handlers to make use of transactions.
 * Rename `password_hasher` to `argon2_hasher`
 * Rename password_attempts (job, data model, etc.) to authorization_attempts
-* Rename `request_io` to `partial_models`
 * For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
-* Store currency with budget, default currency in user_preferences
-* Delete buddy request once accepted or declined
-* Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized
-* Create a single `web::block` per handler (where possible). DB calls may be synchronous inside the block.
-* Create multi-column indices for tables that are always looked up by more than a single column (e.g. a budget is searched by `user_id` and `budget_id` together, and `tombstone` table uses `user_id` and `item_id`). This can be done by simply making a multicolumn primary key (see https://docs.diesel.rs/master/diesel/associations/derive.Identifiable.html for Diesel implementation). Be sure to replace `.filter()`s with `.find()`s.
-* Get rid of `is_deleted`. Delete everything immediately, but put the ID in a `tombstones` table.
-  - Tombstones need to be associated with a user_id for security and for deletion purposes.
-  - The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted with an HTTP "410 Gone" (do this for the `user_tombstone` too). Make sure this only works with the proper authorization and user_id from a token.
-  - `item_id` in `tombstone` table is the primary key and the ID of the deleted item
-  - Tombstones should be cleared after 366 days
-* Password reset flow
-* Send the server's time in the heartbeat?
-* Endpoint for checking if user is listed for deletion
+* Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized (or just try making it mut)
+* The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted with an HTTP "410 Gone" (do this for the `user_tombstone` too). Make sure this only works with the proper authorization and user_id from a token.
+* Tombstones should be cleared after 366 days
+* Send the server's time in the heartbeat
 * Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * White paper, security audit
-
-*By 9/16*
-
-* Endpoints for editing, adding, and deleting categories for a budget. Perhaps this should be done with a single endpiont that edits the categories for a given budget and accepts a list of all the categories and does the necessary replacements (the edit/add/delete can be separate functions in DB utils, but they should be able to handle multiple at a time to avoid the N+1 queries problem)?
-  
-*By 9/30*
-
-* Edit handler for entries
-* Create delete handlers (and db::utils) for entry
-
-*By 10/14*
-
-* Create edit handlers (and db::utils) for user and entry
-
-*By 10/28* 
- 
 * Get email delivery set up
-  * OTP for sign in
-  * OTP for change password
-  * Forgot Password
-  * OTP for forgot password
-  * User creation verification
-  * User deletion verification
-* Forgot password endpoint
-* Email confirmation for user creation
- 
-*By 12/9*
-
-* Email notifications for the following:
-  - User deletion initiated
+  - OTP for sign in
+  - OTP for change password
+  - Forgot Password
+  - OTP for forgot password
+  - User creation verification
+  - User deletion verification
   - Budget shared? Users need a way to turn off this notification
+* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
+* RSA key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 
 ### Do it later
 
-* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Duplicate a budget, including entries (perhaps make including entries optional)
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
@@ -580,4 +545,4 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Note on timezones
 
-* Budget and entry dates are fixed. The timezone the user in is not relevant; the budgets will always end according to the date for the user.
+* Budget and entry dates are fixed. The timezone the user in is not relevant; the budgets will always end according to the date for the user. The client will likely use timezone data in the encrypted data it sends to the server

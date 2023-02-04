@@ -5,7 +5,7 @@ use budgetapp_utils::request_io::{
     InputUserId, OutputEmail, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
-use budgetapp_utils::{auth_token, db, password_hasher};
+use budgetapp_utils::{auth_token, db, argon2_hasher};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime};
@@ -93,9 +93,9 @@ pub async fn create(
     let email = user_data.email.clone();
 
     let user_id = match web::block(move || {
-        let auth_string_hash = password_hasher::hash_password(
+        let auth_string_hash = argon2_hasher::hash_auth_string(
             &user_data.auth_string,
-            &env::PASSWORD_HASHING_PARAMS,
+            &env::AUTH_STRING_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
         );
 
@@ -315,18 +315,18 @@ pub async fn change_password(
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
             &auth_user_claims.0.eml,
-            Duration::from_secs(env::CONF.security.password_attempts_reset_mins * 60),
+            Duration::from_secs(env::CONF.security.authorization_attempts_reset_mins * 60),
         ) {
             Ok(a) => a,
             Err(e) => {
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to check password attempt count",
+                    "Failed to check authorization attempt count",
                 ))));
             }
         };
 
-        if hash_and_attempts.attempt_count > env::CONF.security.password_max_attempts
+        if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
             && hash_and_attempts.expiration_time >= SystemTime::now()
         {
             return Err(ServerError::AccessForbidden(Some(String::from(
@@ -334,7 +334,7 @@ pub async fn change_password(
             ))));
         }
 
-        Ok(password_hasher::verify_hash(
+        Ok(argon2_hasher::verify_hash(
             &current_auth_string,
             &hash_and_attempts.auth_string_hash,
             env::CONF.keys.hashing_key.as_bytes(),
@@ -344,14 +344,14 @@ pub async fn change_password(
 
     if !does_current_auth_match {
         return Err(ServerError::UserUnauthorized(Some(String::from(
-            "Current password was incorrect",
+            "Current auth string was incorrect",
         ))));
     }
 
     web::block(move || {
-        let _auth_string_hash = password_hasher::hash_password(
+        let _auth_string_hash = argon2_hasher::hash_auth_string(
             &new_password_data.new_auth_string,
-            &env::PASSWORD_HASHING_PARAMS,
+            &env::AUTH_STRING_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
         );
 

@@ -13,7 +13,7 @@ max_blocking_threads = 32
 job_frequency_secs = 120 
 attempts_lifetime_mins = 15
 
-[clear_password_attempts_job]
+[clear_authorization_attempts_job]
 job_frequency_secs = 120
 attempts_lifetime_mins = 15
 

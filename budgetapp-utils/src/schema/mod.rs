@@ -1,4 +1,12 @@
 table! {
+    authorization_attempts (user_id) {
+        user_id -> Uuid,
+        attempt_count -> Int2,
+        expiration_time -> Timestamp,
+    }
+}
+
+table! {
     blacklisted_tokens (token) {
         token -> Varchar,
         user_id -> Uuid,
@@ -62,14 +70,6 @@ table! {
 
 table! {
     otp_attempts (user_id) {
-        user_id -> Uuid,
-        attempt_count -> Int2,
-        expiration_time -> Timestamp,
-    }
-}
-
-table! {
-    password_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
         expiration_time -> Timestamp,
@@ -148,6 +148,7 @@ table! {
 }
 
 allow_tables_to_appear_in_same_query!(
+    authorization_attempts,
     blacklisted_tokens,
     buddy_relationships,
     buddy_requests,
@@ -156,7 +157,6 @@ allow_tables_to_appear_in_same_query!(
     categories,
     entries,
     otp_attempts,
-    password_attempts,
     tombstones,
     user_budgets,
     user_deletion_requests,
