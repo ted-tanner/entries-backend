@@ -265,6 +265,24 @@ impl Dao {
         Ok(())
     }
 
+    pub fn update_budget_key(
+        &mut self,
+        budget_id: Uuid,
+        encrypted_key: &str,
+        is_encrypted_with_aes: bool,
+        user_id: Uuid,
+    ) -> Result<(), DaoError> {
+        dsl::update(user_budgets.find((user_id, budget_id)))
+            .set((
+                user_budget_fields::encryption_key_encrypted.eq(encrypted_key),
+                user_budget_fields::encryption_key_is_encrypted_with_aes_not_rsa
+                    .eq(is_encrypted_with_aes),
+            ))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
     pub fn invite_user(
         &mut self,
         budget_id: Uuid,
@@ -280,8 +298,7 @@ impl Dao {
             .build_transaction()
             .run::<_, DaoError, _>(|conn| {
                 let is_sender_in_budget = user_budgets
-                    .filter(user_budget_fields::user_id.eq(sender_user_id))
-                    .filter(user_budget_fields::budget_id.eq(budget_id))
+                    .find((sender_user_id, budget_id))
                     .count()
                     .execute(conn)?
                     != 0;

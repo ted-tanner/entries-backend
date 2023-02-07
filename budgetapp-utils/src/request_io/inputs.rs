@@ -201,3 +201,10 @@ pub struct InputTime {
 pub struct InputToken {
     pub token: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEncryptedBudgetKey {
+    pub budget_id: Uuid,
+    pub encrypted_key: String,
+    pub is_encrypted_with_aes: bool,
+}

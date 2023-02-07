@@ -439,21 +439,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - THIS DELTA SHOULD BE USED FOR CHECKING TOKEN EXPIRATIONS AS WELL.
 * If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
 
-### Tests
-
-* Tombstone DAO in its entirety
-* All methods for `budgetapp_job_scheduler::jobs::delete_users::DeleteUsersJob`
-* `budgetapp_utils::db::user::initiate_user_deletion`
-* `budgetapp_utils::db::user::cancel_user_deletion`
-* `budgetapp_utils::db::user::delete_user`
-* `budgetapp_utils::db::user::get_all_users_ready_for_deletion`
-* `budgetapp_utils::db::user::get_user_tombstone`
-* Test creating an entry and associating it with a budget
-* `budgetapp_utils::db::user::set_last_token_refresh_now`
-* Test set_last_token_refresh_now works in `budgetapp_server::handlers::auth::verify_otp_for_signin` and `budgetapp_server::handlers::auth::refresh_tokens`
-* Test all token error cases in `budgetapp_server::handlers::auth`. Test sending blacklisted token, expired token, etc. and make sure the proper HTTP status is returned and user does not get authenticated
-* Test the `server_time` returned by all handlers in `budgetapp_server::handlers::auth` that return a token pair.
-
 ### End-to-end Encryption Scheme
 * When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
 * Recovery key is a 32-character alphanumeric string. It gets hashed with PBKDF2 using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
@@ -485,7 +470,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
   - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect as to
-* Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Endpoint for checking if user is listed for deletion
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
@@ -509,6 +493,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Budget shared? Users need a way to turn off this notification
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
 * RSA key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
+* Unit tests!
 
 ### Do it later
 

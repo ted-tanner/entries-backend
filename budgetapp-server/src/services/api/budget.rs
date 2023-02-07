@@ -13,6 +13,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/get_all", web::get().to(handlers::budget::get_all))
             .route("/create", web::post().to(handlers::budget::create))
             .route("/edit", web::put().to(handlers::budget::edit))
+            .route("/replace_key", web::put().to(handlers::budget::replace_key))
             .route(
                 "/invite_user",
                 web::post().to(handlers::budget::invite_user),

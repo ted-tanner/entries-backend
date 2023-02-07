@@ -1,8 +1,8 @@
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputEditBudget,
-    InputEditCategory, InputEditEntry, InputEntry, InputEntryAndCategory, InputEntryId,
-    InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
-    OutputEntryId, UserInvitationToBudget,
+    InputEditCategory, InputEditEntry, InputEncryptedBudgetKey, InputEntry, InputEntryAndCategory,
+    InputEntryId, InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey,
+    OutputCategoryId, OutputEntryId, UserInvitationToBudget,
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
@@ -140,6 +140,34 @@ pub async fn edit(
             log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to edit budget",
+            ))));
+        }
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn replace_key(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: AuthorizedUserClaims,
+    key: web::Json<InputEncryptedBudgetKey>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.update_budget_key(
+            key.budget_id,
+            &key.encrypted_key,
+            key.is_encrypted_with_aes,
+            auth_user_claims.0.uid,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to update key",
             ))));
         }
     };
