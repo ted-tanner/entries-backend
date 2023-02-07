@@ -482,7 +482,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Job for deleting users that have not been verified after a week
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
   - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect as to 
