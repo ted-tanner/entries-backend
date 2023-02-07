@@ -408,16 +408,25 @@ impl Dao {
                     .values(&new_tombstone)
                     .execute(conn)?;
 
-                diesel::delete(budgets)
-                    .filter(
-                        user_budgets
-                            .filter(user_budget_fields::user_id.eq(request.user_id))
-                            .filter(budget_fields::id.eq(user_budget_fields::budget_id))
-                            .count()
-                            .single_value()
-                            .eq(1),
-                    )
-                    .execute(conn)?;
+                diesel::delete(
+                    budgets
+                        .filter(
+                            budget_fields::id.eq_any(
+                                user_budgets
+                                    .select(user_budget_fields::budget_id)
+                                    .filter(user_budget_fields::user_id.eq(request.user_id)),
+                            ),
+                        )
+                        .filter(
+                            user_budgets
+                                .filter(user_budget_fields::budget_id.eq(budget_fields::id))
+                                .filter(user_budget_fields::user_id.ne(request.user_id))
+                                .count()
+                                .single_value()
+                                .eq(0),
+                        ),
+                )
+                .execute(conn)?;
 
                 diesel::delete(users.find(request.user_id)).execute(conn)?;
 
