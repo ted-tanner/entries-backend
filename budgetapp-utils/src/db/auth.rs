@@ -71,7 +71,7 @@ impl Dao {
 
                 let auth_string_hash = auth_string_hash.unwrap_or(String::new());
 
-                if auth_string_hash.len() == 0 {
+                if auth_string_hash.is_empty() {
                     return Err(diesel::result::Error::NotFound);
                 }
 

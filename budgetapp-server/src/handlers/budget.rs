@@ -109,14 +109,12 @@ pub async fn create(
     .await?
     {
         Ok(b) => b,
-        Err(e) => match e {
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to create budget",
-                ))));
-            }
-        },
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to create budget",
+            ))));
+        }
     };
 
     Ok(HttpResponse::Created().json(new_budget))

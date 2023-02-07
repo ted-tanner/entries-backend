@@ -62,15 +62,14 @@ fn build_conf() -> Conf {
     const CONF_FILE_PATH: &str = "conf/jobs-conf.toml";
 
     let mut conf_file = File::open(CONF_FILE_PATH).unwrap_or_else(|_| {
-        eprintln!("ERROR: Expected configuration file at '{}'", CONF_FILE_PATH);
+        eprintln!("ERROR: Expected configuration file at '{CONF_FILE_PATH}'");
         std::process::exit(1);
     });
 
     let mut contents = String::new();
     conf_file.read_to_string(&mut contents).unwrap_or_else(|_| {
         eprintln!(
-            "ERROR: Configuration file at '{}' should be a text file in the TOML format.",
-            CONF_FILE_PATH
+            "ERROR: Configuration file at '{CONF_FILE_PATH}' should be a text file in the TOML format."
         );
         std::process::exit(1);
     });
@@ -78,7 +77,7 @@ fn build_conf() -> Conf {
     match toml::from_str::<Conf>(&contents) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("ERROR: Parsing '{}' failed: {}", CONF_FILE_PATH, e);
+            eprintln!("ERROR: Parsing '{CONF_FILE_PATH}' failed: {e}");
             std::process::exit(1);
         }
     }

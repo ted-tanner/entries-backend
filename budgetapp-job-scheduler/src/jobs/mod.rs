@@ -29,13 +29,13 @@ impl fmt::Display for JobError {
         match self {
             JobError::DaoFailure(e) => {
                 if let Some(inner_err) = e {
-                    write!(f, "JobError: {}", inner_err)
+                    write!(f, "JobError: {inner_err}")
                 } else {
                     write!(f, "JobError: DaoFailure")
                 }
             }
             JobError::ConcurrencyError(e) => {
-                write!(f, "JobError: ConcurrencyError: {}", e)
+                write!(f, "JobError: ConcurrencyError: {e}")
             }
             JobError::NotReady => {
                 write!(f, "JobError: Attempted execution before job was ready")

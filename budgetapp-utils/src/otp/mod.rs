@@ -22,8 +22,7 @@ impl fmt::Display for OtpError {
             }
             OtpError::Error(msg) => write!(
                 f,
-                "OtpError: An error occured while generating one-time passcode: {}",
-                msg
+                "OtpError: An error occured while generating one-time passcode: {msg}"
             ),
         }
     }
@@ -76,7 +75,7 @@ pub fn generate_otp(
     secret_key: &[u8],
 ) -> Result<OneTimePasscode, OtpError> {
     let time_segment = unix_timestamp / lifetime.as_secs();
-    let contents = format!("{}:{}", user_id, time_segment);
+    let contents = format!("{user_id}:{time_segment}");
 
     // The following uses the algorithm recommended by RFC4226
     // See https://datatracker.ietf.org/doc/html/rfc4226#section-5.3

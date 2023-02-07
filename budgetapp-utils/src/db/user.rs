@@ -74,7 +74,7 @@ impl Dao {
         let new_user_security_data = NewUserSecurityData {
             user_id,
 
-            auth_string_hash: &auth_string_hash,
+            auth_string_hash,
             auth_string_salt: &user_data.auth_string_salt,
             auth_string_iters: user_data.auth_string_iters,
 

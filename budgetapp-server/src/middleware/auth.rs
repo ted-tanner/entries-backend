@@ -225,7 +225,7 @@ mod tests {
         let broken_token = &token[0..token.len() - 1];
 
         let req = test::TestRequest::get()
-            .insert_header(("authorization", format!("Bearer {}", broken_token)))
+            .insert_header(("authorization", format!("Bearer {broken_token}")))
             .to_http_request();
 
         let res = AuthorizedUserClaims::from_request(&req, &mut Payload::None).into_inner();

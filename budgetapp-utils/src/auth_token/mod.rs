@@ -25,8 +25,8 @@ impl std::error::Error for TokenError {}
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TokenError::DatabaseError(e) => write!(f, "DatabaseError: {}", e),
-            TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {}", e),
+            TokenError::DatabaseError(e) => write!(f, "DatabaseError: {e}"),
+            TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {e}"),
             _ => write!(f, "Unknown TokenError"),
         }
     }
@@ -51,7 +51,7 @@ impl std::error::Error for TokenTypeError {}
 impl fmt::Display for TokenTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TokenTypeError::NoMatchForValue(v) => write!(f, "NoMatchForValue: {}", v),
+            TokenTypeError::NoMatchForValue(v) => write!(f, "NoMatchForValue: {v}"),
         }
     }
 }

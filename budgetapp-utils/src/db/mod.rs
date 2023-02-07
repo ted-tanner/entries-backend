@@ -34,10 +34,10 @@ impl fmt::Display for DaoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DaoError::DbThreadPoolFailure(e) => {
-                write!(f, "DaoError: Failed to obtain DB connection: {}", e)
+                write!(f, "DaoError: Failed to obtain DB connection: {e}")
             }
             DaoError::QueryFailure(e) => {
-                write!(f, "DaoError: Query failed: {}", e)
+                write!(f, "DaoError: Query failed: {e}")
             }
             DaoError::WontRunQuery => {
                 write!(f, "DaoError: DAO will not run query")

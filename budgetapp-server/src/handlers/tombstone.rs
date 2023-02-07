@@ -19,14 +19,12 @@ pub async fn check_tombstone_exists(
     .await?
     {
         Ok(exists) => exists,
-        Err(e) => match e {
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to check existence of tombstone",
-                ))));
-            }
-        },
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to check existence of tombstone",
+            ))));
+        }
     };
 
     Ok(HttpResponse::Ok().json(OutputTombstoneDoesExist { does_exist }))

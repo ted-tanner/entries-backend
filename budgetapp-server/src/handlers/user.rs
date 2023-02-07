@@ -144,7 +144,7 @@ pub async fn create(
     };
 
     // TODO: Don't print user creation token; email it!
-    println!("\n\nUser Creation Token: {}\n\n", user_creation_token);
+    println!("\n\nUser Creation Token: {user_creation_token}\n\n");
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,
@@ -163,10 +163,8 @@ pub async fn verify_creation(
         Ok(c) => c,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                      <html> \
                      <head> \
                      <title>The Budget App User Verification</title> \
@@ -175,13 +173,11 @@ pub async fn verify_creation(
                      <h1>Could not verify account. Is the URL correct?</h1> \
                      </body> \
                      </html>",
-                    )));
+                ));
             }
             auth_token::TokenError::TokenExpired => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                      <html> \
                      <head> \
                      <title>The Budget App User Verification</title> \
@@ -190,13 +186,13 @@ pub async fn verify_creation(
                      <h1>This link has expired. You will need to recreate your account.</h1> \
                      </body> \
                      </html>",
-                    )));
+                ));
             }
             e => {
                 log::error!("User verification endpoint: {}", e);
                 return Ok(HttpResponse::InternalServerError()
                     .content_type("text/html")
-                    .body(format!(
+                    .body(
                         "<!DOCTYPE html> \
                      <html> \
                      <head> \
@@ -207,7 +203,7 @@ pub async fn verify_creation(
                      <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
                      </body> \
                      </html>",
-                    )));
+                    ));
             }
         },
     };
@@ -223,10 +219,8 @@ pub async fn verify_creation(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                      <html> \
                      <head> \
                      <title>The Budget App User Verification</title> \
@@ -235,13 +229,13 @@ pub async fn verify_creation(
                      <h1>Could not find the correct account. Is the URL correct?</h1> \
                      </body> \
                      </html>",
-                    )));
+                ));
             }
             _ => {
                 log::error!("{}", e);
                 return Ok(HttpResponse::InternalServerError()
                     .content_type("text/html")
-                    .body(format!(
+                    .body(
                         "<!DOCTYPE html> \
                      <html> \
                      <head> \
@@ -252,7 +246,7 @@ pub async fn verify_creation(
                      <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
                      </body> \
                      </html>",
-                    )));
+                    ));
             }
         },
     };
@@ -441,14 +435,12 @@ pub async fn retract_buddy_request(
                 "No buddy request with provided ID was made by user",
             ))));
         }
-        Err(e) => match e {
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to delete request",
-                ))));
-            }
-        },
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to delete request",
+            ))));
+        }
     }
 
     Ok(HttpResponse::Ok().finish())
@@ -502,14 +494,12 @@ pub async fn decline_buddy_request(
                 "No buddy request exists with provided ID",
             ))));
         }
-        Err(e) => match e {
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to decline request",
-                ))));
-            }
-        },
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to decline request",
+            ))));
+        }
     }
 
     Ok(HttpResponse::Ok().finish())
@@ -679,7 +669,7 @@ pub async fn init_delete(
     };
 
     // TODO: Don't print user deletion token; email it!
-    println!("\n\nUser Deletion Token: {}\n\n", user_deletion_token);
+    println!("\n\nUser Deletion Token: {user_deletion_token}\n\n");
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,
@@ -698,10 +688,8 @@ pub async fn delete(
         Ok(c) => c,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                          <html> \
                          <head> \
                          <title>The Budget App Account Deletion</title> \
@@ -710,13 +698,11 @@ pub async fn delete(
                          <h1>Could not verify account deletion. Is the URL correct?</h1> \
                          </body> \
                          </html>",
-                    )));
+                ));
             }
             auth_token::TokenError::TokenExpired => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>The Budget App Account Deletion</title> \
@@ -725,14 +711,13 @@ pub async fn delete(
                                <h1>This link has expired.</h1> \
                                </body> \
                                </html>",
-                    )));
+                ));
             }
             e => {
                 log::error!("User deletion endpoint: {}", e);
                 return Ok(HttpResponse::InternalServerError()
                           .content_type("text/html")
-                          .body(format!(
-                              "<!DOCTYPE html> \
+                          .body("<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>The Budget App Account Deletion</title> \
@@ -741,8 +726,7 @@ pub async fn delete(
                                <h1>Could not verify account deletion due to an error.</h1> \
                                <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
                                </body> \
-                               </html>",
-                          )));
+                               </html>"));
             }
         },
     };
@@ -765,10 +749,8 @@ pub async fn delete(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>The Budget App Account Deletion</title> \
@@ -777,13 +759,11 @@ pub async fn delete(
                                <h1>Account is already scheduled to be deleted.</h1> \
                                </body> \
                                </html>",
-                    )));
+                ));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(format!(
-                        "<!DOCTYPE html> \
+                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                    "<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>The Budget App Account Deletion</title> \
@@ -792,14 +772,13 @@ pub async fn delete(
                                <h1>Could not find the correct account. Is the URL correct?</h1> \
                                </body> \
                                </html>",
-                    )));
+                ));
             }
             _ => {
                 log::error!("{}", e);
                 return Ok(HttpResponse::InternalServerError()
                           .content_type("text/html")
-                          .body(format!(
-                              "<!DOCTYPE html> \
+                          .body("<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>The Budget App Account Deletion</title> \
@@ -808,8 +787,7 @@ pub async fn delete(
                                <h1>Could not verify account deletion due to an error.</h1> \
                                <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
                                </body> \
-                               </html>",
-                          )));
+                               </html>"));
             }
         },
     };
