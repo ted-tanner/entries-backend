@@ -433,6 +433,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Warn a user that they cannot unshare a budget once it is shared
 * Mention that buddy requests adn budget share invites will be deleted after 30 days
 * Handle too many attempts for both sign in and change password
+* Tell users that read-only budget users cannot modify or add entries to budgets or invite other users
 
 #### IMPORTANT Data Syncronization Stuff
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
@@ -481,7 +482,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Tombstones should be cleared after 366 days
 * Send the server's time in the heartbeat
 * Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
-* White paper, security audit
 * Get email delivery set up
   - OTP for sign in
   - OTP for change password
@@ -493,13 +493,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
 * RSA key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 * Unit tests!
+* Update readme documentation
+  - Add a section for the job scheduler
+* White paper
 
 ### Do it later
 
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Duplicate a budget, including entries (perhaps make including entries optional)
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
-* Create a concept of budget ownership. Ownership can be transferred (and *must* be transferred before leaving a budget). Owners can delete a budget or boot people out of a budget.
 * Don't reach out to db as part of validating refresh token in the auth_token module. Instead, check blacklisted token explicitly from the handler
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made

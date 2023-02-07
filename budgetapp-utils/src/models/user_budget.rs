@@ -20,6 +20,8 @@ pub struct UserBudget {
     pub encryption_key_encrypted: String,
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
 
+    pub read_only: bool,
+
     pub modified_timestamp: SystemTime,
 }
 
@@ -31,6 +33,8 @@ pub struct NewUserBudget<'a> {
 
     pub encryption_key_encrypted: &'a str,
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
+
+    pub read_only: bool,
 
     pub modified_timestamp: SystemTime,
 }

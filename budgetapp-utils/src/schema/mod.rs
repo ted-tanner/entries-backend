@@ -39,6 +39,7 @@ table! {
         budget_name_encrypted -> Text,
         sender_name_encrypted -> Nullable<Text>,
         encryption_key_encrypted -> Text,
+        read_only -> Bool,
     }
 }
 
@@ -91,6 +92,7 @@ table! {
         budget_id -> Uuid,
         encryption_key_encrypted -> Text,
         encryption_key_is_encrypted_with_aes_not_rsa -> Bool,
+        read_only -> Bool,
         modified_timestamp -> Timestamp,
     }
 }

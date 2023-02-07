@@ -136,12 +136,19 @@ pub async fn edit(
     .await?
     {
         Ok(_) => (),
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to edit budget",
-            ))));
-        }
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID or user does not have edit privileges",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to edit budget",
+                ))));
+            }
+        },
     };
 
     Ok(HttpResponse::Ok().finish())
@@ -164,12 +171,19 @@ pub async fn replace_key(
     .await?
     {
         Ok(_) => (),
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to update key",
-            ))));
-        }
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID or user does not have edit privileges",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update key",
+                ))));
+            }
+        },
     };
 
     Ok(HttpResponse::Ok().finish())
@@ -182,9 +196,9 @@ pub async fn invite_user(
 ) -> Result<HttpResponse, ServerError> {
     let inviting_user_id = auth_user_claims.0.uid;
 
-    if invitation_info.invitee_user_id == inviting_user_id {
+    if invitation_info.recipient_user_id == inviting_user_id {
         return Err(ServerError::InputRejected(Some(String::from(
-            "Inviter and invitee have the same ID",
+            "Inviter and recipient have the same ID",
         ))));
     }
 
@@ -193,7 +207,8 @@ pub async fn invite_user(
         budget_dao.invite_user(
             invitation_info.budget_id,
             &invitation_info.budget_name_encrypted_b64,
-            invitation_info.invitee_user_id,
+            invitation_info.recipient_user_id,
+            invitation_info.read_only,
             inviting_user_id,
             invitation_info.sender_name_encrypted_b64.as_deref(),
             &invitation_info.budget_encryption_key_encrypted_b64,
@@ -205,7 +220,7 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "Sending user has no budget with provided ID",
+                    "Sending user has no budget with provided ID or does not have edit privileges",
                 ))));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
@@ -213,7 +228,7 @@ pub async fn invite_user(
                 _,
             )) => {
                 return Err(ServerError::InputRejected(Some(String::from(
-                    "Invitatino was already sent",
+                    "Invitation was already sent",
                 ))));
             }
             DaoError::WontRunQuery => {
@@ -455,7 +470,7 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID",
+                    "No budget with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -485,7 +500,7 @@ pub async fn create_entry_and_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID",
+                    "No budget with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -519,7 +534,7 @@ pub async fn edit_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No entry with provided ID",
+                    "No entry with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -549,7 +564,7 @@ pub async fn delete_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No entry with provided ID",
+                    "No entry with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -579,7 +594,7 @@ pub async fn create_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID",
+                    "No budget with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -613,7 +628,7 @@ pub async fn edit_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No category with provided ID",
+                    "No category with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {
@@ -643,7 +658,7 @@ pub async fn delete_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No category with provided ID",
+                    "No category with provided ID or user does not have edit privileges",
                 ))));
             }
             _ => {

@@ -142,7 +142,8 @@ pub struct UserInvitationToBudget {
     pub budget_id: Uuid,
     pub budget_name_encrypted_b64: String,
     pub budget_encryption_key_encrypted_b64: String,
-    pub invitee_user_id: Uuid,
+    pub recipient_user_id: Uuid,
+    pub read_only: bool,
     pub sender_name_encrypted_b64: Option<String>,
 }
 

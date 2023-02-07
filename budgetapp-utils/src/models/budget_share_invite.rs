@@ -17,6 +17,8 @@ pub struct BudgetShareInvite {
     pub budget_name_encrypted: String,
     pub sender_name_encrypted: Option<String>,
 
+    pub read_only: bool,
+
     // This should never get sent to the recipient user until the invite has been accepted
     pub encryption_key_encrypted: String,
 }
@@ -32,6 +34,8 @@ pub struct NewBudgetShareInvite<'a> {
 
     pub budget_name_encrypted: &'a str,
     pub sender_name_encrypted: Option<&'a str>,
+
+    pub read_only: bool,
 
     pub encryption_key_encrypted: &'a str,
 }

@@ -43,6 +43,8 @@ CREATE TABLE budget_share_invites (
     -- This should never get sent to the recipient user until the invite has been accepted
     encryption_key_encrypted TEXT NOT NULL,
 
+    read_only BOOLEAN NOT NULL,
+
     UNIQUE (recipient_user_id, sender_user_id, budget_id),
     CHECK (recipient_user_id != sender_user_id)
 );
@@ -107,6 +109,8 @@ CREATE TABLE user_budgets (
     -- after exchange
     encryption_key_encrypted TEXT NOT NULL,
     encryption_key_is_encrypted_with_aes_not_rsa BOOLEAN NOT NULL,
+
+    read_only BOOLEAN NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (user_id, budget_id)

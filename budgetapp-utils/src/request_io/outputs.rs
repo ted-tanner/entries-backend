@@ -51,6 +51,7 @@ pub struct OutputBudgetFrame {
 pub struct OutputBudgetIdAndEncryptionKey {
     pub budget_id: Uuid,
     pub encryption_key_encrypted: String,
+    pub read_only: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]

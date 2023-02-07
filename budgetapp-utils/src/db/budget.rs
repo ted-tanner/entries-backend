@@ -185,6 +185,7 @@ impl Dao {
             budget_id,
             encryption_key_encrypted: &budget_data.encryption_key_encrypted_b64,
             encryption_key_is_encrypted_with_aes_not_rsa: true,
+            read_only: false,
             modified_timestamp: current_time,
         };
 
@@ -253,6 +254,7 @@ impl Dao {
              encrypted_blob = $2 \
              FROM user_budgets AS ub \
              WHERE ub.user_id = $3 \
+             AND ub.read_only = FALSE \
              AND b.id = ub.budget_id \
              AND b.id = $4",
         )
@@ -272,13 +274,17 @@ impl Dao {
         is_encrypted_with_aes: bool,
         user_id: Uuid,
     ) -> Result<(), DaoError> {
-        dsl::update(user_budgets.find((user_id, budget_id)))
-            .set((
-                user_budget_fields::encryption_key_encrypted.eq(encrypted_key),
-                user_budget_fields::encryption_key_is_encrypted_with_aes_not_rsa
-                    .eq(is_encrypted_with_aes),
-            ))
-            .execute(&mut self.db_thread_pool.get()?)?;
+        dsl::update(
+            user_budgets
+                .find((user_id, budget_id))
+                .filter(user_budget_fields::read_only.eq(false)),
+        )
+        .set((
+            user_budget_fields::encryption_key_encrypted.eq(encrypted_key),
+            user_budget_fields::encryption_key_is_encrypted_with_aes_not_rsa
+                .eq(is_encrypted_with_aes),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -288,6 +294,7 @@ impl Dao {
         budget_id: Uuid,
         budget_name_encrypted: &str,
         recipient_user_id: Uuid,
+        read_only: bool,
         sender_user_id: Uuid,
         sender_name_encrypted: Option<&str>,
         encryption_key_encrypted: &str,
@@ -299,6 +306,7 @@ impl Dao {
             .run::<_, DaoError, _>(|conn| {
                 let is_sender_in_budget = user_budgets
                     .find((sender_user_id, budget_id))
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -321,6 +329,7 @@ impl Dao {
                 let budget_share_invite = NewBudgetShareInvite {
                     id: Uuid::new_v4(),
                     recipient_user_id,
+                    read_only,
                     sender_user_id,
                     budget_id,
                     budget_name_encrypted,
@@ -339,6 +348,7 @@ impl Dao {
                     .set((
                         budget_share_invite_fields::budget_name_encrypted.eq(budget_name_encrypted),
                         budget_share_invite_fields::sender_name_encrypted.eq(sender_name_encrypted),
+                        budget_share_invite_fields::read_only.eq(read_only),
                         budget_share_invite_fields::encryption_key_encrypted
                             .eq(encryption_key_encrypted),
                     ))
@@ -385,6 +395,7 @@ impl Dao {
                     .returning((
                         budget_share_invite_fields::budget_id,
                         budget_share_invite_fields::encryption_key_encrypted,
+                        budget_share_invite_fields::read_only,
                     ))
                     .get_result::<OutputBudgetIdAndEncryptionKey>(conn)?;
 
@@ -393,6 +404,7 @@ impl Dao {
                     budget_id: budget_id_and_key.budget_id,
                     encryption_key_encrypted: &budget_id_and_key.encryption_key_encrypted,
                     encryption_key_is_encrypted_with_aes_not_rsa: false,
+                    read_only: budget_id_and_key.read_only,
                     modified_timestamp: SystemTime::now(),
                 };
 
@@ -513,6 +525,7 @@ impl Dao {
                 let is_user_in_budget = user_budgets
                     .filter(user_budget_fields::user_id.eq(user_id))
                     .filter(user_budget_fields::budget_id.eq(entry_data.budget_id))
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -560,6 +573,7 @@ impl Dao {
                 let is_user_in_budget = user_budgets
                     .filter(user_budget_fields::user_id.eq(user_id))
                     .filter(user_budget_fields::budget_id.eq(entry_and_category_data.budget_id))
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -602,6 +616,7 @@ impl Dao {
                             .find(entry_id)
                             .single_value()),
                     )
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -637,6 +652,7 @@ impl Dao {
                             .find(entry_id)
                             .single_value()),
                     )
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -687,6 +703,7 @@ impl Dao {
                 let is_user_in_budget = user_budgets
                     .filter(user_budget_fields::user_id.eq(user_id))
                     .filter(user_budget_fields::budget_id.eq(category_data.budget_id))
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -724,6 +741,7 @@ impl Dao {
                             .find(category_id)
                             .single_value()),
                     )
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
@@ -759,6 +777,7 @@ impl Dao {
                             .find(category_id)
                             .single_value()),
                     )
+                    .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
                     != 0;
