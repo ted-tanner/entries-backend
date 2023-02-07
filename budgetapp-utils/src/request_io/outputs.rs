@@ -98,3 +98,8 @@ pub struct OutputVerificationEmailSent {
     pub email_sent: bool,
     pub email_token_lifetime_hours: u64,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+pub struct OutputIsUserListedForDeletion {
+    pub is_listed_for_deletion: bool,
+}

@@ -2,7 +2,7 @@ use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputBuddyRequest, InputBuddyRequestId, InputEditUserPrefs, InputEmail,
     InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputToken, InputUser,
-    InputUserId, OutputEmail, OutputVerificationEmailSent,
+    InputUserId, OutputEmail, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, auth_token, db};
@@ -807,6 +807,37 @@ pub async fn delete(
         claims.eml,
         days_until_deletion,
     )))
+}
+
+pub async fn is_listed_for_deletion(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: AuthorizedUserClaims,
+) -> Result<HttpResponse, ServerError> {
+    let is_listed_for_deletion = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.check_is_user_listed_for_deletion(auth_user_claims.0.uid)
+    })
+    .await?
+    {
+        Ok(l) => l,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to cancel user deletion",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(OutputIsUserListedForDeletion {
+        is_listed_for_deletion,
+    }))
 }
 
 pub async fn cancel_delete(

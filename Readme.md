@@ -470,7 +470,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
   - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect as to
-* Endpoint for checking if user is listed for deletion
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits

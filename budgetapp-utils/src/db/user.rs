@@ -441,6 +441,13 @@ impl Dao {
             .get_results(&mut self.db_thread_pool.get()?)?)
     }
 
+    pub fn check_is_user_listed_for_deletion(&mut self, user_id: Uuid) -> Result<bool, DaoError> {
+        Ok(
+            dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
+                .get_result(&mut self.db_thread_pool.get()?)?,
+        )
+    }
+
     pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
         Ok(user_tombstones
             .filter(user_tombstone_fields::user_id.eq(user_id))
