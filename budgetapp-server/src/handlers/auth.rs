@@ -3,7 +3,7 @@ use budgetapp_utils::request_io::{
     CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use budgetapp_utils::validators::Validity;
-use budgetapp_utils::{auth_token, db, otp, argon2_hasher, validators};
+use budgetapp_utils::{argon2_hasher, auth_token, db, otp, validators};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

@@ -168,7 +168,7 @@ impl Dao {
 
     pub fn create_budget(
         &mut self,
-        budget_data: &InputBudget,
+        budget_data: InputBudget,
         user_id: Uuid,
     ) -> Result<OutputBudgetFrame, DaoError> {
         let current_time = SystemTime::now();
@@ -475,7 +475,7 @@ impl Dao {
 
     pub fn create_entry(
         &mut self,
-        entry_data: &InputEntry,
+        entry_data: InputEntry,
         user_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -514,7 +514,7 @@ impl Dao {
 
     pub fn create_entry_and_category(
         &mut self,
-        entry_and_category_data: &InputEntryAndCategory,
+        entry_and_category_data: InputEntryAndCategory,
         user_id: Uuid,
     ) -> Result<OutputEntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
@@ -649,7 +649,7 @@ impl Dao {
 
     pub fn create_category(
         &mut self,
-        category_data: &InputCategory,
+        category_data: InputCategory,
         user_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();

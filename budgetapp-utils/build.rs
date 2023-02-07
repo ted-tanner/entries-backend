@@ -50,7 +50,7 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings for argon2 library");
 
-    let bindings_out_path = PathBuf::from(format!("{}/argon2_bindings.rs", out_dir));
+    let bindings_out_path = PathBuf::from(format!("{out_dir}/argon2_bindings.rs"));
 
     bindings
         .write_to_file(bindings_out_path)

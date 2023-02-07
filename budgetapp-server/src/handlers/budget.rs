@@ -104,7 +104,7 @@ pub async fn create(
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_budget(&budget_data, auth_user_claims.0.uid)
+        budget_dao.create_budget(budget_data.0, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -421,7 +421,7 @@ pub async fn create_entry(
 ) -> Result<HttpResponse, ServerError> {
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(&entry_data.0, auth_user_claims.0.uid)
+        budget_dao.create_entry(entry_data.0, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -451,7 +451,7 @@ pub async fn create_entry_and_category(
 ) -> Result<HttpResponse, ServerError> {
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry_and_category(&entry_and_category_data.0, auth_user_claims.0.uid)
+        budget_dao.create_entry_and_category(entry_and_category_data.0, auth_user_claims.0.uid)
     })
     .await?
     {
@@ -545,7 +545,7 @@ pub async fn create_category(
 ) -> Result<HttpResponse, ServerError> {
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(&category_data.0, auth_user_claims.0.uid)
+        budget_dao.create_category(category_data.0, auth_user_claims.0.uid)
     })
     .await?
     {

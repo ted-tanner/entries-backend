@@ -3,15 +3,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
+use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizationAttempts};
 use crate::models::blacklisted_token::{BlacklistedToken, NewBlacklistedToken};
 use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
-use crate::models::authorization_attempts::{NewAuthorizationAttempts, AuthorizationAttempts};
+use crate::schema::authorization_attempts as authorization_attempt_fields;
+use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::otp_attempts as otp_attempt_fields;
 use crate::schema::otp_attempts::dsl::otp_attempts;
-use crate::schema::authorization_attempts as authorization_attempt_fields;
-use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;

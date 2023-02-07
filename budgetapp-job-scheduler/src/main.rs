@@ -58,7 +58,10 @@ fn main() {
             job_runner.register(Box::new(ClearAuthorizationAttemptsJob::new(
                 Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
                 Duration::from_secs(
-                    env::CONF.clear_authorization_attempts_job.attempts_lifetime_mins * 60,
+                    env::CONF
+                        .clear_authorization_attempts_job
+                        .attempts_lifetime_mins
+                        * 60,
                 ),
                 env::db::DB_THREAD_POOL.clone(),
             )));
@@ -71,7 +74,14 @@ fn main() {
 
             job_runner.register(Box::new(ClearUnverifiedUsersJob::new(
                 Duration::from_secs(env::CONF.clear_unverified_users_job.job_frequency_secs),
-                Duration::from_secs(env::CONF.clear_unverified_users_job.max_unverified_user_age_days * 24 * 60 * 60),
+                Duration::from_secs(
+                    env::CONF
+                        .clear_unverified_users_job
+                        .max_unverified_user_age_days
+                        * 24
+                        * 60
+                        * 60,
+                ),
                 env::db::DB_THREAD_POOL.clone(),
             )));
 

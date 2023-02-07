@@ -65,8 +65,10 @@ impl Job for ClearAuthorizationAttemptsJob {
         let attempts_lifetime = self.attempts_lifetime;
         let mut dao = AuthDao::new(&self.db_thread_pool);
 
-        tokio::task::spawn_blocking(move || dao.clear_authorization_attempt_count(attempts_lifetime))
-            .await??;
+        tokio::task::spawn_blocking(move || {
+            dao.clear_authorization_attempt_count(attempts_lifetime)
+        })
+        .await??;
 
         Ok(())
     }
@@ -147,7 +149,7 @@ mod tests {
             };
 
             let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(&new_user, "Test")
+                .create_user(new_user.clone(), "Test")
                 .unwrap();
 
             user_ids.push(user_id);
@@ -186,15 +188,21 @@ mod tests {
         }
 
         for user_id in &user_ids {
-            dsl::update(authorization_attempts.filter(authorization_attempts_fields::user_id.eq(user_id)))
-                .set(
-                    authorization_attempts_fields::expiration_time.eq(SystemTime::now()
-                        - Duration::from_secs(
-                            env::CONF.clear_authorization_attempts_job.attempts_lifetime_mins * 60 + 1,
-                        )),
-                )
-                .execute(&mut db_connection)
-                .unwrap();
+            dsl::update(
+                authorization_attempts.filter(authorization_attempts_fields::user_id.eq(user_id)),
+            )
+            .set(
+                authorization_attempts_fields::expiration_time.eq(SystemTime::now()
+                    - Duration::from_secs(
+                        env::CONF
+                            .clear_authorization_attempts_job
+                            .attempts_lifetime_mins
+                            * 60
+                            + 1,
+                    )),
+            )
+            .execute(&mut db_connection)
+            .unwrap();
         }
 
         let mut job = ClearAuthorizationAttemptsJob::new(

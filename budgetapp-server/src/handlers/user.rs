@@ -5,7 +5,7 @@ use budgetapp_utils::request_io::{
     InputUserId, OutputEmail, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
-use budgetapp_utils::{auth_token, db, argon2_hasher};
+use budgetapp_utils::{argon2_hasher, auth_token, db};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime};
@@ -100,7 +100,7 @@ pub async fn create(
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data, &auth_string_hash)
+        user_dao.create_user(user_data.0, &auth_string_hash)
     })
     .await?
     {

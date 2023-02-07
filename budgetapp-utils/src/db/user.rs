@@ -58,7 +58,7 @@ impl Dao {
 
     pub fn create_user(
         &mut self,
-        user_data: &InputUser,
+        user_data: InputUser,
         auth_string_hash: &str,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -131,11 +131,13 @@ impl Dao {
         Ok(())
     }
 
-    pub fn clear_unverified_users(&mut self, max_unverified_user_age: Duration) -> Result<(), DaoError> {
-        diesel::delete(
-            users.filter(user_fields::is_verified.eq(false))
-                .filter(user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age)),
-        )
+    pub fn clear_unverified_users(
+        &mut self,
+        max_unverified_user_age: Duration,
+    ) -> Result<(), DaoError> {
+        diesel::delete(users.filter(user_fields::is_verified.eq(false)).filter(
+            user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age),
+        ))
         .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())

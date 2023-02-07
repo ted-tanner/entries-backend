@@ -1,3 +1,4 @@
+pub mod authorization_attempts;
 pub mod blacklisted_token;
 pub mod buddy_relationship;
 pub mod buddy_request;
@@ -6,7 +7,6 @@ pub mod budget_share_invite;
 pub mod category;
 pub mod entry;
 pub mod otp_attempts;
-pub mod authorization_attempts;
 pub mod tombstone;
 pub mod user;
 pub mod user_budget;
