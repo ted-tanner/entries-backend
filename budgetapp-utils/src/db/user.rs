@@ -131,6 +131,16 @@ impl Dao {
         Ok(())
     }
 
+    pub fn clear_unverified_users(&mut self, max_unverified_user_age: Duration) -> Result<(), DaoError> {
+        diesel::delete(
+            users.filter(user_fields::is_verified.eq(false))
+                .filter(user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age)),
+        )
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
     pub fn update_user_prefs(
         &mut self,
         user_id: Uuid,

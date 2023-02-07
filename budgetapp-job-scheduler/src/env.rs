@@ -6,8 +6,9 @@ use std::io::Read;
 pub struct Conf {
     pub connections: Connections,
     pub runner: RunnerConf,
-    pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
     pub clear_authorization_attempts_job: ClearAuthorizationAttemptsJobConf,
+    pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
+    pub clear_unverified_users_job: ClearUnverifiedUsersJobConf,
     pub delete_users_job: DeleteUsersJobConf,
     pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJobConf,
 }
@@ -26,15 +27,21 @@ pub struct RunnerConf {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct ClearAuthorizationAttemptsJobConf {
+    pub job_frequency_secs: u64,
+    pub attempts_lifetime_mins: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ClearOtpAttemptsJobConf {
     pub job_frequency_secs: u64,
     pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ClearAuthorizationAttemptsJobConf {
+pub struct ClearUnverifiedUsersJobConf {
     pub job_frequency_secs: u64,
-    pub attempts_lifetime_mins: u64,
+    pub max_unverified_user_age_days: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

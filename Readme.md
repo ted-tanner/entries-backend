@@ -455,7 +455,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Test the `server_time` returned by all handlers in `budgetapp_server::handlers::auth` that return a token pair.
 
 ### End-to-end Encryption Scheme
-* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
 * Recovery key is a 32-character alphanumeric string. It gets hashed with PBKDF2 using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
 * Authentication string for sign in is a separate PBKDF2 hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
 * Encrypt user preferences using a user's key
@@ -485,7 +485,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Job for deleting users that have not been verified after a week
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
+  - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect as to 
 * Input structs should be moved into DB utils instead of taking a reference
+* Throttle creation endpoint by IP
 * Endpoint for replacing RSA-encrypted encryption key with AES-encrypted one
 * Endpoint for checking if user is listed for deletion
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
@@ -493,8 +495,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Return error codes from the API with the message (i.e. a number indicating what the failure was). ServerError should take a code
 * Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
-* Rename `password_hasher` to `argon2_hasher`
-* Rename password_attempts (job, data model, etc.) to authorization_attempts
 * For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
 * Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized (or just try making it mut)
 * The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted with an HTTP "410 Gone" (do this for the `user_tombstone` too). Make sure this only works with the proper authorization and user_id from a token.
