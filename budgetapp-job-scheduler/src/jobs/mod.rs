@@ -2,13 +2,13 @@ mod clear_authorization_attempts;
 mod clear_otp_attempts;
 mod clear_unverified_users;
 mod delete_users;
-mod unblacklist_expired_refresh_tokens;
+mod unblacklist_expired_tokens;
 
 pub use clear_authorization_attempts::ClearAuthorizationAttemptsJob;
 pub use clear_otp_attempts::ClearOtpAttemptsJob;
 pub use clear_unverified_users::ClearUnverifiedUsersJob;
 pub use delete_users::DeleteUsersJob;
-pub use unblacklist_expired_refresh_tokens::UnblacklistExpiredRefreshTokensJob;
+pub use unblacklist_expired_tokens::UnblacklistExpiredTokensJob;
 
 use budgetapp_utils::db::DaoError;
 

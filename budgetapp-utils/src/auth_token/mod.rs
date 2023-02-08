@@ -6,15 +6,10 @@ use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use crate::db::auth::Dao as AuthDao;
-use crate::db::DaoError;
-
 #[derive(Debug)]
 pub enum TokenError {
-    DatabaseError(DaoError),
     InvalidTokenType(TokenTypeError),
     TokenInvalid,
-    TokenBlacklisted,
     TokenExpired,
     SystemResourceAccessFailure,
     WrongTokenType,
@@ -25,9 +20,11 @@ impl std::error::Error for TokenError {}
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TokenError::DatabaseError(e) => write!(f, "DatabaseError: {e}"),
             TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {e}"),
-            _ => write!(f, "Unknown TokenError"),
+            TokenError::TokenInvalid => write!(f, "TokenInvalid"),
+            TokenError::TokenExpired => write!(f, "TokenExpired"),
+            TokenError::SystemResourceAccessFailure => write!(f, "SystemResourceAccessFailure"),
+            TokenError::WrongTokenType => write!(f, "WrongTokenType"),
         }
     }
 }
@@ -89,14 +86,15 @@ pub struct TokenParams<'a> {
     pub user_email: &'a str,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub exp: u64,    // Expiration in time since UNIX epoch
     pub uid: Uuid,   // User ID
     pub eml: String, // User email address
     pub typ: u8,     // Token type (Access=0, Refresh=1, SignIn=2)
     pub slt: u32,    // Random salt (makes it so two tokens generated in the same
-                     //              second are different--useful for testing)
+                     // second are different--useful for preventing replay attacks
+                     // while allowing new tokens to be generated for the client)
 }
 
 impl TokenClaims {
@@ -170,12 +168,6 @@ impl TokenClaims {
 
         Ok((claims, claims_json_str, hash))
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InputBlacklistedRefreshToken {
-    pub token: String,
-    pub token_expiration_epoch: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -293,15 +285,7 @@ pub fn validate_access_token(token: &str, signing_key: &[u8]) -> Result<TokenCla
 }
 
 #[inline]
-pub fn validate_refresh_token(
-    token: &str,
-    signing_key: &[u8],
-    auth_dao: &mut AuthDao,
-) -> Result<TokenClaims, TokenError> {
-    if is_on_blacklist(token, auth_dao)? {
-        return Err(TokenError::TokenBlacklisted);
-    }
-
+pub fn validate_refresh_token(token: &str, signing_key: &[u8]) -> Result<TokenClaims, TokenError> {
     validate_token(token, TokenType::Refresh, signing_key)
 }
 
@@ -342,30 +326,6 @@ fn validate_token(
         Err(TokenError::WrongTokenType)
     } else {
         Ok(decoded_token)
-    }
-}
-
-pub fn blacklist_token(token: &str, dao: &mut AuthDao) -> Result<(), TokenError> {
-    let decoded_token = TokenClaims::from_token_without_validation(token)?;
-
-    let user_id = decoded_token.uid;
-    let expiration = UNIX_EPOCH
-        + Duration::from_secs(match i64::try_from(decoded_token.exp) {
-            Ok(exp) => exp,
-            Err(_) => return Err(TokenError::TokenInvalid),
-        } as u64);
-
-    match dao.create_blacklisted_token(token, user_id, expiration) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(TokenError::DatabaseError(e)),
-    }
-}
-
-#[inline]
-pub fn is_on_blacklist(token: &str, dao: &mut AuthDao) -> Result<bool, TokenError> {
-    match dao.check_is_token_on_blacklist(token) {
-        Ok(o) => Ok(o),
-        Err(e) => Err(TokenError::DatabaseError(e)),
     }
 }
 

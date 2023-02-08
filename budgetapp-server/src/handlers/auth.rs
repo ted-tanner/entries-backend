@@ -130,14 +130,13 @@ pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let token_claims = match web::block(move || {
-        auth_token::validate_signin_token(
-            &otp_and_token.0.signin_token,
-            env::CONF.keys.token_signing_key.as_bytes(),
-        )
-    })
-    .await?
-    {
+    let signin_token = otp_and_token.0.signin_token.clone();
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
+    let token_claims = match auth_token::validate_signin_token(
+        &signin_token,
+        env::CONF.keys.token_signing_key.as_bytes(),
+    ) {
         Ok(t) => t,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid => {
@@ -148,11 +147,6 @@ pub async fn verify_otp_for_signin(
             auth_token::TokenError::TokenExpired => {
                 return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Token has expired",
-                ))));
-            }
-            auth_token::TokenError::TokenBlacklisted => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has been blacklisted",
                 ))));
             }
             auth_token::TokenError::WrongTokenType => {
@@ -167,6 +161,30 @@ pub async fn verify_otp_for_signin(
                 ))));
             }
         },
+    };
+
+    let token_claims_clone = token_claims.clone();
+
+    match web::block(move || {
+        auth_dao.check_is_token_on_blacklist_and_blacklist(
+            otp_and_token.0.signin_token.as_str(),
+            token_claims_clone,
+        )
+    })
+    .await?
+    {
+        Ok(false) => (),
+        Ok(true) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                "Token has expired",
+            ))));
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::InternalError(Some(String::from(
+                "Error verifying token",
+            ))));
+        }
     };
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
@@ -299,27 +317,16 @@ pub async fn refresh_tokens(
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = token.0.token.clone();
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
-    let claims = match web::block(move || {
-        auth_token::validate_refresh_token(
-            token.0.token.as_str(),
-            env::CONF.keys.token_signing_key.as_bytes(),
-            &mut auth_dao,
-        )
-    })
-    .await?
-    {
+    let claims = match auth_token::validate_refresh_token(
+        &refresh_token,
+        env::CONF.keys.token_signing_key.as_bytes(),
+    ) {
         Ok(c) => c,
         Err(e) => match e {
             auth_token::TokenError::TokenInvalid => {
                 return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Token is invalid",
-                ))));
-            }
-            auth_token::TokenError::TokenBlacklisted => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has been blacklisted",
                 ))));
             }
             auth_token::TokenError::TokenExpired => {
@@ -341,20 +348,27 @@ pub async fn refresh_tokens(
         },
     };
 
+    let claims_clone = claims.clone();
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
-    // TODO: Make it so users don't have to wait for this
-    match web::block(move || auth_token::blacklist_token(refresh_token.as_str(), &mut auth_dao))
-        .await?
+    match web::block(move || {
+        auth_dao.check_is_token_on_blacklist_and_blacklist(token.0.token.as_str(), claims_clone)
+    })
+    .await?
     {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to blacklist token",
+        Ok(false) => (),
+        Ok(true) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                "Token has expired",
             ))));
         }
-    }
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::InternalError(Some(String::from(
+                "Error verifying token",
+            ))));
+        }
+    };
 
     let token_pair = auth_token::generate_token_pair(
         &auth_token::TokenParams {
@@ -402,13 +416,11 @@ pub async fn logout(
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token_clone = refresh_token.token.clone();
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let refresh_token_claims = match web::block(move || {
         auth_token::validate_refresh_token(
             &refresh_token_clone,
             env::CONF.keys.token_signing_key.as_bytes(),
-            &mut auth_dao,
         )
     })
     .await?
@@ -418,11 +430,6 @@ pub async fn logout(
             auth_token::TokenError::TokenInvalid => {
                 return Err(ServerError::UserUnauthorized(Some(String::from(
                     "Token is invalid",
-                ))))
-            }
-            auth_token::TokenError::TokenBlacklisted => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has been blacklisted",
                 ))))
             }
             auth_token::TokenError::TokenExpired => {
@@ -453,16 +460,18 @@ pub async fn logout(
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     match web::block(move || {
-        auth_token::blacklist_token(refresh_token.0.token.as_str(), &mut auth_dao)
+        auth_dao.blacklist_token(refresh_token.0.token.as_str(), refresh_token_claims)
     })
-    .await
+    .await?
     {
-        Ok(_) => Ok(HttpResponse::Ok().finish()),
+        Ok(_) => (),
         Err(e) => {
             log::error!("{}", e);
-            Err(ServerError::InternalError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to blacklist token",
-            ))))
+            ))));
         }
     }
+
+    Ok(HttpResponse::Ok().finish())
 }

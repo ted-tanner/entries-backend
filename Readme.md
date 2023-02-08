@@ -482,7 +482,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Tombstones should be cleared after 366 days
 * Send the server's time in the heartbeat
 * Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
-* Get email delivery set up
+* Get email delivery set up (MailJet?)
   - OTP for sign in
   - OTP for change password
   - Forgot Password
@@ -495,6 +495,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Unit tests!
 * Update readme documentation
   - Add a section for the job scheduler
+* Should email address in auth token be AES-GCM encrypted with a server secret and a nonce of the expiration time?
 * White paper
 
 ### Do it later

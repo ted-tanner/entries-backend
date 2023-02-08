@@ -10,7 +10,7 @@ pub struct Conf {
     pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
     pub clear_unverified_users_job: ClearUnverifiedUsersJobConf,
     pub delete_users_job: DeleteUsersJobConf,
-    pub unblacklist_expired_refresh_tokens_job: UnblacklistExpiredRefreshTokensJobConf,
+    pub unblacklist_expired_tokens_job: UnblacklistExpiredTokensJobConf,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -50,7 +50,7 @@ pub struct DeleteUsersJobConf {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct UnblacklistExpiredRefreshTokensJobConf {
+pub struct UnblacklistExpiredTokensJobConf {
     pub job_frequency_secs: u64,
 }
 

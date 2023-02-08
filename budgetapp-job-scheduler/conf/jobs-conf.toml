@@ -24,5 +24,5 @@ max_unverified_user_age_days = 7
 [delete_users_job]
 job_frequency_secs = 86400
 
-[unblacklist_expired_refresh_tokens_job]
+[unblacklist_expired_tokens_job]
 job_frequency_secs = 86400

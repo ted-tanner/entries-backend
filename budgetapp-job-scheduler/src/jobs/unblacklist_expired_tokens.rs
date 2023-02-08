@@ -6,14 +6,14 @@ use std::time::{Duration, SystemTime};
 
 use crate::jobs::{Job, JobError};
 
-pub struct UnblacklistExpiredRefreshTokensJob {
+pub struct UnblacklistExpiredTokensJob {
     pub job_frequency: Duration,
     db_thread_pool: DbThreadPool,
     is_running: bool,
     last_run_time: SystemTime,
 }
 
-impl UnblacklistExpiredRefreshTokensJob {
+impl UnblacklistExpiredTokensJob {
     pub fn new(job_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
         Self {
             job_frequency,
@@ -25,9 +25,9 @@ impl UnblacklistExpiredRefreshTokensJob {
 }
 
 #[async_trait]
-impl Job for UnblacklistExpiredRefreshTokensJob {
+impl Job for UnblacklistExpiredTokensJob {
     fn name(&self) -> &'static str {
-        "Unblacklist Expired Refresh Tokens"
+        "Unblacklist Expired Tokens"
     }
 
     fn run_frequency(&self) -> Duration {
@@ -57,7 +57,7 @@ impl Job for UnblacklistExpiredRefreshTokensJob {
     async fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&self.db_thread_pool);
 
-        tokio::task::spawn_blocking(move || dao.clear_all_expired_refresh_tokens()).await??;
+        tokio::task::spawn_blocking(move || dao.clear_all_expired_tokens()).await??;
 
         Ok(())
     }
@@ -76,6 +76,7 @@ mod tests {
     use diesel::{dsl, RunQueryDsl};
     use rand::Rng;
     use std::thread;
+    use uuid::Uuid;
 
     use crate::env;
 
@@ -84,7 +85,7 @@ mod tests {
         let before = SystemTime::now();
 
         thread::sleep(Duration::from_millis(1));
-        let mut job = UnblacklistExpiredRefreshTokensJob::new(
+        let mut job = UnblacklistExpiredTokensJob::new(
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
         );
@@ -148,6 +149,15 @@ mod tests {
             vec![32, 4, 23, 53].as_slice(),
         )
         .unwrap();
+
+        let pretend_claims = auth_token::TokenClaims {
+            exp: 64,
+            uid: Uuid::new_v4(),
+            eml: String::from("Test"),
+            typ: 2,
+            slt: 5,
+        };
+
         let unexpired_token = auth_token::generate_refresh_token(
             &token_params,
             Duration::from_secs(5),
@@ -177,15 +187,20 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let mut job = UnblacklistExpiredRefreshTokensJob::new(
+        let mut job = UnblacklistExpiredTokensJob::new(
             Duration::from_millis(1),
             env::db::DB_THREAD_POOL.clone(),
         );
         job.run_handler_func().await.unwrap();
 
-        assert!(
-            !auth_token::is_on_blacklist(&pretend_expired_token.to_string(), &mut dao).unwrap()
-        );
-        assert!(auth_token::is_on_blacklist(&unexpired_token.to_string(), &mut dao).unwrap());
+        assert!(!dao
+            .check_is_token_on_blacklist_and_blacklist(
+                &pretend_expired_token.to_string(),
+                pretend_claims.clone()
+            )
+            .unwrap());
+        assert!(dao
+            .check_is_token_on_blacklist_and_blacklist(&unexpired_token.to_string(), pretend_claims)
+            .unwrap());
     }
 }

@@ -12,7 +12,7 @@ mod runner;
 
 use jobs::{
     ClearAuthorizationAttemptsJob, ClearOtpAttemptsJob, ClearUnverifiedUsersJob, DeleteUsersJob,
-    UnblacklistExpiredRefreshTokensJob,
+    UnblacklistExpiredTokensJob,
 };
 
 fn main() {
@@ -90,12 +90,8 @@ fn main() {
                 env::db::DB_THREAD_POOL.clone(),
             )));
 
-            job_runner.register(Box::new(UnblacklistExpiredRefreshTokensJob::new(
-                Duration::from_secs(
-                    env::CONF
-                        .unblacklist_expired_refresh_tokens_job
-                        .job_frequency_secs,
-                ),
+            job_runner.register(Box::new(UnblacklistExpiredTokensJob::new(
+                Duration::from_secs(env::CONF.unblacklist_expired_tokens_job.job_frequency_secs),
                 env::db::DB_THREAD_POOL.clone(),
             )));
 
