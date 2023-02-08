@@ -78,7 +78,7 @@ mod tests {
 
         let token = auth_token::generate_access_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -123,7 +123,7 @@ mod tests {
 
         let _token = auth_token::generate_access_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -151,7 +151,7 @@ mod tests {
 
         let token = auth_token::generate_access_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -182,7 +182,7 @@ mod tests {
 
         let _token = auth_token::generate_access_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -212,7 +212,7 @@ mod tests {
 
         let token = auth_token::generate_access_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -247,7 +247,7 @@ mod tests {
 
         let token = auth_token::generate_refresh_token(
             &auth_token::TokenParams {
-                user_id: &new_user.id,
+                user_id: new_user.id,
                 user_email: new_user.email,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),

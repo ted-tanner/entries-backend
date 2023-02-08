@@ -70,7 +70,7 @@ pub async fn sign_in(
     if does_auth_string_match_hash {
         let signin_token = auth_token::generate_signin_token(
             &auth_token::TokenParams {
-                user_id: &hash_and_attempts.user_id,
+                user_id: hash_and_attempts.user_id,
                 user_email: &user_email_clone2,
             },
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -274,7 +274,7 @@ pub async fn verify_otp_for_signin(
 
     let token_pair = auth_token::generate_token_pair(
         &auth_token::TokenParams {
-            user_id: &token_claims.uid,
+            user_id: token_claims.uid,
             user_email: &token_claims.eml,
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -372,7 +372,7 @@ pub async fn refresh_tokens(
 
     let token_pair = auth_token::generate_token_pair(
         &auth_token::TokenParams {
-            user_id: &claims.uid,
+            user_id: claims.uid,
             user_email: &claims.eml,
         },
         Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),

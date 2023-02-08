@@ -126,7 +126,7 @@ pub async fn create(
     let token_lifetime_hours = env::CONF.lifetimes.user_creation_token_lifetime_days * 24;
     let user_creation_token = auth_token::generate_user_creation_token(
         &auth_token::TokenParams {
-            user_id: &user_id,
+            user_id: user_id,
             user_email: &email,
         },
         Duration::from_secs(token_lifetime_hours * 60 * 60),
@@ -651,7 +651,7 @@ pub async fn init_delete(
     let token_lifetime_hours = env::CONF.lifetimes.user_deletion_token_lifetime_days * 24;
     let user_deletion_token = auth_token::generate_user_deletion_token(
         &auth_token::TokenParams {
-            user_id: &auth_user_claims.0.uid,
+            user_id: auth_user_claims.0.uid,
             user_email: &auth_user_claims.0.eml,
         },
         Duration::from_secs(token_lifetime_hours * 60 * 60),

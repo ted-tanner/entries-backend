@@ -82,7 +82,7 @@ impl std::convert::From<TokenType> for u8 {
 
 #[derive(Debug, Clone)]
 pub struct TokenParams<'a> {
-    pub user_id: &'a Uuid,
+    pub user_id: Uuid,
     pub user_email: &'a str,
 }
 
@@ -265,7 +265,7 @@ fn generate_token(
 
     let claims = TokenClaims {
         exp: expiration,
-        uid: *params.user_id,
+        uid: params.user_id,
         eml: params.user_email.to_string(),
         typ: kind.into(),
         slt: salt,

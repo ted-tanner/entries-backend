@@ -139,7 +139,7 @@ mod tests {
             .unwrap();
 
         let token_params = auth_token::TokenParams {
-            user_id: &user_id,
+            user_id: user_id,
             user_email: &new_user.email,
         };
 
