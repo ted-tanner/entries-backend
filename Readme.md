@@ -468,9 +468,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Use a nonce token 
+* For signing in with a password, require a nonce to prevent replay attacks.
+* Create user nonce record when creating user (with a null nonce)
+* Endpoint that returns authentication salt AND a server nonce (save the server nonce)
 * Endpoints for getting and updating user_security_data
   - Auth string + password_encryption_salt and iters + encryption_key_user_password
-  - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect as to
+  - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect.
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
@@ -495,7 +499,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Unit tests!
 * Update readme documentation
   - Add a section for the job scheduler
-* Should email address in auth token be AES-GCM encrypted with a server secret and a nonce of the expiration time?
 * White paper
 
 ### Do it later

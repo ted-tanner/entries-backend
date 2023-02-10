@@ -124,11 +124,12 @@ pub async fn create(
     };
 
     let token_lifetime_hours = env::CONF.lifetimes.user_creation_token_lifetime_days * 24;
-    let user_creation_token = auth_token::generate_user_creation_token(
+    let user_creation_token = auth_token::generate_token(
         &auth_token::TokenParams {
             user_id: user_id,
             user_email: &email,
         },
+        auth_token::TokenType::UserCreation,
         Duration::from_secs(token_lifetime_hours * 60 * 60),
         env::CONF.keys.token_signing_key.as_bytes(),
     );
@@ -156,8 +157,9 @@ pub async fn verify_creation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_creation_token: web::Query<InputToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let claims = match auth_token::validate_user_creation_token(
+    let claims = match auth_token::validate_token(
         user_creation_token.token.as_str(),
+        auth_token::TokenType::UserCreation,
         env::CONF.keys.token_signing_key.as_bytes(),
     ) {
         Ok(c) => c,
@@ -649,11 +651,12 @@ pub async fn init_delete(
     auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
     let token_lifetime_hours = env::CONF.lifetimes.user_deletion_token_lifetime_days * 24;
-    let user_deletion_token = auth_token::generate_user_deletion_token(
+    let user_deletion_token = auth_token::generate_token(
         &auth_token::TokenParams {
             user_id: auth_user_claims.0.uid,
             user_email: &auth_user_claims.0.eml,
         },
+        auth_token::TokenType::UserDeletion,
         Duration::from_secs(token_lifetime_hours * 60 * 60),
         env::CONF.keys.token_signing_key.as_bytes(),
     );
@@ -681,8 +684,9 @@ pub async fn delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_deletion_token: web::Query<InputToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let claims = match auth_token::validate_user_deletion_token(
+    let claims = match auth_token::validate_token(
         user_deletion_token.token.as_str(),
+        auth_token::TokenType::UserDeletion,
         env::CONF.keys.token_signing_key.as_bytes(),
     ) {
         Ok(c) => c,

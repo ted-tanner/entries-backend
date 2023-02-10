@@ -12,6 +12,8 @@ use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::AuthorizedUserClaims;
 
+// TODO: Endpoint that returns authentication salt AND a server nonce (save the server nonce)
+
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
@@ -68,11 +70,12 @@ pub async fn sign_in(
     .await?;
 
     if does_auth_string_match_hash {
-        let signin_token = auth_token::generate_signin_token(
+        let signin_token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: hash_and_attempts.user_id,
                 user_email: &user_email_clone2,
             },
+            auth_token::TokenType::SignIn,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         );
@@ -132,9 +135,10 @@ pub async fn verify_otp_for_signin(
 ) -> Result<HttpResponse, ServerError> {
     let signin_token = otp_and_token.0.signin_token.clone();
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-
-    let token_claims = match auth_token::validate_signin_token(
+    
+    let token_claims = match auth_token::validate_token(
         &signin_token,
+        auth_token::TokenType::SignIn,
         env::CONF.keys.token_signing_key.as_bytes(),
     ) {
         Ok(t) => t,
@@ -318,8 +322,9 @@ pub async fn refresh_tokens(
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = token.0.token.clone();
 
-    let claims = match auth_token::validate_refresh_token(
+    let claims = match auth_token::validate_token(
         &refresh_token,
+        auth_token::TokenType::Refresh,
         env::CONF.keys.token_signing_key.as_bytes(),
     ) {
         Ok(c) => c,
@@ -418,8 +423,9 @@ pub async fn logout(
     let refresh_token_clone = refresh_token.token.clone();
 
     let refresh_token_claims = match web::block(move || {
-        auth_token::validate_refresh_token(
+        auth_token::validate_token(
             &refresh_token_clone,
+            auth_token::TokenType::Refresh,
             env::CONF.keys.token_signing_key.as_bytes(),
         )
     })

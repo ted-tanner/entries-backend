@@ -41,8 +41,9 @@ impl FromRequest for AuthorizedUserClaims {
             None => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
         };
 
-        let claims = match auth_token::validate_access_token(
+        let claims = match auth_token::validate_token(
             token,
+            auth_token::TokenType::Access,
             env::CONF.keys.token_signing_key.as_bytes(),
         ) {
             Ok(c) => c,
@@ -76,11 +77,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(
+        let token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Access,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )
@@ -121,11 +123,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _token = auth_token::generate_access_token(
+        let _token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Access,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )
@@ -149,11 +152,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(
+        let token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Access,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )
@@ -180,11 +184,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let _token = auth_token::generate_access_token(
+        let _token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Access,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )
@@ -210,11 +215,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_access_token(
+        let token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Access,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )
@@ -245,11 +251,12 @@ mod tests {
             created_timestamp: timestamp,
         };
 
-        let token = auth_token::generate_refresh_token(
+        let token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: new_user.id,
                 user_email: new_user.email,
             },
+            auth_token::TokenType::Refresh,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
             env::CONF.keys.token_signing_key.as_bytes(),
         )

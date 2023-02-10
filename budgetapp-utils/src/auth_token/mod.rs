@@ -36,6 +36,7 @@ pub enum TokenType {
     SignIn,
     UserCreation,
     UserDeletion,
+    Nonce,
 }
 
 #[derive(Debug)]
@@ -63,6 +64,7 @@ impl std::convert::TryFrom<u8> for TokenType {
             2 => Ok(TokenType::SignIn),
             3 => Ok(TokenType::UserCreation),
             4 => Ok(TokenType::UserDeletion),
+            5 => Ok(TokenType::Nonce),
             v => Err(TokenTypeError::NoMatchForValue(v)),
         }
     }
@@ -76,6 +78,7 @@ impl std::convert::From<TokenType> for u8 {
             TokenType::SignIn => 2,
             TokenType::UserCreation => 3,
             TokenType::UserDeletion => 4,
+            TokenType::Nonce => 5,
         }
     }
 }
@@ -189,59 +192,14 @@ pub struct TokenPair {
 }
 
 #[inline]
-pub fn generate_access_token(
-    params: &TokenParams,
-    lifetime: Duration,
-    signing_key: &[u8],
-) -> Result<Token, TokenError> {
-    generate_token(params, TokenType::Access, lifetime, signing_key)
-}
-
-#[inline]
-pub fn generate_refresh_token(
-    params: &TokenParams,
-    lifetime: Duration,
-    signing_key: &[u8],
-) -> Result<Token, TokenError> {
-    generate_token(params, TokenType::Refresh, lifetime, signing_key)
-}
-
-#[inline]
-pub fn generate_signin_token(
-    params: &TokenParams,
-    lifetime: Duration,
-    signing_key: &[u8],
-) -> Result<Token, TokenError> {
-    generate_token(params, TokenType::SignIn, lifetime, signing_key)
-}
-
-#[inline]
-pub fn generate_user_creation_token(
-    params: &TokenParams,
-    lifetime: Duration,
-    signing_key: &[u8],
-) -> Result<Token, TokenError> {
-    generate_token(params, TokenType::UserCreation, lifetime, signing_key)
-}
-
-#[inline]
-pub fn generate_user_deletion_token(
-    params: &TokenParams,
-    lifetime: Duration,
-    signing_key: &[u8],
-) -> Result<Token, TokenError> {
-    generate_token(params, TokenType::UserDeletion, lifetime, signing_key)
-}
-
-#[inline]
 pub fn generate_token_pair(
     params: &TokenParams,
     access_token_lifetime: Duration,
     refresh_token_lifetime: Duration,
     signing_key: &[u8],
 ) -> Result<TokenPair, TokenError> {
-    let access_token = generate_access_token(params, access_token_lifetime, signing_key)?;
-    let refresh_token = generate_refresh_token(params, refresh_token_lifetime, signing_key)?;
+    let access_token = generate_token(params, TokenType::Access, access_token_lifetime, signing_key)?;
+    let refresh_token = generate_token(params, TokenType::Refresh, refresh_token_lifetime, signing_key)?;
 
     Ok(TokenPair {
         access_token,
@@ -249,7 +207,7 @@ pub fn generate_token_pair(
     })
 }
 
-fn generate_token(
+pub fn generate_token(
     params: &TokenParams,
     kind: TokenType,
     lifetime: Duration,
@@ -279,38 +237,7 @@ fn generate_token(
     })
 }
 
-#[inline]
-pub fn validate_access_token(token: &str, signing_key: &[u8]) -> Result<TokenClaims, TokenError> {
-    validate_token(token, TokenType::Access, signing_key)
-}
-
-#[inline]
-pub fn validate_refresh_token(token: &str, signing_key: &[u8]) -> Result<TokenClaims, TokenError> {
-    validate_token(token, TokenType::Refresh, signing_key)
-}
-
-#[inline]
-pub fn validate_signin_token(token: &str, signing_key: &[u8]) -> Result<TokenClaims, TokenError> {
-    validate_token(token, TokenType::SignIn, signing_key)
-}
-
-#[inline]
-pub fn validate_user_creation_token(
-    token: &str,
-    signing_key: &[u8],
-) -> Result<TokenClaims, TokenError> {
-    validate_token(token, TokenType::UserCreation, signing_key)
-}
-
-#[inline]
-pub fn validate_user_deletion_token(
-    token: &str,
-    signing_key: &[u8],
-) -> Result<TokenClaims, TokenError> {
-    validate_token(token, TokenType::UserDeletion, signing_key)
-}
-
-fn validate_token(
+pub fn validate_token(
     token: &str,
     kind: TokenType,
     signing_key: &[u8],

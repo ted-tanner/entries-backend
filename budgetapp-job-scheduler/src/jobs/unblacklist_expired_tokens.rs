@@ -143,8 +143,9 @@ mod tests {
             user_email: &new_user.email,
         };
 
-        let pretend_expired_token = auth_token::generate_refresh_token(
+        let pretend_expired_token = auth_token::generate_token(
             &token_params,
+            auth_token::TokenType::Refresh,
             Duration::from_secs(5),
             vec![32, 4, 23, 53].as_slice(),
         )
@@ -158,8 +159,9 @@ mod tests {
             slt: 5,
         };
 
-        let unexpired_token = auth_token::generate_refresh_token(
+        let unexpired_token = auth_token::generate_token(
             &token_params,
+            auth_token::TokenType::Refresh,
             Duration::from_secs(5),
             vec![32, 4, 23, 53].as_slice(),
         )

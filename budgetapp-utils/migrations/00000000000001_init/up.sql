@@ -53,7 +53,7 @@ CREATE INDEX ON budget_share_invites USING HASH (recipient_user_id);
 CREATE INDEX ON budget_share_invites USING HASH (sender_user_id);
 
 CREATE TABLE categories (
-    id UUID NOT NULL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     budget_id UUID NOT NULL,
 
     encrypted_blob TEXT NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE categories (
 );
 
 CREATE TABLE entries (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     budget_id UUID NOT NULL,
 
     encrypted_blob TEXT NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE tombstones (
 CREATE INDEX ON tombstones USING HASH (related_user_id);
 
 CREATE TABLE users (
-    id UUID UNIQUE NOT NULL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     is_verified BOOLEAN NOT NULL,
     created_timestamp TIMESTAMP NOT NULL
