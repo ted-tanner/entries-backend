@@ -1,15 +1,11 @@
 use log::error;
-use ring::rand::{SecureRandom, SystemRandom};
+use rand::{CryptoRng, Fill, Rng};
 use std::ffi::CStr;
 
 use crate::argon2::{
     argon2_error_message, argon2id_ctx, Argon2_Context, Argon2_ErrorCodes_ARGON2_OK,
     Argon2_version_ARGON2_VERSION_13,
 };
-
-lazy_static! {
-    pub static ref SECURE_RANDOM_GENERATOR: SystemRandom = SystemRandom::new();
-}
 
 struct TokenizedHash {
     pub v: u32,
@@ -393,12 +389,16 @@ impl BinaryHash {
 }
 
 #[inline]
-pub fn hash_auth_string(auth_string: &str, hash_params: &HashParams, hashing_key: &[u8]) -> String {
+pub fn hash_auth_string<CSPRNG: Rng + CryptoRng>(
+    auth_string: &str,
+    hash_params: &HashParams,
+    hashing_key: &[u8],
+    crypto_rng: &mut CSPRNG,
+) -> String {
     let mut salt = vec![0u8; hash_params.salt_len];
 
-    SECURE_RANDOM_GENERATOR
-        .fill(&mut salt)
-        .expect("Failed to generate secure random numbers for hashing salt");
+    salt.try_fill(crypto_rng)
+        .expect("Failed to obtain random bytes");
 
     hash_argon2id(
         auth_string,
@@ -515,6 +515,8 @@ pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::test_env;
 
     #[test]
     fn test_binary_hash_into_hash_string() {
@@ -698,10 +700,13 @@ mod tests {
             hash_lanes: 2,
         };
 
+        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let hash = hash_auth_string(
             auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+            &mut (*csprng),
         );
 
         assert!(!hash.contains(auth_string));
@@ -719,10 +724,13 @@ mod tests {
             hash_lanes: 2,
         };
 
+        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let hash = hash_auth_string(
             auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+            &mut (*csprng),
         );
 
         assert!(verify_hash(
@@ -744,10 +752,13 @@ mod tests {
             hash_lanes: 2,
         };
 
+        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let hash = hash_auth_string(
             auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+            &mut (*csprng),
         );
 
         assert!(!verify_hash(
@@ -769,10 +780,13 @@ mod tests {
             hash_lanes: 2,
         };
 
+        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let hash = hash_auth_string(
             auth_string,
             &hash_params,
             vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
+            &mut (*csprng),
         );
 
         assert!(!verify_hash(

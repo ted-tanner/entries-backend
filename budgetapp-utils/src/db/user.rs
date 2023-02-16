@@ -1,10 +1,12 @@
 use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
+use rand::{CryptoRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::buddy_relationship::NewBuddyRelationship;
 use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
+use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_preferences::NewUserPreferences;
@@ -18,6 +20,7 @@ use crate::schema::buddy_requests as buddy_request_fields;
 use crate::schema::buddy_requests::dsl::buddy_requests;
 use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
+use crate::schema::signin_nonces::dsl::signin_nonces;
 use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
@@ -56,10 +59,11 @@ impl Dao {
             .get_result::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn create_user(
+    pub fn create_user<CSPRNG: Rng + CryptoRng>(
         &mut self,
         user_data: InputUser,
         auth_string_hash: &str,
+        crypto_rng: &mut CSPRNG,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let user_id = Uuid::new_v4();
@@ -102,6 +106,11 @@ impl Dao {
             modified_timestamp: current_time,
         };
 
+        let new_signin_nonce = NewSigninNonce {
+            user_email: &user_data.email.to_lowercase(),
+            nonce: crypto_rng.gen(),
+        };
+
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
@@ -115,6 +124,10 @@ impl Dao {
 
                 dsl::insert_into(user_preferences)
                     .values(&new_user_preferences)
+                    .execute(conn)?;
+
+                dsl::insert_into(signin_nonces)
+                    .values(&new_signin_nonce)
                     .execute(conn)?;
 
                 Ok(())
@@ -429,12 +442,6 @@ impl Dao {
                 .execute(conn)?;
 
                 diesel::delete(users.find(request.user_id)).execute(conn)?;
-
-                diesel::delete(
-                    user_deletion_requests
-                        .filter(user_deletion_request_fields::user_id.eq(request.user_id)),
-                )
-                .execute(conn)?;
 
                 Ok(())
             })?;

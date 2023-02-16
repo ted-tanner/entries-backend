@@ -7,6 +7,7 @@ pub mod budget_share_invite;
 pub mod category;
 pub mod entry;
 pub mod otp_attempts;
+pub mod signin_nonce;
 pub mod tombstone;
 pub mod user;
 pub mod user_budget;

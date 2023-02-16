@@ -13,6 +13,8 @@ futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"
 num_cpus = "1.14"
+rand = "0.8"
+rand_chacha = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.5"
@@ -21,4 +23,3 @@ uuid = { version = "1.2", features = ["serde", "v4"] }
 [dev-dependencies]
 actix-http = "3.2"
 actix-rt = "2.7"
-rand = "0.8"

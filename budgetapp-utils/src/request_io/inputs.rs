@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub struct CredentialPair {
     pub email: String,
     pub auth_string: String,
+    pub nonce: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

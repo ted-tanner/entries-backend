@@ -104,3 +104,10 @@ pub struct OutputVerificationEmailSent {
 pub struct OutputIsUserListedForDeletion {
     pub is_listed_for_deletion: bool,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+pub struct OutputSigninNonceData {
+    pub auth_string_salt: String,
+    pub auth_string_iters: i32,
+    pub nonce: i32,
+}

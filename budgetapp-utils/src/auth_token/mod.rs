@@ -36,7 +36,6 @@ pub enum TokenType {
     SignIn,
     UserCreation,
     UserDeletion,
-    Nonce,
 }
 
 #[derive(Debug)]
@@ -64,7 +63,6 @@ impl std::convert::TryFrom<u8> for TokenType {
             2 => Ok(TokenType::SignIn),
             3 => Ok(TokenType::UserCreation),
             4 => Ok(TokenType::UserDeletion),
-            5 => Ok(TokenType::Nonce),
             v => Err(TokenTypeError::NoMatchForValue(v)),
         }
     }
@@ -78,7 +76,6 @@ impl std::convert::From<TokenType> for u8 {
             TokenType::SignIn => 2,
             TokenType::UserCreation => 3,
             TokenType::UserDeletion => 4,
-            TokenType::Nonce => 5,
         }
     }
 }
@@ -198,8 +195,18 @@ pub fn generate_token_pair(
     refresh_token_lifetime: Duration,
     signing_key: &[u8],
 ) -> Result<TokenPair, TokenError> {
-    let access_token = generate_token(params, TokenType::Access, access_token_lifetime, signing_key)?;
-    let refresh_token = generate_token(params, TokenType::Refresh, refresh_token_lifetime, signing_key)?;
+    let access_token = generate_token(
+        params,
+        TokenType::Access,
+        access_token_lifetime,
+        signing_key,
+    )?;
+    let refresh_token = generate_token(
+        params,
+        TokenType::Refresh,
+        refresh_token_lifetime,
+        signing_key,
+    )?;
 
     Ok(TokenPair {
         access_token,

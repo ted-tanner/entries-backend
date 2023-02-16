@@ -1,5 +1,6 @@
-use ring::hmac;
+use hmac::{self, Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha1::Sha1;
 use std::fmt;
 use std::time::Duration;
 use uuid::Uuid;
@@ -84,14 +85,23 @@ pub fn generate_otp(
     // See https://datatracker.ietf.org/doc/html/rfc4226#section-7.3
 
     // I intentionally use HMAC_SHA1 here by RFC4226's recommendation.
-    let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, secret_key);
-    let hash = hmac::sign(&key, contents.as_bytes());
+    let mut mac = match Hmac::<Sha1>::new_from_slice(secret_key) {
+        Ok(m) => m,
+        Err(_) => {
+            return Err(OtpError::Error(String::from(
+                "Failed to initalize key for HMAC",
+            )))
+        }
+    };
+    mac.update(contents.as_bytes());
 
-    let offset = hash.as_ref()[19] as usize & 0xf;
-    let bin_code = (hash.as_ref()[offset] as u32 & 0x7f) << 24
-        | (hash.as_ref()[offset + 1] as u32 & 0xff) << 16
-        | (hash.as_ref()[offset + 2] as u32 & 0xff) << 8
-        | (hash.as_ref()[offset + 3] as u32 & 0xff);
+    let hash = mac.finalize().into_bytes();
+
+    let offset = hash[19] as usize & 0xf;
+    let bin_code = (hash[offset] as u32 & 0x7f) << 24
+        | (hash[offset + 1] as u32 & 0xff) << 16
+        | (hash[offset + 2] as u32 & 0xff) << 8
+        | (hash[offset + 3] as u32 & 0xff);
 
     let otp = bin_code % (10u32.pow(8));
 

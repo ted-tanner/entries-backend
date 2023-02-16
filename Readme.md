@@ -441,9 +441,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
 
 ### End-to-end Encryption Scheme
-* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a PBKDF2 hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
-* Recovery key is a 32-character alphanumeric string. It gets hashed with PBKDF2 using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
-* Authentication string for sign in is a separate PBKDF2 hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
+* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a SCrypt hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* Recovery key is a 32-character alphanumeric string. It gets hashed with SCrypt using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
+* Authentication string for sign in is a separate SCrypt hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
 * Encrypt user preferences using a user's key
 * All user data (budgets, entries, user preferences, etc.) should be stored as an ID, associated_id (optional, e.g. a budget_id for an entry), a modified_timestamp, and an encrypted blob
   - Tombstones should still exist
@@ -468,13 +468,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Use a nonce token 
+* User sign in (and obtaining nonce) should mask when a user is not found
 * For signing in with a password, require a nonce to prevent replay attacks.
 * Create user nonce record when creating user (with a null nonce)
 * Endpoint that returns authentication salt AND a server nonce (save the server nonce)
 * Endpoints for getting and updating user_security_data
-  - Auth string + password_encryption_salt and iters + encryption_key_user_password
-  - For unauthorized endpoints (such as requesting a salt for a given email address), return random data if the email address is incorrect.
+  - Password_encryption_salt and iters + encryption_key_user_password
+  - Recovery data 
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits

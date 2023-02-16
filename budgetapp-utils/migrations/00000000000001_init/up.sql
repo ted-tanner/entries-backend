@@ -1,3 +1,9 @@
+CREATE TABLE authorization_attempts (
+    user_id UUID PRIMARY KEY,
+    attempt_count SMALLINT NOT NULL,
+    expiration_time TIMESTAMP NOT NULL
+);
+
 CREATE TABLE blacklisted_tokens (
     token VARCHAR(800) PRIMARY KEY,
     user_id UUID NOT NULL,
@@ -76,10 +82,9 @@ CREATE TABLE otp_attempts (
     expiration_time TIMESTAMP NOT NULL
 );
 
-CREATE TABLE authorization_attempts (
-    user_id UUID PRIMARY KEY,
-    attempt_count SMALLINT NOT NULL,
-    expiration_time TIMESTAMP NOT NULL
+CREATE TABLE signin_nonces (
+    user_email VARCHAR(255) PRIMARY KEY,
+    nonce INT NOT NULL
 );
 
 CREATE TABLE tombstones (
@@ -176,5 +181,7 @@ ALTER TABLE authorization_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) 
 ALTER TABLE tombstones ADD CONSTRAINT user_key FOREIGN KEY(related_user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_budgets ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
+ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE signin_nonces ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

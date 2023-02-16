@@ -93,14 +93,17 @@ pub async fn create(
     let email = user_data.email.clone();
 
     let user_id = match web::block(move || {
+        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let auth_string_hash = argon2_hasher::hash_auth_string(
             &user_data.auth_string,
             &env::AUTH_STRING_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
+            &mut (*csprng),
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(user_data.0, &auth_string_hash)
+        user_dao.create_user(user_data.0, &auth_string_hash, &mut (*csprng))
     })
     .await?
     {
@@ -126,7 +129,7 @@ pub async fn create(
     let token_lifetime_hours = env::CONF.lifetimes.user_creation_token_lifetime_days * 24;
     let user_creation_token = auth_token::generate_token(
         &auth_token::TokenParams {
-            user_id: user_id,
+            user_id,
             user_email: &email,
         },
         auth_token::TokenType::UserCreation,
@@ -345,10 +348,13 @@ pub async fn change_password(
     }
 
     web::block(move || {
+        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
+
         let _auth_string_hash = argon2_hasher::hash_auth_string(
             &new_password_data.new_auth_string,
             &env::AUTH_STRING_HASHING_PARAMS,
             env::CONF.keys.hashing_key.as_bytes(),
+            &mut (*csprng),
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);

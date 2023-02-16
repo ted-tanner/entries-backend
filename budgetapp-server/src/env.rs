@@ -1,8 +1,11 @@
 use budgetapp_utils::argon2_hasher::HashParams;
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+use std::sync::Mutex;
 
 #[derive(Deserialize, Serialize)]
 pub struct Conf {
@@ -68,6 +71,7 @@ pub struct Workers {
 lazy_static! {
     pub static ref APP_NAME: &'static str = "Budget App";
     pub static ref CONF: Conf = build_conf();
+    pub static ref CSPRNG: Mutex<ChaCha20Rng> = Mutex::new(ChaCha20Rng::from_entropy());
     pub static ref AUTH_STRING_HASHING_PARAMS: HashParams = HashParams {
         salt_len: CONF.hashing.salt_length_bytes,
         hash_len: CONF.hashing.hash_length,

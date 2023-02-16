@@ -1,4 +1,5 @@
 use diesel::{dsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl};
+use rand::{CryptoRng, Rng};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -7,12 +8,15 @@ use crate::db::{DaoError, DbThreadPool};
 use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizationAttempts};
 use crate::models::blacklisted_token::NewBlacklistedToken;
 use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
+use crate::request_io::OutputSigninNonceData;
 use crate::schema::authorization_attempts as authorization_attempt_fields;
 use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::otp_attempts as otp_attempt_fields;
 use crate::schema::otp_attempts::dsl::otp_attempts;
+use crate::schema::signin_nonces as signin_nonce_fields;
+use crate::schema::signin_nonces::dsl::signin_nonces;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
@@ -111,8 +115,7 @@ impl Dao {
         token: &str,
         token_claims: TokenClaims,
     ) -> Result<(), DaoError> {
-        let expiration =
-            UNIX_EPOCH + Duration::from_secs(u64::try_from(token_claims.exp).unwrap_or(0));
+        let expiration = UNIX_EPOCH + Duration::from_secs(token_claims.exp);
 
         let blacklisted_token = NewBlacklistedToken {
             token,
@@ -140,8 +143,7 @@ impl Dao {
         if count > 0 {
             Ok(true)
         } else {
-            let expiration =
-                UNIX_EPOCH + Duration::from_secs(u64::try_from(token_claims.exp).unwrap_or(0));
+            let expiration = UNIX_EPOCH + Duration::from_secs(token_claims.exp);
 
             let blacklisted_token = NewBlacklistedToken {
                 token,
@@ -211,5 +213,56 @@ impl Dao {
             .do_update()
             .set(otp_attempt_fields::attempt_count.eq(otp_attempt_fields::attempt_count + 1))
             .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn get_and_refresh_signin_nonce<CSPRNG: Rng + CryptoRng>(
+        &mut self,
+        user_email: &str,
+        crypto_rng: &mut CSPRNG,
+    ) -> Result<i32, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let nonce = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let nonce = signin_nonces
+                    .select(signin_nonce_fields::nonce)
+                    .find(user_email)
+                    .get_result::<i32>(conn)?;
+
+                dsl::update(signin_nonces.find(user_email))
+                    .set(signin_nonce_fields::nonce.eq(crypto_rng.gen::<i32>()))
+                    .execute(conn)?;
+
+                Ok(nonce)
+            })?;
+
+        Ok(nonce)
+    }
+
+    pub fn get_auth_string_salt_and_signin_nonce(
+        &mut self,
+        user_email: &str,
+    ) -> Result<OutputSigninNonceData, DaoError> {
+        let (auth_string_salt, auth_string_iters, signin_nonce) = user_security_data
+            .left_join(users.on(user_fields::id.eq(user_security_data_fields::user_id)))
+            .left_join(signin_nonces.on(signin_nonce_fields::user_email.eq(user_fields::email)))
+            .filter(user_fields::email.eq(user_email))
+            .select((
+                user_security_data_fields::auth_string_salt,
+                user_security_data_fields::auth_string_iters,
+                signin_nonce_fields::nonce.nullable(),
+            ))
+            .first::<(String, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
+
+        if let Some(nonce) = signin_nonce {
+            Ok(OutputSigninNonceData {
+                auth_string_salt,
+                auth_string_iters,
+                nonce,
+            })
+        } else {
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound))
+        }
     }
 }

@@ -1,6 +1,6 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CredentialPair, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
+    CredentialPair, InputEmail, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use budgetapp_utils::validators::Validity;
 use budgetapp_utils::{argon2_hasher, auth_token, db, otp, validators};
@@ -12,8 +12,34 @@ use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::AuthorizedUserClaims;
 
-// TODO: Endpoint that returns authentication salt AND a server nonce (save the server nonce)
+// TODO: Should this mask when a user is not found by returning random data?
+pub async fn obtain_nonce_and_auth_string_salt(
+    db_thread_pool: web::Data<DbThreadPool>,
+    email: web::Query<InputEmail>,
+) -> Result<HttpResponse, ServerError> {
+    let nonce_data = match web::block(move || {
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.get_auth_string_salt_and_signin_nonce(&email.0.email)
+    })
+    .await?
+    {
+        Ok(a) => a,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(ServerError::NotFound(Some(String::from("User not found"))));
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to obtain nonce or authentication string data",
+            ))));
+        }
+    };
 
+    Ok(HttpResponse::Ok().json(nonce_data))
+}
+
+// TODO: Should this mask when a user is not found by hashing a password and comparing it
+//       against a dummy (to prevent timing attacks)?
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
@@ -24,11 +50,38 @@ pub async fn sign_in(
 
     let user_email_clone1 = credentials.email.clone();
     let user_email_clone2 = credentials.email.clone();
+    let user_email_clone3 = credentials.email.clone();
+
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+
+    let nonce = match web::block(move || {
+        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
+        auth_dao.get_and_refresh_signin_nonce(&user_email_clone1, &mut (*csprng))
+    })
+    .await?
+    {
+        Ok(a) => a,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(ServerError::NotFound(Some(String::from("User not found"))));
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to obtain sign-in nonce",
+            ))));
+        }
+    };
+
+    if nonce != credentials.nonce {
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "Incorrect nonce",
+        ))));
+    }
 
     let hash_and_attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_email_clone1,
+            &user_email_clone2,
             Duration::from_secs(env::CONF.security.authorization_attempts_reset_mins * 60),
         )
     })
@@ -73,7 +126,7 @@ pub async fn sign_in(
         let signin_token = auth_token::generate_token(
             &auth_token::TokenParams {
                 user_id: hash_and_attempts.user_id,
-                user_email: &user_email_clone2,
+                user_email: &user_email_clone3,
             },
             auth_token::TokenType::SignIn,
             Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
@@ -135,7 +188,7 @@ pub async fn verify_otp_for_signin(
 ) -> Result<HttpResponse, ServerError> {
     let signin_token = otp_and_token.0.signin_token.clone();
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-    
+
     let token_claims = match auth_token::validate_token(
         &signin_token,
         auth_token::TokenType::SignIn,

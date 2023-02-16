@@ -78,6 +78,13 @@ table! {
 }
 
 table! {
+    signin_nonces (user_email) {
+        user_email -> Varchar,
+        nonce -> Int4,
+    }
+}
+
+table! {
     tombstones (item_id, related_user_id) {
         item_id -> Uuid,
         related_user_id -> Uuid,
@@ -159,6 +166,7 @@ allow_tables_to_appear_in_same_query!(
     categories,
     entries,
     otp_attempts,
+    signin_nonces,
     tombstones,
     user_budgets,
     user_deletion_requests,
