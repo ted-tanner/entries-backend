@@ -1,8 +1,8 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputBuddyRequest, InputBuddyRequestId, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputOptionalUserId, InputToken, InputUser,
-    InputUserId, OutputEmail, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
+    InputNewAuthStringAndEncryptedPassword, InputToken, InputUser,
+    OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, auth_token, db};
@@ -13,74 +13,6 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::AuthorizedUserClaims;
-
-pub async fn get_user_email(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
-    user_id: web::Query<InputOptionalUserId>,
-) -> Result<HttpResponse, ServerError> {
-    let user_id = user_id.user_id.unwrap_or(auth_user_claims.0.uid);
-
-    let email = if user_id == auth_user_claims.0.uid {
-        auth_user_claims.0.eml
-    } else {
-        match web::block(move || {
-            let mut user_dao = db::user::Dao::new(&db_thread_pool);
-            user_dao.get_user_email(user_id)
-        })
-        .await?
-        {
-            Ok(eml) => eml,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(Some(String::from("User not found"))))
-                }
-                _ => {
-                    log::error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                        "Failed to get user email",
-                    ))));
-                }
-            },
-        }
-    };
-
-    Ok(HttpResponse::Ok().json(OutputEmail { email }))
-}
-
-pub async fn lookup_user_id_by_email(
-    db_thread_pool: web::Data<DbThreadPool>,
-    _auth_user_claims: AuthorizedUserClaims,
-    email: web::Query<InputEmail>,
-) -> Result<HttpResponse, ServerError> {
-    if let Validity::Invalid(msg) = validators::validate_email_address(&email.email) {
-        return Err(ServerError::InvalidFormat(Some(msg)));
-    }
-
-    let email_clone = email.email.clone();
-
-    let _id = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.lookup_user_id_by_email(&email.email)
-    })
-    .await?
-    {
-        Ok(id) => id,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from("User not found"))))
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get user ID",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().json(OutputEmail { email: email_clone }))
-}
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -276,7 +208,7 @@ pub async fn verify_creation(
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    new_prefs: web::Query<InputEditUserPrefs>,
+    new_prefs: web::Json<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -382,7 +314,7 @@ pub async fn send_buddy_request(
     auth_user_claims: AuthorizedUserClaims,
     buddy_request: web::Json<InputBuddyRequest>,
 ) -> Result<HttpResponse, ServerError> {
-    if buddy_request.other_user_id == auth_user_claims.0.uid {
+    if buddy_request.other_user_email == auth_user_claims.0.eml {
         return Err(ServerError::InputRejected(Some(String::from(
             "Requester and recipient have the same ID",
         ))));
@@ -392,8 +324,9 @@ pub async fn send_buddy_request(
 
     match web::block(move || {
         user_dao.send_buddy_request(
-            buddy_request.0.other_user_id,
+            &buddy_request.0.other_user_email,
             auth_user_claims.0.uid,
+            &auth_user_claims.0.eml,
             buddy_request.0.sender_name_encrypted_b64.as_deref(),
         )
     })
@@ -433,7 +366,7 @@ pub async fn retract_buddy_request(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.delete_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
+        user_dao.delete_buddy_request(request_id.buddy_request_id, &auth_user_claims.0.eml)
     })
     .await?
     {
@@ -462,25 +395,26 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let _buddy_request_data =
-        match web::block(move || user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid))
-            .await?
-        {
-            Ok(req_data) => req_data,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(Some(String::from(
-                        "No buddy request with provided ID",
-                    ))));
-                }
-                _ => {
-                    log::error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                        "Failed to accept buddy request",
-                    ))));
-                }
-            },
-        };
+    let _buddy_request_data = match web::block(move || {
+        user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid, &auth_user_claims.0.eml)
+    })
+    .await?
+    {
+        Ok(req_data) => req_data,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No buddy request with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to accept buddy request",
+                ))));
+            }
+        },
+    };
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -492,7 +426,7 @@ pub async fn decline_buddy_request(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.delete_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
+        user_dao.delete_buddy_request(request_id.buddy_request_id, &auth_user_claims.0.eml)
     })
     .await?
     {
@@ -519,7 +453,7 @@ pub async fn get_all_pending_buddy_requests_for_user(
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_all_pending_buddy_requests_for_user(auth_user_claims.0.uid)
+        user_dao.get_all_pending_buddy_requests_for_user(&auth_user_claims.0.eml)
     })
     .await?
     {
@@ -548,7 +482,7 @@ pub async fn get_all_pending_buddy_requests_made_by_user(
 ) -> Result<HttpResponse, ServerError> {
     let requests = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_all_pending_buddy_requests_made_by_user(auth_user_claims.0.uid)
+        user_dao.get_all_pending_buddy_requests_made_by_user(&auth_user_claims.0.eml)
     })
     .await?
     {
@@ -580,7 +514,7 @@ pub async fn get_buddy_request(
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         // The user DAO returns a diesel::result::Error::NotFound if requestor isn't the sender
         // or recipient
-        user_dao.get_buddy_request(request_id.buddy_request_id, auth_user_claims.0.uid)
+        user_dao.get_buddy_request(request_id.buddy_request_id, &auth_user_claims.0.eml)
     })
     .await?
     {
@@ -606,11 +540,11 @@ pub async fn get_buddy_request(
 pub async fn delete_buddy_relationship(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    other_user_id: web::Query<InputUserId>,
+    other_user_email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.delete_buddy_relationship(auth_user_claims.0.uid, other_user_id.user_id)
+        user_dao.delete_buddy_relationship(auth_user_claims.0.uid, &other_user_email.email)
     })
     .await?
     {

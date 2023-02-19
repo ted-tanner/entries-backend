@@ -24,8 +24,8 @@ table! {
 table! {
     buddy_requests (id) {
         id -> Uuid,
-        recipient_user_id -> Uuid,
-        sender_user_id -> Uuid,
+        recipient_user_email -> Varchar,
+        sender_user_email -> Varchar,
         sender_name_encrypted -> Nullable<Text>,
     }
 }
@@ -33,8 +33,8 @@ table! {
 table! {
     budget_share_invites (id) {
         id -> Uuid,
-        recipient_user_id -> Uuid,
-        sender_user_id -> Uuid,
+        recipient_user_email -> Varchar,
+        sender_user_email -> Varchar,
         budget_id -> Uuid,
         budget_name_encrypted -> Text,
         sender_name_encrypted -> Nullable<Text>,

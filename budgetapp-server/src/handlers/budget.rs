@@ -195,10 +195,11 @@ pub async fn invite_user(
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let inviting_user_id = auth_user_claims.0.uid;
+    let inviting_user_email = auth_user_claims.0.eml;
 
-    if invitation_info.recipient_user_id == inviting_user_id {
+    if invitation_info.recipient_user_email == inviting_user_email {
         return Err(ServerError::InputRejected(Some(String::from(
-            "Inviter and recipient have the same ID",
+            "Inviter and recipient are the same",
         ))));
     }
 
@@ -207,9 +208,10 @@ pub async fn invite_user(
         budget_dao.invite_user(
             invitation_info.budget_id,
             &invitation_info.budget_name_encrypted_b64,
-            invitation_info.recipient_user_id,
+            &invitation_info.recipient_user_email,
             invitation_info.read_only,
             inviting_user_id,
+            &inviting_user_email,
             invitation_info.sender_name_encrypted_b64.as_deref(),
             &invitation_info.budget_encryption_key_encrypted_b64,
         )
@@ -255,7 +257,7 @@ pub async fn retract_invitation(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
     })
     .await?
     {
@@ -288,7 +290,11 @@ pub async fn accept_invitation(
 
     let budget_key = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
-        budget_dao.accept_invitation(share_invite_id, auth_user_claims.0.uid)
+        budget_dao.accept_invitation(
+            share_invite_id,
+            auth_user_claims.0.uid,
+            &auth_user_claims.0.eml,
+        )
     })
     .await?
     {
@@ -318,7 +324,7 @@ pub async fn decline_invitation(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
     })
     .await?
     {
@@ -347,7 +353,7 @@ pub async fn get_all_pending_invitations_for_user(
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_for_user(auth_user_claims.0.uid)
+        budget_dao.get_all_pending_invitations_for_user(&auth_user_claims.0.eml)
     })
     .await?
     {
@@ -374,7 +380,7 @@ pub async fn get_all_pending_invitations_made_by_user(
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_made_by_user(auth_user_claims.0.uid)
+        budget_dao.get_all_pending_invitations_made_by_user(&auth_user_claims.0.eml)
     })
     .await?
     {
@@ -402,7 +408,7 @@ pub async fn get_invitation(
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_invitation(invitation_id.share_invite_id, auth_user_claims.0.uid)
+        budget_dao.get_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
     })
     .await?
     {

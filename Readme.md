@@ -465,9 +465,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - A count of how many entries are in a budget
   - Timestamps of when data was last modified
   - Timestamp of user's last login
+* User ID, which is used to access user data, is kept private. In tokens that the user received, the user's email address and ID are encrypted.
+* Client and server nonces for sign in
 
 ### Minimum Viable Product
 
+* Encrypt user email and ID in tokens
+* Client nonce for sign in
 * User sign in (and obtaining nonce) should mask when a user is not found
 * For signing in with a password, require a nonce to prevent replay attacks.
 * Create user nonce record when creating user (with a null nonce)

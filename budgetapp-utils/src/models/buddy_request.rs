@@ -10,8 +10,8 @@ use crate::schema::buddy_requests;
 pub struct BuddyRequest {
     pub id: Uuid,
 
-    pub recipient_user_id: Uuid,
-    pub sender_user_id: Uuid,
+    pub recipient_user_email: String,
+    pub sender_user_email: String,
 
     pub sender_name_encrypted: Option<String>,
 }
@@ -21,8 +21,8 @@ pub struct BuddyRequest {
 pub struct NewBuddyRequest<'a> {
     pub id: Uuid,
 
-    pub recipient_user_id: Uuid,
-    pub sender_user_id: Uuid,
+    pub recipient_user_email: &'a str,
+    pub sender_user_email: &'a str,
 
     pub sender_name_encrypted: Option<&'a str>,
 }

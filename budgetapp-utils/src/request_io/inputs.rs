@@ -13,16 +13,6 @@ pub struct CredentialPair {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputUserId {
-    pub user_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputOptionalUserId {
-    pub user_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEmail {
     pub email: String,
 }
@@ -90,7 +80,7 @@ pub struct InputEditUserPrefs {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBuddyRequest {
-    pub other_user_id: Uuid,
+    pub other_user_email: String,
     pub sender_name_encrypted_b64: Option<String>,
 }
 
@@ -143,7 +133,7 @@ pub struct UserInvitationToBudget {
     pub budget_id: Uuid,
     pub budget_name_encrypted_b64: String,
     pub budget_encryption_key_encrypted_b64: String,
-    pub recipient_user_id: Uuid,
+    pub recipient_user_email: String,
     pub read_only: bool,
     pub sender_name_encrypted_b64: Option<String>,
 }

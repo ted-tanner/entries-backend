@@ -10,8 +10,8 @@ use crate::schema::budget_share_invites;
 pub struct BudgetShareInvite {
     pub id: Uuid,
 
-    pub recipient_user_id: Uuid,
-    pub sender_user_id: Uuid,
+    pub recipient_user_email: String,
+    pub sender_user_email: String,
     pub budget_id: Uuid,
 
     pub budget_name_encrypted: String,
@@ -28,8 +28,8 @@ pub struct BudgetShareInvite {
 pub struct NewBudgetShareInvite<'a> {
     pub id: Uuid,
 
-    pub recipient_user_id: Uuid,
-    pub sender_user_id: Uuid,
+    pub recipient_user_email: &'a str,
+    pub sender_user_email: &'a str,
     pub budget_id: Uuid,
 
     pub budget_name_encrypted: &'a str,

@@ -31,6 +31,8 @@ use crate::schema::entries::dsl::entries;
 use crate::schema::tombstones::dsl::tombstones;
 use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
+use crate::schema::users as user_fields;
+use crate::schema::users::dsl::users;
 
 pub struct Dao {
     db_thread_pool: DbThreadPool,
@@ -293,9 +295,10 @@ impl Dao {
         &mut self,
         budget_id: Uuid,
         budget_name_encrypted: &str,
-        recipient_user_id: Uuid,
+        recipient_user_email: &str,
         read_only: bool,
         sender_user_id: Uuid,
+        sender_user_email: &str,
         sender_name_encrypted: Option<&str>,
         encryption_key_encrypted: &str,
     ) -> Result<(), DaoError> {
@@ -305,7 +308,8 @@ impl Dao {
             .build_transaction()
             .run::<_, DaoError, _>(|conn| {
                 let is_sender_in_budget = user_budgets
-                    .find((sender_user_id, budget_id))
+                    .filter(user_budget_fields::budget_id.eq(budget_id))
+                    .filter(user_budget_fields::user_id.eq(sender_user_id))
                     .filter(user_budget_fields::read_only.eq(false))
                     .count()
                     .execute(conn)?
@@ -316,7 +320,12 @@ impl Dao {
                 }
 
                 let is_recipient_in_budget = user_budgets
-                    .filter(user_budget_fields::user_id.eq(recipient_user_id))
+                    .filter(
+                        user_budget_fields::user_id.nullable().eq(users
+                            .select(user_fields::id)
+                            .filter(user_fields::email.eq(recipient_user_email))
+                            .single_value()),
+                    )
                     .filter(user_budget_fields::budget_id.eq(budget_id))
                     .count()
                     .execute(conn)?
@@ -328,9 +337,9 @@ impl Dao {
 
                 let budget_share_invite = NewBudgetShareInvite {
                     id: Uuid::new_v4(),
-                    recipient_user_id,
+                    recipient_user_email,
                     read_only,
-                    sender_user_id,
+                    sender_user_email,
                     budget_id,
                     budget_name_encrypted,
                     sender_name_encrypted,
@@ -340,8 +349,8 @@ impl Dao {
                 dsl::insert_into(budget_share_invites)
                     .values(&budget_share_invite)
                     .on_conflict((
-                        budget_share_invite_fields::recipient_user_id,
-                        budget_share_invite_fields::sender_user_id,
+                        budget_share_invite_fields::recipient_user_email,
+                        budget_share_invite_fields::sender_user_email,
                         budget_share_invite_fields::budget_id,
                     ))
                     .do_update()
@@ -363,14 +372,14 @@ impl Dao {
     pub fn delete_invitation(
         &mut self,
         invitation_id: Uuid,
-        sender_or_recipient_user_id: Uuid,
+        sender_or_recipient_user_email: &str,
     ) -> Result<(), DaoError> {
         diesel::delete(
             budget_share_invites.find(invitation_id).filter(
-                budget_share_invite_fields::sender_user_id
-                    .eq(sender_or_recipient_user_id)
-                    .or(budget_share_invite_fields::recipient_user_id
-                        .eq(sender_or_recipient_user_id)),
+                budget_share_invite_fields::sender_user_email
+                    .eq(sender_or_recipient_user_email)
+                    .or(budget_share_invite_fields::recipient_user_email
+                        .eq(sender_or_recipient_user_email)),
             ),
         )
         .execute(&mut self.db_thread_pool.get()?)?;
@@ -382,6 +391,7 @@ impl Dao {
         &mut self,
         invitation_id: Uuid,
         recipient_user_id: Uuid,
+        recipient_user_email: &str,
     ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -390,7 +400,7 @@ impl Dao {
             .run::<_, diesel::result::Error, _>(|conn| {
                 let budget_id_and_key =
                     diesel::delete(budget_share_invites.find(invitation_id).filter(
-                        budget_share_invite_fields::recipient_user_id.eq(recipient_user_id),
+                        budget_share_invite_fields::recipient_user_email.eq(recipient_user_email),
                     ))
                     .returning((
                         budget_share_invite_fields::budget_id,
@@ -420,57 +430,57 @@ impl Dao {
 
     pub fn get_all_pending_invitations_for_user(
         &mut self,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<Vec<OutputBudgetShareInviteWithoutKey>, DaoError> {
         Ok(budget_share_invites
             .select((
                 budget_share_invite_fields::id,
-                budget_share_invite_fields::recipient_user_id,
-                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::recipient_user_email,
+                budget_share_invite_fields::sender_user_email,
                 budget_share_invite_fields::budget_id,
                 budget_share_invite_fields::budget_name_encrypted,
                 budget_share_invite_fields::sender_name_encrypted,
             ))
-            .filter(budget_share_invite_fields::recipient_user_id.eq(user_id))
+            .filter(budget_share_invite_fields::recipient_user_email.eq(user_email))
             .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_invitations_made_by_user(
         &mut self,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<Vec<OutputBudgetShareInviteWithoutKey>, DaoError> {
         Ok(budget_share_invites
             .select((
                 budget_share_invite_fields::id,
-                budget_share_invite_fields::recipient_user_id,
-                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::recipient_user_email,
+                budget_share_invite_fields::sender_user_email,
                 budget_share_invite_fields::budget_id,
                 budget_share_invite_fields::budget_name_encrypted,
                 budget_share_invite_fields::sender_name_encrypted,
             ))
-            .filter(budget_share_invite_fields::sender_user_id.eq(user_id))
+            .filter(budget_share_invite_fields::sender_user_email.eq(user_email))
             .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_invitation(
         &mut self,
         invitation_id: Uuid,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<OutputBudgetShareInviteWithoutKey, DaoError> {
         Ok(budget_share_invites
             .select((
                 budget_share_invite_fields::id,
-                budget_share_invite_fields::recipient_user_id,
-                budget_share_invite_fields::sender_user_id,
+                budget_share_invite_fields::recipient_user_email,
+                budget_share_invite_fields::sender_user_email,
                 budget_share_invite_fields::budget_id,
                 budget_share_invite_fields::budget_name_encrypted,
                 budget_share_invite_fields::sender_name_encrypted,
             ))
             .find(invitation_id)
             .filter(
-                budget_share_invite_fields::sender_user_id
-                    .eq(user_id)
-                    .or(budget_share_invite_fields::recipient_user_id.eq(user_id)),
+                budget_share_invite_fields::sender_user_email
+                    .eq(user_email)
+                    .or(budget_share_invite_fields::recipient_user_email.eq(user_email)),
             )
             .get_result::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }

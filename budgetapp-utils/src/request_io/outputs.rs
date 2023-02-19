@@ -7,11 +7,6 @@ use crate::models::category::Category;
 use crate::models::entry::Entry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OutputEmail {
-    pub email: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SigninToken {
     pub signin_token: String,
 }
@@ -58,8 +53,8 @@ pub struct OutputBudgetIdAndEncryptionKey {
 pub struct OutputBudgetShareInviteWithoutKey {
     pub id: Uuid,
 
-    pub recipient_user_id: Uuid,
-    pub sender_user_id: Uuid,
+    pub recipient_user_email: String,
+    pub sender_user_email: String,
     pub budget_id: Uuid,
     pub budget_name_encrypted: String,
 

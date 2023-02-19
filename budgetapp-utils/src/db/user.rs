@@ -1,4 +1,7 @@
-use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
+    RunQueryDsl,
+};
 use rand::{CryptoRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
@@ -43,20 +46,6 @@ impl Dao {
         Self {
             db_thread_pool: db_thread_pool.clone(),
         }
-    }
-
-    pub fn get_user_email(&mut self, user_id: Uuid) -> Result<String, DaoError> {
-        Ok(users
-            .select(user_fields::email)
-            .find(user_id)
-            .get_result::<String>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn lookup_user_id_by_email(&mut self, user_email: &str) -> Result<Uuid, DaoError> {
-        Ok(users
-            .select(user_fields::id)
-            .filter(user_fields::email.eq(user_email.to_lowercase()))
-            .get_result::<Uuid>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user<CSPRNG: Rng + CryptoRng>(
@@ -202,14 +191,15 @@ impl Dao {
 
     pub fn send_buddy_request(
         &mut self,
-        recipient_user_id: Uuid,
+        recipient_user_email: &str,
         sender_user_id: Uuid,
+        sender_user_email: &str,
         sender_name_encrypted: Option<&str>,
     ) -> Result<BuddyRequest, DaoError> {
         let request = NewBuddyRequest {
             id: Uuid::new_v4(),
-            recipient_user_id,
-            sender_user_id,
+            recipient_user_email,
+            sender_user_email,
             sender_name_encrypted,
         };
 
@@ -222,9 +212,18 @@ impl Dao {
                     buddy_relationships.filter(
                         buddy_relationship_fields::user1_id
                             .eq(sender_user_id)
-                            .and(buddy_relationship_fields::user2_id.eq(recipient_user_id))
+                            .and(
+                                buddy_relationship_fields::user2_id.nullable().eq(users
+                                    .select(user_fields::id)
+                                    .filter(user_fields::email.eq(recipient_user_email))
+                                    .single_value()),
+                            )
                             .or(buddy_relationship_fields::user1_id
-                                .eq(recipient_user_id)
+                                .nullable()
+                                .eq(users
+                                    .select(user_fields::id)
+                                    .filter(user_fields::email.eq(recipient_user_email))
+                                    .single_value())
                                 .and(buddy_relationship_fields::user2_id.eq(sender_user_id))),
                     ),
                 ))
@@ -237,8 +236,8 @@ impl Dao {
                 Ok(dsl::insert_into(buddy_requests)
                     .values(&request)
                     .on_conflict((
-                        buddy_request_fields::recipient_user_id,
-                        buddy_request_fields::sender_user_id,
+                        buddy_request_fields::recipient_user_email,
+                        buddy_request_fields::sender_user_email,
                     ))
                     .do_update()
                     .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
@@ -251,13 +250,14 @@ impl Dao {
     pub fn delete_buddy_request(
         &mut self,
         request_id: Uuid,
-        sender_or_recipient_user_id: Uuid,
+        sender_or_recipient_user_email: &str,
     ) -> Result<(), DaoError> {
         diesel::delete(
             buddy_requests.find(request_id).filter(
-                buddy_request_fields::sender_user_id
-                    .eq(sender_or_recipient_user_id)
-                    .or(buddy_request_fields::recipient_user_id.eq(sender_or_recipient_user_id)),
+                buddy_request_fields::sender_user_email
+                    .eq(sender_or_recipient_user_email)
+                    .or(buddy_request_fields::recipient_user_email
+                        .eq(sender_or_recipient_user_email)),
             ),
         )
         .execute(&mut self.db_thread_pool.get()?)?;
@@ -269,19 +269,24 @@ impl Dao {
         &mut self,
         request_id: Uuid,
         recipient_user_id: Uuid,
+        recipient_user_email: &str,
     ) -> Result<Uuid, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let sender_user_id = db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let sender_user_id = diesel::delete(
-                    buddy_requests
-                        .find(request_id)
-                        .filter(buddy_request_fields::recipient_user_id.eq(recipient_user_id)),
-                )
-                .returning(buddy_request_fields::sender_user_id)
-                .get_result::<Uuid>(conn)?;
+                let sender_user_email =
+                    diesel::delete(buddy_requests.find(request_id).filter(
+                        buddy_request_fields::recipient_user_email.eq(recipient_user_email),
+                    ))
+                    .returning(buddy_request_fields::sender_user_email)
+                    .get_result::<String>(conn)?;
+
+                let sender_user_id = users
+                    .select(user_fields::id)
+                    .filter(user_fields::email.eq(sender_user_email))
+                    .get_result::<Uuid>(conn)?;
 
                 let relationship = NewBuddyRelationship {
                     user1_id: sender_user_id,
@@ -300,33 +305,33 @@ impl Dao {
 
     pub fn get_all_pending_buddy_requests_for_user(
         &mut self,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<Vec<BuddyRequest>, DaoError> {
         Ok(buddy_requests
-            .filter(buddy_request_fields::recipient_user_id.eq(user_id))
+            .filter(buddy_request_fields::recipient_user_email.eq(user_email))
             .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_all_pending_buddy_requests_made_by_user(
         &mut self,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<Vec<BuddyRequest>, DaoError> {
         Ok(buddy_requests
-            .filter(buddy_request_fields::sender_user_id.eq(user_id))
+            .filter(buddy_request_fields::sender_user_email.eq(user_email))
             .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_buddy_request(
         &mut self,
         request_id: Uuid,
-        user_id: Uuid,
+        user_email: &str,
     ) -> Result<BuddyRequest, DaoError> {
         Ok(buddy_requests
             .find(request_id)
             .filter(
-                buddy_request_fields::sender_user_id
-                    .eq(user_id)
-                    .or(buddy_request_fields::recipient_user_id.eq(user_id)),
+                buddy_request_fields::sender_user_email
+                    .eq(user_email)
+                    .or(buddy_request_fields::recipient_user_email.eq(user_email)),
             )
             .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
     }
@@ -334,15 +339,24 @@ impl Dao {
     pub fn delete_buddy_relationship(
         &mut self,
         user1_id: Uuid,
-        user2_id: Uuid,
+        user2_email: &str,
     ) -> Result<(), DaoError> {
         diesel::delete(
             buddy_relationships.filter(
                 buddy_relationship_fields::user1_id
                     .eq(user1_id)
-                    .and(buddy_relationship_fields::user2_id.eq(user2_id))
+                    .and(
+                        buddy_relationship_fields::user2_id.nullable().eq(users
+                            .select(user_fields::id)
+                            .filter(user_fields::email.eq(user2_email))
+                            .single_value()),
+                    )
                     .or(buddy_relationship_fields::user1_id
-                        .eq(user2_id)
+                        .nullable()
+                        .eq(users
+                            .select(user_fields::id)
+                            .filter(user_fields::email.eq(user2_email))
+                            .single_value())
                         .and(buddy_relationship_fields::user2_id.eq(user1_id))),
             ),
         )
