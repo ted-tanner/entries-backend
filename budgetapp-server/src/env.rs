@@ -1,5 +1,3 @@
-use budgetapp_utils::argon2_hasher::HashParams;
-
 use aes_gcm::{aead::KeyInit, Aes128Gcm};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -106,20 +104,12 @@ pub struct Workers {
 }
 
 lazy_static! {
-    pub static ref APP_NAME: &'static str = "Budget App";
     pub static ref CONF: Conf = match build_conf() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("CONFIGURATION ERROR: {e}");
             std::process::exit(1);
         }
-    };
-    pub static ref AUTH_STRING_HASHING_PARAMS: HashParams = HashParams {
-        salt_len: CONF.hashing.salt_length_bytes,
-        hash_len: CONF.hashing.hash_length,
-        hash_iterations: CONF.hashing.hash_iterations,
-        hash_mem_size_kib: CONF.hashing.hash_mem_size_kib,
-        hash_lanes: CONF.hashing.hash_lanes,
     };
 }
 
@@ -243,7 +233,7 @@ fn build_conf() -> Result<Conf, String> {
         connections: raw_conf.connections,
         hashing: raw_conf.hashing,
         keys: Keys {
-            hashing_key: hashing_key,
+            hashing_key,
             token_signing_key,
             otp_key,
             token_encryption_cipher: Aes128Gcm::new(&token_encryption_key.into()),

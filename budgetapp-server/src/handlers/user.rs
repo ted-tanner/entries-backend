@@ -27,7 +27,13 @@ pub async fn create(
     let user_id = match web::block(move || {
         let auth_string_hash = argon2_hasher::hash_auth_string(
             &user_data.auth_string,
-            &env::AUTH_STRING_HASHING_PARAMS,
+            &argon2_hasher::HashParams {
+                salt_len: env::CONF.hashing.salt_length_bytes,
+                hash_len: env::CONF.hashing.hash_length,
+                hash_iterations: env::CONF.hashing.hash_iterations,
+                hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
+                hash_lanes: env::CONF.hashing.hash_lanes,
+            },
             &env::CONF.keys.hashing_key,
         );
 
@@ -282,7 +288,13 @@ pub async fn change_password(
         let _auth_string_hash = {
             argon2_hasher::hash_auth_string(
                 &new_password_data.new_auth_string,
-                &env::AUTH_STRING_HASHING_PARAMS,
+                &argon2_hasher::HashParams {
+                    salt_len: env::CONF.hashing.salt_length_bytes,
+                    hash_len: env::CONF.hashing.hash_length,
+                    hash_iterations: env::CONF.hashing.hash_iterations,
+                    hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
+                    hash_lanes: env::CONF.hashing.hash_lanes,
+                },
                 &env::CONF.keys.hashing_key,
             )
         };
