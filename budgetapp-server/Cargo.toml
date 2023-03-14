@@ -7,6 +7,8 @@ edition.workspace = true
 [dependencies]
 budgetapp_utils = { path = "../budgetapp-utils" }
 actix-web = "4.2"
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+base64 = "0.13"
 diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
 flexi_logger = { version = "0.24", features = ["async", "compress"] }
 futures = "0.3"
@@ -14,11 +16,11 @@ lazy_static = "1.4"
 log = "0.4"
 num_cpus = "1.14"
 rand = "0.8"
-rand_chacha = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.5"
 uuid = { version = "1.2", features = ["serde", "v4"] }
+zeroize = { version = "1.5", features = ["zeroize_derive"] }
 
 [dev-dependencies]
 actix-http = "3.2"

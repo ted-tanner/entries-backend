@@ -73,10 +73,13 @@ mod tests {
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 
+    use aes_gcm::{
+        aead::{KeyInit, OsRng},
+        Aes128Gcm,
+    };
     use diesel::{dsl, RunQueryDsl};
     use rand::Rng;
     use std::thread;
-    use uuid::Uuid;
 
     use crate::env;
 
@@ -134,38 +137,40 @@ mod tests {
             preferences_encrypted: String::new(),
         };
 
-        let mut csprng = env::testing::CSPRNG.lock().expect("Mutex was poisoned");
+        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
 
-        let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-            .create_user(new_user.clone(), "Test", &mut (*csprng))
-            .unwrap();
+        let user_id = user_dao.create_user(new_user.clone(), "Test").unwrap();
+        user_dao.verify_user_creation(user_id).unwrap();
 
         let token_params = auth_token::TokenParams {
             user_id: user_id,
             user_email: &new_user.email,
         };
 
+        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+
         let pretend_expired_token = auth_token::generate_token(
             &token_params,
             auth_token::TokenType::Refresh,
             Duration::from_secs(5),
-            vec![32, 4, 23, 53].as_slice(),
+            &[0u8; 64],
+            &cipher,
         )
         .unwrap();
 
         let pretend_claims = auth_token::TokenClaims {
             exp: 64,
-            uid: Uuid::new_v4(),
+            uid: user_id,
             eml: String::from("Test"),
             typ: 2,
-            slt: 5,
         };
 
         let unexpired_token = auth_token::generate_token(
             &token_params,
             auth_token::TokenType::Refresh,
             Duration::from_secs(5),
-            vec![32, 4, 23, 53].as_slice(),
+            &[0u8; 64],
+            &cipher,
         )
         .unwrap();
 

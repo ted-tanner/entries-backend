@@ -44,7 +44,8 @@ impl FromRequest for AuthorizedUserClaims {
         let claims = match auth_token::validate_token(
             token,
             auth_token::TokenType::Access,
-            env::CONF.keys.token_signing_key.as_bytes(),
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         ) {
             Ok(c) => c,
             Err(_) => return future::err(error::ErrorUnauthorized(INVALID_TOKEN_MSG)),
@@ -62,7 +63,7 @@ mod tests {
 
     use actix_web::test;
     use rand::prelude::*;
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
     use uuid::Uuid;
 
     #[actix_rt::test]
@@ -83,8 +84,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Access,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap();
 
@@ -129,8 +131,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Access,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap();
 
@@ -158,8 +161,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Access,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap();
 
@@ -190,8 +194,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Access,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap();
 
@@ -221,8 +226,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Access,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap()
         .to_string();
@@ -257,8 +263,9 @@ mod tests {
                 user_email: new_user.email,
             },
             auth_token::TokenType::Refresh,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
         .unwrap();
 

@@ -148,11 +148,11 @@ mod tests {
                 preferences_encrypted: String::new(),
             };
 
-            let mut csprng = env::testing::CSPRNG.lock().expect("Mutex was poisoned");
+            let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
 
-            let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(new_user.clone(), "Test", &mut (*csprng))
-                .unwrap();
+            let user_id = user_dao.create_user(new_user.clone(), "Test").unwrap();
+
+            user_dao.verify_user_creation(user_id).unwrap();
 
             user_ids.push(user_id);
 
@@ -162,15 +162,18 @@ mod tests {
                     Duration::from_millis(1),
                 )
                 .unwrap();
+
+                println!("\nHERE!!!!!\n\n");
             }
         }
 
         let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
 
         for user_id in &user_ids {
-            let user_authorization_attempts = authorization_attempts
-                .filter(authorization_attempts_fields::user_id.eq(user_id))
-                .first::<AuthorizationAttempts>(&mut db_connection);
+            let user_authorization_attempts =
+                authorization_attempts
+                    .find(user_id)
+                    .get_result::<AuthorizationAttempts>(&mut db_connection);
             assert!(user_authorization_attempts.is_ok());
         }
 

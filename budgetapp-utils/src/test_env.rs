@@ -1,9 +1,6 @@
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use std::sync::Mutex;
 
 #[derive(Deserialize, Serialize)]
 pub struct Conf {
@@ -13,7 +10,6 @@ pub struct Conf {
 
 lazy_static! {
     pub static ref CONF: Conf = build_conf();
-    pub static ref CSPRNG: Mutex<ChaCha20Rng> = Mutex::new(ChaCha20Rng::from_entropy());
 }
 
 fn build_conf() -> Conf {

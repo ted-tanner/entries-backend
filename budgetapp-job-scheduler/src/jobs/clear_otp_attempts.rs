@@ -146,10 +146,8 @@ mod tests {
                 preferences_encrypted: String::new(),
             };
 
-            let mut csprng = env::testing::CSPRNG.lock().expect("Mutex was poisoned");
-
             let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(new_user.clone(), "Test", &mut (*csprng))
+                .create_user(new_user.clone(), "Test")
                 .unwrap();
 
             user_ids.push(user_id);

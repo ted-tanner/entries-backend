@@ -1,8 +1,8 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputBuddyRequest, InputBuddyRequestId, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputToken, InputUser,
-    OutputIsUserListedForDeletion, OutputVerificationEmailSent,
+    InputNewAuthStringAndEncryptedPassword, InputToken, InputUser, OutputIsUserListedForDeletion,
+    OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, auth_token, db};
@@ -25,17 +25,14 @@ pub async fn create(
     let email = user_data.email.clone();
 
     let user_id = match web::block(move || {
-        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
-
         let auth_string_hash = argon2_hasher::hash_auth_string(
             &user_data.auth_string,
             &env::AUTH_STRING_HASHING_PARAMS,
-            env::CONF.keys.hashing_key.as_bytes(),
-            &mut (*csprng),
+            &env::CONF.keys.hashing_key,
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(user_data.0, &auth_string_hash, &mut (*csprng))
+        user_dao.create_user(user_data.0, &auth_string_hash)
     })
     .await?
     {
@@ -58,15 +55,15 @@ pub async fn create(
         },
     };
 
-    let token_lifetime_hours = env::CONF.lifetimes.user_creation_token_lifetime_days * 24;
     let user_creation_token = auth_token::generate_token(
         &auth_token::TokenParams {
             user_id,
             user_email: &email,
         },
         auth_token::TokenType::UserCreation,
-        Duration::from_secs(token_lifetime_hours * 60 * 60),
-        env::CONF.keys.token_signing_key.as_bytes(),
+        env::CONF.lifetimes.user_creation_token_lifetime,
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     );
 
     let user_creation_token = match user_creation_token {
@@ -84,7 +81,8 @@ pub async fn create(
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,
-        email_token_lifetime_hours: token_lifetime_hours,
+        email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
+            / 3600,
     }))
 }
 
@@ -95,7 +93,8 @@ pub async fn verify_creation(
     let claims = match auth_token::validate_token(
         user_creation_token.token.as_str(),
         auth_token::TokenType::UserCreation,
-        env::CONF.keys.token_signing_key.as_bytes(),
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     ) {
         Ok(c) => c,
         Err(e) => match e {
@@ -246,7 +245,7 @@ pub async fn change_password(
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
             &auth_user_claims.0.eml,
-            Duration::from_secs(env::CONF.security.authorization_attempts_reset_mins * 60),
+            env::CONF.security.authorization_attempts_reset_time,
         ) {
             Ok(a) => a,
             Err(e) => {
@@ -268,7 +267,7 @@ pub async fn change_password(
         Ok(argon2_hasher::verify_hash(
             &current_auth_string,
             &hash_and_attempts.auth_string_hash,
-            env::CONF.keys.hashing_key.as_bytes(),
+            &env::CONF.keys.hashing_key,
         ))
     })
     .await??;
@@ -280,14 +279,13 @@ pub async fn change_password(
     }
 
     web::block(move || {
-        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
-
-        let _auth_string_hash = argon2_hasher::hash_auth_string(
-            &new_password_data.new_auth_string,
-            &env::AUTH_STRING_HASHING_PARAMS,
-            env::CONF.keys.hashing_key.as_bytes(),
-            &mut (*csprng),
-        );
+        let _auth_string_hash = {
+            argon2_hasher::hash_auth_string(
+                &new_password_data.new_auth_string,
+                &env::AUTH_STRING_HASHING_PARAMS,
+                &env::CONF.keys.hashing_key,
+            )
+        };
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
@@ -395,7 +393,7 @@ pub async fn accept_buddy_request(
     let request_id = request_id.buddy_request_id;
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
-    let _buddy_request_data = match web::block(move || {
+    match web::block(move || {
         user_dao.accept_buddy_request(request_id, auth_user_claims.0.uid, &auth_user_claims.0.eml)
     })
     .await?
@@ -590,16 +588,18 @@ pub async fn get_buddies(
 pub async fn init_delete(
     auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {
-    let token_lifetime_hours = env::CONF.lifetimes.user_deletion_token_lifetime_days * 24;
-    let user_deletion_token = auth_token::generate_token(
-        &auth_token::TokenParams {
-            user_id: auth_user_claims.0.uid,
-            user_email: &auth_user_claims.0.eml,
-        },
-        auth_token::TokenType::UserDeletion,
-        Duration::from_secs(token_lifetime_hours * 60 * 60),
-        env::CONF.keys.token_signing_key.as_bytes(),
-    );
+    let user_deletion_token = {
+        auth_token::generate_token(
+            &auth_token::TokenParams {
+                user_id: auth_user_claims.0.uid,
+                user_email: &auth_user_claims.0.eml,
+            },
+            auth_token::TokenType::UserDeletion,
+            env::CONF.lifetimes.user_deletion_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
+        )
+    };
 
     let user_deletion_token = match user_deletion_token {
         Ok(t) => t,
@@ -616,7 +616,8 @@ pub async fn init_delete(
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,
-        email_token_lifetime_hours: token_lifetime_hours,
+        email_token_lifetime_hours: env::CONF.lifetimes.user_deletion_token_lifetime.as_secs()
+            / 3600,
     }))
 }
 
@@ -627,7 +628,8 @@ pub async fn delete(
     let claims = match auth_token::validate_token(
         user_deletion_token.token.as_str(),
         auth_token::TokenType::UserDeletion,
-        env::CONF.keys.token_signing_key.as_bytes(),
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     ) {
         Ok(c) => c,
         Err(e) => match e {

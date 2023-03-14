@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+aes-gcm = "0.10"
 base64 = "0.13"
 diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
 hex = "0.4"
@@ -23,7 +24,6 @@ uuid = { version = "1.2", features = ["serde", "v4"] }
 lazy_static = "1.4"
 num_cpus = "1.14"
 rand = "0.8"
-rand_chacha = "0.3"
 toml = "0.5"
 
 [build-dependencies]

@@ -424,6 +424,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
+* Follow password guidelines: https://auth0.com/blog/dont-pass-on-the-new-nist-password-guidelines/
 * Currency should be specified on each budget, default currency in user_preferences
 * The client needs to be prepared for a category to be deleted. Entries will still have a reference to the deleted categories, so check for the category tombstone and handle the case where the category doesn't exist.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
@@ -434,6 +435,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Mention that buddy requests adn budget share invites will be deleted after 30 days
 * Handle too many attempts for both sign in and change password
 * Tell users that read-only budget users cannot modify or add entries to budgets or invite other users
+* Client should not allow lower than a certain threshold of parameters for hashing (e.g. 12 iterations with 64mb of RAM and a length of 32), no matter what the server says. This prevents attackers who infiltrate the server from obtaining the key with a low hash value. The app will not send any hash that doesn't meet the threshold.
+* Upon logout (forced or manual), overwrite sensitive data.
+* Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
+* Client icon should be iMessage-bubble blue
+* Make it clear that budgets that haven't been accessed or modified for a year will be auto-deleted
 
 #### IMPORTANT Data Syncronization Stuff
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
@@ -441,9 +447,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
 
 ### End-to-end Encryption Scheme
-* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a SCrypt hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
-* Recovery key is a 32-character alphanumeric string. It gets hashed with SCrypt using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
-* Authentication string for sign in is a separate SCrypt hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
+* When a new user is created, an encryption key is randomly generated for the user *on the client*. This encryption key gets encrypted twice, once with a argon2 hash of the user's password (the server stores the salt for the hash; the salt for authentication can be requsted publicly, but if the server doesn't recognize the email address then a random salt is returned to disguise whether the email address exists in the system) and once with the a recovery key that is hashed in the same way. Both encryptions are stored on the server and sent to the client. The client can decrypt the user's encryption key (using their password) and store it securely (KeyChain, for example, guarded with FaceID).
+* Recovery key is a 32-character alphanumeric string. It gets hashed with argon2 using a salt that is stored on the server. That hash is the key to decrypt the user's encryption key.
+* Authentication string for sign in is a separate argon2 hash of the user's password with a different salt. This hash gets re-hashed (Argon2) before being stored in the database
 * Encrypt user preferences using a user's key
 * All user data (budgets, entries, user preferences, etc.) should be stored as an ID, associated_id (optional, e.g. a budget_id for an entry), a modified_timestamp, and an encrypted blob
   - Tombstones should still exist
@@ -459,19 +465,36 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Things that aren't encrypted:
   - User's email address
   - Which version of the app 
-  - A list of users one shares budgets with
-  - A user's list of buddies
-  - A count of how many budgets a user has
-  - A count of how many entries are in a budget
-  - Timestamps of when data was last modified
   - Timestamp of user's last login
 * User ID, which is used to access user data, is kept private. In tokens that the user received, the user's email address and ID are encrypted.
 * Client and server nonces for sign in
+* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* Verification of tokens and authentication strings uses comparison functions that are resistant to timing attacks.
 
 ### Minimum Viable Product
 
+* Pass everything from env.rs inside an `Arc` to handlers with `web::Data` rather than making it global state
+* Check length of hmac hashes. Are they long enough to not be brute forced? Also, is the verification of the tokens resistant to timing attacks?
+* Auto-delete budgets that haven't been accessed or modified in over a year. Save last access time for budget each time a budget is accessed.
+* Try to zeroize auth_strings (make variable mut?, implement ZeroizeOnDrop for it?)
+* Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
+* Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database.
+* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* Eliminate concept of buddy and just invite user to budget by email. Don’t tell user whether invite was successfully created.
+* Users need to be able to block specific email addresses from inviting them to budgets.
+* Maximum of 40 people can be invited/joined to a budget. Unaccepted invites should expire after 1 week (use a timestamp to enforce this, but also create a cron job to clean out old invites).
+* Throttle budget invites to 1 per second per user.
+* In env.rs for budgetapp-server, rename `Conf` struct to `RawConf`. `build_conf()` should then crate a new `Conf` struct that has all the preprocessing done for fields that need it (such as the AES key for tokens; a cipher should be initialized in env.rs with the key and then referred used for auth tokens). Validation can also be done (for example, ensuring the AES key is the correct length)
+  - Zeroize old RawConf memory for keys
+* Ability to change encryption key. This should also log all other users out.
+* TOTP Should *not* allow just expired or upcoming codes to be used. The must be a better solution.
+* Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
+* Use a `signin_nonce` for both signing in with a password and verifying OTP.
+* Never tell the client to hash with fewer than a certain number of iterations of argon2.
+* Keys should all be specified in hex (and be of a specified length)
 * Encrypt user email and ID in tokens
 * Client nonce for sign in
+* Change Email endpoint (user must verify email)
 * User sign in (and obtaining nonce) should mask when a user is not found
 * For signing in with a password, require a nonce to prevent replay attacks.
 * Create user nonce record when creating user (with a null nonce)
@@ -501,12 +524,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
 * RSA key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
 * Unit tests!
+* Search through TODOs in code
 * Update readme documentation
   - Add a section for the job scheduler
 * White paper
+* Should the app be renamed "Good Budgets"?
 
 ### Do it later
 
+* Update crates (like base64)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Duplicate a budget, including entries (perhaps make including entries optional)
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations

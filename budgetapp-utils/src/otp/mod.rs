@@ -2,7 +2,7 @@ use hmac::{self, Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use std::fmt;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,11 +71,15 @@ impl PartialEq for OneTimePasscode {
 
 pub fn generate_otp(
     user_id: Uuid,
-    unix_timestamp: u64,
+    timestamp: SystemTime,
     lifetime: Duration,
-    secret_key: &[u8],
+    secret_key: &[u8; 64],
 ) -> Result<OneTimePasscode, OtpError> {
-    let time_segment = unix_timestamp / lifetime.as_secs();
+    let time_segment = timestamp
+        .duration_since(UNIX_EPOCH)
+        .expect("Failed to fetch system time")
+        .as_secs()
+        / lifetime.as_secs();
     let contents = format!("{user_id}:{time_segment}");
 
     // The following uses the algorithm recommended by RFC4226
@@ -111,11 +115,11 @@ pub fn generate_otp(
 pub fn verify_otp(
     passcode: OneTimePasscode,
     user_id: Uuid,
-    unix_timestamp: u64,
+    timestamp: SystemTime,
     lifetime: Duration,
-    secret_key: &[u8],
+    secret_key: &[u8; 64],
 ) -> Result<bool, OtpError> {
-    Ok(generate_otp(user_id, unix_timestamp, lifetime, secret_key)? == passcode)
+    Ok(generate_otp(user_id, timestamp, lifetime, secret_key)? == passcode)
 }
 
 #[cfg(test)]
@@ -126,26 +130,21 @@ mod tests {
 
     #[test]
     fn test_generate_otp_different_for_different_users() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user1_id = Uuid::new_v4();
         let user2_id = Uuid::new_v4();
 
         let user1_otp = generate_otp(
             user1_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
         let user2_otp = generate_otp(
             user2_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
 
@@ -154,9 +153,9 @@ mod tests {
             user1_otp,
             generate_otp(
                 user1_id,
-                current_time,
+                SystemTime::now(),
                 Duration::from_secs(5),
-                vec![4, 3, 2, 1, 5, 6, 7].as_slice()
+                &[0u8; 64]
             )
             .unwrap()
         );
@@ -164,173 +163,140 @@ mod tests {
 
     #[test]
     fn test_generate_otp_different_at_different_times() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user_id = Uuid::new_v4();
         let otp1 = generate_otp(
             user_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
         let otp2 = generate_otp(
             user_id,
-            current_time + 10000,
+            SystemTime::now() + Duration::from_secs(10000),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
 
         assert_ne!(otp1, otp2);
 
-        let time3 = current_time - (current_time % 5);
-        let time4 = time3 + 5;
+        let time3 = SystemTime::now()
+            - Duration::from_secs(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    % 5,
+            );
+        let time4 = time3 + Duration::from_secs(5);
 
-        let otp3 = generate_otp(
-            user_id,
-            time3,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
-        let otp4 = generate_otp(
-            user_id,
-            time4,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
+        let otp3 = generate_otp(user_id, time3, Duration::from_secs(5), &[0u8; 64]).unwrap();
+        let otp4 = generate_otp(user_id, time4, Duration::from_secs(5), &[0u8; 64]).unwrap();
 
         assert_ne!(otp3, otp4);
     }
 
     #[test]
     fn test_generate_otp_same_within_time_segment() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user_id = Uuid::new_v4();
-        let time1 = current_time - (current_time % 5);
-        let time2 = time1 + 5 - 1;
-        let otp1 = generate_otp(
-            user_id,
-            time1,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
-        let otp2 = generate_otp(
-            user_id,
-            time2,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
+        let time1 = SystemTime::now()
+            - Duration::from_secs(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    % 5,
+            );
+        let time2 = time1 + Duration::from_secs(5 - 1);
+        let otp1 = generate_otp(user_id, time1, Duration::from_secs(5), &[0u8; 64]).unwrap();
+        let otp2 = generate_otp(user_id, time2, Duration::from_secs(5), &[0u8; 64]).unwrap();
 
         assert_eq!(otp1, otp2);
     }
 
     #[test]
     fn test_verify_otp() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % 5);
-        let verify_time = generate_time + 5 - 1;
-        let otp = generate_otp(
-            user_id,
-            generate_time,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
+        let generate_time = SystemTime::now()
+            - Duration::from_secs(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    % 5,
+            );
+        let verify_time = generate_time + Duration::from_secs(4);
+        let otp = generate_otp(user_id, generate_time, Duration::from_secs(5), &[0u8; 64]).unwrap();
 
         assert!(verify_otp(
             otp,
             user_id,
             verify_time,
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice()
+            &[0u8; 64]
         )
         .unwrap());
     }
 
     #[test]
     fn test_verify_opt_fails_if_otp_is_expired() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user_id = Uuid::new_v4();
-        let generate_time = current_time - (current_time % 5);
-        let verify_time = generate_time + 5;
-        let otp = generate_otp(
-            user_id,
-            generate_time,
-            Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
-        )
-        .unwrap();
+        let generate_time = SystemTime::now()
+            - Duration::from_secs(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    % 5,
+            );
+        let verify_time = generate_time + Duration::from_secs(5);
+        let otp = generate_otp(user_id, generate_time, Duration::from_secs(5), &[0u8; 64]).unwrap();
 
         assert!(!verify_otp(
             otp,
             user_id,
             verify_time,
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice()
+            &[0u8; 64]
         )
         .unwrap());
     }
 
     #[test]
     fn test_verify_opt_fails_if_otp_has_wrong_user_id() {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         let user1_id = Uuid::new_v4();
         let user2_id = Uuid::new_v4();
 
         let otp1 = generate_otp(
             user1_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
         let otp2 = generate_otp(
             user2_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice(),
+            &[0u8; 64],
         )
         .unwrap();
 
         assert!(!verify_otp(
             otp1,
             user2_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice()
+            &[0u8; 64],
         )
         .unwrap());
         assert!(!verify_otp(
             otp2,
             user1_id,
-            current_time,
+            SystemTime::now(),
             Duration::from_secs(5),
-            vec![4, 3, 2, 1, 5, 6, 7].as_slice()
+            &[0u8; 64],
         )
         .unwrap());
     }

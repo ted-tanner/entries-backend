@@ -1,5 +1,5 @@
 use log::error;
-use rand::{CryptoRng, Fill, Rng};
+use rand::{rngs::OsRng, Fill};
 use std::ffi::CStr;
 
 use crate::argon2::{
@@ -389,15 +389,14 @@ impl BinaryHash {
 }
 
 #[inline]
-pub fn hash_auth_string<CSPRNG: Rng + CryptoRng>(
+pub fn hash_auth_string(
     auth_string: &str,
     hash_params: &HashParams,
-    hashing_key: &[u8],
-    crypto_rng: &mut CSPRNG,
+    hashing_key: &[u8; 32],
 ) -> String {
     let mut salt = vec![0u8; hash_params.salt_len];
 
-    salt.try_fill(crypto_rng)
+    salt.try_fill(&mut OsRng)
         .expect("Failed to obtain random bytes");
 
     hash_argon2id(
@@ -413,13 +412,13 @@ pub fn hash_auth_string<CSPRNG: Rng + CryptoRng>(
 }
 
 #[inline]
-pub fn verify_hash(auth_string: &str, hash: &str, hashing_key: &[u8]) -> bool {
+pub fn verify_hash(auth_string: &str, hash: &str, hashing_key: &[u8; 32]) -> bool {
     verify_argon2id(auth_string, hash, hashing_key)
 }
 
 pub fn hash_argon2id(
     auth_string: &str,
-    key: &[u8],
+    key: &[u8; 32],
     salt: &[u8],
     hash_len: u32,
     iterations: u32,
@@ -430,11 +429,11 @@ pub fn hash_argon2id(
 
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),
-        outlen: u32::try_from(hash_buffer.len()).expect("Auth_String hash is too long"),
+        outlen: u32::try_from(hash_buffer.len()).expect("Auth string hash is too long"),
         pwd: auth_string.as_bytes() as *const _ as *mut _,
-        pwdlen: u32::try_from(auth_string.len()).expect("Auth_String is too long"),
+        pwdlen: u32::try_from(auth_string.len()).expect("Auth string is too long"),
         salt: salt.as_ptr() as *mut _,
-        saltlen: u32::try_from(salt.len()).expect("Auth_String salt is too long"),
+        saltlen: u32::try_from(salt.len()).expect("Auth string salt is too long"),
         secret: key.as_ptr() as *mut _,
         secretlen: u32::try_from(key.len()).expect("Key is too long"),
         ad: std::ptr::null_mut(),
@@ -452,7 +451,7 @@ pub fn hash_argon2id(
     let result = unsafe { argon2id_ctx(&mut ctx as *mut Argon2_Context) };
 
     if result != Argon2_ErrorCodes_ARGON2_OK {
-        let err_msg = format!("Failed to hash auth_string: {}", unsafe {
+        let err_msg = format!("Failed to hash auth string: {}", unsafe {
             std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
         });
         error!("{}", err_msg);
@@ -469,7 +468,7 @@ pub fn hash_argon2id(
     }
 }
 
-pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8]) -> bool {
+pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8; 32]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
         Err(_) => {
@@ -515,8 +514,6 @@ pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use crate::test_env;
 
     #[test]
     fn test_binary_hash_into_hash_string() {
@@ -700,14 +697,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
-
-        let hash = hash_auth_string(
-            auth_string,
-            &hash_params,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
-            &mut (*csprng),
-        );
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
 
         assert!(!hash.contains(auth_string));
     }
@@ -724,20 +714,9 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
 
-        let hash = hash_auth_string(
-            auth_string,
-            &hash_params,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
-            &mut (*csprng),
-        );
-
-        assert!(verify_hash(
-            auth_string,
-            &hash,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice()
-        ));
+        assert!(verify_hash(auth_string, &hash, &[0u8; 32],));
     }
 
     #[test]
@@ -752,20 +731,9 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
 
-        let hash = hash_auth_string(
-            auth_string,
-            &hash_params,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
-            &mut (*csprng),
-        );
-
-        assert!(!verify_hash(
-            "@pa$$20rd-Test",
-            &hash,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice()
-        ));
+        assert!(!verify_hash("@pa$$20rd-Test", &hash, &[0u8; 32],));
     }
 
     #[test]
@@ -780,19 +748,8 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let mut csprng = test_env::CSPRNG.lock().expect("Mutex was poisoned");
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
 
-        let hash = hash_auth_string(
-            auth_string,
-            &hash_params,
-            vec![30, 23, 4, 2, 3, 56, 56].as_slice(),
-            &mut (*csprng),
-        );
-
-        assert!(!verify_hash(
-            auth_string,
-            &hash,
-            vec![30, 23, 4, 2, 4, 56, 56].as_slice()
-        ));
+        assert!(!verify_hash(auth_string, &hash, &[1u8; 32],));
     }
 }

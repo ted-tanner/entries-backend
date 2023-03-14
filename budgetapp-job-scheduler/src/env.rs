@@ -107,14 +107,3 @@ pub mod runner {
         ));
     }
 }
-
-#[cfg(test)]
-pub mod testing {
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha20Rng;
-    use std::sync::Mutex;
-
-    lazy_static! {
-        pub static ref CSPRNG: Mutex<ChaCha20Rng> = Mutex::new(ChaCha20Rng::from_entropy());
-    }
-}

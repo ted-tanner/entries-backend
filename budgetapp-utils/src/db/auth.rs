@@ -1,5 +1,5 @@
 use diesel::{dsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl};
-use rand::{CryptoRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -215,11 +215,7 @@ impl Dao {
             .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_and_refresh_signin_nonce<CSPRNG: Rng + CryptoRng>(
-        &mut self,
-        user_email: &str,
-        crypto_rng: &mut CSPRNG,
-    ) -> Result<i32, DaoError> {
+    pub fn get_and_refresh_signin_nonce(&mut self, user_email: &str) -> Result<i32, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let nonce = db_connection
@@ -231,7 +227,7 @@ impl Dao {
                     .get_result::<i32>(conn)?;
 
                 dsl::update(signin_nonces.find(user_email))
-                    .set(signin_nonce_fields::nonce.eq(crypto_rng.gen::<i32>()))
+                    .set(signin_nonce_fields::nonce.eq(OsRng.gen::<i32>()))
                     .execute(conn)?;
 
                 Ok(nonce)

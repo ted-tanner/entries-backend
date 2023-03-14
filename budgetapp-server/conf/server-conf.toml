@@ -12,9 +12,10 @@ hash_lanes = 2
 salt_length_bytes = 16
 
 [keys]
-hashing_key = "OCc!7xlc"
-otp_key = "K1Xn*5&b"
-token_signing_key = "3dn68OZo"
+hashing_key_b64 = "DxftwcsQpY3abXLcPZx93E7wwhIKdqoRoQ9YxmAyRWE=" # 32 bytes
+otp_key_b64 = "MMzU45iv+IF77cMfkRnL/MprdrwcJQ+ORs1BuY/ZWaXBNO+6wAXtslr63eDDTZLqoOxBqPyZw2W4m6OwDHFvnw==" # 64 bytes
+token_signing_key_b64 = "sTBPAz+FCvty/nSFmsFOEy749cFoT7KzgmBbht0w3y6FSZNI9eOyT8+CeiiO0a15AZZedWWsV18L7hymA8usXw==" # 64 bytes
+token_encryption_key_b64 = "JIxcJ855KUBS8hj0+ki7rQ==" # 16 bytes
 
 [lifetimes]
 access_token_lifetime_mins = 8

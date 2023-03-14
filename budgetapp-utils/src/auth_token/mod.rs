@@ -1,10 +1,13 @@
+use aes_gcm::{aead::Aead, Aes128Gcm};
 use hmac::{Hmac, Mac};
-use rand::prelude::*;
+use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug)]
 pub enum TokenError {
@@ -86,24 +89,66 @@ pub struct TokenParams<'a> {
     pub user_email: &'a str,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TokenClaims {
     pub exp: u64,    // Expiration in time since UNIX epoch
-    pub uid: Uuid,   // User ID
-    pub eml: String, // User email address
+    pub uid: Uuid,   // User ID (gets encrypted)
+    pub eml: String, // User email address (gets encrypted)
     pub typ: u8,     // Token type (Access=0, Refresh=1, SignIn=2)
-    pub slt: u32,    // Random salt (makes it so two tokens generated in the same
-                     // second are different--useful for preventing replay attacks
-                     // while allowing new tokens to be generated for the client)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct PrivateTokenClaims {
+    pub uid: Uuid,
+    pub eml: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct NewPrivateTokenClaims<'a> {
+    pub uid: Uuid,
+    pub eml: &'a str,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct DecodedToken {
+    pub exp: u64,
+
+    // uid and eml get encrypted
+    pub nnc: String, // Nonce for encryption (base64 encoded)
+    pub enc: String, // Encrypted fields (base64 encoded)
+
+    pub typ: u8,
 }
 
 impl TokenClaims {
-    pub fn create_token(&self, key: &[u8]) -> String {
-        let mut claims_and_hash =
-            serde_json::to_vec(self).expect("Failed to transform claims into JSON");
+    pub fn create_token(&self, signing_key: &[u8; 64], cipher: &Aes128Gcm) -> String {
+        let private_claims = NewPrivateTokenClaims {
+            uid: self.uid,
+            eml: &self.eml,
+        };
 
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        let private_claims_json = serde_json::to_vec(&private_claims)
+            .expect("Failed to transform private claims into JSON");
+
+        let nonce: [u8; 12] = OsRng.gen();
+
+        let encrypted_private_claims = cipher
+            .encrypt((&nonce).into(), private_claims_json.as_ref())
+            .expect("Failed to encrypt private token claims");
+
+        let unencoded_token = DecodedToken {
+            exp: self.exp,
+
+            nnc: base64::encode(nonce),
+            enc: base64::encode(encrypted_private_claims),
+
+            typ: self.typ,
+        };
+
+        let mut claims_and_hash =
+            serde_json::to_vec(&unencoded_token).expect("Failed to transform claims into JSON");
+
+        let mut mac = HmacSha256::new(signing_key.into());
         mac.update(&claims_and_hash);
         let hash = hex::encode(mac.finalize().into_bytes());
 
@@ -113,8 +158,12 @@ impl TokenClaims {
         base64::encode_config(claims_and_hash, base64::URL_SAFE_NO_PAD)
     }
 
-    pub fn from_token_with_validation(token: &str, key: &[u8]) -> Result<TokenClaims, TokenError> {
-        let (claims, claims_json_str, hash) = TokenClaims::token_to_claims_and_hash(token)?;
+    pub fn from_token_with_validation(
+        token: &str,
+        signing_key: &[u8; 64],
+        cipher: &Aes128Gcm,
+    ) -> Result<TokenClaims, TokenError> {
+        let (claims, claims_json_str, hash) = TokenClaims::token_to_claims_and_hash(token, cipher)?;
 
         let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(t) => t,
@@ -125,8 +174,7 @@ impl TokenClaims {
             return Err(TokenError::TokenExpired);
         }
 
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(key).expect("Failed to generate hash from key");
+        let mut mac = HmacSha256::new(signing_key.into());
         mac.update(claims_json_str.as_bytes());
 
         match mac.verify_slice(&hash) {
@@ -135,11 +183,17 @@ impl TokenClaims {
         }
     }
 
-    pub fn from_token_without_validation(token: &str) -> Result<TokenClaims, TokenError> {
-        Ok(TokenClaims::token_to_claims_and_hash(token)?.0)
+    pub fn from_token_without_validation(
+        token: &str,
+        cipher: &Aes128Gcm,
+    ) -> Result<TokenClaims, TokenError> {
+        Ok(TokenClaims::token_to_claims_and_hash(token, cipher)?.0)
     }
 
-    fn token_to_claims_and_hash(token: &str) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
+    fn token_to_claims_and_hash(
+        token: &str,
+        cipher: &Aes128Gcm,
+    ) -> Result<(TokenClaims, String, Vec<u8>), TokenError> {
         let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
@@ -160,13 +214,48 @@ impl TokenClaims {
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
-        let claims_json_str = split_token.collect::<String>();
-        let claims = match serde_json::from_str::<TokenClaims>(&claims_json_str) {
+        let encrypted_claims_json_str = split_token.collect::<String>();
+        let encrypted_claims =
+            match serde_json::from_str::<DecodedToken>(&encrypted_claims_json_str) {
+                Ok(c) => c,
+                Err(_) => return Err(TokenError::TokenInvalid),
+            };
+
+        let nonce = match base64::decode(encrypted_claims.nnc) {
+            Ok(n) => n,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+
+        let private_claims = match base64::decode(encrypted_claims.enc) {
             Ok(c) => c,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
-        Ok((claims, claims_json_str, hash))
+        let decrypted_claims_bytes = match cipher.decrypt((&*nonce).into(), private_claims.as_ref())
+        {
+            Ok(c) => c,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+
+        let decrypted_claims_json_str = match String::from_utf8(decrypted_claims_bytes) {
+            Ok(s) => s,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+
+        let decrypted_claims =
+            match serde_json::from_str::<PrivateTokenClaims>(&decrypted_claims_json_str) {
+                Ok(c) => c,
+                Err(_) => return Err(TokenError::TokenInvalid),
+            };
+
+        let claims = TokenClaims {
+            exp: encrypted_claims.exp,
+            uid: decrypted_claims.uid,
+            eml: decrypted_claims.eml,
+            typ: encrypted_claims.typ,
+        };
+
+        Ok((claims, encrypted_claims_json_str, hash))
     }
 }
 
@@ -193,19 +282,22 @@ pub fn generate_token_pair(
     params: &TokenParams,
     access_token_lifetime: Duration,
     refresh_token_lifetime: Duration,
-    signing_key: &[u8],
+    signing_key: &[u8; 64],
+    cipher: &Aes128Gcm,
 ) -> Result<TokenPair, TokenError> {
     let access_token = generate_token(
         params,
         TokenType::Access,
         access_token_lifetime,
         signing_key,
+        cipher,
     )?;
     let refresh_token = generate_token(
         params,
         TokenType::Refresh,
         refresh_token_lifetime,
         signing_key,
+        cipher,
     )?;
 
     Ok(TokenPair {
@@ -218,7 +310,8 @@ pub fn generate_token(
     params: &TokenParams,
     kind: TokenType,
     lifetime: Duration,
-    signing_key: &[u8],
+    signing_key: &[u8; 64],
+    cipher: &Aes128Gcm,
 ) -> Result<Token, TokenError> {
     let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t,
@@ -226,17 +319,15 @@ pub fn generate_token(
     };
 
     let expiration = (time_since_epoch + lifetime).as_secs();
-    let salt = rand::thread_rng().gen_range(1..u32::MAX);
 
     let claims = TokenClaims {
         exp: expiration,
         uid: params.user_id,
         eml: params.user_email.to_string(),
         typ: kind.into(),
-        slt: salt,
     };
 
-    let token = claims.create_token(signing_key);
+    let token = claims.create_token(signing_key, cipher);
 
     Ok(Token {
         token,
@@ -247,9 +338,10 @@ pub fn generate_token(
 pub fn validate_token(
     token: &str,
     kind: TokenType,
-    signing_key: &[u8],
+    signing_key: &[u8; 64],
+    cipher: &Aes128Gcm,
 ) -> Result<TokenClaims, TokenError> {
-    let decoded_token = TokenClaims::from_token_with_validation(token, signing_key)?;
+    let decoded_token = TokenClaims::from_token_with_validation(token, signing_key, cipher)?;
 
     let token_type_claim = match TokenType::try_from(decoded_token.typ) {
         Ok(t) => t,
@@ -267,33 +359,10 @@ pub fn validate_token(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_create_token() {
-        let claims = TokenClaims {
-            exp: 123456789,
-            uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
-            eml: "Testing_tokens@example.com".to_string(),
-            typ: u8::from(TokenType::Access),
-            slt: 10000,
-        };
-
-        let token = claims.create_token("thisIsAFakeKey".as_bytes());
-
-        let decoded_token =
-            base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD).unwrap();
-        let token_str = String::from_utf8_lossy(&decoded_token);
-        let mut split_token = token_str.split('|');
-        split_token.next_back();
-
-        let claims_json_str = split_token.collect::<String>();
-        let decoded_claims = serde_json::from_str::<TokenClaims>(claims_json_str.as_str()).unwrap();
-
-        assert_eq!(decoded_claims.exp, claims.exp);
-        assert_eq!(decoded_claims.uid, claims.uid);
-        assert_eq!(decoded_claims.eml, claims.eml);
-        assert_eq!(decoded_claims.typ, claims.typ);
-        assert_eq!(decoded_claims.slt, claims.slt);
-    }
+    use aes_gcm::{
+        aead::{KeyInit, OsRng},
+        Aes128Gcm,
+    };
 
     #[test]
     fn test_claims_from_token_with_validation() {
@@ -302,14 +371,11 @@ mod tests {
             uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             typ: u8::from(TokenType::Access),
-            slt: 10000,
         };
 
-        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        let result = TokenClaims::from_token_with_validation(
-            &token,
-            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-        );
+        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        let token = claims.create_token(&[0u8; 64], &cipher);
+        let result = TokenClaims::from_token_with_validation(&token, &[0u8; 64], &cipher);
 
         assert!(result.is_ok());
 
@@ -319,7 +385,6 @@ mod tests {
         assert_eq!(decoded_claims.uid, claims.uid);
         assert_eq!(decoded_claims.eml, claims.eml);
         assert_eq!(decoded_claims.typ, claims.typ);
-        assert_eq!(decoded_claims.slt, claims.slt);
     }
 
     #[test]
@@ -329,14 +394,11 @@ mod tests {
             uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             typ: u8::from(TokenType::Access),
-            slt: 10000,
         };
 
-        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        let result = TokenClaims::from_token_with_validation(
-            &token,
-            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17],
-        );
+        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        let token = claims.create_token(&[0u8; 64], &cipher);
+        let result = TokenClaims::from_token_with_validation(&token, &[1u8; 64], &cipher);
 
         let error = result.unwrap_err();
 
@@ -353,14 +415,11 @@ mod tests {
             uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             typ: u8::from(TokenType::Access),
-            slt: 10000,
         };
 
-        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        let result = TokenClaims::from_token_with_validation(
-            &token,
-            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-        );
+        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        let token = claims.create_token(&[0u8; 64], &cipher);
+        let result = TokenClaims::from_token_with_validation(&token, &[0u8; 64], &cipher);
 
         let error = result.unwrap_err();
 
@@ -377,16 +436,15 @@ mod tests {
             uid: Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
             eml: "Testing_tokens@example.com".to_string(),
             typ: u8::from(TokenType::Access),
-            slt: 10000,
         };
 
-        let token = claims.create_token(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        let decoded_claims = TokenClaims::from_token_without_validation(&token).unwrap();
+        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        let token = claims.create_token(&[0u8; 64], &cipher);
+        let decoded_claims = TokenClaims::from_token_without_validation(&token, &cipher).unwrap();
 
         assert_eq!(decoded_claims.exp, claims.exp);
         assert_eq!(decoded_claims.uid, claims.uid);
         assert_eq!(decoded_claims.eml, claims.eml);
         assert_eq!(decoded_claims.typ, claims.typ);
-        assert_eq!(decoded_claims.slt, claims.slt);
     }
 }

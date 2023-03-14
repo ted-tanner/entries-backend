@@ -6,7 +6,7 @@ use budgetapp_utils::validators::Validity;
 use budgetapp_utils::{argon2_hasher, auth_token, db, otp, validators};
 
 use actix_web::{web, HttpResponse};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -54,11 +54,8 @@ pub async fn sign_in(
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
-    let nonce = match web::block(move || {
-        let mut csprng = env::CSPRNG.lock().expect("Mutex was poisoned");
-        auth_dao.get_and_refresh_signin_nonce(&user_email_clone1, &mut (*csprng))
-    })
-    .await?
+    let nonce = match web::block(move || auth_dao.get_and_refresh_signin_nonce(&user_email_clone1))
+        .await?
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
@@ -82,7 +79,7 @@ pub async fn sign_in(
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
             &user_email_clone2,
-            Duration::from_secs(env::CONF.security.authorization_attempts_reset_mins * 60),
+            env::CONF.security.authorization_attempts_reset_time,
         )
     })
     .await?
@@ -117,7 +114,7 @@ pub async fn sign_in(
         argon2_hasher::verify_hash(
             &credentials.auth_string,
             &hash_and_attempts.auth_string_hash,
-            env::CONF.keys.hashing_key.as_bytes(),
+            &env::CONF.keys.hashing_key,
         )
     })
     .await?;
@@ -129,8 +126,9 @@ pub async fn sign_in(
                 user_email: &user_email_clone3,
             },
             auth_token::TokenType::SignIn,
-            Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-            env::CONF.keys.token_signing_key.as_bytes(),
+            env::CONF.lifetimes.access_token_lifetime,
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         );
 
         let signin_token = match signin_token {
@@ -147,10 +145,7 @@ pub async fn sign_in(
             signin_token: signin_token.to_string(),
         };
 
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
+        let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
 
         // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
         // it is sent. The verification endpoint will check the code for the current time as well as a future
@@ -158,9 +153,9 @@ pub async fn sign_in(
         // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
         let otp = match otp::generate_otp(
             hash_and_attempts.user_id,
-            current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
-            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-            env::CONF.keys.otp_key.as_bytes(),
+            end_time,
+            env::CONF.lifetimes.otp_lifetime,
+            &env::CONF.keys.otp_key,
         ) {
             Ok(p) => p,
             Err(e) => {
@@ -192,7 +187,8 @@ pub async fn verify_otp_for_signin(
     let token_claims = match auth_token::validate_token(
         &signin_token,
         auth_token::TokenType::SignIn,
-        env::CONF.keys.token_signing_key.as_bytes(),
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     ) {
         Ok(t) => t,
         Err(e) => match e {
@@ -249,7 +245,7 @@ pub async fn verify_otp_for_signin(
     let attempts = match web::block(move || {
         auth_dao.get_and_increment_otp_verification_count(
             token_claims.uid,
-            Duration::from_secs(env::CONF.security.otp_attempts_reset_mins * 60),
+            env::CONF.security.otp_attempts_reset_time,
         )
     })
     .await?
@@ -274,17 +270,14 @@ pub async fn verify_otp_for_signin(
     let is_valid = match web::block(move || {
         let otp = otp::OneTimePasscode::try_from(otp_and_token.0.otp)?;
 
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
+        let current_time = SystemTime::now();
 
         let mut is_valid = otp::verify_otp(
             otp,
             token_claims.uid,
             current_time,
-            Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-            env::CONF.keys.otp_key.as_bytes(),
+            env::CONF.lifetimes.otp_lifetime,
+            &env::CONF.keys.otp_key,
         )?;
 
         // A future code gets sent to the user, so check a current and future code
@@ -292,9 +285,9 @@ pub async fn verify_otp_for_signin(
             is_valid = otp::verify_otp(
                 otp,
                 token_claims.uid,
-                current_time + env::CONF.lifetimes.otp_lifetime_mins * 60,
-                Duration::from_secs(env::CONF.lifetimes.otp_lifetime_mins * 60),
-                env::CONF.keys.otp_key.as_bytes(),
+                current_time + env::CONF.lifetimes.otp_lifetime,
+                env::CONF.lifetimes.otp_lifetime,
+                &env::CONF.keys.otp_key,
             )?;
         }
 
@@ -334,9 +327,10 @@ pub async fn verify_otp_for_signin(
             user_id: token_claims.uid,
             user_email: &token_claims.eml,
         },
-        Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-        Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
-        env::CONF.keys.token_signing_key.as_bytes(),
+        env::CONF.lifetimes.access_token_lifetime,
+        env::CONF.lifetimes.refresh_token_lifetime,
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     );
 
     let token_pair = match token_pair {
@@ -378,7 +372,8 @@ pub async fn refresh_tokens(
     let claims = match auth_token::validate_token(
         &refresh_token,
         auth_token::TokenType::Refresh,
-        env::CONF.keys.token_signing_key.as_bytes(),
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     ) {
         Ok(c) => c,
         Err(e) => match e {
@@ -433,9 +428,10 @@ pub async fn refresh_tokens(
             user_id: claims.uid,
             user_email: &claims.eml,
         },
-        Duration::from_secs(env::CONF.lifetimes.access_token_lifetime_mins * 60),
-        Duration::from_secs(env::CONF.lifetimes.refresh_token_lifetime_days * 60 * 60 * 24),
-        env::CONF.keys.token_signing_key.as_bytes(),
+        env::CONF.lifetimes.access_token_lifetime,
+        env::CONF.lifetimes.refresh_token_lifetime,
+        &env::CONF.keys.token_signing_key,
+        &env::CONF.keys.token_encryption_cipher,
     );
 
     let token_pair = match token_pair {
@@ -479,7 +475,8 @@ pub async fn logout(
         auth_token::validate_token(
             &refresh_token_clone,
             auth_token::TokenType::Refresh,
-            env::CONF.keys.token_signing_key.as_bytes(),
+            &env::CONF.keys.token_signing_key,
+            &env::CONF.keys.token_encryption_cipher,
         )
     })
     .await?

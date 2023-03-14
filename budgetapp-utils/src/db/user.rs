@@ -2,7 +2,7 @@ use diesel::{
     dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
     RunQueryDsl,
 };
-use rand::{CryptoRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -48,11 +48,10 @@ impl Dao {
         }
     }
 
-    pub fn create_user<CSPRNG: Rng + CryptoRng>(
+    pub fn create_user(
         &mut self,
         user_data: InputUser,
         auth_string_hash: &str,
-        crypto_rng: &mut CSPRNG,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let user_id = Uuid::new_v4();
@@ -97,7 +96,7 @@ impl Dao {
 
         let new_signin_nonce = NewSigninNonce {
             user_email: &user_data.email.to_lowercase(),
-            nonce: crypto_rng.gen(),
+            nonce: OsRng.gen(),
         };
 
         let mut db_connection = self.db_thread_pool.get()?;
@@ -270,10 +269,10 @@ impl Dao {
         request_id: Uuid,
         recipient_user_id: Uuid,
         recipient_user_email: &str,
-    ) -> Result<Uuid, DaoError> {
+    ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let sender_user_id = db_connection
+        db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
                 let sender_user_email =
@@ -297,10 +296,10 @@ impl Dao {
                     .values(&relationship)
                     .execute(conn)?;
 
-                Ok(sender_user_id)
+                Ok(())
             })?;
 
-        Ok(sender_user_id)
+        Ok(())
     }
 
     pub fn get_all_pending_buddy_requests_for_user(
@@ -365,9 +364,9 @@ impl Dao {
         Ok(())
     }
 
-    pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<Uuid>, DaoError> {
+    pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<String>, DaoError> {
         Ok(users
-            .select(user_fields::id)
+            .select(user_fields::email)
             .left_join(
                 buddy_relationships.on(buddy_relationship_fields::user1_id
                     .eq(user_fields::id)
@@ -378,7 +377,7 @@ impl Dao {
                     .eq(user_id)
                     .or(buddy_relationship_fields::user2_id.eq(user_id)),
             )
-            .get_results::<Uuid>(&mut self.db_thread_pool.get()?)?)
+            .get_results::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn check_are_buddies(&mut self, user1_id: Uuid, user2_id: Uuid) -> Result<bool, DaoError> {
