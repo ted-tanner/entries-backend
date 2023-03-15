@@ -1,14 +1,9 @@
-use diesel::{
-    dsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
-    RunQueryDsl,
-};
+use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::buddy_relationship::NewBuddyRelationship;
-use crate::models::buddy_request::{BuddyRequest, NewBuddyRequest};
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
@@ -17,10 +12,6 @@ use crate::models::user_security_data::NewUserSecurityData;
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 
 use crate::request_io::InputUser;
-use crate::schema::buddy_relationships as buddy_relationship_fields;
-use crate::schema::buddy_relationships::dsl::buddy_relationships;
-use crate::schema::buddy_requests as buddy_request_fields;
-use crate::schema::buddy_requests::dsl::buddy_requests;
 use crate::schema::budgets as budget_fields;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
@@ -186,212 +177,6 @@ impl Dao {
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
-    }
-
-    pub fn send_buddy_request(
-        &mut self,
-        recipient_user_email: &str,
-        sender_user_id: Uuid,
-        sender_user_email: &str,
-        sender_name_encrypted: Option<&str>,
-    ) -> Result<BuddyRequest, DaoError> {
-        let request = NewBuddyRequest {
-            id: Uuid::new_v4(),
-            recipient_user_email,
-            sender_user_email,
-            sender_name_encrypted,
-        };
-
-        let mut db_connection = self.db_thread_pool.get()?;
-
-        let buddy_request = db_connection
-            .build_transaction()
-            .run::<_, DaoError, _>(|conn| {
-                let are_buddies = dsl::select(dsl::exists(
-                    buddy_relationships.filter(
-                        buddy_relationship_fields::user1_id
-                            .eq(sender_user_id)
-                            .and(
-                                buddy_relationship_fields::user2_id.nullable().eq(users
-                                    .select(user_fields::id)
-                                    .filter(user_fields::email.eq(recipient_user_email))
-                                    .single_value()),
-                            )
-                            .or(buddy_relationship_fields::user1_id
-                                .nullable()
-                                .eq(users
-                                    .select(user_fields::id)
-                                    .filter(user_fields::email.eq(recipient_user_email))
-                                    .single_value())
-                                .and(buddy_relationship_fields::user2_id.eq(sender_user_id))),
-                    ),
-                ))
-                .get_result::<bool>(conn)?;
-
-                if are_buddies {
-                    return Err(DaoError::WontRunQuery);
-                }
-
-                Ok(dsl::insert_into(buddy_requests)
-                    .values(&request)
-                    .on_conflict((
-                        buddy_request_fields::recipient_user_email,
-                        buddy_request_fields::sender_user_email,
-                    ))
-                    .do_update()
-                    .set(buddy_request_fields::sender_name_encrypted.eq(sender_name_encrypted))
-                    .get_result::<BuddyRequest>(conn)?)
-            })?;
-
-        Ok(buddy_request)
-    }
-
-    pub fn delete_buddy_request(
-        &mut self,
-        request_id: Uuid,
-        sender_or_recipient_user_email: &str,
-    ) -> Result<(), DaoError> {
-        diesel::delete(
-            buddy_requests.find(request_id).filter(
-                buddy_request_fields::sender_user_email
-                    .eq(sender_or_recipient_user_email)
-                    .or(buddy_request_fields::recipient_user_email
-                        .eq(sender_or_recipient_user_email)),
-            ),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
-    pub fn accept_buddy_request(
-        &mut self,
-        request_id: Uuid,
-        recipient_user_id: Uuid,
-        recipient_user_email: &str,
-    ) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
-
-        db_connection
-            .build_transaction()
-            .run::<_, diesel::result::Error, _>(|conn| {
-                let sender_user_email =
-                    diesel::delete(buddy_requests.find(request_id).filter(
-                        buddy_request_fields::recipient_user_email.eq(recipient_user_email),
-                    ))
-                    .returning(buddy_request_fields::sender_user_email)
-                    .get_result::<String>(conn)?;
-
-                let sender_user_id = users
-                    .select(user_fields::id)
-                    .filter(user_fields::email.eq(sender_user_email))
-                    .get_result::<Uuid>(conn)?;
-
-                let relationship = NewBuddyRelationship {
-                    user1_id: sender_user_id,
-                    user2_id: recipient_user_id,
-                };
-
-                dsl::insert_into(buddy_relationships)
-                    .values(&relationship)
-                    .execute(conn)?;
-
-                Ok(())
-            })?;
-
-        Ok(())
-    }
-
-    pub fn get_all_pending_buddy_requests_for_user(
-        &mut self,
-        user_email: &str,
-    ) -> Result<Vec<BuddyRequest>, DaoError> {
-        Ok(buddy_requests
-            .filter(buddy_request_fields::recipient_user_email.eq(user_email))
-            .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn get_all_pending_buddy_requests_made_by_user(
-        &mut self,
-        user_email: &str,
-    ) -> Result<Vec<BuddyRequest>, DaoError> {
-        Ok(buddy_requests
-            .filter(buddy_request_fields::sender_user_email.eq(user_email))
-            .load::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn get_buddy_request(
-        &mut self,
-        request_id: Uuid,
-        user_email: &str,
-    ) -> Result<BuddyRequest, DaoError> {
-        Ok(buddy_requests
-            .find(request_id)
-            .filter(
-                buddy_request_fields::sender_user_email
-                    .eq(user_email)
-                    .or(buddy_request_fields::recipient_user_email.eq(user_email)),
-            )
-            .get_result::<BuddyRequest>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn delete_buddy_relationship(
-        &mut self,
-        user1_id: Uuid,
-        user2_email: &str,
-    ) -> Result<(), DaoError> {
-        diesel::delete(
-            buddy_relationships.filter(
-                buddy_relationship_fields::user1_id
-                    .eq(user1_id)
-                    .and(
-                        buddy_relationship_fields::user2_id.nullable().eq(users
-                            .select(user_fields::id)
-                            .filter(user_fields::email.eq(user2_email))
-                            .single_value()),
-                    )
-                    .or(buddy_relationship_fields::user1_id
-                        .nullable()
-                        .eq(users
-                            .select(user_fields::id)
-                            .filter(user_fields::email.eq(user2_email))
-                            .single_value())
-                        .and(buddy_relationship_fields::user2_id.eq(user1_id))),
-            ),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
-    pub fn get_buddies(&mut self, user_id: Uuid) -> Result<Vec<String>, DaoError> {
-        Ok(users
-            .select(user_fields::email)
-            .left_join(
-                buddy_relationships.on(buddy_relationship_fields::user1_id
-                    .eq(user_fields::id)
-                    .or(buddy_relationship_fields::user2_id.eq(user_fields::id))),
-            )
-            .filter(
-                buddy_relationship_fields::user1_id
-                    .eq(user_id)
-                    .or(buddy_relationship_fields::user2_id.eq(user_id)),
-            )
-            .get_results::<String>(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn check_are_buddies(&mut self, user1_id: Uuid, user2_id: Uuid) -> Result<bool, DaoError> {
-        Ok(dsl::select(dsl::exists(
-            buddy_relationships.filter(
-                buddy_relationship_fields::user1_id
-                    .eq(user1_id)
-                    .and(buddy_relationship_fields::user2_id.eq(user2_id))
-                    .or(buddy_relationship_fields::user1_id
-                        .eq(user2_id)
-                        .and(buddy_relationship_fields::user2_id.eq(user1_id))),
-            ),
-        ))
-        .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn initiate_user_deletion(

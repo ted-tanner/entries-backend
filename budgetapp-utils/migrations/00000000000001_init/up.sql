@@ -10,27 +10,6 @@ CREATE TABLE blacklisted_tokens (
     token_expiration_time TIMESTAMP NOT NULL
 );
 
-CREATE TABLE buddy_relationships (
-    user1_id UUID NOT NULL,
-    user2_id UUID NOT NULL,
-    PRIMARY KEY (user1_id, user2_id)
-);
-
-CREATE TABLE buddy_requests (
-    id UUID PRIMARY KEY,
-    
-    recipient_user_email VARCHAR(255) NOT NULL,
-    sender_user_email VARCHAR(255) NOT NULL,
-    
-    sender_name_encrypted TEXT,
-    
-    UNIQUE (recipient_user_email, sender_user_email),
-    CHECK (recipient_user_email != sender_user_email)
-);
-
-CREATE INDEX ON buddy_requests USING HASH (recipient_user_email);
-CREATE INDEX ON buddy_requests USING HASH (sender_user_email);
-
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
     encrypted_blob TEXT NOT NULL,
@@ -167,10 +146,6 @@ CREATE TABLE user_tombstones (
 -- Foreign keys
 
 ALTER TABLE blacklisted_tokens ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE buddy_relationships ADD CONSTRAINT user1_key FOREIGN KEY(user1_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE buddy_relationships ADD CONSTRAINT user2_key FOREIGN KEY(user2_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE buddy_requests ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
-ALTER TABLE buddy_requests ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT sender_key FOREIGN KEY(sender_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;

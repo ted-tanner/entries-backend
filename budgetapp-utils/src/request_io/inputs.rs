@@ -19,11 +19,6 @@ pub struct InputEmail {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBuddyRequestId {
-    pub buddy_request_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
 }
@@ -77,12 +72,6 @@ pub struct InputUser {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUserPrefs {
     pub encrypted_blob_b64: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBuddyRequest {
-    pub other_user_email: String,
-    pub sender_name_encrypted_b64: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

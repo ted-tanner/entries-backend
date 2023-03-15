@@ -15,22 +15,6 @@ table! {
 }
 
 table! {
-    buddy_relationships (user1_id, user2_id) {
-        user1_id -> Uuid,
-        user2_id -> Uuid,
-    }
-}
-
-table! {
-    buddy_requests (id) {
-        id -> Uuid,
-        recipient_user_email -> Varchar,
-        sender_user_email -> Varchar,
-        sender_name_encrypted -> Nullable<Text>,
-    }
-}
-
-table! {
     budget_share_invites (id) {
         id -> Uuid,
         recipient_user_email -> Varchar,
@@ -159,8 +143,6 @@ table! {
 allow_tables_to_appear_in_same_query!(
     authorization_attempts,
     blacklisted_tokens,
-    buddy_relationships,
-    buddy_requests,
     budget_share_invites,
     budgets,
     categories,
