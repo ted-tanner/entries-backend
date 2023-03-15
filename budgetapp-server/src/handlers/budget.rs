@@ -226,6 +226,14 @@ pub async fn invite_user(
                 ))));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::ForeignKeyViolation,
+                _,
+            )) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with provded email",
+                ))));
+            }
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
