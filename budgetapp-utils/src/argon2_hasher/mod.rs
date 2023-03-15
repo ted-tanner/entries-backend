@@ -496,7 +496,7 @@ pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8; 32]) -> bool {
         return false;
     }
 
-    let mut is_valid = 0u8;
+    let mut is_invalid = 0u8;
 
     if decoded_hash.len() != hashed_auth_string.hash.len() || decoded_hash.is_empty() {
         return false;
@@ -505,10 +505,10 @@ pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8; 32]) -> bool {
     // Do bitwise comparison to prevent timing attacks (entire length of string must be
     // compared)
     for (i, decoded_hash_byte) in decoded_hash.iter().enumerate() {
-        is_valid |= decoded_hash_byte ^ hashed_auth_string.hash[i];
+        is_invalid |= decoded_hash_byte ^ hashed_auth_string.hash[i];
     }
 
-    is_valid == 0
+    is_invalid == 0
 }
 
 #[cfg(test)]

@@ -473,9 +473,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Pass everything from env.rs inside an `Arc` to handlers with `web::Data` rather than making it global state
 * Check length of hmac hashes. Are they long enough to not be brute forced? Also, is the verification of the tokens resistant to timing attacks?
 * Auto-delete budgets that haven't been accessed or modified in over a year. Save last access time for budget each time a budget is accessed.
+* Send user email in encrypted entry data (including edits) to track who created/updated budget entries. Allow user to add a name for email addresses he/she recognizes that will be stored with user preferences.
 * Try to zeroize auth_strings (make variable mut?, implement ZeroizeOnDrop for it?)
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database.

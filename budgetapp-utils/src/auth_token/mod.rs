@@ -177,9 +177,23 @@ impl TokenClaims {
         let mut mac = HmacSha256::new(signing_key.into());
         mac.update(claims_json_str.as_bytes());
 
-        match mac.verify_slice(&hash) {
-            Ok(_) => Ok(claims),
-            Err(_) => Err(TokenError::TokenInvalid),
+        let correct_hash = mac.finalize().into_bytes();
+
+        let mut hashes_dont_match = 0u8;
+
+        if correct_hash.len() != hash.len() || hash.is_empty() {
+            return Err(TokenError::TokenInvalid);
+        }
+
+        // Do bitwise comparison to prevent timing attacks
+        for (i, correct_hash_byte) in correct_hash.iter().enumerate() {
+            hashes_dont_match |= correct_hash_byte ^ hash[i];
+        }
+
+        if hashes_dont_match == 0 {
+            Ok(claims)
+        } else {
+            Err(TokenError::TokenInvalid)
         }
     }
 
