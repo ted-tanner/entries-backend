@@ -440,8 +440,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * Client icon should be iMessage-bubble blue
 * Make it clear that budgets that haven't been accessed or modified for a year will be auto-deleted
+* Send user email in encrypted entry data (including edits) to track who created/updated budget entries. Allow user to add a name for email addresses he/she recognizes that will be stored with user preferences.
+* Budget should store (in encrypted blob) a list of all users who have accepted the share of a budget. As soon as a user accepts a budget share, the user should update the budget to add themselves to that list.
 
 #### IMPORTANT Data Syncronization Stuff
+* Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * All data should have a `syncedTimestamp` or `synced_timestamp`. Data older than X minutes will get pulled from the server. The timestamp should be based on the server's time (on app startup, calculate a delta between the server time and the client's time (in UTC). Count the minutes the clock is off and use that delta to calculate the synced_timestamp. UPDATE THE DELTA UPON TOKEN REFRESH.
   - THIS DELTA SHOULD BE USED FOR CHECKING TOKEN EXPIRATIONS AS WELL.
 * If the last synchronization with the server was more than one year ago (according to the server's time), all data needs to be deleted and pulled again. The server's `tombstone` table will be cleared of tombstones older than a year.
@@ -470,17 +473,16 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Client and server nonces for sign in
 * Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
 * Verification of tokens and authentication strings uses comparison functions that are resistant to timing attacks.
+* Zeroization of auth_strings
 
 ### Minimum Viable Product
 
-* Check length of hmac hashes. Are they long enough to not be brute forced? Also, is the verification of the tokens resistant to timing attacks?
-* Auto-delete budgets that haven't been accessed or modified in over a year. Save last access time for budget each time a budget is accessed.
-* Send user email in encrypted entry data (including edits) to track who created/updated budget entries. Allow user to add a name for email addresses he/she recognizes that will be stored with user preferences.
 * Try to zeroize auth_strings (make variable mut?, implement ZeroizeOnDrop for it?)
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
-* Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database.
-* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
 * Eliminate concept of buddy and just invite user to budget by email. Don’t tell user whether invite was successfully created.
+* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* Auto-delete budgets that haven't been accessed or modified in over a year. Save last access time for budget each time a budget is accessed.
 * Users need to be able to block specific email addresses from inviting them to budgets.
 * Maximum of 40 people can be invited/joined to a budget. Unaccepted invites should expire after 1 week (use a timestamp to enforce this, but also create a cron job to clean out old invites).
 * Throttle budget invites to 1 per second per user.

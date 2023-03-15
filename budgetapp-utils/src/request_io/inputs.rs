@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // TODO: Sort these struct defs alphabetically
 // TODO: Can these Strings be &str?
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct CredentialPair {
     pub email: String,
     pub auth_string: String,
@@ -49,7 +50,7 @@ pub struct InputDateRange {
     pub end_date: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputUser {
     pub email: String,
 
@@ -95,7 +96,7 @@ pub struct SigninTokenOtpPair {
     pub otp: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
     pub current_auth_string: String,
 
