@@ -14,20 +14,20 @@ pub struct UserSecurityData {
 
     pub auth_string_hash: String,
 
-    pub auth_string_salt: String,
+    pub auth_string_salt: Vec<u8>,
     pub auth_string_iters: i32,
 
-    pub password_encryption_salt: String,
+    pub password_encryption_salt: Vec<u8>,
     pub password_encryption_iters: i32,
 
-    pub recovery_key_salt: String,
+    pub recovery_key_salt: Vec<u8>,
     pub recovery_key_iters: i32,
 
-    pub encryption_key_user_password_encrypted: String,
-    pub encryption_key_recovery_key_encrypted: String,
+    pub encryption_key_user_password_encrypted: Vec<u8>,
+    pub encryption_key_recovery_key_encrypted: Vec<u8>,
 
-    pub public_rsa_key: String,
-    pub private_rsa_key_encrypted: String,
+    pub public_rsa_key: Vec<u8>,
+    pub private_rsa_key_encrypted: Vec<u8>,
     pub rsa_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,
@@ -42,20 +42,20 @@ pub struct NewUserSecurityData<'a> {
 
     pub auth_string_hash: &'a str,
 
-    pub auth_string_salt: &'a str,
+    pub auth_string_salt: &'a [u8],
     pub auth_string_iters: i32,
 
-    pub password_encryption_salt: &'a str,
+    pub password_encryption_salt: &'a [u8],
     pub password_encryption_iters: i32,
 
-    pub recovery_key_salt: &'a str,
+    pub recovery_key_salt: &'a [u8],
     pub recovery_key_iters: i32,
 
-    pub encryption_key_user_password_encrypted: &'a str,
-    pub encryption_key_recovery_key_encrypted: &'a str,
+    pub encryption_key_user_password_encrypted: &'a [u8],
+    pub encryption_key_recovery_key_encrypted: &'a [u8],
 
-    pub public_rsa_key: &'a str,
-    pub private_rsa_key_encrypted: &'a str,
+    pub public_rsa_key: &'a [u8],
+    pub private_rsa_key_encrypted: &'a [u8],
     pub rsa_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,

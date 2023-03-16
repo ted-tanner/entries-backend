@@ -1,5 +1,5 @@
 use diesel::associations::GroupedBy;
-use diesel::sql_types::{self, Timestamp, VarChar};
+use diesel::sql_types::{self, Bytea, Timestamp};
 use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
     NullableExpressionMethods, QueryDsl, RunQueryDsl,
@@ -247,7 +247,7 @@ impl Dao {
     pub fn update_budget(
         &mut self,
         budget_id: Uuid,
-        edited_budget_data: &str,
+        edited_budget_data: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
         diesel::sql_query(
@@ -261,7 +261,7 @@ impl Dao {
              AND b.id = $4",
         )
         .bind::<Timestamp, _>(SystemTime::now())
-        .bind::<VarChar, _>(edited_budget_data)
+        .bind::<Bytea, _>(edited_budget_data)
         .bind::<sql_types::Uuid, _>(user_id)
         .bind::<sql_types::Uuid, _>(budget_id)
         .execute(&mut self.db_thread_pool.get()?)?;
@@ -272,7 +272,7 @@ impl Dao {
     pub fn update_budget_key(
         &mut self,
         budget_id: Uuid,
-        encrypted_key: &str,
+        encrypted_key: &[u8],
         is_encrypted_with_aes: bool,
         user_id: Uuid,
     ) -> Result<(), DaoError> {
@@ -294,13 +294,13 @@ impl Dao {
     pub fn invite_user(
         &mut self,
         budget_id: Uuid,
-        budget_name_encrypted: &str,
+        budget_name_encrypted: &[u8],
         recipient_user_email: &str,
         read_only: bool,
         sender_user_id: Uuid,
         sender_user_email: &str,
-        sender_name_encrypted: Option<&str>,
-        encryption_key_encrypted: &str,
+        sender_name_encrypted: Option<&[u8]>,
+        encryption_key_encrypted: &[u8],
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -610,7 +610,7 @@ impl Dao {
     pub fn update_entry(
         &mut self,
         entry_id: Uuid,
-        entry_encrypted_blob: &str,
+        entry_encrypted_blob: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
@@ -735,7 +735,7 @@ impl Dao {
     pub fn update_category(
         &mut self,
         category_id: Uuid,
-        category_encrypted_blob: &str,
+        category_encrypted_blob: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;

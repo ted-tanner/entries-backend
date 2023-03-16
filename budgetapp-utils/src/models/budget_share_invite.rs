@@ -14,13 +14,13 @@ pub struct BudgetShareInvite {
     pub sender_user_email: String,
     pub budget_id: Uuid,
 
-    pub budget_name_encrypted: String,
-    pub sender_name_encrypted: Option<String>,
+    pub budget_name_encrypted: Vec<u8>,
+    pub sender_name_encrypted: Option<Vec<u8>>,
 
     pub read_only: bool,
 
     // This should never get sent to the recipient user until the invite has been accepted
-    pub encryption_key_encrypted: String,
+    pub encryption_key_encrypted: Vec<u8>,
 }
 
 #[derive(Debug, Insertable)]
@@ -32,10 +32,10 @@ pub struct NewBudgetShareInvite<'a> {
     pub sender_user_email: &'a str,
     pub budget_id: Uuid,
 
-    pub budget_name_encrypted: &'a str,
-    pub sender_name_encrypted: Option<&'a str>,
+    pub budget_name_encrypted: &'a [u8],
+    pub sender_name_encrypted: Option<&'a [u8]>,
 
     pub read_only: bool,
 
-    pub encryption_key_encrypted: &'a str,
+    pub encryption_key_encrypted: &'a [u8],
 }

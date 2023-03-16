@@ -12,7 +12,7 @@ use crate::schema::categories;
 pub struct Category {
     pub id: Uuid,
     pub budget_id: Uuid,
-    pub encrypted_blob: String,
+    pub encrypted_blob: Vec<u8>,
     pub modified_timestamp: SystemTime,
 }
 
@@ -21,6 +21,6 @@ pub struct Category {
 pub struct NewCategory<'a> {
     pub id: Uuid,
     pub budget_id: Uuid,
-    pub encrypted_blob: &'a str,
+    pub encrypted_blob: &'a [u8],
     pub modified_timestamp: SystemTime,
 }

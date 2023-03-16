@@ -477,8 +477,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
+* Synchronize all data with a sha1 hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
+* Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
 * Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user just generates a key pair and shares the private key with another user (by encrypting it with a symmetric key protected by the receiving user's public key) and informs the server of the public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
 * Auto-delete budgets that haven't been accessed or modified in over a year. Save last access time for budget each time a budget is accessed.
 * Users need to be able to block specific email addresses from inviting them to budgets.

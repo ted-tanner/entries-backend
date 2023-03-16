@@ -130,22 +130,22 @@ mod tests {
 
                 auth_string: String::new(),
 
-                auth_string_salt: String::new(),
+                auth_string_salt: Vec::new(),
                 auth_string_iters: 1000000,
 
-                password_encryption_salt: String::new(),
+                password_encryption_salt: Vec::new(),
                 password_encryption_iters: 5000000,
 
-                recovery_key_salt: String::new(),
+                recovery_key_salt: Vec::new(),
                 recovery_key_iters: 10000000,
 
-                encryption_key_user_password_encrypted: String::new(),
-                encryption_key_recovery_key_encrypted: String::new(),
+                encryption_key_user_password_encrypted: Vec::new(),
+                encryption_key_recovery_key_encrypted: Vec::new(),
 
-                public_rsa_key: String::new(),
-                private_rsa_key_encrypted: String::new(),
+                public_rsa_key: Vec::new(),
+                private_rsa_key_encrypted: Vec::new(),
 
-                preferences_encrypted: String::new(),
+                preferences_encrypted: Vec::new(),
             };
 
             let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);

@@ -20,9 +20,9 @@ table! {
         recipient_user_email -> Varchar,
         sender_user_email -> Varchar,
         budget_id -> Uuid,
-        budget_name_encrypted -> Text,
-        sender_name_encrypted -> Nullable<Text>,
-        encryption_key_encrypted -> Text,
+        budget_name_encrypted -> Bytea,
+        sender_name_encrypted -> Nullable<Bytea>,
+        encryption_key_encrypted -> Bytea,
         read_only -> Bool,
     }
 }
@@ -30,7 +30,7 @@ table! {
 table! {
     budgets (id) {
         id -> Uuid,
-        encrypted_blob -> Text,
+        encrypted_blob -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -39,7 +39,7 @@ table! {
     categories (id) {
         id -> Uuid,
         budget_id -> Uuid,
-        encrypted_blob -> Text,
+        encrypted_blob -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -48,7 +48,7 @@ table! {
     entries (id) {
         id -> Uuid,
         budget_id -> Uuid,
-        encrypted_blob -> Text,
+        encrypted_blob -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -81,7 +81,7 @@ table! {
     user_budgets (user_id, budget_id) {
         user_id -> Uuid,
         budget_id -> Uuid,
-        encryption_key_encrypted -> Text,
+        encryption_key_encrypted -> Bytea,
         encryption_key_is_encrypted_with_aes_not_rsa -> Bool,
         read_only -> Bool,
         modified_timestamp -> Timestamp,
@@ -99,7 +99,7 @@ table! {
 table! {
     user_preferences (user_id) {
         user_id -> Uuid,
-        encrypted_blob -> Text,
+        encrypted_blob -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -108,16 +108,16 @@ table! {
     user_security_data (user_id) {
         user_id -> Uuid,
         auth_string_hash -> Text,
-        auth_string_salt -> Text,
+        auth_string_salt -> Bytea,
         auth_string_iters -> Int4,
-        password_encryption_salt -> Text,
+        password_encryption_salt -> Bytea,
         password_encryption_iters -> Int4,
-        recovery_key_salt -> Text,
+        recovery_key_salt -> Bytea,
         recovery_key_iters -> Int4,
-        encryption_key_user_password_encrypted -> Text,
-        encryption_key_recovery_key_encrypted -> Text,
-        public_rsa_key -> Text,
-        private_rsa_key_encrypted -> Text,
+        encryption_key_user_password_encrypted -> Bytea,
+        encryption_key_recovery_key_encrypted -> Bytea,
+        public_rsa_key -> Bytea,
+        private_rsa_key_encrypted -> Bytea,
         rsa_key_created_timestamp -> Timestamp,
         last_token_refresh_timestamp -> Timestamp,
         modified_timestamp -> Timestamp,

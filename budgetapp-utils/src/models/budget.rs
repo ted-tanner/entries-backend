@@ -9,7 +9,7 @@ use crate::schema::budgets;
 #[diesel(table_name = budgets)]
 pub struct Budget {
     pub id: Uuid,
-    pub encrypted_blob: String,
+    pub encrypted_blob: Vec<u8>,
     pub modified_timestamp: SystemTime,
 }
 
@@ -17,6 +17,6 @@ pub struct Budget {
 #[diesel(table_name = budgets)]
 pub struct NewBudget<'a> {
     pub id: Uuid,
-    pub encrypted_blob: &'a str,
+    pub encrypted_blob: &'a [u8],
     pub modified_timestamp: SystemTime,
 }

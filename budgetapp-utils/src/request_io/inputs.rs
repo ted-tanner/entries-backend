@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::time::SystemTime;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -45,33 +47,44 @@ pub struct InputDateRange {
     pub end_date: u64,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputUser {
     pub email: String,
 
     pub auth_string: String,
 
-    pub auth_string_salt: String,
+    #[serde_as(as = "Base64")]
+    pub auth_string_salt: Vec<u8>,
     pub auth_string_iters: i32,
 
-    pub password_encryption_salt: String,
+    #[serde_as(as = "Base64")]
+    pub password_encryption_salt: Vec<u8>,
     pub password_encryption_iters: i32,
 
-    pub recovery_key_salt: String,
+    #[serde_as(as = "Base64")]
+    pub recovery_key_salt: Vec<u8>,
     pub recovery_key_iters: i32,
 
-    pub encryption_key_user_password_encrypted: String,
-    pub encryption_key_recovery_key_encrypted: String,
+    #[serde_as(as = "Base64")]
+    pub encryption_key_user_password_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub encryption_key_recovery_key_encrypted: Vec<u8>,
 
-    pub public_rsa_key: String,
-    pub private_rsa_key_encrypted: String,
+    #[serde_as(as = "Base64")]
+    pub public_rsa_key: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub private_rsa_key_encrypted: Vec<u8>,
 
-    pub preferences_encrypted: String,
+    #[serde_as(as = "Base64")]
+    pub preferences_encrypted: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUserPrefs {
-    pub encrypted_blob_b64: String,
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -85,47 +98,68 @@ pub struct SigninTokenOtpPair {
     pub otp: String,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
     pub current_auth_string: String,
-
     pub new_auth_string: String,
-    pub auth_string_salt: String,
+
+    #[serde_as(as = "Base64")]
+    pub auth_string_salt: Vec<u8>,
+
     pub auth_string_iters: i32,
 
-    pub encrypted_encryption_key: String,
+    #[serde_as(as = "Base64")]
+    pub encrypted_encryption_key: Vec<u8>,
 }
 
 // temp_id is an ID the client generates that allows the server to differentiate between
 // categories when multiple are sent to the server simultaneously. The server doesn't have any
 // other way of differentiating them because they are encrypted.
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategoryWithTempId {
     pub temp_id: i32,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
-    pub encrypted_blob_b64: String,
-    pub encryption_key_encrypted_b64: String,
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub encryption_key_encrypted_b64: Vec<u8>,
+
     pub categories: Vec<InputCategoryWithTempId>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
     pub budget_id: Uuid,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UserInvitationToBudget {
     pub budget_id: Uuid,
-    pub budget_name_encrypted_b64: String,
-    pub budget_encryption_key_encrypted_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub budget_name_encrypted_b64: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub budget_encryption_key_encrypted_b64: Vec<u8>,
+
     pub recipient_user_email: String,
     pub read_only: bool,
-    pub sender_name_encrypted_b64: Option<String>,
+
+    #[serde_as(as = "Option<Base64>")]
+    pub sender_name_encrypted_b64: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -133,23 +167,33 @@ pub struct InputEntryId {
     pub entry_id: Uuid,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntry {
     pub budget_id: Uuid,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntryAndCategory {
     pub budget_id: Uuid,
-    pub entry_encrypted_blob_b64: String,
-    pub category_encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub entry_encrypted_blob_b64: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub category_encrypted_blob_b64: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditEntry {
     pub entry_id: Uuid,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -157,16 +201,22 @@ pub struct InputCategoryId {
     pub category_id: Uuid,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategory {
     pub budget_id: Uuid,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditCategory {
     pub category_id: Uuid,
-    pub encrypted_blob_b64: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob_b64: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -184,9 +234,12 @@ pub struct InputToken {
     pub token: String,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEncryptedBudgetKey {
     pub budget_id: Uuid,
-    pub encrypted_key: String,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_key: Vec<u8>,
     pub is_encrypted_with_aes: bool,
 }

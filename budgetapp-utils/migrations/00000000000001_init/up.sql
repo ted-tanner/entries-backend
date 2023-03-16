@@ -12,7 +12,7 @@ CREATE TABLE blacklisted_tokens (
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
-    encrypted_blob TEXT NOT NULL,
+    encrypted_blob BYTEA NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL
 );
 
@@ -23,10 +23,10 @@ CREATE TABLE budget_share_invites (
     sender_user_email VARCHAR(255) NOT NULL,
     budget_id UUID NOT NULL,
 
-    budget_name_encrypted TEXT NOT NULL,
-    sender_name_encrypted TEXT,
+    budget_name_encrypted BYTEA NOT NULL,
+    sender_name_encrypted BYTEA,
     -- This should never get sent to the recipient user until the invite has been accepted
-    encryption_key_encrypted TEXT NOT NULL,
+    encryption_key_encrypted BYTEA NOT NULL,
 
     read_only BOOLEAN NOT NULL,
 
@@ -41,7 +41,7 @@ CREATE TABLE categories (
     id UUID PRIMARY KEY,
     budget_id UUID NOT NULL,
 
-    encrypted_blob TEXT NOT NULL,
+    encrypted_blob BYTEA NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -50,7 +50,7 @@ CREATE TABLE entries (
     id UUID PRIMARY KEY,
     budget_id UUID NOT NULL,
 
-    encrypted_blob TEXT NOT NULL,
+    encrypted_blob BYTEA NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -91,7 +91,7 @@ CREATE TABLE user_budgets (
 
     -- Key should be re-encrypted with AES-256 rather than RSA at earliest possible moment
     -- after exchange
-    encryption_key_encrypted TEXT NOT NULL,
+    encryption_key_encrypted BYTEA NOT NULL,
     encryption_key_is_encrypted_with_aes_not_rsa BOOLEAN NOT NULL,
 
     read_only BOOLEAN NOT NULL,
@@ -108,7 +108,7 @@ CREATE TABLE user_deletion_requests (
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
-    encrypted_blob TEXT NOT NULL,
+    encrypted_blob BYTEA NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL
 );
 
@@ -117,20 +117,20 @@ CREATE TABLE user_security_data (
 
     auth_string_hash TEXT NOT NULL,
 
-    auth_string_salt TEXT NOT NULL,
+    auth_string_salt BYTEA NOT NULL,
     auth_string_iters INT NOT NULL,
 
-    password_encryption_salt TEXT NOT NULL,
+    password_encryption_salt BYTEA NOT NULL,
     password_encryption_iters INT NOT NULL,
 
-    recovery_key_salt TEXT NOT NULL,
+    recovery_key_salt BYTEA NOT NULL,
     recovery_key_iters INT NOT NULL,
 
-    encryption_key_user_password_encrypted TEXT NOT NULL,
-    encryption_key_recovery_key_encrypted TEXT NOT NULL,
+    encryption_key_user_password_encrypted BYTEA NOT NULL,
+    encryption_key_recovery_key_encrypted BYTEA NOT NULL,
 
-    public_rsa_key TEXT NOT NULL,
-    private_rsa_key_encrypted TEXT NOT NULL,
+    public_rsa_key BYTEA NOT NULL,
+    private_rsa_key_encrypted BYTEA NOT NULL,
     rsa_key_created_timestamp TIMESTAMP NOT NULL,
 
     last_token_refresh_timestamp TIMESTAMP NOT NULL,

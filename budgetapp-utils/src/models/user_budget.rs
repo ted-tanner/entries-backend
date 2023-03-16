@@ -17,7 +17,7 @@ pub struct UserBudget {
 
     // Key should be re-encrypted with AES-256 rather than RSA at earliest possible moment
     // after exchange
-    pub encryption_key_encrypted: String,
+    pub encryption_key_encrypted: Vec<u8>,
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
 
     pub read_only: bool,
@@ -31,7 +31,7 @@ pub struct NewUserBudget<'a> {
     pub user_id: Uuid,
     pub budget_id: Uuid,
 
-    pub encryption_key_encrypted: &'a str,
+    pub encryption_key_encrypted: &'a [u8],
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
 
     pub read_only: bool,

@@ -138,7 +138,7 @@ impl Dao {
     pub fn update_user_prefs(
         &mut self,
         user_id: Uuid,
-        prefs_encrypted_blob: &str,
+        prefs_encrypted_blob: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(user_preferences.find(user_id))
             .set((
@@ -162,9 +162,9 @@ impl Dao {
         &mut self,
         user_id: Uuid,
         new_auth_string_hash: &str,
-        new_auth_string_salt: &str,
+        new_auth_string_salt: &[u8],
         new_auth_string_iters: i32,
-        encrypted_encryption_key: &str,
+        encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
             .set((

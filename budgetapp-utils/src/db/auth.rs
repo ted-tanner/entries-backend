@@ -249,7 +249,7 @@ impl Dao {
                 user_security_data_fields::auth_string_iters,
                 signin_nonce_fields::nonce.nullable(),
             ))
-            .first::<(String, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
+            .first::<(Vec<u8>, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
 
         if let Some(nonce) = signin_nonce {
             Ok(OutputSigninNonceData {
