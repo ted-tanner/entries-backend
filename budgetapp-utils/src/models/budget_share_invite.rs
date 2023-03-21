@@ -14,8 +14,8 @@ pub struct BudgetShareInvite {
     pub sender_user_email: String,
     pub budget_id: Uuid,
 
-    pub budget_name_encrypted: Vec<u8>,
-    pub sender_name_encrypted: Option<Vec<u8>>,
+    pub budget_info_encrypted: Vec<u8>,
+    pub sender_info_encrypted: Vec<u8>,
 
     pub read_only: bool,
 
@@ -32,8 +32,8 @@ pub struct NewBudgetShareInvite<'a> {
     pub sender_user_email: &'a str,
     pub budget_id: Uuid,
 
-    pub budget_name_encrypted: &'a [u8],
-    pub sender_name_encrypted: Option<&'a [u8]>,
+    pub budget_info_encrypted: &'a [u8],
+    pub sender_info_encrypted: &'a [u8],
 
     pub read_only: bool,
 

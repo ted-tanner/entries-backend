@@ -151,15 +151,15 @@ pub struct UserInvitationToBudget {
     pub budget_id: Uuid,
 
     #[serde_as(as = "Base64")]
-    pub budget_name_encrypted_b64: Vec<u8>,
+    pub budget_info_encrypted_b64: Vec<u8>,
     #[serde_as(as = "Base64")]
     pub budget_encryption_key_encrypted_b64: Vec<u8>,
 
     pub recipient_user_email: String,
     pub read_only: bool,
 
-    #[serde_as(as = "Option<Base64>")]
-    pub sender_name_encrypted_b64: Option<Vec<u8>>,
+    #[serde_as(as = "Base64")]
+    pub sender_info_encrypted_b64: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

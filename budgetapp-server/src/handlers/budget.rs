@@ -207,12 +207,12 @@ pub async fn invite_user(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             invitation_info.budget_id,
-            &invitation_info.budget_name_encrypted_b64,
+            &invitation_info.budget_info_encrypted_b64,
             &invitation_info.recipient_user_email,
             invitation_info.read_only,
             inviting_user_id,
             &inviting_user_email,
-            invitation_info.sender_name_encrypted_b64.as_deref(),
+            &invitation_info.sender_info_encrypted_b64,
             &invitation_info.budget_encryption_key_encrypted_b64,
         )
     })

@@ -23,8 +23,8 @@ CREATE TABLE budget_share_invites (
     sender_user_email VARCHAR(255) NOT NULL,
     budget_id UUID NOT NULL,
 
-    budget_name_encrypted BYTEA NOT NULL,
-    sender_name_encrypted BYTEA,
+    budget_info_encrypted BYTEA NOT NULL,
+    sender_info_encrypted BYTEA NOT NULL,
     -- This should never get sent to the recipient user until the invite has been accepted
     encryption_key_encrypted BYTEA NOT NULL,
 

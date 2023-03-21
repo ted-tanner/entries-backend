@@ -20,8 +20,8 @@ table! {
         recipient_user_email -> Varchar,
         sender_user_email -> Varchar,
         budget_id -> Uuid,
-        budget_name_encrypted -> Bytea,
-        sender_name_encrypted -> Nullable<Bytea>,
+        budget_info_encrypted -> Bytea,
+        sender_info_encrypted -> Bytea,
         encryption_key_encrypted -> Bytea,
         read_only -> Bool,
     }

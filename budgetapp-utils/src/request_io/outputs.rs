@@ -68,9 +68,9 @@ pub struct OutputBudgetShareInviteWithoutKey {
     pub budget_id: Uuid,
 
     #[serde_as(as = "Base64")]
-    pub budget_name_encrypted: Vec<u8>,
-    #[serde_as(as = "Option<Base64>")]
-    pub sender_name_encrypted: Option<Vec<u8>>,
+    pub budget_info_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub sender_info_encrypted: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
