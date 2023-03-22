@@ -4,6 +4,7 @@ use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
     NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
+use sha1::{Sha1, Digest};
 use std::time::SystemTime;
 use uuid::Uuid;
 
@@ -176,29 +177,43 @@ impl Dao {
         let current_time = SystemTime::now();
         let budget_id = Uuid::new_v4();
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&budget_data.encrypted_blob);
+
         let new_budget = NewBudget {
             id: budget_id,
-            encrypted_blob: &budget_data.encrypted_blob_b64,
+            encrypted_blob: &budget_data.encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
         let new_user_budget_association = NewUserBudget {
             user_id,
             budget_id,
-            encryption_key_encrypted: &budget_data.encryption_key_encrypted_b64,
+            encryption_key_encrypted: &budget_data.encryption_key_encrypted,
             encryption_key_is_encrypted_with_aes_not_rsa: true,
             read_only: false,
             modified_timestamp: current_time,
         };
 
+        let mut category_hashes = Vec::new();
+
+        for category in &budget_data.categories {
+            let mut sha1_hasher = Sha1::new();
+            sha1_hasher.update(&category.encrypted_blob);
+
+            category_hashes.push(sha1_hasher.finalize());
+        }
+
         let mut budget_categories = Vec::new();
         let mut budget_category_temp_ids = Vec::new();
 
-        for category in &budget_data.categories {
+        for (i, category) in budget_data.categories.iter().enumerate() {
             let new_category = NewCategory {
                 budget_id,
                 id: Uuid::new_v4(),
-                encrypted_blob: &category.encrypted_blob_b64,
+                encrypted_blob: &category.encrypted_blob,
+                encrypted_blob_sha1_hash: &category_hashes[i],
                 modified_timestamp: current_time,
             };
 
@@ -520,10 +535,14 @@ impl Dao {
         let current_time = SystemTime::now();
         let entry_id = Uuid::new_v4();
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_data.encrypted_blob);
+
         let new_entry = NewEntry {
             id: entry_id,
             budget_id: entry_data.budget_id,
-            encrypted_blob: &entry_data.encrypted_blob_b64,
+            encrypted_blob: &entry_data.encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -561,17 +580,25 @@ impl Dao {
         let category_id = Uuid::new_v4();
         let entry_id = Uuid::new_v4();
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_and_category_data.entry_encrypted_blob);
+
         let new_entry = NewEntry {
             id: entry_id,
             budget_id: entry_and_category_data.budget_id,
-            encrypted_blob: &entry_and_category_data.entry_encrypted_blob_b64,
+            encrypted_blob: &entry_and_category_data.entry_encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_and_category_data.category_encrypted_blob);
 
         let new_category = NewCategory {
             id: category_id,
             budget_id: entry_and_category_data.budget_id,
-            encrypted_blob: &entry_and_category_data.category_encrypted_blob_b64,
+            encrypted_blob: &entry_and_category_data.category_encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -698,10 +725,14 @@ impl Dao {
         let current_time = SystemTime::now();
         let category_id = Uuid::new_v4();
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&category_data.encrypted_blob);
+
         let new_category = NewCategory {
             id: category_id,
             budget_id: category_data.budget_id,
-            encrypted_blob: &category_data.encrypted_blob_b64,
+            encrypted_blob: &category_data.encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 

@@ -424,7 +424,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
-* Follow password guidelines: https://auth0.com/blog/dont-pass-on-the-new-nist-password-guidelines/
+* Follow password guidelines from NIST
 * Currency should be specified on each budget, default currency in user_preferences
 * The client needs to be prepared for a category to be deleted. Entries will still have a reference to the deleted categories, so check for the category tombstone and handle the case where the category doesn't exist.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.

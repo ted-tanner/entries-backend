@@ -13,6 +13,7 @@ CREATE TABLE blacklisted_tokens (
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
+    encrypted_blob_sha1_hash BYTEA NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL
 );
 
@@ -42,6 +43,7 @@ CREATE TABLE categories (
     budget_id UUID NOT NULL,
 
     encrypted_blob BYTEA NOT NULL,
+    encrypted_blob_sha1_hash BYTEA NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -51,6 +53,7 @@ CREATE TABLE entries (
     budget_id UUID NOT NULL,
 
     encrypted_blob BYTEA NOT NULL,
+    encrypted_blob_sha1_hash BYTEA NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -109,6 +112,7 @@ CREATE TABLE user_deletion_requests (
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
+    encrypted_blob_sha1_hash BYTEA NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL
 );
 

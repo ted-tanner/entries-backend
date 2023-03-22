@@ -12,6 +12,7 @@ use crate::schema::user_preferences;
 pub struct UserPreferences {
     pub user_id: Uuid,
     pub encrypted_blob: Vec<u8>,
+    pub encrypted_blob_sha1_hash: Vec<u8>,
     pub modified_timestamp: SystemTime,
 }
 
@@ -20,5 +21,6 @@ pub struct UserPreferences {
 pub struct NewUserPreferences<'a> {
     pub user_id: Uuid,
     pub encrypted_blob: &'a [u8],
+    pub encrypted_blob_sha1_hash: &'a [u8],
     pub modified_timestamp: SystemTime,
 }

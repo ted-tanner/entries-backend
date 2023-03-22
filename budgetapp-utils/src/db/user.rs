@@ -1,5 +1,6 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use rand::{rngs::OsRng, Rng};
+use sha1::{Sha1, Digest};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -79,9 +80,13 @@ impl Dao {
             modified_timestamp: current_time,
         };
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&user_data.preferences_encrypted);
+
         let new_user_preferences = NewUserPreferences {
             user_id,
             encrypted_blob: &user_data.preferences_encrypted,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 

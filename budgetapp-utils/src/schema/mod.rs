@@ -31,6 +31,7 @@ table! {
     budgets (id) {
         id -> Uuid,
         encrypted_blob -> Bytea,
+        encrypted_blob_sha1_hash -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -40,6 +41,7 @@ table! {
         id -> Uuid,
         budget_id -> Uuid,
         encrypted_blob -> Bytea,
+        encrypted_blob_sha1_hash -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -49,6 +51,7 @@ table! {
         id -> Uuid,
         budget_id -> Uuid,
         encrypted_blob -> Bytea,
+        encrypted_blob_sha1_hash -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }
@@ -100,6 +103,7 @@ table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
+        encrypted_blob_sha1_hash -> Bytea,
         modified_timestamp -> Timestamp,
     }
 }

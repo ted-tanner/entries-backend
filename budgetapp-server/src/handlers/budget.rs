@@ -129,7 +129,7 @@ pub async fn edit(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
             budget_data.budget_id,
-            &budget_data.encrypted_blob_b64,
+            &budget_data.encrypted_blob,
             auth_user_claims.0.uid,
         )
     })
@@ -207,13 +207,13 @@ pub async fn invite_user(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             invitation_info.budget_id,
-            &invitation_info.budget_info_encrypted_b64,
+            &invitation_info.budget_info_encrypted,
             &invitation_info.recipient_user_email,
             invitation_info.read_only,
             inviting_user_id,
             &inviting_user_email,
-            &invitation_info.sender_info_encrypted_b64,
-            &invitation_info.budget_encryption_key_encrypted_b64,
+            &invitation_info.sender_info_encrypted,
+            &invitation_info.budget_encryption_key_encrypted,
         )
     })
     .await?
@@ -538,7 +538,7 @@ pub async fn edit_entry(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_entry(
             entry_data.entry_id,
-            &entry_data.encrypted_blob_b64,
+            &entry_data.encrypted_blob,
             auth_user_claims.0.uid,
         )
     })
@@ -632,7 +632,7 @@ pub async fn edit_category(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_category(
             category_data.category_id,
-            &category_data.encrypted_blob_b64,
+            &category_data.encrypted_blob,
             auth_user_claims.0.uid,
         )
     })
