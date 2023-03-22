@@ -1,6 +1,6 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use rand::{rngs::OsRng, Rng};
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 

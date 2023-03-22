@@ -444,6 +444,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Budget should store (in encrypted blob) a list of all users who have accepted the share of a budget. As soon as a user accepts a budget share, the user should update the budget to add themselves to that list.
 * All encrypted fields should house encrypted JSON, even if that JSON has just a single field. This will allow those fields to be easily extensible and backwards compatible.
 * App should send release version in a header
+* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -460,7 +461,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Tombstones should still exist
 * Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
 * Encrypt user's private key using the user's password. Public key will be shared publicly along with user info
-  - Clients should rotate RSA keys every once-in-a-while.
+* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server). The key gets saved in in the `user_budgets` table for the user.
   - Once the key is received, the client re-encrypts it with their AES-256 encryption key and replaces the RSA-encrypted key on the server.
 * When changing password, everything needs to be re-uploaded. This ought to be done in a single request and a single databasse transaction (otherwise, the user's data could be left in an unrecoverable state)
@@ -480,6 +481,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Synchronize all data with a sha1 hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
+* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * Budget endpoints shouldn’t require access tokens. The access tokens identify a user, but the budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key (only obtained if user is authenticated)
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
 * Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.

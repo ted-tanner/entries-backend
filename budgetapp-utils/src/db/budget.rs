@@ -4,7 +4,7 @@ use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
     NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
 use std::time::SystemTime;
 use uuid::Uuid;
 
