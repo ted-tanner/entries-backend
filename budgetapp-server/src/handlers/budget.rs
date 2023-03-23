@@ -130,6 +130,7 @@ pub async fn edit(
         budget_dao.update_budget(
             budget_data.budget_id,
             &budget_data.encrypted_blob,
+            &budget_data.expected_previous_data_hash,
             auth_user_claims.0.uid,
         )
     })
@@ -539,6 +540,7 @@ pub async fn edit_entry(
         budget_dao.update_entry(
             entry_data.entry_id,
             &entry_data.encrypted_blob,
+            &entry_data.expected_previous_data_hash,
             auth_user_claims.0.uid,
         )
     })
@@ -633,6 +635,7 @@ pub async fn edit_category(
         budget_dao.update_category(
             category_data.category_id,
             &category_data.encrypted_blob,
+            &category_data.expected_previous_data_hash,
             auth_user_claims.0.uid,
         )
     })

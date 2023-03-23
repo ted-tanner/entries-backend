@@ -216,7 +216,11 @@ pub async fn edit_preferences(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_user_prefs(auth_user_claims.0.uid, &new_prefs.encrypted_blob)
+        user_dao.update_user_prefs(
+            auth_user_claims.0.uid,
+            &new_prefs.encrypted_blob,
+            &new_prefs.expected_previous_data_hash,
+        )
     })
     .await?
     {

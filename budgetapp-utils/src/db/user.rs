@@ -144,15 +144,36 @@ impl Dao {
         &mut self,
         user_id: Uuid,
         prefs_encrypted_blob: &[u8],
+        expected_previous_data_hash: &[u8],
     ) -> Result<(), DaoError> {
-        dsl::update(user_preferences.find(user_id))
-            .set((
-                user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
-                user_preferences_fields::modified_timestamp.eq(SystemTime::now()),
-            ))
-            .execute(&mut self.db_thread_pool.get()?)?;
+        let mut db_connection = self.db_thread_pool.get()?;
 
-        Ok(())
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let previous_hash = user_preferences
+                    .find(user_id)
+                    .select(user_preferences_fields::encrypted_blob_sha1_hash)
+                    .get_result::<Vec<u8>>(conn)?;
+
+                if previous_hash != expected_previous_data_hash {
+                    return Err(DaoError::OutOfDateHash);
+                }
+
+                let mut sha1_hasher = Sha1::new();
+                sha1_hasher.update(prefs_encrypted_blob);
+
+                dsl::update(user_preferences.find(user_id))
+                    .set((
+                        user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
+                        user_preferences_fields::encrypted_blob_sha1_hash
+                            .eq(sha1_hasher.finalize().as_slice()),
+                        user_preferences_fields::modified_timestamp.eq(SystemTime::now()),
+                    ))
+                    .execute(conn)?;
+
+                Ok(())
+            })
     }
 
     pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<(), DaoError> {

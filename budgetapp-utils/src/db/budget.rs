@@ -263,25 +263,48 @@ impl Dao {
         &mut self,
         budget_id: Uuid,
         edited_budget_data: &[u8],
+        expected_previous_data_hash: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
-        diesel::sql_query(
-            "UPDATE budgets AS b \
-             SET modified_timestamp = $1, \
-             encrypted_blob = $2 \
-             FROM user_budgets AS ub \
-             WHERE ub.user_id = $3 \
-             AND ub.read_only = FALSE \
-             AND b.id = ub.budget_id \
-             AND b.id = $4",
-        )
-        .bind::<Timestamp, _>(SystemTime::now())
-        .bind::<Bytea, _>(edited_budget_data)
-        .bind::<sql_types::Uuid, _>(user_id)
-        .bind::<sql_types::Uuid, _>(budget_id)
-        .execute(&mut self.db_thread_pool.get()?)?;
+        let mut db_connection = self.db_thread_pool.get()?;
 
-        Ok(())
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let previous_hash = budgets
+                    .select(budget_fields::encrypted_blob_sha1_hash)
+                    .left_join(user_budgets.on(user_budget_fields::budget_id.eq(budget_id)))
+                    .filter(budget_fields::id.eq(budget_id))
+                    .filter(user_budget_fields::user_id.eq(user_id))
+                    .get_result::<Vec<u8>>(conn)?;
+
+                if previous_hash != expected_previous_data_hash {
+                    return Err(DaoError::OutOfDateHash);
+                }
+
+                let mut sha1_hasher = Sha1::new();
+                sha1_hasher.update(edited_budget_data);
+
+                diesel::sql_query(
+                    "UPDATE budgets AS b \
+                     SET modified_timestamp = $1, \
+                     encrypted_blob = $2, \
+                     encrypted_blob_sha1_hash = $3 \
+                     FROM user_budgets AS ub \
+                     WHERE ub.user_id = $4 \
+                     AND ub.read_only = FALSE \
+                     AND b.id = ub.budget_id \
+                     AND b.id = $5",
+                )
+                .bind::<Timestamp, _>(SystemTime::now())
+                .bind::<Bytea, _>(edited_budget_data)
+                .bind::<Bytea, _>(sha1_hasher.finalize().as_slice())
+                .bind::<sql_types::Uuid, _>(user_id)
+                .bind::<sql_types::Uuid, _>(budget_id)
+                .execute(conn)?;
+
+                Ok(())
+            })
     }
 
     pub fn update_budget_key(
@@ -638,13 +661,14 @@ impl Dao {
         &mut self,
         entry_id: Uuid,
         entry_encrypted_blob: &[u8],
+        expected_previous_data_hash: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
-            .run::<_, diesel::result::Error, _>(|conn| {
+            .run::<_, DaoError, _>(|conn| {
                 let is_user_in_budget = user_budgets
                     .filter(user_budget_fields::user_id.eq(user_id))
                     .filter(
@@ -659,16 +683,30 @@ impl Dao {
                     != 0;
 
                 if is_user_in_budget {
+                    let previous_hash = entries
+                        .find(entry_id)
+                        .select(entry_fields::encrypted_blob_sha1_hash)
+                        .get_result::<Vec<u8>>(conn)?;
+
+                    if previous_hash != expected_previous_data_hash {
+                        return Err(DaoError::OutOfDateHash);
+                    }
+
+                    let mut sha1_hasher = Sha1::new();
+                    sha1_hasher.update(entry_encrypted_blob);
+
                     diesel::update(entries.find(entry_id))
                         .set((
                             entry_fields::encrypted_blob.eq(entry_encrypted_blob),
+                            entry_fields::encrypted_blob_sha1_hash
+                                .eq(sha1_hasher.finalize().as_slice()),
                             entry_fields::modified_timestamp.eq(SystemTime::now()),
                         ))
                         .execute(conn)?;
 
                     Ok(())
                 } else {
-                    Err(diesel::result::Error::NotFound)
+                    Err(DaoError::QueryFailure(diesel::result::Error::NotFound))
                 }
             })?;
 
@@ -767,13 +805,14 @@ impl Dao {
         &mut self,
         category_id: Uuid,
         category_encrypted_blob: &[u8],
+        expected_previous_data_hash: &[u8],
         user_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
-            .run::<_, diesel::result::Error, _>(|conn| {
+            .run::<_, DaoError, _>(|conn| {
                 let is_user_in_budget = user_budgets
                     .filter(user_budget_fields::user_id.eq(user_id))
                     .filter(
@@ -788,16 +827,30 @@ impl Dao {
                     != 0;
 
                 if is_user_in_budget {
+                    let previous_hash = categories
+                        .find(category_id)
+                        .select(category_fields::encrypted_blob_sha1_hash)
+                        .get_result::<Vec<u8>>(conn)?;
+
+                    if previous_hash != expected_previous_data_hash {
+                        return Err(DaoError::OutOfDateHash);
+                    }
+
+                    let mut sha1_hasher = Sha1::new();
+                    sha1_hasher.update(category_encrypted_blob);
+
                     diesel::update(categories.find(category_id))
                         .set((
                             category_fields::encrypted_blob.eq(category_encrypted_blob),
+                            category_fields::encrypted_blob_sha1_hash
+                                .eq(sha1_hasher.finalize().as_slice()),
                             category_fields::modified_timestamp.eq(SystemTime::now()),
                         ))
                         .execute(conn)?;
 
                     Ok(())
                 } else {
-                    Err(diesel::result::Error::NotFound)
+                    Err(DaoError::QueryFailure(diesel::result::Error::NotFound))
                 }
             })?;
 
