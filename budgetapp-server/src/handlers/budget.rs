@@ -138,6 +138,11 @@ pub async fn edit(
     {
         Ok(_) => (),
         Err(e) => match e {
+            DaoError::OutOfDateHash => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Out of date hash",
+                ))));
+            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
                     "No budget with provided ID or user does not have edit privileges",
@@ -548,6 +553,11 @@ pub async fn edit_entry(
     {
         Ok(_) => (),
         Err(e) => match e {
+            DaoError::OutOfDateHash => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Out of date hash",
+                ))));
+            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
                     "No entry with provided ID or user does not have edit privileges",
@@ -643,6 +653,11 @@ pub async fn edit_category(
     {
         Ok(_) => (),
         Err(e) => match e {
+            DaoError::OutOfDateHash => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Out of date hash",
+                ))));
+            }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
                     "No category with provided ID or user does not have edit privileges",

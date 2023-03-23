@@ -480,7 +480,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Synchronize all data with a sha1 hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * Budget endpoints shouldn’t require access tokens. The access tokens identify a user, but the budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key (only obtained if user is authenticated)
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
