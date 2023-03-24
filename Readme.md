@@ -480,7 +480,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * Budget endpoints shouldn’t require access tokens. The access tokens identify a user, but the budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key (only obtained if user is authenticated)
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
 * Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
@@ -506,7 +505,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Endpoint that returns authentication salt AND a server nonce (save the server nonce)
 * Endpoints for getting and updating user_security_data
   - Password_encryption_salt and iters + encryption_key_user_password
-  - Recovery data 
+  - Recovery data
+  - Update data
 * Change password via a token ("reset password"/"forgot password" instead of "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits

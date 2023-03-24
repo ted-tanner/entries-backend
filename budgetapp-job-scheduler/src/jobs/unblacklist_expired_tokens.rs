@@ -134,6 +134,9 @@ mod tests {
             public_rsa_key: Vec::new(),
             private_rsa_key_encrypted: Vec::new(),
 
+            public_kyber_key: Vec::new(),
+            private_kyber_key_encrypted: Vec::new(),
+
             preferences_encrypted: Vec::new(),
         };
 

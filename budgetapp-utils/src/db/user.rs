@@ -76,6 +76,10 @@ impl Dao {
             private_rsa_key_encrypted: &user_data.private_rsa_key_encrypted,
             rsa_key_created_timestamp: SystemTime::now(),
 
+            public_kyber_key: &user_data.public_kyber_key,
+            private_kyber_key_encrypted: &user_data.private_kyber_key_encrypted,
+            kyber_key_created_timestamp: SystemTime::now(),
+
             last_token_refresh_timestamp: current_time,
             modified_timestamp: current_time,
         };

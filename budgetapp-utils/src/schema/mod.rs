@@ -123,6 +123,9 @@ table! {
         public_rsa_key -> Bytea,
         private_rsa_key_encrypted -> Bytea,
         rsa_key_created_timestamp -> Timestamp,
+        public_kyber_key -> Bytea,
+        private_kyber_key_encrypted -> Bytea,
+        kyber_key_created_timestamp -> Timestamp,
         last_token_refresh_timestamp -> Timestamp,
         modified_timestamp -> Timestamp,
     }

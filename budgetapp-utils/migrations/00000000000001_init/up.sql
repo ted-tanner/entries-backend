@@ -137,6 +137,10 @@ CREATE TABLE user_security_data (
     private_rsa_key_encrypted BYTEA NOT NULL,
     rsa_key_created_timestamp TIMESTAMP NOT NULL,
 
+    public_kyber_key BYTEA NOT NULL,
+    private_kyber_key_encrypted BYTEA NOT NULL,
+    kyber_key_created_timestamp TIMESTAMP NOT NULL,
+
     last_token_refresh_timestamp TIMESTAMP NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL

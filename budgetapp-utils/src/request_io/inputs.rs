@@ -78,6 +78,11 @@ pub struct InputUser {
     pub private_rsa_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
+    pub public_kyber_key: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub private_kyber_key_encrypted: Vec<u8>,
+
+    #[serde_as(as = "Base64")]
     pub preferences_encrypted: Vec<u8>,
 }
 
