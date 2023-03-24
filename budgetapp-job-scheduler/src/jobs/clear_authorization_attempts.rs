@@ -139,16 +139,13 @@ mod tests {
                 recovery_key_salt: Vec::new(),
                 recovery_key_iters: 10000000,
 
-                encryption_key_user_password_encrypted: Vec::new(),
-                encryption_key_recovery_key_encrypted: Vec::new(),
+                encryption_key_encrypted_with_password: Vec::new(),
+                encryption_key_encrypted_with_recovery_key: Vec::new(),
 
                 public_rsa_key: Vec::new(),
-                private_rsa_key_encrypted: Vec::new(),
-
-                public_kyber_key: Vec::new(),
-                private_kyber_key_encrypted: Vec::new(),
 
                 preferences_encrypted: Vec::new(),
+                user_keystore_encrypted: Vec::new(),
             };
 
             let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);

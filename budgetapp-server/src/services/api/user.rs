@@ -15,6 +15,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::put().to(handlers::user::edit_preferences),
             )
             .route(
+                "/edit_keystore",
+                web::put().to(handlers::user::edit_keystore),
+            )
+            .route(
                 "/change_password",
                 web::put().to(handlers::user::change_password),
             )

@@ -100,6 +100,15 @@ table! {
 }
 
 table! {
+    user_keystores (user_id) {
+        user_id -> Uuid,
+        encrypted_blob -> Bytea,
+        encrypted_blob_sha1_hash -> Bytea,
+        modified_timestamp -> Timestamp,
+    }
+}
+
+table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -118,14 +127,10 @@ table! {
         password_encryption_iters -> Int4,
         recovery_key_salt -> Bytea,
         recovery_key_iters -> Int4,
-        encryption_key_user_password_encrypted -> Bytea,
-        encryption_key_recovery_key_encrypted -> Bytea,
+        encryption_key_encrypted_with_password -> Bytea,
+        encryption_key_encrypted_with_recovery_key -> Bytea,
         public_rsa_key -> Bytea,
-        private_rsa_key_encrypted -> Bytea,
         rsa_key_created_timestamp -> Timestamp,
-        public_kyber_key -> Bytea,
-        private_kyber_key_encrypted -> Bytea,
-        kyber_key_created_timestamp -> Timestamp,
         last_token_refresh_timestamp -> Timestamp,
         modified_timestamp -> Timestamp,
     }
@@ -159,6 +164,7 @@ allow_tables_to_appear_in_same_query!(
     tombstones,
     user_budgets,
     user_deletion_requests,
+    user_keystores,
     user_preferences,
     user_security_data,
     user_tombstones,

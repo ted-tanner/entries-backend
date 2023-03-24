@@ -445,6 +445,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * All encrypted fields should house encrypted JSON, even if that JSON has just a single field. This will allow those fields to be easily extensible and backwards compatible.
 * App should send release version in a header
 * Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
+* `user_key_store` model on server should contain:
+  - RSA private key
+  - Private keys for accessing budgets
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -480,6 +483,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Remove `modified_timestamp` fields. Do keep track of last login time.
 * Budget endpoints shouldn’t require access tokens. The access tokens identify a user, but the budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key (only obtained if user is authenticated)
 * Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
 * Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
@@ -537,6 +541,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Update crates (like base64)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Duplicate a budget, including entries (perhaps make including entries optional)

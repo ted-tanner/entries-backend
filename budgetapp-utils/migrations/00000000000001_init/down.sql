@@ -13,6 +13,7 @@ ALTER TABLE tombstones DROP CONSTRAINT user_key;
 ALTER TABLE user_budgets DROP CONSTRAINT user_key;
 ALTER TABLE user_budgets DROP CONSTRAINT budget_key;
 ALTER TABLE user_deletion_requests DROP CONSTRAINT user_key;
+ALTER TABLE user_keystores DROP CONSTRAINT user_key;
 ALTER TABLE user_preferences DROP CONSTRAINT user_key;
 ALTER TABLE user_security_data DROP CONSTRAINT user_key;
 
@@ -28,6 +29,7 @@ DROP TABLE tombstones;
 DROP TABLE users;
 DROP TABLE user_budgets;
 DROP TABLE user_deletion_requests;
+DROP TABLE user_keystores;
 DROP TABLE user_preferences;
 DROP TABLE user_security_data;
 DROP TABLE user_tombstones;

@@ -23,16 +23,11 @@ pub struct UserSecurityData {
     pub recovery_key_salt: Vec<u8>,
     pub recovery_key_iters: i32,
 
-    pub encryption_key_user_password_encrypted: Vec<u8>,
-    pub encryption_key_recovery_key_encrypted: Vec<u8>,
+    pub encryption_key_encrypted_with_password: Vec<u8>,
+    pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
 
     pub public_rsa_key: Vec<u8>,
-    pub private_rsa_key_encrypted: Vec<u8>,
     pub rsa_key_created_timestamp: SystemTime,
-
-    pub public_kyber_key: Vec<u8>,
-    pub private_kyber_key_encrypted: Vec<u8>,
-    pub kyber_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,
 
@@ -55,16 +50,11 @@ pub struct NewUserSecurityData<'a> {
     pub recovery_key_salt: &'a [u8],
     pub recovery_key_iters: i32,
 
-    pub encryption_key_user_password_encrypted: &'a [u8],
-    pub encryption_key_recovery_key_encrypted: &'a [u8],
+    pub encryption_key_encrypted_with_password: &'a [u8],
+    pub encryption_key_encrypted_with_recovery_key: &'a [u8],
 
     pub public_rsa_key: &'a [u8],
-    pub private_rsa_key_encrypted: &'a [u8],
     pub rsa_key_created_timestamp: SystemTime,
-
-    pub public_kyber_key: &'a [u8],
-    pub private_kyber_key_encrypted: &'a [u8],
-    pub kyber_key_created_timestamp: SystemTime,
 
     pub last_token_refresh_timestamp: SystemTime,
 

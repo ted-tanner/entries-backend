@@ -1,6 +1,6 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputToken, InputUser,
+    InputEditUserPrefs, InputEditUserKeystore, InputNewAuthStringAndEncryptedPassword, InputToken, InputUser,
     OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
@@ -240,6 +240,45 @@ pub async fn edit_preferences(
                 log::error!("{}", e);
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to update user preferences",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn edit_keystore(
+    db_thread_pool: web::Data<DbThreadPool>,
+    auth_user_claims: AuthorizedUserClaims,
+    new_keystore: web::Json<InputEditUserKeystore>,
+) -> Result<HttpResponse, ServerError> {
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.update_user_keystore(
+            auth_user_claims.0.uid,
+            &new_keystore.encrypted_blob,
+            &new_keystore.expected_previous_data_hash,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::OutOfDateHash => {
+                return Err(ServerError::InputRejected(Some(String::from(
+                    "Out of date hash",
+                ))));
+            }
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update user keystore",
                 ))));
             }
         },

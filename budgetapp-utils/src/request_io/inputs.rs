@@ -68,27 +68,31 @@ pub struct InputUser {
     pub recovery_key_iters: i32,
 
     #[serde_as(as = "Base64")]
-    pub encryption_key_user_password_encrypted: Vec<u8>,
+    pub encryption_key_encrypted_with_password: Vec<u8>,
     #[serde_as(as = "Base64")]
-    pub encryption_key_recovery_key_encrypted: Vec<u8>,
+    pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub public_rsa_key: Vec<u8>,
-    #[serde_as(as = "Base64")]
-    pub private_rsa_key_encrypted: Vec<u8>,
-
-    #[serde_as(as = "Base64")]
-    pub public_kyber_key: Vec<u8>,
-    #[serde_as(as = "Base64")]
-    pub private_kyber_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub preferences_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub user_keystore_encrypted: Vec<u8>,
 }
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUserPrefs {
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob: Vec<u8>,
+    #[serde_as(as = "Hex")]
+    pub expected_previous_data_hash: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEditUserKeystore {
     #[serde_as(as = "Base64")]
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]
