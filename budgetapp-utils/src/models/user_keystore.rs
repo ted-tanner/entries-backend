@@ -1,6 +1,5 @@
 use diesel::{Insertable, Queryable, QueryableByName};
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::models::user::User;
@@ -13,7 +12,6 @@ pub struct UserKeystore {
     pub user_id: Uuid,
     pub encrypted_blob: Vec<u8>,
     pub encrypted_blob_sha1_hash: Vec<u8>,
-    pub modified_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -22,5 +20,4 @@ pub struct NewUserKeystore<'a> {
     pub user_id: Uuid,
     pub encrypted_blob: &'a [u8],
     pub encrypted_blob_sha1_hash: &'a [u8],
-    pub modified_timestamp: SystemTime,
 }

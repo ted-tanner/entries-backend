@@ -1,6 +1,5 @@
 use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::models::budget::Budget;
@@ -21,8 +20,6 @@ pub struct UserBudget {
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
 
     pub read_only: bool,
-
-    pub modified_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -35,6 +32,4 @@ pub struct NewUserBudget<'a> {
     pub encryption_key_is_encrypted_with_aes_not_rsa: bool,
 
     pub read_only: bool,
-
-    pub modified_timestamp: SystemTime,
 }

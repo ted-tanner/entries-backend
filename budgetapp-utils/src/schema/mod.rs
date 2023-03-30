@@ -8,7 +8,7 @@ table! {
 
 table! {
     blacklisted_tokens (token) {
-        token -> Varchar,
+        token -> Text,
         user_id -> Uuid,
         token_expiration_time -> Timestamp,
     }
@@ -87,7 +87,6 @@ table! {
         encryption_key_encrypted -> Bytea,
         encryption_key_is_encrypted_with_aes_not_rsa -> Bool,
         read_only -> Bool,
-        modified_timestamp -> Timestamp,
     }
 }
 
@@ -104,7 +103,6 @@ table! {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
         encrypted_blob_sha1_hash -> Bytea,
-        modified_timestamp -> Timestamp,
     }
 }
 
@@ -113,7 +111,6 @@ table! {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
         encrypted_blob_sha1_hash -> Bytea,
-        modified_timestamp -> Timestamp,
     }
 }
 
@@ -131,8 +128,6 @@ table! {
         encryption_key_encrypted_with_recovery_key -> Bytea,
         public_rsa_key -> Bytea,
         rsa_key_created_timestamp -> Timestamp,
-        last_token_refresh_timestamp -> Timestamp,
-        modified_timestamp -> Timestamp,
     }
 }
 
@@ -149,6 +144,8 @@ table! {
         email -> Varchar,
         is_verified -> Bool,
         created_timestamp -> Timestamp,
+        last_token_refresh_timestamp -> Timestamp,
+        last_token_refresh_request_app_version -> Varchar,
     }
 }
 

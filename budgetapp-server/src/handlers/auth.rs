@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
 use crate::handlers::error::ServerError;
+use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::AuthorizedUserClaims;
 
 // TODO: Should this mask when a user is not found by returning random data?
@@ -179,6 +180,7 @@ pub async fn sign_in(
 
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
+    app_version: AppVersion,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
     let signin_token = otp_and_token.0.signin_token.clone();
@@ -355,7 +357,9 @@ pub async fn verify_otp_for_signin(
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     // TODO: Make it so users don't have to wait for this
-    match web::block(move || user_dao.set_last_token_refresh_now(token_claims.uid)).await? {
+    match web::block(move || user_dao.set_last_token_refresh_now(token_claims.uid, &app_version.0))
+        .await?
+    {
         Ok(_) => (),
         Err(e) => log::error!("{}", e),
     };
@@ -365,6 +369,7 @@ pub async fn verify_otp_for_signin(
 
 pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
+    app_version: AppVersion,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token = token.0.token.clone();
@@ -456,7 +461,9 @@ pub async fn refresh_tokens(
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
 
     // TODO: Make it so users don't have to wait for this
-    match web::block(move || user_dao.set_last_token_refresh_now(claims.uid)).await? {
+    match web::block(move || user_dao.set_last_token_refresh_now(claims.uid, &app_version.0))
+        .await?
+    {
         Ok(_) => (),
         Err(e) => log::error!("{}", e),
     };

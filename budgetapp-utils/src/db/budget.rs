@@ -193,7 +193,6 @@ impl Dao {
             encryption_key_encrypted: &budget_data.encryption_key_encrypted,
             encryption_key_is_encrypted_with_aes_not_rsa: true,
             read_only: false,
-            modified_timestamp: current_time,
         };
 
         let mut category_hashes = Vec::new();
@@ -453,7 +452,6 @@ impl Dao {
                     encryption_key_encrypted: &budget_id_and_key.encryption_key_encrypted,
                     encryption_key_is_encrypted_with_aes_not_rsa: false,
                     read_only: budget_id_and_key.read_only,
-                    modified_timestamp: SystemTime::now(),
                 };
 
                 dsl::insert_into(user_budgets)

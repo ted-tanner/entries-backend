@@ -150,7 +150,9 @@ mod tests {
 
             let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
 
-            let user_id = user_dao.create_user(new_user.clone(), "Test").unwrap();
+            let user_id = user_dao
+                .create_user(new_user.clone(), "0.0.0", "Test")
+                .unwrap();
 
             user_dao.verify_user_creation(user_id).unwrap();
 

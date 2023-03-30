@@ -11,7 +11,11 @@ pub struct User {
     pub id: Uuid,
     pub email: String,
     pub is_verified: bool,
+
     pub created_timestamp: SystemTime,
+
+    pub last_token_refresh_timestamp: SystemTime,
+    pub last_token_refresh_request_app_version: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -20,5 +24,9 @@ pub struct NewUser<'a> {
     pub id: Uuid,
     pub email: &'a str,
     pub is_verified: bool,
+
     pub created_timestamp: SystemTime,
+
+    pub last_token_refresh_timestamp: SystemTime,
+    pub last_token_refresh_request_app_version: &'a str,
 }

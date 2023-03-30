@@ -76,6 +76,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let token = auth_token::generate_token(
@@ -123,6 +125,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let _token = auth_token::generate_token(
@@ -153,6 +157,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let token = auth_token::generate_token(
@@ -186,6 +192,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let _token = auth_token::generate_token(
@@ -218,6 +226,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let token = auth_token::generate_token(
@@ -255,6 +265,8 @@ mod tests {
             email: &format!("test_user{}@test.com", &user_number),
             is_verified: true,
             created_timestamp: timestamp,
+            last_token_refresh_timestamp: SystemTime::now(),
+            last_token_refresh_request_app_version: "0.0.0",
         };
 
         let token = auth_token::generate_token(

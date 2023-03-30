@@ -28,10 +28,6 @@ pub struct UserSecurityData {
 
     pub public_rsa_key: Vec<u8>,
     pub rsa_key_created_timestamp: SystemTime,
-
-    pub last_token_refresh_timestamp: SystemTime,
-
-    pub modified_timestamp: SystemTime,
 }
 
 #[derive(Debug, Insertable)]
@@ -55,8 +51,4 @@ pub struct NewUserSecurityData<'a> {
 
     pub public_rsa_key: &'a [u8],
     pub rsa_key_created_timestamp: SystemTime,
-
-    pub last_token_refresh_timestamp: SystemTime,
-
-    pub modified_timestamp: SystemTime,
 }

@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputEditUserPrefs, InputEditUserKeystore, InputNewAuthStringAndEncryptedPassword, InputToken, InputUser,
-    OutputIsUserListedForDeletion, OutputVerificationEmailSent,
+    InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputToken,
+    InputUser, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, auth_token, db};
@@ -11,10 +11,12 @@ use std::time::{Duration, SystemTime};
 
 use crate::env;
 use crate::handlers::error::ServerError;
+use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::AuthorizedUserClaims;
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
+    app_version: AppVersion,
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
@@ -37,7 +39,7 @@ pub async fn create(
         );
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(user_data.0, &auth_string_hash)
+        user_dao.create_user(user_data.0, &app_version.0, &auth_string_hash)
     })
     .await?
     {

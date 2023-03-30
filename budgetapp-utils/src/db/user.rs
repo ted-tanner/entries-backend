@@ -8,8 +8,8 @@ use crate::db::{DaoError, DbThreadPool};
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
-use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_keystore::NewUserKeystore;
+use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::NewUserSecurityData;
 use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 
@@ -21,10 +21,10 @@ use crate::schema::user_budgets as user_budget_fields;
 use crate::schema::user_budgets::dsl::user_budgets;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
-use crate::schema::user_preferences as user_preferences_fields;
-use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
+use crate::schema::user_preferences as user_preferences_fields;
+use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::user_tombstones as user_tombstone_fields;
@@ -46,6 +46,7 @@ impl Dao {
     pub fn create_user(
         &mut self,
         user_data: InputUser,
+        app_version: &str,
         auth_string_hash: &str,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -55,7 +56,11 @@ impl Dao {
             id: user_id,
             email: &user_data.email.to_lowercase(),
             is_verified: false,
+
             created_timestamp: current_time,
+
+            last_token_refresh_timestamp: current_time,
+            last_token_refresh_request_app_version: app_version,
         };
 
         let new_user_security_data = NewUserSecurityData {
@@ -73,13 +78,11 @@ impl Dao {
 
             encryption_key_encrypted_with_password: &user_data
                 .encryption_key_encrypted_with_password,
-            encryption_key_encrypted_with_recovery_key: &user_data.encryption_key_encrypted_with_recovery_key,
+            encryption_key_encrypted_with_recovery_key: &user_data
+                .encryption_key_encrypted_with_recovery_key,
 
             public_rsa_key: &user_data.public_rsa_key,
             rsa_key_created_timestamp: SystemTime::now(),
-
-            last_token_refresh_timestamp: current_time,
-            modified_timestamp: current_time,
         };
 
         let mut sha1_hasher = Sha1::new();
@@ -89,7 +92,6 @@ impl Dao {
             user_id,
             encrypted_blob: &user_data.preferences_encrypted,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
-            modified_timestamp: current_time,
         };
 
         let mut sha1_hasher = Sha1::new();
@@ -99,7 +101,6 @@ impl Dao {
             user_id,
             encrypted_blob: &user_data.user_keystore_encrypted,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
-            modified_timestamp: current_time,
         };
 
         let new_signin_nonce = NewSigninNonce {
@@ -184,7 +185,6 @@ impl Dao {
                         user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
                         user_preferences_fields::encrypted_blob_sha1_hash
                             .eq(sha1_hasher.finalize().as_slice()),
-                        user_preferences_fields::modified_timestamp.eq(SystemTime::now()),
                     ))
                     .execute(conn)?;
 
@@ -192,7 +192,6 @@ impl Dao {
             })
     }
 
-    
     pub fn update_user_keystore(
         &mut self,
         user_id: Uuid,
@@ -221,7 +220,6 @@ impl Dao {
                         user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
                         user_keystore_fields::encrypted_blob_sha1_hash
                             .eq(sha1_hasher.finalize().as_slice()),
-                        user_keystore_fields::modified_timestamp.eq(SystemTime::now()),
                     ))
                     .execute(conn)?;
 
@@ -229,9 +227,16 @@ impl Dao {
             })
     }
 
-    pub fn set_last_token_refresh_now(&mut self, user_id: Uuid) -> Result<(), DaoError> {
-        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
-            .set(user_security_data_fields::last_token_refresh_timestamp.eq(SystemTime::now()))
+    pub fn set_last_token_refresh_now(
+        &mut self,
+        user_id: Uuid,
+        app_version: &str,
+    ) -> Result<(), DaoError> {
+        dsl::update(users.find(user_id))
+            .set((
+                user_fields::last_token_refresh_timestamp.eq(SystemTime::now()),
+                user_fields::last_token_refresh_request_app_version.eq(app_version),
+            ))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())

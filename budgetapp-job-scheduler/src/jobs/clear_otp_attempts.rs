@@ -147,7 +147,7 @@ mod tests {
             };
 
             let user_id = user::Dao::new(&env::db::DB_THREAD_POOL)
-                .create_user(new_user.clone(), "Test")
+                .create_user(new_user.clone(), "0.0.0", "Test")
                 .unwrap();
 
             user_ids.push(user_id);

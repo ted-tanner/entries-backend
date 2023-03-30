@@ -5,7 +5,7 @@ CREATE TABLE authorization_attempts (
 );
 
 CREATE TABLE blacklisted_tokens (
-    token VARCHAR(800) PRIMARY KEY,
+    token TEXT PRIMARY KEY,
     user_id UUID NOT NULL,
     token_expiration_time TIMESTAMP NOT NULL
 );
@@ -81,12 +81,17 @@ CREATE INDEX ON tombstones USING HASH (related_user_id);
 
 CREATE TABLE users (
     id UUID PRIMARY KEY,
+
     email VARCHAR(255) UNIQUE NOT NULL,
     is_verified BOOLEAN NOT NULL,
-    created_timestamp TIMESTAMP NOT NULL
+
+    created_timestamp TIMESTAMP NOT NULL,
+
+    last_token_refresh_timestamp TIMESTAMP NOT NULL,
+    last_token_refresh_request_app_version VARCHAR(24) NOT NULL
 );
 
-CREATE INDEX ON users USING HASH (email);        
+CREATE INDEX ON users USING HASH (email);
 
 CREATE TABLE user_budgets (
     user_id UUID NOT NULL,
@@ -99,7 +104,6 @@ CREATE TABLE user_budgets (
 
     read_only BOOLEAN NOT NULL,
 
-    modified_timestamp TIMESTAMP NOT NULL,
     PRIMARY KEY (user_id, budget_id)
 );
 
@@ -112,15 +116,13 @@ CREATE TABLE user_deletion_requests (
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL,
-    modified_timestamp TIMESTAMP NOT NULL
+    encrypted_blob_sha1_hash BYTEA NOT NULL
 );
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL,
-    modified_timestamp TIMESTAMP NOT NULL
+    encrypted_blob_sha1_hash BYTEA NOT NULL
 );
 
 CREATE TABLE user_security_data (
@@ -141,11 +143,7 @@ CREATE TABLE user_security_data (
     encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
 
     public_rsa_key BYTEA NOT NULL,
-    rsa_key_created_timestamp TIMESTAMP NOT NULL,
-
-    last_token_refresh_timestamp TIMESTAMP NOT NULL,
-
-    modified_timestamp TIMESTAMP NOT NULL
+    rsa_key_created_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE user_tombstones (
@@ -171,3 +169,4 @@ ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) 
 ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+
