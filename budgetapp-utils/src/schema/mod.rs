@@ -15,14 +15,35 @@ table! {
 }
 
 table! {
+    budget_access_keys (key_id, budget_id) {
+        key_id -> Uuid,
+        budget_id -> Uuid,
+        public_key -> Bytea,
+        read_only -> Bool,
+    }
+}
+
+table! {
     budget_share_invites (id) {
         id -> Uuid,
         recipient_user_email -> Varchar,
-        sender_user_email -> Varchar,
-        budget_id -> Uuid,
+        sender_public_key -> Bytea,
+        encryption_key_encrypted -> Bytea,
+        budget_share_private_key_encrypted -> Bytea,
         budget_info_encrypted -> Bytea,
         sender_info_encrypted -> Bytea,
-        encryption_key_encrypted -> Bytea,
+        budget_share_private_key_info_encrypted -> Bytea,
+        share_info_symmetric_key_encrypted -> Bytea,
+        created_unix_timestamp_intdiv_five_million -> Int2,
+    }
+}
+
+table! {
+    budget_share_keys (key_id, budget_id) {
+        key_id -> Uuid,
+        budget_id -> Uuid,
+        public_key -> Bytea,
+        expiration -> Timestamp,
         read_only -> Bool,
     }
 }
@@ -72,33 +93,6 @@ table! {
 }
 
 table! {
-    tombstones (item_id, related_user_id) {
-        item_id -> Uuid,
-        related_user_id -> Uuid,
-        origin_table -> Varchar,
-        deletion_timestamp -> Timestamp,
-    }
-}
-
-table! {
-    user_budgets (user_id, budget_id) {
-        user_id -> Uuid,
-        budget_id -> Uuid,
-        encryption_key_encrypted -> Bytea,
-        encryption_key_is_encrypted_with_aes_not_rsa -> Bool,
-        read_only -> Bool,
-    }
-}
-
-table! {
-    user_deletion_requests (user_id) {
-        user_id -> Uuid,
-        deletion_request_time -> Timestamp,
-        ready_for_deletion_time -> Timestamp,
-    }
-}
-
-table! {
     user_keystores (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -119,22 +113,20 @@ table! {
         user_id -> Uuid,
         auth_string_hash -> Text,
         auth_string_salt -> Bytea,
+        auth_string_memory_cost_kib -> Int4,
+        auth_string_parallelism_factor -> Int4,
         auth_string_iters -> Int4,
         password_encryption_salt -> Bytea,
+        password_encryption_memory_cost_kib -> Int4,
+        password_encryption_parallelism_factor -> Int4,
         password_encryption_iters -> Int4,
         recovery_key_salt -> Bytea,
+        recovery_key_memory_cost_kib -> Int4,
+        recovery_key_parallelism_factor -> Int4,
         recovery_key_iters -> Int4,
         encryption_key_encrypted_with_password -> Bytea,
         encryption_key_encrypted_with_recovery_key -> Bytea,
-        public_rsa_key -> Bytea,
-        rsa_key_created_timestamp -> Timestamp,
-    }
-}
-
-table! {
-    user_tombstones (user_id) {
-        user_id -> Uuid,
-        deletion_timestamp -> Timestamp,
+        public_key -> Bytea,
     }
 }
 
@@ -152,18 +144,16 @@ table! {
 allow_tables_to_appear_in_same_query!(
     authorization_attempts,
     blacklisted_tokens,
+    budget_access_keys,
     budget_share_invites,
+    budget_share_keys,
     budgets,
     categories,
     entries,
     otp_attempts,
     signin_nonces,
-    tombstones,
-    user_budgets,
-    user_deletion_requests,
     user_keystores,
     user_preferences,
     user_security_data,
-    user_tombstones,
     users,
 );

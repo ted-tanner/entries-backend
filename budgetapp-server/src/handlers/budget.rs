@@ -1,3 +1,4 @@
+use budgetapp_utils::budget_token::BudgetToken;
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputEditBudget,
     InputEditCategory, InputEditEntry, InputEncryptedBudgetKey, InputEntry, InputEntryAndCategory,
@@ -6,15 +7,47 @@ use budgetapp_utils::request_io::{
 };
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
+use actix_web::{web, HttpResponse};
+use std::sync::Arc;
+
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::AuthorizedUserClaims;
-use actix_web::{web, HttpResponse};
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    budget_id: web::Query<InputBudgetId>,
+    budget_token: BudgetToken,
 ) -> Result<HttpResponse, ServerError> {
+    let budget_token_ref = Arc::new(budget_token);
+
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let public_key = match web::block(move || {
+        budget_dao.get_public_budget_key(budget_token_ref.key_id, budget_token_ref.budget_id)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to get budget data",
+                ))));
+            }
+        },
+    };
+
+    if !budget_token.verify_for_user(auth_user_claims.0.uid, &public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with provided ID",
+        ))));
+    }
+
     let budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_budget_by_id(budget_id.budget_id, auth_user_claims.0.uid)

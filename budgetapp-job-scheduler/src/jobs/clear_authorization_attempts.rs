@@ -142,7 +142,7 @@ mod tests {
                 encryption_key_encrypted_with_password: Vec::new(),
                 encryption_key_encrypted_with_recovery_key: Vec::new(),
 
-                public_rsa_key: Vec::new(),
+                public_key: Vec::new(),
 
                 preferences_encrypted: Vec::new(),
                 user_keystore_encrypted: Vec::new(),

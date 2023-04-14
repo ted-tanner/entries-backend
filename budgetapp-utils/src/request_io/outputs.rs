@@ -51,6 +51,7 @@ pub struct OutputBudgetFrame {
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputBudgetIdAndEncryptionKey {
     pub budget_id: Uuid,
+    pub budget_access_key_id: Uuid,
 
     #[serde_as(as = "Base64")]
     pub encryption_key_encrypted: Vec<u8>,
@@ -61,16 +62,18 @@ pub struct OutputBudgetIdAndEncryptionKey {
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputBudgetShareInviteWithoutKey {
-    pub id: Uuid,
-
-    pub recipient_user_email: String,
-    pub sender_user_email: String,
-    pub budget_id: Uuid,
+    #[serde_as(as = "Base64")]
+    pub budget_share_private_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub budget_info_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
     pub sender_info_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub budget_share_private_key_info_encrypted: Vec<u8>,
+
+    #[serde_as(as = "Base64")]
+    pub share_info_symmetric_key_encrypted: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,26 +93,9 @@ pub struct OutputCategoryId {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
-pub struct OutputTombstone {
-    pub item_id: Uuid,
-    pub origin_table: String,
-    pub deletion_timestamp: SystemTime,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
-pub struct OutputTombstoneDoesExist {
-    pub does_exist: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputVerificationEmailSent {
     pub email_sent: bool,
     pub email_token_lifetime_hours: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
-pub struct OutputIsUserListedForDeletion {
-    pub is_listed_for_deletion: bool,
 }
 
 #[serde_as]
@@ -120,4 +106,10 @@ pub struct OutputSigninNonceData {
 
     pub auth_string_iters: i32,
     pub nonce: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OutputShareIdAndKeyId {
+    pub share_id: Uuid,
+    pub share_key_id: Uuid,
 }

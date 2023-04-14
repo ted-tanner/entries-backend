@@ -11,16 +11,17 @@ pub struct BudgetShareInvite {
     pub id: Uuid,
 
     pub recipient_user_email: String,
-    pub sender_user_email: String,
-    pub budget_id: Uuid,
+    pub sender_public_key: Vec<u8>,
+
+    pub encryption_key_encrypted: Vec<u8>,
+    pub budget_share_private_key_encrypted: Vec<u8>,
 
     pub budget_info_encrypted: Vec<u8>,
     pub sender_info_encrypted: Vec<u8>,
+    pub budget_share_private_key_info_encrypted: Vec<u8>,
+    pub share_info_symmetric_key_encrypted: Vec<u8>,
 
-    pub read_only: bool,
-
-    // This should never get sent to the recipient user until the invite has been accepted
-    pub encryption_key_encrypted: Vec<u8>,
+    pub created_unix_timestamp_intdiv_five_million: i16,
 }
 
 #[derive(Debug, Insertable)]
@@ -29,13 +30,15 @@ pub struct NewBudgetShareInvite<'a> {
     pub id: Uuid,
 
     pub recipient_user_email: &'a str,
-    pub sender_user_email: &'a str,
-    pub budget_id: Uuid,
+    pub sender_public_key: &'a [u8],
+
+    pub encryption_key_encrypted: &'a [u8],
+    pub budget_share_private_key_encrypted: &'a [u8],
 
     pub budget_info_encrypted: &'a [u8],
     pub sender_info_encrypted: &'a [u8],
+    pub budget_share_private_key_info_encrypted: &'a [u8],
+    pub share_info_symmetric_key_encrypted: &'a [u8],
 
-    pub read_only: bool,
-
-    pub encryption_key_encrypted: &'a [u8],
+    pub created_unix_timestamp_intdiv_five_million: i16,
 }

@@ -14,6 +14,7 @@ mod test_env;
 
 pub mod argon2_hasher;
 pub mod auth_token;
+pub mod budget_token;
 pub mod db;
 pub mod definitions;
 pub mod models;

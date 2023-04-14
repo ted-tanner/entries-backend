@@ -424,7 +424,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
-* Follow password guidelines from NIST
+* Follow password guidelines from NIST (perhaps require more characters given that user data is encrypted using the given password)
+* The client needs to make sure the UNIX timestamp it receives from the server when refreshing token is within a minute of the client's UNIX timestamp
 * Currency should be specified on each budget, default currency in user_preferences
 * The client needs to be prepared for a category to be deleted. Entries will still have a reference to the deleted categories, so check for the category tombstone and handle the case where the category doesn't exist.
 * Make invites/requests separate from regular notifications (like a separate section of the notifications view on the client). Then, pull notifications but also pull invites.
@@ -435,11 +436,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Mention that buddy requests adn budget share invites will be deleted after 30 days
 * Handle too many attempts for both sign in and change password
 * Tell users that read-only budget users cannot modify or add entries to budgets or invite other users
-* Client should not allow lower than a certain threshold of parameters for hashing (e.g. 12 iterations with 64mb of RAM and a length of 32), no matter what the server says. This prevents attackers who infiltrate the server from obtaining the key with a low hash value. The app will not send any hash that doesn't meet the threshold.
+* Client should not allow lower than a certain threshold of parameters for hashing (e.g. 14 iterations with 128mb of RAM, paralellism factor of 4, and a length of 32), no matter what the server says. This prevents attackers who infiltrate the server from obtaining the key with a low hash value. The app will not send any hash that doesn't meet the threshold.
 * Upon logout (forced or manual), overwrite sensitive data.
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
 * Client icon should be iMessage-bubble blue
-* Make it clear that budgets that haven't been accessed or modified for a year will be auto-deleted
 * Send user email in encrypted entry data (including edits) to track who created/updated budget entries. Allow user to add a name for email addresses he/she recognizes that will be stored with user preferences.
 * Budget should store (in encrypted blob) a list of all users who have accepted the share of a budget. As soon as a user accepts a budget share, the user should update the budget to add themselves to that list.
 * All encrypted fields should house encrypted JSON, even if that JSON has just a single field. This will allow those fields to be easily extensible and backwards compatible.
@@ -448,6 +448,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * `user_key_store` model on server should contain:
   - RSA private key
   - Private keys for accessing budgets
+* Send version with every request. A response code should indicate that the client is too out-of-date to function properly. Notify the user that they need to update the app and only allow offline access.
+* Client should add random data to their `user_keystore` of a random size (not greater than a megabyte) so the server cannot accurately estimate the number or budgets a user has based on the size of the encrypted blob.
+* A budget invite does not have a foreign key constraint for the database. That means that the budget could be deleted while an invite is still active for the budget. If there is a 404 for the budget invite, display a message to the user that says something like "This budget no longer exists" and delete the invite.
+* If budget share invite sender email == recipient email, do nothing when accepting budget
+* The server can't easily validate that a budget invitation doesn't already exist for the recipient. The client should combine all budget share invites to the same budget into one to display to the user. Listing any one of the invite senders should be just fine.
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -463,37 +468,51 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * All user data (budgets, entries, user preferences, etc.) should be stored as an ID, associated_id (optional, e.g. a budget_id for an entry), a modified_timestamp, and an encrypted blob
   - Tombstones should still exist
 * Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
-* Encrypt user's private key using the user's password. Public key will be shared publicly along with user info
+* Encrypt user's private key using the user's password. Public key will be shared publicly along with user info (app version)
 * Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server). The key gets saved in in the `user_budgets` table for the user.
-  - Once the key is received, the client re-encrypts it with their AES-256 encryption key and replaces the RSA-encrypted key on the server.
+  - Once the key is received, the client re-encrypts it with their ChaCha20-Poly1305 encryption key and replaces the RSA-encrypted key on the server.
 * When changing password, everything needs to be re-uploaded. This ought to be done in a single request and a single databasse transaction (otherwise, the user's data could be left in an unrecoverable state)
 * When a user leaves a budget share, they simply delete the key.
   - Perhaps send new key to all other users (and update key in budget_share_invite)
 * To synchronize data, the server should send a list of existing IDs of a type (e.g. the IDs of all budgets a user belongs to) along with the `modified_timestamp`. The client can request data as needed. Tombstones should exist so user can check if data has been deleted.
 * Things that aren't encrypted:
   - User's email address
-  - Which version of the app 
-  - Timestamp of user's last login
 * User ID, which is used to access user data, is kept private. In tokens that the user received, the user's email address and ID are encrypted.
 * Client and server nonces for sign in
-* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* Each budget has a list of Ed25519 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp for expiration, a user_id that specifies which user can use the token, a budget_id, and a key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
 * Verification of tokens and authentication strings uses comparison functions that are resistant to timing attacks.
 * Zeroization of auth_strings
+* Blacklist only the hashes of tokens. Don't store the user_id associated with the token in the DB.
+* The server doesn't keep *any* unnecessary information about the user, not even the date the user signed up.
+* Client should add random data to their `user_keystore` of a random size (not greater than a megabyte) so the server cannot accurately estimate the number or budgets a user has based on the size of the encrypted blob.
+* The server doesn't keep track of who a budget invitation has come from or which budget the user has been invited to. Instead, a public Ed25519 key is associated with a budget. The inviting user sends the recipient the corresponding private key (encrypted using the recipient's public key) so the recipient can certify that he/she has been granted priviledges to access a budget upon accepting an invitation. The invitations expire, so an expiration is stored with each public share key. The invitations track only the month they were created in (not the year) so the server can delete invitations that are two or three months old without being able to associate the timestamp on the invitation with the timestamp of the public budget share key.
+  - A sender can retract an invitation by signing a token that the server verifies came from the sender (the sender generates an Ed25519 key pair and gives the server the public key, which the server saves in the share invite)
+* Note on what is possible: Though a review of our server source code will show that we do not record who has access to which budget, when a user retrieves or modifies a budget we see who the user is and which budget they have signed a token to access. It is, therefore, *technically* possible for us to capture that information and see which budgets a user is accessing. It is a promise that we make that we *will not* record this information, and we provide the server's source code to support our claims that we don't capture this data. We know of no way to restrict users' access to each other's budgets without some way of identifying the user. In our case, this identification happens when users reveal that they hold a private key certifying access to a budget by cryptographically signing a token. This token scheme allows users to prove to the server that they have exclusive access to a budget without us needing to store evidence of a relationship between a user and a budget in our database.
+  - While it is technically possible for us to capture which budgets a user has access to, it is *not* possible for us to decrypt details about a budget or its entries. Those details are encrypted with a key that is only accessible with a user's password, which never leaves the user's device(s), not even during authentication.
 
 ### Minimum Viable Product
 
-* Budget endpoints shouldn’t require access tokens. The access tokens identify a user, but the budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key (only obtained if user is authenticated)
-  - Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_key_store`.
-* Each budget has a list of RSA-2048 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp (which the server verifies is +/- 2 minutes of the server's time), budget_id, and key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* No need to enforce argon2 memory is a power of 2
+* Budget endpoints should require a budget token AND an access token. Budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key
+  - Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_keystore`.
+* Blacklist only the hashes of tokens. Don't store the user_id associated with the token in the DB.
+* Rename app to "Entries"
+* If update comes for data that doesn’t exist, create it
+* Limit public keys per budget to 200.
+* Get rid of last_token_refresh_time. It isn't needed (because deleting user data without knowing which budgets the user owns isn't worth it) and is an unnecessary piece of data to know about a user.
+  - Don't collect version either. The client will send version with every request. Handlers that require a specific minimum version can use the AppVersion middleware to check the version. A response code (perhaps 418 I'm A teapot) should indicate that the client is too out-of-date to properly handle the response the server will give.
+* Get rid of user `created_timestamp` and `rsa_key_created_timestamp`.
+* Send UNIX timestamp with refresh token
+* Users remove themselves from budgets by removing their public key (must provide token verified with the public key they are removing, of course. If final public key is removed from a budget, the server deletes the entire budget.
+* A user deletion request should include a list of public keys to remove from budgets.
+* Each budget has a list of Ed25519 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp for expiration, a user_id that specifies which user can use the token, a budget_id, and a key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
 * Users need to be able to block specific email addresses from inviting them to budgets.
 * Get rid of data tombstones and user tombstones! Use a field `deletion_date` that is null by default, unless the data has been deleted.
-* Delete data with `deletion_date` older than a year
-* Create a `last_requested` date for budgets that is updated every time the budget is requested. Delete budgets that haven't been requested for two years. User deletion endpoint should take a list of signed budget tokens the user belongs to. Each budget that only has the one public key for the user should be deleted from the server.
 * Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
 * Maximum of 40 people can be invited/joined to a budget. Unaccepted invites should expire after 1 week (use a timestamp to enforce this, but also create a cron job to clean out old invites).
 * Throttle budget invites to 1 per second per user.
-* In env.rs for budgetapp-server, rename `Conf` struct to `RawConf`. `build_conf()` should then crate a new `Conf` struct that has all the preprocessing done for fields that need it (such as the AES key for tokens; a cipher should be initialized in env.rs with the key and then referred used for auth tokens). Validation can also be done (for example, ensuring the AES key is the correct length)
+* In env.rs for budgetapp-server, rename `Conf` struct to `RawConf`. `build_conf()` should then crate a new `Conf` struct that has all the preprocessing done for fields that need it (such as the ChaCha key for tokens; a cipher should be initialized in env.rs with the key and then referred used for auth tokens). Validation can also be done (for example, ensuring the ChaCha key is the correct length)
   - Zeroize old RawConf memory for keys
 * Ability to change encryption key. This should also log all other users out.
 * TOTP Should *not* allow just expired or upcoming codes to be used. The must be a better solution.
@@ -531,22 +550,24 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - User creation verification
   - User deletion verification
   - Budget shared? Users need a way to turn off this notification
-* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key)
-* RSA key rotation. Config should house an old key (and a change time) and a current key and only allow tokens to be validated with the old key when time since key change time (now - change time) is less than token lifetime.
+* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key).
+* RSA key rotation. Users must re-encrypt all budget_share_invites they've received using their new public key.
 * Search through TODOs in code
 * Unit tests!
 * Update readme documentation
   - Add a section for the job scheduler
 * White paper
-* Should the app be renamed "Good Budgets"?
+* Should the app be renamed "Good Budgets"? "Simple Budgets"?
 
 ### Do it later
 
+* When updating data in DAOs, combine checking the hash and updating the data into one query.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Add webauthn-rs and totp_rs
 * Update crates (like base64)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
 * Duplicate a budget, including entries (perhaps make including entries optional)
+* When decoding tokens, use string views rather than splitting into separate strings
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
 * Don't reach out to db as part of validating refresh token in the auth_token module. Instead, check blacklisted token explicitly from the handler
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`

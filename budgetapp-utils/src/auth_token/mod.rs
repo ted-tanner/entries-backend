@@ -14,7 +14,6 @@ pub enum TokenError {
     InvalidTokenType(TokenTypeError),
     TokenInvalid,
     TokenExpired,
-    SystemResourceAccessFailure,
     WrongTokenType,
 }
 
@@ -26,7 +25,6 @@ impl fmt::Display for TokenError {
             TokenError::InvalidTokenType(e) => write!(f, "InvalidTokenType: {e}"),
             TokenError::TokenInvalid => write!(f, "TokenInvalid"),
             TokenError::TokenExpired => write!(f, "TokenExpired"),
-            TokenError::SystemResourceAccessFailure => write!(f, "SystemResourceAccessFailure"),
             TokenError::WrongTokenType => write!(f, "WrongTokenType"),
         }
     }
@@ -165,10 +163,7 @@ impl TokenClaims {
     ) -> Result<TokenClaims, TokenError> {
         let (claims, claims_json_str, hash) = TokenClaims::token_to_claims_and_hash(token, cipher)?;
 
-        let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(t) => t,
-            Err(_) => return Err(TokenError::SystemResourceAccessFailure),
-        };
+        let time_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
 
         if time_since_epoch.as_secs() >= claims.exp {
             return Err(TokenError::TokenExpired);
@@ -327,11 +322,7 @@ pub fn generate_token(
     signing_key: &[u8; 64],
     cipher: &Aes128Gcm,
 ) -> Result<Token, TokenError> {
-    let time_since_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(t) => t,
-        Err(_) => return Err(TokenError::SystemResourceAccessFailure),
-    };
-
+    let time_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let expiration = (time_since_epoch + lifetime).as_secs();
 
     let claims = TokenClaims {

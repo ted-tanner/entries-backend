@@ -7,28 +7,21 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
-use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::NewUserSecurityData;
-use crate::models::user_tombstone::{NewUserTombstone, UserTombstone};
 
 use crate::request_io::InputUser;
-use crate::schema::budgets as budget_fields;
+use crate::schema::budget_access_keys as budget_access_key_fields;
+use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
-use crate::schema::user_budgets as user_budget_fields;
-use crate::schema::user_budgets::dsl::user_budgets;
-use crate::schema::user_deletion_requests as user_deletion_request_fields;
-use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
 use crate::schema::user_preferences as user_preferences_fields;
 use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
-use crate::schema::user_tombstones as user_tombstone_fields;
-use crate::schema::user_tombstones::dsl::user_tombstones;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
@@ -68,12 +61,19 @@ impl Dao {
 
             auth_string_hash,
             auth_string_salt: &user_data.auth_string_salt,
+            auth_string_memory_cost_kib: user_data.auth_string_memory_cost_kib,
+            auth_string_parallelism_factor: user_data.auth_string_parallelism_factor,
             auth_string_iters: user_data.auth_string_iters,
 
             password_encryption_salt: &user_data.password_encryption_salt,
+            password_encryption_memory_cost_kib: user_data.password_encryption_memory_cost_kib,
+            password_encryption_parallelism_factor: user_data
+                .password_encryption_parallelism_factor,
             password_encryption_iters: user_data.password_encryption_iters,
 
             recovery_key_salt: &user_data.recovery_key_salt,
+            recovery_key_memory_cost_kib: user_data.recovery_key_memory_cost_kib,
+            recovery_key_parallelism_factor: user_data.recovery_key_parallelism_factor,
             recovery_key_iters: user_data.recovery_key_iters,
 
             encryption_key_encrypted_with_password: &user_data
@@ -81,8 +81,7 @@ impl Dao {
             encryption_key_encrypted_with_recovery_key: &user_data
                 .encryption_key_encrypted_with_recovery_key,
 
-            public_rsa_key: &user_data.public_rsa_key,
-            rsa_key_created_timestamp: SystemTime::now(),
+            public_key: &user_data.public_key,
         };
 
         let mut sha1_hasher = Sha1::new();
@@ -263,92 +262,33 @@ impl Dao {
         Ok(())
     }
 
-    pub fn initiate_user_deletion(
+    pub fn delete_user(
         &mut self,
         user_id: Uuid,
-        time_until_deletion: Duration,
+        // Vec<(key_id, budget_id)>
+        budget_access_key_ids: Vec<(Uuid, Uuid)>,
     ) -> Result<(), DaoError> {
-        let new_request = NewUserDeletionRequest {
-            user_id,
-            deletion_request_time: SystemTime::now(),
-            ready_for_deletion_time: SystemTime::now() + time_until_deletion,
-        };
-
-        dsl::insert_into(user_deletion_requests)
-            .values(&new_request)
-            .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
-    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<(), DaoError> {
-        diesel::delete(user_deletion_requests.find(user_id))
-            .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
-    pub fn delete_user(&mut self, request: &UserDeletionRequest) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
-
-        let new_tombstone = NewUserTombstone {
-            user_id: request.user_id,
-            deletion_timestamp: SystemTime::now(),
-        };
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                dsl::insert_into(user_tombstones)
-                    .values(&new_tombstone)
-                    .execute(conn)?;
+                for (key_id, budget_id) in budget_access_key_ids {
+                    diesel::delete(budget_access_keys.find((key_id, budget_id))).execute(conn)?;
 
-                diesel::delete(
-                    budgets
-                        .filter(
-                            budget_fields::id.eq_any(
-                                user_budgets
-                                    .select(user_budget_fields::budget_id)
-                                    .filter(user_budget_fields::user_id.eq(request.user_id)),
-                            ),
-                        )
-                        .filter(
-                            user_budgets
-                                .filter(user_budget_fields::budget_id.eq(budget_fields::id))
-                                .filter(user_budget_fields::user_id.ne(request.user_id))
-                                .count()
-                                .single_value()
-                                .eq(0),
-                        ),
-                )
-                .execute(conn)?;
+                    let users_remaining_in_budget = budget_access_keys
+                        .filter(budget_access_key_fields::budget_id.eq(budget_id))
+                        .count()
+                        .get_result::<i64>(conn)?;
 
-                diesel::delete(users.find(request.user_id)).execute(conn)?;
+                    if users_remaining_in_budget == 0 {
+                        diesel::delete(budgets.find(budget_id)).execute(conn)?;
+                    }
+                }
 
-                Ok(())
+                diesel::delete(users.find(user_id)).execute(conn)
             })?;
 
         Ok(())
-    }
-
-    pub fn get_all_users_ready_for_deletion(
-        &mut self,
-    ) -> Result<Vec<UserDeletionRequest>, DaoError> {
-        Ok(user_deletion_requests
-            .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
-            .get_results(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn check_is_user_listed_for_deletion(&mut self, user_id: Uuid) -> Result<bool, DaoError> {
-        Ok(
-            dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
-                .get_result(&mut self.db_thread_pool.get()?)?,
-        )
-    }
-
-    pub fn get_user_tombstone(&mut self, user_id: Uuid) -> Result<UserTombstone, DaoError> {
-        Ok(user_tombstones
-            .filter(user_tombstone_fields::user_id.eq(user_id))
-            .get_result::<UserTombstone>(&mut self.db_thread_pool.get()?)?)
     }
 }

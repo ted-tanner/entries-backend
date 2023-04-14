@@ -57,14 +57,20 @@ pub struct InputUser {
 
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
+    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_parallelism_factor: i32,
     pub auth_string_iters: i32,
 
     #[serde_as(as = "Base64")]
     pub password_encryption_salt: Vec<u8>,
+    pub password_encryption_memory_cost_kib: i32,
+    pub password_encryption_parallelism_factor: i32,
     pub password_encryption_iters: i32,
 
     #[serde_as(as = "Base64")]
     pub recovery_key_salt: Vec<u8>,
+    pub recovery_key_memory_cost_kib: i32,
+    pub recovery_key_parallelism_factor: i32,
     pub recovery_key_iters: i32,
 
     #[serde_as(as = "Base64")]
@@ -73,7 +79,7 @@ pub struct InputUser {
     pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
 
     #[serde_as(as = "Base64")]
-    pub public_rsa_key: Vec<u8>,
+    pub public_key: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub preferences_encrypted: Vec<u8>,
@@ -147,6 +153,9 @@ pub struct InputBudget {
     pub encryption_key_encrypted: Vec<u8>,
 
     pub categories: Vec<InputCategoryWithTempId>,
+
+    #[serde_as(as = "Base64")]
+    pub user_public_budget_key: Vec<u8>,
 }
 
 #[serde_as]
@@ -184,18 +193,14 @@ pub struct InputEntryId {
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEntry {
-    pub budget_id: Uuid,
-
+pub struct InputEncryptedBlob {
     #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
+    encrypted_blob: Vec<u8>,
 }
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntryAndCategory {
-    pub budget_id: Uuid,
-
     #[serde_as(as = "Base64")]
     pub entry_encrypted_blob: Vec<u8>,
     #[serde_as(as = "Base64")]
@@ -205,8 +210,6 @@ pub struct InputEntryAndCategory {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditEntry {
-    pub entry_id: Uuid,
-
     #[serde_as(as = "Base64")]
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]
@@ -216,15 +219,6 @@ pub struct InputEditEntry {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategoryId {
     pub category_id: Uuid,
-}
-
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputCategory {
-    pub budget_id: Uuid,
-
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
 }
 
 #[serde_as]
@@ -239,11 +233,6 @@ pub struct InputEditCategory {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputTombstoneId {
-    pub item_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputTime {
     pub time: SystemTime,
 }
@@ -253,12 +242,7 @@ pub struct InputToken {
     pub token: String,
 }
 
-#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEncryptedBudgetKey {
-    pub budget_id: Uuid,
-
-    #[serde_as(as = "Base64")]
-    pub encrypted_key: Vec<u8>,
-    pub is_encrypted_with_aes: bool,
+pub struct InputBudgetTokenList {
+    pub budget_tokens: Vec<String>,
 }
