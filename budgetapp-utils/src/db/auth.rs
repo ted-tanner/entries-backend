@@ -3,7 +3,7 @@ use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use crate::auth_token::TokenClaims;
+use crate::token::auth_token::TokenClaims;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizationAttempts};
 use crate::models::blacklisted_token::NewBlacklistedToken;

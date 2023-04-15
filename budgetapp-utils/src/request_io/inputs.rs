@@ -7,7 +7,6 @@ use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // TODO: Sort these struct defs alphabetically
-// TODO: Can these Strings be &str?
 
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct CredentialPair {
@@ -24,11 +23,6 @@ pub struct InputEmail {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBudgetIdList {
-    pub budget_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -161,8 +155,6 @@ pub struct InputBudget {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
-    pub budget_id: Uuid,
-
     #[serde_as(as = "Base64")]
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]
@@ -172,18 +164,29 @@ pub struct InputEditBudget {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UserInvitationToBudget {
-    pub budget_id: Uuid,
+    pub recipient_user_email: String,
+    #[serde_as(as = "Base64")]
+    pub sender_public_key: Vec<u8>,
+
+    #[serde_as(as = "Base64")]
+    pub encryption_key_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub budget_share_private_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub budget_info_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
-    pub budget_encryption_key_encrypted: Vec<u8>,
-
-    pub recipient_user_email: String,
-    pub read_only: bool,
+    pub sender_info_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub budget_share_private_key_info_encrypted: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub share_info_symmetric_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
-    pub sender_info_encrypted: Vec<u8>,
+    pub budget_share_public_key: Vec<u8>,
+
+    pub expiration: SystemTime,
+    pub read_only: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -243,6 +246,6 @@ pub struct InputToken {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBudgetTokenList {
-    pub budget_tokens: Vec<String>,
+pub struct InputBudgetAccessTokenList {
+    pub budget_access_tokens: Vec<String>,
 }

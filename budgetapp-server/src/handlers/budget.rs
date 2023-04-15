@@ -1,48 +1,34 @@
 use budgetapp_utils::budget_token::BudgetToken;
-use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputBudgetIdList, InputCategory, InputCategoryId, InputEditBudget,
-    InputEditCategory, InputEditEntry, InputEncryptedBudgetKey, InputEntry, InputEntryAndCategory,
-    InputEntryId, InputShareInviteId, OutputBudget, OutputBudgetShareInviteWithoutKey,
-    OutputCategoryId, OutputEntryId, UserInvitationToBudget,
-};
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
+use budgetapp_utils::models::BudgetAccessKey;
+use budgetapp_utils::request_io::{
+    InputBudget, InputBudgetId, InputCategoryId, InputEditBudget,
+    InputEditCategory, InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId,
+    InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId,
+    UserInvitationToBudget, InputBudgetAccessTokenList,
+};
 
 use actix_web::{web, HttpResponse};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::AuthorizedUserClaims;
+use crate::middleware::budget_access_token_header::BudgetAccessToken;
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    budget_token: BudgetToken,
+    budget_access_token: BudgetAccessToken,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_token_ref = Arc::new(budget_token);
+    let budget_id = budget_access_token.0.budget_id;
+    let key_id = budget_access_token.0.key_id;
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-    let public_key = match web::block(move || {
-        budget_dao.get_public_budget_key(budget_token_ref.key_id, budget_token_ref.budget_id)
-    })
-    .await?
+    if !budget_access_token
+        .0
+        .verify_for_user(auth_user_claims.0.uid, &public_key)
     {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID",
-                ))));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get budget data",
-                ))));
-            }
-        },
-    };
-
-    if !budget_token.verify_for_user(auth_user_claims.0.uid, &public_key) {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
         ))));
@@ -50,7 +36,7 @@ pub async fn get(
 
     let budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_budget_by_id(budget_id.budget_id, auth_user_claims.0.uid)
+        budget_dao.get_budget(budget_id)
     })
     .await?
     {
@@ -76,11 +62,70 @@ pub async fn get(
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    budget_ids: web::Json<InputBudgetIdList>,
+    budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
+    const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
+    let mut tokens = HashMap::new();
+    let mut key_ids = Vec::new();
+    let mut budget_ids = Vec::new();
+
+    for token in budget_access_tokens.budget_access_tokens.iter() {
+        let token = match BudgetToken::from_str(token) {
+            Ok(t) => t,
+            Err(_) => {
+                return Err(ServerError::InvalidFormat(Some(String::from(
+                    "One of the provided budget access tokens was invalid",
+                ))))
+            }
+        };
+
+        key_ids.push(token.key_id);
+        budget_ids.push(token.budget_id);
+        tokens.insert(token.key_id, token);
+    }
+
+    let budget_ids = Arc::new(budget_ids);
+    let budget_ids_ref = Arc::clone(&budget_ids);
+
+    let db_thread_pool_ref = db_thread_pool.clone();
+    let public_keys = match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+        budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to get budget data",
+                ))));
+            }
+        },
+    };
+
+    if public_keys.len() != tokens.len() {
+        return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+    }
+
+    for (key_id, public_key) in public_keys {
+        let token = match tokens.get(&key_id) {
+            Some(t) => t,
+            None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
+        };
+
+        if !token.verify_for_user(auth_user_claims.0.uid, &public_key) {
+            return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+        }
+    }
+
     let budgets = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_multiple_budgets_by_id(budget_ids.0.budget_ids, auth_user_claims.0.uid)
+        budget_dao.get_multiple_budgets_by_id(&budget_ids)
     })
     .await?
     {
@@ -103,33 +148,6 @@ pub async fn get_multiple(
     Ok(HttpResponse::Ok().json(budgets))
 }
 
-pub async fn get_all(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
-) -> Result<HttpResponse, ServerError> {
-    let budgets = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_budgets_for_user(auth_user_claims.0.uid)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().json(Vec::<OutputBudget>::new()));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get budget data",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().json(budgets))
-}
-
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -137,7 +155,7 @@ pub async fn create(
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_budget(budget_data.0, auth_user_claims.0.uid)
+        budget_dao.create_budget(budget_data.0)
     })
     .await?
     {
@@ -156,15 +174,32 @@ pub async fn create(
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
+    budget_access_token: BudgetAccessToken,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
+    let budget_id = budget_access_token.0.budget_id;
+    let key_id = budget_access_token.0.key_id;
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+    
+    if !budget_access_token
+        .0
+        .verify_for_user(auth_user_claims.0.uid, &public_key.public_key)
+    {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with provided ID",
+        ))));
+    }
+
+    if public_key.read_only == true {
+        return Err(ServerError::AccessForbidden(Some(String::from("User has read-only access to budget"))))
+    }
+
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
-            budget_data.budget_id,
+            budget_id,
             &budget_data.encrypted_blob,
             &budget_data.expected_previous_data_hash,
-            auth_user_claims.0.uid,
         )
     })
     .await?
@@ -178,7 +213,7 @@ pub async fn edit(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID or user does not have edit privileges",
+                    "No budget with provided ID",
                 ))));
             }
             _ => {
@@ -193,46 +228,29 @@ pub async fn edit(
     Ok(HttpResponse::Ok().finish())
 }
 
-pub async fn replace_key(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
-    key: web::Json<InputEncryptedBudgetKey>,
-) -> Result<HttpResponse, ServerError> {
-    match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_budget_key(
-            key.budget_id,
-            &key.encrypted_key,
-            key.is_encrypted_with_aes,
-            auth_user_claims.0.uid,
-        )
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with provided ID or user does not have edit privileges",
-                ))));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to update key",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().finish())
-}
-
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
+    budget_access_token: BudgetAccessToken,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
+    let budget_id = budget_access_token.0.budget_id;
+    let key_id = budget_access_token.0.key_id;
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+
+    if !budget_access_token
+        .0
+        .verify_for_user(auth_user_claims.0.uid, &public_key.public_key)
+    {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with provided ID",
+        ))));
+    }
+
+    if public_key.read_only == true {
+        return Err(ServerError::AccessForbidden(Some(String::from("User has read-only access to budget"))))
+    }
+    
     let inviting_user_id = auth_user_claims.0.uid;
     let inviting_user_email = auth_user_claims.0.eml;
 
@@ -245,44 +263,27 @@ pub async fn invite_user(
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
-            invitation_info.budget_id,
-            &invitation_info.budget_info_encrypted,
             &invitation_info.recipient_user_email,
-            invitation_info.read_only,
-            inviting_user_id,
-            &inviting_user_email,
+            &invitation_info.sender_public_key,
+            &invitation_info.encryption_key_encrypted,
+            &invitation_info.budget_share_private_key_encrypted,
+            &invitation_info.budget_info_encrypted,
             &invitation_info.sender_info_encrypted,
-            &invitation_info.budget_encryption_key_encrypted,
+            &invitation_info.budget_share_private_key_info_encrypted,
+            &invitation_info.share_info_symmetric_key_encrypted,
+            budget_id,
+            &invitation_info.public_key,
+            invitation_info.expiration,
+            invitation_info.read_only,
         )
     })
     .await?
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+            diesel::result::Error::NotFound => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "Sending user has no budget with provided ID or does not have edit privileges",
-                ))));
-            }
-            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::ForeignKeyViolation,
-                _,
-            )) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with provded email",
-                ))));
-            }
-            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            )) => {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "Invitation was already sent",
-                ))));
-            }
-            DaoError::WontRunQuery => {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "This budget is already shared with this user",
+                    "No budget or invite with provided ID"
                 ))));
             }
             _ => {
@@ -297,6 +298,7 @@ pub async fn invite_user(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Token proving ability to edit invitations
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -327,6 +329,7 @@ pub async fn retract_invitation(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Special new token -- budget acceptance token
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -421,33 +424,7 @@ pub async fn get_all_pending_invitations_for_user(
     Ok(HttpResponse::Ok().json(invites))
 }
 
-pub async fn get_all_pending_invitations_made_by_user(
-    db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
-) -> Result<HttpResponse, ServerError> {
-    let invites = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_made_by_user(&auth_user_claims.0.eml)
-    })
-    .await?
-    {
-        Ok(invites) => invites,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInviteWithoutKey>::new()));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to find invitations",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().json(invites))
-}
-
+// TODO: Figure this out
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -478,6 +455,7 @@ pub async fn get_invitation(
     Ok(HttpResponse::Ok().json(invite))
 }
 
+// TODO: Budget Access Token
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -508,10 +486,12 @@ pub async fn leave_budget(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    entry_data: web::Query<InputEntry>,
+    entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -538,10 +518,12 @@ pub async fn create_entry(
     Ok(HttpResponse::Created().json(OutputEntryId { entry_id }))
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    entry_and_category_data: web::Query<InputEntryAndCategory>,
+    entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -568,6 +550,8 @@ pub async fn create_entry_and_category(
     Ok(HttpResponse::Created().json(entry_and_category_ids))
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -608,6 +592,8 @@ pub async fn edit_entry(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -638,10 +624,12 @@ pub async fn delete_entry(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
-    category_data: web::Query<InputCategory>,
+    category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -668,6 +656,8 @@ pub async fn create_category(
     Ok(HttpResponse::Created().json(OutputCategoryId { category_id }))
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -708,6 +698,8 @@ pub async fn edit_category(
     Ok(HttpResponse::Ok().finish())
 }
 
+// TODO: Budget Access Token
+// TODO: Check user has write access
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
     auth_user_claims: AuthorizedUserClaims,
@@ -736,4 +728,32 @@ pub async fn delete_category(
     };
 
     Ok(HttpResponse::Ok().finish())
+}
+
+async fn obtain_public_key(
+    key_id: Uuid,
+    budget_id: Uuid,
+    db_thread_pool: &DbThreadPool,
+) -> Result<BudgetAccessKey, ServerError> {
+    let key = match web::block(move || {
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        budget_dao.get_public_budget_key(key_id, budget_id)
+    }).await? {
+        Ok(b) => b,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No budget with provided ID",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to get public budget access key",
+                ))));
+            }
+        },
+    };
+
+    Ok(key)
 }

@@ -7,6 +7,8 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
+use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
+use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::NewUserSecurityData;
@@ -16,6 +18,10 @@ use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
+use crate::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
+use crate::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
+use crate::schema::user_deletion_requests as user_deletion_request_fields;
+use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
 use crate::schema::user_preferences as user_preferences_fields;
@@ -262,20 +268,75 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_user(
+    pub fn initiate_user_deletion(
         &mut self,
         user_id: Uuid,
-        // Vec<(key_id, budget_id)>
-        budget_access_key_ids: Vec<(Uuid, Uuid)>,
+        time_until_deletion: Duration,
+        budget_access_key_ids: &[Uuid],
     ) -> Result<(), DaoError> {
+        let new_request = NewUserDeletionRequest {
+            id: Uuid::new_v4(),
+            user_id,
+            deletion_request_time: SystemTime::now(),
+            ready_for_deletion_time: SystemTime::now() + time_until_deletion,
+        };
+
+        let mut request_budget_keys = Vec::new();
+        for key_id in budget_access_key_ids.into_iter() {
+            request_budget_keys.push(NewUserDeletionRequestBudgetKey {
+                key_id: *key_id,
+                deletion_request_id: new_request.id,
+            });
+        }
+
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                for (key_id, budget_id) in budget_access_key_ids {
-                    diesel::delete(budget_access_keys.find((key_id, budget_id))).execute(conn)?;
+                dsl::insert_into(user_deletion_requests)
+                    .values(&new_request)
+                    .execute(conn)?;
 
+                dsl::insert_into(user_deletion_request_budget_keys)
+                    .values(&request_budget_keys)
+                    .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
+    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(user_deletion_requests.find(user_id))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn delete_user(&mut self, user_deletion_request: &UserDeletionRequest) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let budget_key_ids = user_deletion_request_budget_keys
+                    .select(user_deletion_request_budget_key_fields::key_id)
+                    .filter(
+                        user_deletion_request_budget_key_fields::deletion_request_id
+                            .eq(user_deletion_request.id),
+                    )
+                    .load::<Uuid>(conn)?;
+
+                let budget_ids = diesel::delete(
+                    budget_access_keys
+                        .filter(budget_access_key_fields::key_id.eq_any(budget_key_ids)),
+                )
+                .returning(budget_access_key_fields::budget_id)
+                .load::<Uuid>(conn)?;
+
+                for budget_id in budget_ids {
                     let users_remaining_in_budget = budget_access_keys
                         .filter(budget_access_key_fields::budget_id.eq(budget_id))
                         .count()
@@ -286,9 +347,24 @@ impl Dao {
                     }
                 }
 
-                diesel::delete(users.find(user_id)).execute(conn)
+                diesel::delete(users.find(user_deletion_request.user_id)).execute(conn)
             })?;
 
         Ok(())
+    }
+
+    pub fn get_all_users_ready_for_deletion(
+        &mut self,
+    ) -> Result<Vec<UserDeletionRequest>, DaoError> {
+        Ok(user_deletion_requests
+            .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
+            .get_results(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn check_is_user_listed_for_deletion(&mut self, user_id: Uuid) -> Result<bool, DaoError> {
+        Ok(
+            dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
+                .get_result(&mut self.db_thread_pool.get()?)?,
+        )
     }
 }

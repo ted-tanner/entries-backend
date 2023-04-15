@@ -368,6 +368,7 @@ pub async fn change_password(
 // TODO: Initiate reset password by sending an email with a code ("forgot password")
 // TODO: This endpoint should be throttled by email
 
+// TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
     auth_user_claims: AuthorizedUserClaims,
 ) -> Result<HttpResponse, ServerError> {

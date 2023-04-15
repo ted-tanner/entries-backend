@@ -93,6 +93,22 @@ table! {
 }
 
 table! {
+    user_deletion_request_budget_keys (key_id) {
+        key_id -> Uuid,
+        deletion_request_id -> Uuid,
+    }
+}
+
+table! {
+    user_deletion_requests (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        deletion_request_time -> Timestamp,
+        ready_for_deletion_time -> Timestamp,
+    }
+}
+
+table! {
     user_keystores (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -141,6 +157,8 @@ table! {
     }
 }
 
+joinable!(user_deletion_request_budget_keys -> user_deletion_requests (deletion_request_id));
+
 allow_tables_to_appear_in_same_query!(
     authorization_attempts,
     blacklisted_tokens,
@@ -152,6 +170,8 @@ allow_tables_to_appear_in_same_query!(
     entries,
     otp_attempts,
     signin_nonces,
+    user_deletion_request_budget_keys,
+    user_deletion_requests,
     user_keystores,
     user_preferences,
     user_security_data,

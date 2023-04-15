@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::budget::{Budget, NewBudget};
-use crate::models::budget_access_key::NewBudgetAccessKey;
+use crate::models::budget_access_key::{BudgetAccessKey, NewBudgetAccessKey};
 use crate::models::budget_share_invite::NewBudgetShareInvite;
 use crate::models::budget_share_key::{BudgetShareKey, NewBudgetShareKey};
 use crate::models::category::{Category, NewCategory};
@@ -42,31 +42,28 @@ impl Dao {
         }
     }
 
-    // TODO: Check read_only
     pub fn get_public_budget_key(
         &mut self,
         key_id: Uuid,
         budget_id: Uuid,
-    ) -> Result<Vec<u8>, DaoError> {
+    ) -> Result<BudgetAccessKey, DaoError> {
         Ok(budget_access_keys
-            .select(budget_access_key_fields::public_key)
             .find((key_id, budget_id))
-            .get_result::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<BudgetAccessKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_multiple_public_budget_keys(
         &mut self,
-        key_ids: Vec<Uuid>,
-        budget_ids: Vec<Uuid>,
-    ) -> Result<Vec<Vec<u8>>, DaoError> {
+        key_ids: &[Uuid],
+        budget_ids: &[Uuid],
+    ) -> Result<Vec<BudgetAccessKey>, DaoError> {
         Ok(budget_access_keys
-            .select(budget_access_key_fields::public_key)
             .filter(
                 budget_access_key_fields::key_id
                     .eq_any(key_ids)
                     .and(budget_access_key_fields::budget_id.eq_any(budget_ids)),
             )
-            .get_results::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
+            .get_results::<BudgetAccessKey>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_budget_share_invite_public_key(
@@ -103,7 +100,7 @@ impl Dao {
 
     pub fn get_multiple_budgets_by_id(
         &mut self,
-        budget_ids: Vec<Uuid>,
+        budget_ids: &[Uuid],
     ) -> Result<Vec<OutputBudget>, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -280,7 +277,7 @@ impl Dao {
         share_info_symmetric_key_encrypted: &[u8],
         budget_id: Uuid,
         budget_share_public_key: &[u8],
-        expiration: SystemTime, // TODO: This should come from the handler
+        expiration: SystemTime,
         read_only: bool,
     ) -> Result<OutputShareIdAndKeyId, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
@@ -315,7 +312,7 @@ impl Dao {
 
         db_connection
             .build_transaction()
-            .run::<_, DaoError, _>(|conn| {
+            .run::<_, diesel::result::Error, _>(|conn| {
                 dsl::insert_into(budget_share_invites)
                     .values(&budget_share_invite)
                     .execute(conn)?;
@@ -451,7 +448,6 @@ impl Dao {
             .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
     }
 
-    // TODO: Handler should get the key_id from the signed token
     pub fn leave_budget(&mut self, budget_id: Uuid, key_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -478,7 +474,7 @@ impl Dao {
     // TODO: Check read_only in the handler after getting the public key
     pub fn create_entry(
         &mut self,
-        encrypted_blob: Vec<u8>,
+        encrypted_blob: &[u8],
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -608,7 +604,7 @@ impl Dao {
 
     pub fn create_category(
         &mut self,
-        encrypted_blob: Vec<u8>,
+        encrypted_blob: &[u8],
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();

@@ -453,6 +453,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * A budget invite does not have a foreign key constraint for the database. That means that the budget could be deleted while an invite is still active for the budget. If there is a 404 for the budget invite, display a message to the user that says something like "This budget no longer exists" and delete the invite.
 * If budget share invite sender email == recipient email, do nothing when accepting budget
 * The server can't easily validate that a budget invitation doesn't already exist for the recipient. The client should combine all budget share invites to the same budget into one to display to the user. Listing any one of the invite senders should be just fine.
+* When a user goes to delete their data, show a warning that some user information will be temporarily visible on the server until the deletion is carried out. This information includes: 1) How many budgets a user is part of and 2) when these budgets were last edited. Other details about the budget will remain encrypted and unaccessible to the server.
+* Mention that budgets that go unmodified for a year will be deleted
+* Users need to be able to ignore specific email addresses that invite them to budgets (gets saved in user preferences)
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -482,8 +485,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Client and server nonces for sign in
 * Each budget has a list of Ed25519 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp for expiration, a user_id that specifies which user can use the token, a budget_id, and a key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
 * Verification of tokens and authentication strings uses comparison functions that are resistant to timing attacks.
-* Zeroization of auth_strings
-* Blacklist only the hashes of tokens. Don't store the user_id associated with the token in the DB.
 * The server doesn't keep *any* unnecessary information about the user, not even the date the user signed up.
 * Client should add random data to their `user_keystore` of a random size (not greater than a megabyte) so the server cannot accurately estimate the number or budgets a user has based on the size of the encrypted blob.
 * The server doesn't keep track of who a budget invitation has come from or which budget the user has been invited to. Instead, a public Ed25519 key is associated with a budget. The inviting user sends the recipient the corresponding private key (encrypted using the recipient's public key) so the recipient can certify that he/she has been granted priviledges to access a budget upon accepting an invitation. The invitations expire, so an expiration is stored with each public share key. The invitations track only the month they were created in (not the year) so the server can delete invitations that are two or three months old without being able to associate the timestamp on the invitation with the timestamp of the public budget share key.
@@ -493,6 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Put foreign keys in tables in `up.sql`
 * No need to enforce argon2 memory is a power of 2
 * Budget endpoints should require a budget token AND an access token. Budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key
   - Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_keystore`.
@@ -507,7 +509,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Users remove themselves from budgets by removing their public key (must provide token verified with the public key they are removing, of course. If final public key is removed from a budget, the server deletes the entire budget.
 * A user deletion request should include a list of public keys to remove from budgets.
 * Each budget has a list of Ed25519 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp for expiration, a user_id that specifies which user can use the token, a budget_id, and a key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
-* Users need to be able to block specific email addresses from inviting them to budgets.
+* Return codes with more information for the app (i.e. first few chars of response payload give more information about errors)
 * Get rid of data tombstones and user tombstones! Use a field `deletion_date` that is null by default, unless the data has been deleted.
 * Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
 * Maximum of 40 people can be invited/joined to a budget. Unaccepted invites should expire after 1 week (use a timestamp to enforce this, but also create a cron job to clean out old invites).
@@ -520,8 +522,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Use a `signin_nonce` for both signing in with a password and verifying OTP.
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
 * Keys should all be specified in hex (and be of a specified length)
-* Encrypt user email and ID in tokens
-* Client nonce for sign in
 * Change Email endpoint (user must verify email)
 * User sign in (and obtaining nonce) should mask when a user is not found
 * For signing in with a password, require a nonce to prevent replay attacks.
@@ -558,6 +558,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Add a section for the job scheduler
 * White paper
 * Should the app be renamed "Good Budgets"? "Simple Budgets"?
+* Budgets that are not modified for a year will be deleted
 
 ### Do it later
 
