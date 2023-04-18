@@ -1,12 +1,13 @@
-use budgetapp_utils::token::BudgetAccessToken ;
+use budgetapp_utils::token::UserToken;
+use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
 
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
 
-pub struct BudgetAccessToken(pub BudgetToken);
+pub struct DecodedBudgetAccessToken(pub BudgetAccessToken);
 
-impl FromRequest for BudgetAccessToken {
+impl FromRequest for UserBudgetAccessToken {
     type Error = error::Error;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
@@ -32,7 +33,7 @@ impl FromRequest for BudgetAccessToken {
             }
         };
 
-        let token = match BudgetToken::from_str(token) {
+        let decoded_token = match BudgetAccessToken::from_str(token) {
             Ok(t) => t,
             Err(_) => {
                 return future::err(error::ErrorBadRequest(
@@ -41,6 +42,6 @@ impl FromRequest for BudgetAccessToken {
             }
         };
 
-        future::ok(BudgetAccessToken(token))
+        future::ok(BudgetAccessToken(decoded_token))
     }
 }

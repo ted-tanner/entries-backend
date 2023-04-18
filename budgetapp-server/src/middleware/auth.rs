@@ -4,7 +4,8 @@ use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenTy
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
 use actix_web::error::ErrorUnauthorized;
-use futures::
+use futures::future;
+
 use crate::env;
 
 #[derive(Debug)]

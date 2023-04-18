@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub struct BudgetAccessTokenClaims {
     pub key_id: Uuid,
     pub budget_id: Uuid,
-    pub user_id: Uuid,
+    pub user_email: String,
     pub expiration: u64,
 }
 
@@ -14,7 +14,7 @@ pub struct BudgetAccessTokenClaims {
 pub struct BudgetAccessTokenInternalClaims {
     kid: Uuid, // Key ID
     bid: Uuid, // Budget ID
-    uid: Uuid, // User ID
+    eml: String, // User ID
     exp: u64,  // Expiration
 }
 
@@ -51,7 +51,7 @@ impl<'a> UserToken<'a> for BudgetAccessToken {
         BudgetAccessTokenClaims {
             key_id: self.claims.kid,
             budget_id: self.claims.bid,
-            user_id: self.claims.uid,
+            user_email: self.claims.eml,
             expiration: self.claims.exp,
         }
     }

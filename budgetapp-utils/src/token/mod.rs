@@ -1,9 +1,5 @@
 pub mod auth_token;
-mod budget_access_token;
-mod special_access_token;
-
-pub use budget_access_token::BudgetAccessToken;
-pub use special_access_token::SpecialAccessToken;
+pub mod budget_access_token;
 
 use ed25519_dalek::{PublicKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use serde::de::DeserializeOwned;
