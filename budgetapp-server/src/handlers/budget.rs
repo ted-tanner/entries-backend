@@ -1,12 +1,12 @@
-use budgetapp_utils::budget_token::BudgetToken;
-use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
-use budgetapp_utils::models::BudgetAccessKey;
+use budgetapp_utils::models::budget_access_key::BudgetAccessKey;
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetId, InputCategoryId, InputEditBudget,
+    InputBudget, InputBudgetAccessTokenList, InputBudgetId, InputCategoryId, InputEditBudget,
     InputEditCategory, InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId,
     InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId,
-    UserInvitationToBudget, InputBudgetAccessTokenList,
+    UserInvitationToBudget,
 };
+use budgetapp_utils::token::UserToken;
+use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ pub async fn get(
 
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.uid, &public_key)
+        .verify_for_user(auth_user_claims.0.user_id, &public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -118,7 +118,7 @@ pub async fn get_multiple(
             None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
         };
 
-        if !token.verify_for_user(auth_user_claims.0.uid, &public_key) {
+        if !token.verify_for_user(auth_user_claims.0.user_id, &public_key) {
             return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
         }
     }
@@ -180,10 +180,10 @@ pub async fn edit(
     let budget_id = budget_access_token.0.budget_id;
     let key_id = budget_access_token.0.key_id;
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
-    
+
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.uid, &public_key.public_key)
+        .verify_for_user(auth_user_claims.0.user_id, &public_key.public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -191,7 +191,9 @@ pub async fn edit(
     }
 
     if public_key.read_only == true {
-        return Err(ServerError::AccessForbidden(Some(String::from("User has read-only access to budget"))))
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "User has read-only access to budget",
+        ))));
     }
 
     match web::block(move || {
@@ -240,7 +242,7 @@ pub async fn invite_user(
 
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.uid, &public_key.public_key)
+        .verify_for_user(auth_user_claims.0.user_id, &public_key.public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -248,10 +250,12 @@ pub async fn invite_user(
     }
 
     if public_key.read_only == true {
-        return Err(ServerError::AccessForbidden(Some(String::from("User has read-only access to budget"))))
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "User has read-only access to budget",
+        ))));
     }
-    
-    let inviting_user_id = auth_user_claims.0.uid;
+
+    let inviting_user_id = auth_user_claims.0.user_id;
     let inviting_user_email = auth_user_claims.0.eml;
 
     if invitation_info.recipient_user_email == inviting_user_email {
@@ -283,7 +287,7 @@ pub async fn invite_user(
         Err(e) => match e {
             diesel::result::Error::NotFound => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget or invite with provided ID"
+                    "No budget or invite with provided ID",
                 ))));
             }
             _ => {
@@ -342,7 +346,7 @@ pub async fn accept_invitation(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
         budget_dao.accept_invitation(
             share_invite_id,
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
             &auth_user_claims.0.eml,
         )
     })
@@ -463,7 +467,7 @@ pub async fn leave_budget(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.leave_budget(budget_id.budget_id, auth_user_claims.0.uid)
+        budget_dao.leave_budget(budget_id.budget_id, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -495,7 +499,7 @@ pub async fn create_entry(
 ) -> Result<HttpResponse, ServerError> {
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(entry_data.0, auth_user_claims.0.uid)
+        budget_dao.create_entry(entry_data.0, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -527,7 +531,7 @@ pub async fn create_entry_and_category(
 ) -> Result<HttpResponse, ServerError> {
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry_and_category(entry_and_category_data.0, auth_user_claims.0.uid)
+        budget_dao.create_entry_and_category(entry_and_category_data.0, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -563,7 +567,7 @@ pub async fn edit_entry(
             entry_data.entry_id,
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
         )
     })
     .await?
@@ -601,7 +605,7 @@ pub async fn delete_entry(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id.0.entry_id, auth_user_claims.0.uid)
+        budget_dao.delete_entry(entry_id.0.entry_id, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -633,7 +637,7 @@ pub async fn create_category(
 ) -> Result<HttpResponse, ServerError> {
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(category_data.0, auth_user_claims.0.uid)
+        budget_dao.create_category(category_data.0, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -669,7 +673,7 @@ pub async fn edit_category(
             category_data.category_id,
             &category_data.encrypted_blob,
             &category_data.expected_previous_data_hash,
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
         )
     })
     .await?
@@ -707,7 +711,7 @@ pub async fn delete_category(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id.0.category_id, auth_user_claims.0.uid)
+        budget_dao.delete_category(category_id.0.category_id, auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -738,7 +742,9 @@ async fn obtain_public_key(
     let key = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_public_budget_key(key_id, budget_id)
-    }).await? {
+    })
+    .await?
+    {
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {

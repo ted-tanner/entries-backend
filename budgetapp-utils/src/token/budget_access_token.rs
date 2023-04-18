@@ -12,10 +12,10 @@ pub struct BudgetAccessTokenClaims {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetAccessTokenInternalClaims {
-    kid: Uuid, // Key ID
-    bid: Uuid, // Budget ID
+    kid: Uuid,   // Key ID
+    bid: Uuid,   // Budget ID
     eml: String, // User ID
-    exp: u64,  // Expiration
+    exp: u64,    // Expiration
 }
 
 pub struct BudgetAccessToken {

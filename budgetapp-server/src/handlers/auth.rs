@@ -2,8 +2,10 @@ use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     CredentialPair, InputEmail, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
 };
+use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
+use budgetapp_utils::token::UserToken;
 use budgetapp_utils::validators::Validity;
-use budgetapp_utils::{argon2_hasher, auth_token, db, otp, validators};
+use budgetapp_utils::{argon2_hasher, db, otp, validators};
 
 use actix_web::{web, HttpResponse};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -121,29 +123,17 @@ pub async fn sign_in(
     .await?;
 
     if does_auth_string_match_hash {
-        let signin_token = auth_token::generate_token(
-            &auth_token::TokenParams {
-                user_id: hash_and_attempts.user_id,
-                user_email: &user_email_clone3,
-            },
-            auth_token::TokenType::SignIn,
-            env::CONF.lifetimes.access_token_lifetime,
-            &env::CONF.keys.token_signing_key,
-            &env::CONF.keys.token_encryption_cipher,
+        let mut signin_token = AuthToken::new(
+            user_id,
+            &email,
+            SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
+            AuthTokenType::SignIn,
         );
 
-        let signin_token = match signin_token {
-            Ok(signin_token) => signin_token,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Failed to generate sign-in token for user",
-                ))));
-            }
-        };
+        signin_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
         let signin_token = SigninToken {
-            signin_token: signin_token.to_string(),
+            signin_token: signin_token.encode_and_sign(&env::CONF.keys.token_signing_key),
         };
 
         let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
@@ -183,47 +173,43 @@ pub async fn verify_otp_for_signin(
     app_version: AppVersion,
     otp_and_token: web::Json<SigninTokenOtpPair>,
 ) -> Result<HttpResponse, ServerError> {
-    let signin_token = otp_and_token.0.signin_token.clone();
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+    const TOKEN_INVALID_MSG: &str = "Token is invalid";
 
-    let token_claims = match auth_token::validate_token(
-        &signin_token,
-        auth_token::TokenType::SignIn,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
-    ) {
+    let mut token = match AuthToken::from_str(&otp_and_token.0.signin_token) {
         Ok(t) => t,
-        Err(e) => match e {
-            auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token is invalid",
-                ))));
-            }
-            auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has expired",
-                ))));
-            }
-            auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Incorrect token type",
-                ))));
-            }
-            e => {
-                log::error!("{}", e);
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Error verifying token",
-                ))));
-            }
-        },
+        Err(_) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                TOKEN_INVALID_MSG,
+            ))));
+        }
     };
 
-    let token_claims_clone = token_claims.clone();
+    if !token.verify(&env::CONF.keys.token_signing_key) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
 
+    if let Err(_) = token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
+
+    let token_claims = token.claims();
+
+    if !matches!(token_claims.token_type, AuthTokenType::SignIn) {
+        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
+    }
+
+    let user_id = token_claims.user_id;
+    let user_email = token_claims.user_email.clone();
+
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
         auth_dao.check_is_token_on_blacklist_and_blacklist(
             otp_and_token.0.signin_token.as_str(),
-            token_claims_clone,
+            token_claims,
         )
     })
     .await?
@@ -246,7 +232,7 @@ pub async fn verify_otp_for_signin(
 
     let attempts = match web::block(move || {
         auth_dao.get_and_increment_otp_verification_count(
-            token_claims.uid,
+            user_id,
             env::CONF.security.otp_attempts_reset_time,
         )
     })
@@ -276,7 +262,7 @@ pub async fn verify_otp_for_signin(
 
         let mut is_valid = otp::verify_otp(
             otp,
-            token_claims.uid,
+            user_id,
             current_time,
             env::CONF.lifetimes.otp_lifetime,
             &env::CONF.keys.otp_key,
@@ -286,7 +272,7 @@ pub async fn verify_otp_for_signin(
         if !is_valid {
             is_valid = otp::verify_otp(
                 otp,
-                token_claims.uid,
+                user_id,
                 current_time + env::CONF.lifetimes.otp_lifetime,
                 env::CONF.lifetimes.otp_lifetime,
                 &env::CONF.keys.otp_key,
@@ -324,44 +310,33 @@ pub async fn verify_otp_for_signin(
         ))));
     }
 
-    let token_pair = auth_token::generate_token_pair(
-        &auth_token::TokenParams {
-            user_id: token_claims.uid,
-            user_email: &token_claims.eml,
-        },
-        env::CONF.lifetimes.access_token_lifetime,
-        env::CONF.lifetimes.refresh_token_lifetime,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
+    let now = SystemTime::now();
+
+    let mut refresh_token = AuthToken::new(
+        user_id,
+        &user_email,
+        now + env::CONF.lifetimes.refresh_token_lifetime,
+        AuthTokenType::Refresh,
     );
 
-    let token_pair = match token_pair {
-        Ok(token_pair) => token_pair,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate tokens for new user",
-            ))));
-        }
-    };
+    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+
+    let mut access_token = AuthToken::new(
+        user_id,
+        &user_email,
+        now + env::CONF.lifetimes.access_token_lifetime,
+        AuthTokenType::Access,
+    );
+
+    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
     let token_pair = TokenPair {
-        access_token: token_pair.access_token.to_string(),
-        refresh_token: token_pair.refresh_token.to_string(),
-        server_time: SystemTime::now()
+        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        server_time: SystemTime()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
             .as_millis(),
-    };
-
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
-
-    // TODO: Make it so users don't have to wait for this
-    match web::block(move || user_dao.set_last_token_refresh_now(token_claims.uid, &app_version.0))
-        .await?
-    {
-        Ok(_) => (),
-        Err(e) => log::error!("{}", e),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))
@@ -372,45 +347,41 @@ pub async fn refresh_tokens(
     app_version: AppVersion,
     token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let refresh_token = token.0.token.clone();
+    const TOKEN_INVALID_MSG: &str = "Token is invalid";
 
-    let claims = match auth_token::validate_token(
-        &refresh_token,
-        auth_token::TokenType::Refresh,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
-    ) {
-        Ok(c) => c,
-        Err(e) => match e {
-            auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token is invalid",
-                ))));
-            }
-            auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has expired",
-                ))));
-            }
-            auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Incorrect token type",
-                ))));
-            }
-            e => {
-                log::error!("{}", e);
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Error verifying token",
-                ))));
-            }
-        },
+    let mut refresh_token = match AuthToken::from_str(&token.0.token) {
+        Ok(t) => t,
+        Err(_) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                TOKEN_INVALID_MSG,
+            ))));
+        }
     };
 
-    let claims_clone = claims.clone();
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+    if !refresh_token.verify(&env::CONF.keys.token_signing_key) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
+
+    if let Err(_) = refresh_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
+
+    let token_claims = refresh_token.claims();
+
+    if !matches!(token_claims.token_type, AuthTokenType::Refresh) {
+        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
+    }
+
+    let user_id = token_claims.user_id;
+    let user_email = token_claims.user_email.clone();
 
     match web::block(move || {
-        auth_dao.check_is_token_on_blacklist_and_blacklist(token.0.token.as_str(), claims_clone)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.check_is_token_on_blacklist_and_blacklist(&token.0.token, token_claims)
     })
     .await?
     {
@@ -428,44 +399,31 @@ pub async fn refresh_tokens(
         }
     };
 
-    let token_pair = auth_token::generate_token_pair(
-        &auth_token::TokenParams {
-            user_id: claims.uid,
-            user_email: &claims.eml,
-        },
-        env::CONF.lifetimes.access_token_lifetime,
-        env::CONF.lifetimes.refresh_token_lifetime,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
+    let mut refresh_token = AuthToken::new(
+        user_id,
+        &user_email,
+        now + env::CONF.lifetimes.refresh_token_lifetime,
+        AuthTokenType::Refresh,
     );
 
-    let token_pair = match token_pair {
-        Ok(token_pair) => token_pair,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate tokens for new user",
-            ))));
-        }
-    };
+    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+
+    let mut access_token = AuthToken::new(
+        user_id,
+        &user_email,
+        now + env::CONF.lifetimes.access_token_lifetime,
+        AuthTokenType::Access,
+    );
+
+    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
     let token_pair = TokenPair {
-        access_token: token_pair.access_token.to_string(),
-        refresh_token: token_pair.refresh_token.to_string(),
-        server_time: SystemTime::now()
+        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        server_time: SystemTime()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
             .as_millis(),
-    };
-
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
-
-    // TODO: Make it so users don't have to wait for this
-    match web::block(move || user_dao.set_last_token_refresh_now(claims.uid, &app_version.0))
-        .await?
-    {
-        Ok(_) => (),
-        Err(e) => log::error!("{}", e),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))
@@ -476,54 +434,44 @@ pub async fn logout(
     auth_user_claims: AuthorizedUserClaims,
     refresh_token: web::Json<RefreshToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let refresh_token_clone = refresh_token.token.clone();
+    const TOKEN_INVALID_MSG: &str = "Token is invalid";
 
-    let refresh_token_claims = match web::block(move || {
-        auth_token::validate_token(
-            &refresh_token_clone,
-            auth_token::TokenType::Refresh,
-            &env::CONF.keys.token_signing_key,
-            &env::CONF.keys.token_encryption_cipher,
-        )
-    })
-    .await?
-    {
-        Ok(tc) => tc,
-        Err(e) => match e {
-            auth_token::TokenError::TokenInvalid => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token is invalid",
-                ))))
-            }
-            auth_token::TokenError::TokenExpired => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Token has expired",
-                ))))
-            }
-            auth_token::TokenError::WrongTokenType => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Incorrect token type",
-                ))))
-            }
-            e => {
-                log::error!("{}", e);
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Error verifying token",
-                ))));
-            }
-        },
+    let mut refresh_token = match AuthToken::from_str(&token.0.token) {
+        Ok(t) => t,
+        Err(_) => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                TOKEN_INVALID_MSG,
+            ))));
+        }
     };
 
-    if refresh_token_claims.uid != auth_user_claims.0.uid {
+    if !refresh_token.verify(&env::CONF.keys.token_signing_key) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
+
+    if let Err(_) = refresh_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
+    }
+
+    let token_claims = refresh_token.claims();
+
+    if !matches!(token_claims.token_type, AuthTokenType::Refresh) {
+        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
+    }
+
+    if token_claims.user_id != auth_user_claims.0.user_id {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
         ))));
     }
 
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-
     match web::block(move || {
-        auth_dao.blacklist_token(refresh_token.0.token.as_str(), refresh_token_claims)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.blacklist_token(&refresh_token.0.token, token_claims)
     })
     .await?
     {

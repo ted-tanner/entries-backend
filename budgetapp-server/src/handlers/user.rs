@@ -3,8 +3,10 @@ use budgetapp_utils::request_io::{
     InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputToken,
     InputUser, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
+use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
+use budgetapp_utils::token::UserToken;
 use budgetapp_utils::validators::{self, Validity};
-use budgetapp_utils::{argon2_hasher, auth_token, db};
+use budgetapp_utils::{argon2_hasher, db};
 
 use actix_web::{web, HttpResponse};
 use std::time::{Duration, SystemTime};
@@ -62,26 +64,16 @@ pub async fn create(
         },
     };
 
-    let user_creation_token = auth_token::generate_token(
-        &auth_token::TokenParams {
-            user_id,
-            user_email: &email,
-        },
-        auth_token::TokenType::UserCreation,
-        env::CONF.lifetimes.user_creation_token_lifetime,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
+    let mut user_creation_token = AuthToken::new(
+        user_id,
+        &email,
+        SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
+        AuthTokenType::UserCreation,
     );
 
-    let user_creation_token = match user_creation_token {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate user creation token",
-            ))));
-        }
-    };
+    user_creation_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+    let user_creation_token =
+        user_creation_token.encode_and_sign(&env::CONF.keys.token_signing_key);
 
     // TODO: Don't print user creation token; email it!
     println!("\n\nUser Creation Token: {user_creation_token}\n\n");
@@ -219,7 +211,7 @@ pub async fn edit_preferences(
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
             &new_prefs.encrypted_blob,
             &new_prefs.expected_previous_data_hash,
         )
@@ -258,7 +250,7 @@ pub async fn edit_keystore(
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
             &new_keystore.encrypted_blob,
             &new_keystore.expected_previous_data_hash,
         )
@@ -350,7 +342,7 @@ pub async fn change_password(
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
-            auth_user_claims.0.uid,
+            auth_user_claims.0.user_id,
             &new_password_data.0.new_auth_string,
             &new_password_data.0.auth_string_salt,
             new_password_data.0.auth_string_iters,
@@ -375,7 +367,7 @@ pub async fn init_delete(
     let user_deletion_token = {
         auth_token::generate_token(
             &auth_token::TokenParams {
-                user_id: auth_user_claims.0.uid,
+                user_id: auth_user_claims.0.user_id,
                 user_email: &auth_user_claims.0.eml,
             },
             auth_token::TokenType::UserDeletion,
@@ -545,7 +537,7 @@ pub async fn is_listed_for_deletion(
 ) -> Result<HttpResponse, ServerError> {
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(auth_user_claims.0.uid)
+        user_dao.check_is_user_listed_for_deletion(auth_user_claims.0.user_id)
     })
     .await?
     {
@@ -576,7 +568,7 @@ pub async fn cancel_delete(
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(auth_user_claims.0.uid)
+        user_dao.cancel_user_deletion(auth_user_claims.0.user_id)
     })
     .await?
     {

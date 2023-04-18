@@ -179,7 +179,7 @@ impl AuthToken {
         Ok(())
     }
 
-    pub fn encode_and_sign(&self, signing_key: &[u8; 64]) -> String {
+    pub fn sign_and_encode(&self, signing_key: &[u8; 64]) -> String {
         let mut json_of_claims = match &self.claims {
             AuthTokenClaimsState::Encrypted(c) => {
                 serde_json::to_vec(&c).expect("Failed to transform claims into JSON")

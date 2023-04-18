@@ -71,8 +71,8 @@ mod tests {
     use budgetapp_utils::models::blacklisted_token::NewBlacklistedToken;
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-    use budgetapp_utils::token::UserToken;
     use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
+    use budgetapp_utils::token::UserToken;
 
     use aes_gcm::{
         aead::{KeyInit, OsRng},
@@ -171,13 +171,13 @@ mod tests {
         unexpired_token.encrypt(&cipher);
 
         let expired_blacklisted = NewBlacklistedToken {
-            token: &pretend_expired_token.encode_and_sign(&[0; 64]),
+            token: &pretend_expired_token.sign_and_encode(&[0; 64]),
             user_id,
             token_expiration_time: SystemTime::now() - Duration::from_secs(3600),
         };
 
         let unexpired_blacklisted = NewBlacklistedToken {
-            token: &unexpired_token.encode_and_sign(&[0; 64]),
+            token: &unexpired_token.sign_and_encode(&[0; 64]),
             user_id,
             token_expiration_time: SystemTime::now() + Duration::from_secs(3600),
         };
@@ -200,12 +200,15 @@ mod tests {
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(
-                &pretend_expired_token.encode_and_sign(&[0; 64]),
+                &pretend_expired_token.sign_and_encode(&[0; 64]),
                 pretend_expired_token.claims(),
             )
             .unwrap());
         assert!(dao
-            .check_is_token_on_blacklist_and_blacklist(&unexpired_token.encode_and_sign(&[0; 64]), unexpired_token.claims())
+            .check_is_token_on_blacklist_and_blacklist(
+                &unexpired_token.sign_and_encode(&[0; 64]),
+                unexpired_token.claims()
+            )
             .unwrap());
     }
 }

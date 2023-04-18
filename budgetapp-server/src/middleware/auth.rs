@@ -1,9 +1,9 @@
-use budgetapp_utils::token::{TokenError, UserToken};
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
+use budgetapp_utils::token::{TokenError, UserToken};
 
 use actix_web::dev::Payload;
-use actix_web::{FromRequest, HttpRequest};
 use actix_web::error::ErrorUnauthorized;
+use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 
 use crate::env;
