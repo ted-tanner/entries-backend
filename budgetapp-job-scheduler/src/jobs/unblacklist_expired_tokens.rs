@@ -67,11 +67,12 @@ impl Job for UnblacklistExpiredTokensJob {
 mod tests {
     use super::*;
 
-    use budgetapp_utils::auth_token;
     use budgetapp_utils::db::user;
     use budgetapp_utils::models::blacklisted_token::NewBlacklistedToken;
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
+    use budgetapp_utils::token::UserToken;
+    use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 
     use aes_gcm::{
         aead::{KeyInit, OsRng},
@@ -120,13 +121,19 @@ mod tests {
             auth_string: String::new(),
 
             auth_string_salt: Vec::new(),
-            auth_string_iters: 1000000,
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
 
             password_encryption_salt: Vec::new(),
-            password_encryption_iters: 5000000,
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 2,
 
             recovery_key_salt: Vec::new(),
-            recovery_key_iters: 10000000,
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 2,
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -144,46 +151,33 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
-        let token_params = auth_token::TokenParams {
-            user_id: user_id,
-            user_email: &new_user.email,
-        };
+        let mut pretend_expired_token = AuthToken::new(
+            user_id,
+            &new_user.email,
+            SystemTime::now() - Duration::from_secs(3600),
+            AuthTokenType::Refresh,
+        );
 
         let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        pretend_expired_token.encrypt(&cipher);
 
-        let pretend_expired_token = auth_token::generate_token(
-            &token_params,
-            auth_token::TokenType::Refresh,
-            Duration::from_secs(5),
-            &[0u8; 64],
-            &cipher,
-        )
-        .unwrap();
+        let mut unexpired_token = AuthToken::new(
+            user_id,
+            &new_user.email,
+            SystemTime::now() + Duration::from_secs(3600),
+            AuthTokenType::Refresh,
+        );
 
-        let pretend_claims = auth_token::TokenClaims {
-            exp: 64,
-            uid: user_id,
-            eml: String::from("Test"),
-            typ: 2,
-        };
-
-        let unexpired_token = auth_token::generate_token(
-            &token_params,
-            auth_token::TokenType::Refresh,
-            Duration::from_secs(5),
-            &[0u8; 64],
-            &cipher,
-        )
-        .unwrap();
+        unexpired_token.encrypt(&cipher);
 
         let expired_blacklisted = NewBlacklistedToken {
-            token: &pretend_expired_token.to_string(),
+            token: &pretend_expired_token.encode_and_sign(&[0; 64]),
             user_id,
             token_expiration_time: SystemTime::now() - Duration::from_secs(3600),
         };
 
         let unexpired_blacklisted = NewBlacklistedToken {
-            token: &unexpired_token.to_string(),
+            token: &unexpired_token.encode_and_sign(&[0; 64]),
             user_id,
             token_expiration_time: SystemTime::now() + Duration::from_secs(3600),
         };
@@ -206,12 +200,12 @@ mod tests {
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(
-                &pretend_expired_token.to_string(),
-                pretend_claims.clone()
+                &pretend_expired_token.encode_and_sign(&[0; 64]),
+                pretend_expired_token.claims(),
             )
             .unwrap());
         assert!(dao
-            .check_is_token_on_blacklist_and_blacklist(&unexpired_token.to_string(), pretend_claims)
+            .check_is_token_on_blacklist_and_blacklist(&unexpired_token.encode_and_sign(&[0; 64]), unexpired_token.claims())
             .unwrap());
     }
 }

@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     authorization_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
@@ -6,7 +8,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     blacklisted_tokens (token) {
         token -> Text,
         user_id -> Uuid,
@@ -14,7 +16,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     budget_access_keys (key_id, budget_id) {
         key_id -> Uuid,
         budget_id -> Uuid,
@@ -23,7 +25,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     budget_share_invites (id) {
         id -> Uuid,
         recipient_user_email -> Varchar,
@@ -38,7 +40,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     budget_share_keys (key_id, budget_id) {
         key_id -> Uuid,
         budget_id -> Uuid,
@@ -48,7 +50,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     budgets (id) {
         id -> Uuid,
         encrypted_blob -> Bytea,
@@ -57,7 +59,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     categories (id) {
         id -> Uuid,
         budget_id -> Uuid,
@@ -67,7 +69,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     entries (id) {
         id -> Uuid,
         budget_id -> Uuid,
@@ -77,7 +79,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     otp_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
@@ -85,21 +87,21 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     signin_nonces (user_email) {
         user_email -> Varchar,
         nonce -> Int4,
     }
 }
 
-table! {
+diesel::table! {
     user_deletion_request_budget_keys (key_id) {
         key_id -> Uuid,
         deletion_request_id -> Uuid,
     }
 }
 
-table! {
+diesel::table! {
     user_deletion_requests (id) {
         id -> Uuid,
         user_id -> Uuid,
@@ -108,7 +110,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_keystores (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -116,7 +118,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -124,7 +126,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_security_data (user_id) {
         user_id -> Uuid,
         auth_string_hash -> Text,
@@ -146,7 +148,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     users (id) {
         id -> Uuid,
         email -> Varchar,
@@ -157,9 +159,9 @@ table! {
     }
 }
 
-joinable!(user_deletion_request_budget_keys -> user_deletion_requests (deletion_request_id));
+diesel::joinable!(user_deletion_request_budget_keys -> user_deletion_requests (deletion_request_id));
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     authorization_attempts,
     blacklisted_tokens,
     budget_access_keys,

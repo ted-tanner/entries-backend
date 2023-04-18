@@ -282,7 +282,7 @@ impl Dao {
         };
 
         let mut request_budget_keys = Vec::new();
-        for key_id in budget_access_key_ids.into_iter() {
+        for key_id in budget_access_key_ids.iter() {
             request_budget_keys.push(NewUserDeletionRequestBudgetKey {
                 key_id: *key_id,
                 deletion_request_id: new_request.id,
@@ -315,7 +315,10 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_user(&mut self, user_deletion_request: &UserDeletionRequest) -> Result<(), DaoError> {
+    pub fn delete_user(
+        &mut self,
+        user_deletion_request: &UserDeletionRequest,
+    ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection

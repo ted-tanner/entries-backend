@@ -1,4 +1,4 @@
-use crate::token::{ClientSignedToken, TokenParts, Ed25519Verifier};
+use crate::token::{Ed25519Verifier, TokenParts, UserToken};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,22 +20,34 @@ pub struct SpecialAccessTokenInternalClaims {
 
 pub struct SpecialAccessToken {
     claims: SpecialAccessTokenInternalClaims,
-    parts: TokenParts,
+    parts: Option<TokenParts>,
 }
 
-impl<'a> ClientSignedToken<'a> for SpecialAccessToken {
+impl<'a> UserToken<'a> for SpecialAccessToken {
     type Claims = SpecialAccessTokenClaims;
     type InternalClaims = SpecialAccessTokenInternalClaims;
     type Verifier = Ed25519Verifier;
 
-    fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
-        Self { claims, parts }
+    fn clear_buffers(&mut self) {
+        self.parts = None;
     }
 
-    fn user_id(&self) -> Uuid { self.claims.uid }
-    fn expiration(&self) -> u64 { self.claims.exp }
+    fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
+        Self {
+            claims,
+            parts: Some(parts),
+        }
+    }
 
-    fn claims(&self) -> Self::Claims {
+    fn expiration(&self) -> u64 {
+        self.claims.exp
+    }
+
+    fn parts(&'a self) -> &'a Option<TokenParts> {
+        &self.parts
+    }
+
+    fn claims(self) -> Self::Claims {
         SpecialAccessTokenClaims {
             key_id: self.claims.kid,
             budget_id: self.claims.bid,
@@ -43,7 +55,4 @@ impl<'a> ClientSignedToken<'a> for SpecialAccessToken {
             expiration: self.claims.exp,
         }
     }
-
-    fn json(&'a self) -> &'a str { &self.parts.json }
-    fn signature(&'a self) -> &'a [u8] { &self.parts.signature }
 }

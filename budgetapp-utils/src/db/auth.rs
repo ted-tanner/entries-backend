@@ -3,7 +3,6 @@ use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use crate::token::auth_token::TokenClaims;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizationAttempts};
 use crate::models::blacklisted_token::NewBlacklistedToken;
@@ -21,6 +20,7 @@ use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
+use crate::token::auth_token::AuthTokenClaims;
 
 pub struct UserAuthStringHashAndAuthAttempts {
     pub user_id: Uuid,
@@ -113,13 +113,13 @@ impl Dao {
     pub fn blacklist_token(
         &mut self,
         token: &str,
-        token_claims: TokenClaims,
+        decoded_token: AuthTokenClaims,
     ) -> Result<(), DaoError> {
-        let expiration = UNIX_EPOCH + Duration::from_secs(token_claims.exp);
+        let expiration = UNIX_EPOCH + Duration::from_secs(decoded_token.expiration);
 
         let blacklisted_token = NewBlacklistedToken {
             token,
-            user_id: token_claims.uid,
+            user_id: decoded_token.user_id,
             token_expiration_time: expiration,
         };
 
@@ -133,7 +133,7 @@ impl Dao {
     pub fn check_is_token_on_blacklist_and_blacklist(
         &mut self,
         token: &str,
-        token_claims: TokenClaims,
+        decoded_token: AuthTokenClaims,
     ) -> Result<bool, DaoError> {
         let count = blacklisted_tokens
             .filter(blacklisted_token_fields::token.eq(token))
@@ -143,11 +143,11 @@ impl Dao {
         if count > 0 {
             Ok(true)
         } else {
-            let expiration = UNIX_EPOCH + Duration::from_secs(token_claims.exp);
+            let expiration = UNIX_EPOCH + Duration::from_secs(decoded_token.expiration);
 
             let blacklisted_token = NewBlacklistedToken {
                 token,
-                user_id: token_claims.uid,
+                user_id: decoded_token.user_id,
                 token_expiration_time: expiration,
             };
 

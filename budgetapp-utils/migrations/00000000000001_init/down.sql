@@ -1,7 +1,6 @@
 -- This file should undo everything in `up.sql`
 
 ALTER TABLE authorization_attempts DROP CONSTRAINT user_key;
-ALTER TABLE blacklisted_tokens DROP CONSTRAINT user_key;
 ALTER TABLE budget_access_keys DROP CONSTRAINT budget_key;
 ALTER TABLE budget_share_invites DROP CONSTRAINT recipient_key;
 ALTER TABLE budget_share_keys DROP CONSTRAINT budget_key;

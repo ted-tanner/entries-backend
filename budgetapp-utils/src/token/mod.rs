@@ -1,12 +1,14 @@
 pub mod auth_token;
-pub mod budget_access_token;
-pub mod special_access_token;
+mod budget_access_token;
+mod special_access_token;
+
+pub use budget_access_token::BudgetAccessToken;
+pub use special_access_token::SpecialAccessToken;
 
 use ed25519_dalek::{PublicKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use serde::de::DeserializeOwned;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum TokenError {
@@ -38,17 +40,15 @@ pub trait TokenSignatureVerifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool;
 }
 
-pub trait ClientSignedToken<'a> {
+pub trait UserToken<'a> {
     type Claims;
     type InternalClaims: DeserializeOwned;
     type Verifier: TokenSignatureVerifier;
 
-    fn from_str(token: &str) -> Result<Self, TokenError> where Self: Sized {
-        let (claims, parts) = Self::decode(token)?;
-        Ok(Self::from_pieces(claims, parts))
-    }
-
-    fn decode(token: &str) -> Result<(Self::InternalClaims, TokenParts), TokenError> {
+    fn from_str(token: &str) -> Result<Self, TokenError>
+    where
+        Self: Sized,
+    {
         let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
@@ -75,17 +75,13 @@ pub trait ClientSignedToken<'a> {
 
         let parts = TokenParts {
             json: claims_json_string,
-            signature: signature,
+            signature,
         };
 
-        Ok((claims, parts))
+        Ok(Self::from_pieces(claims, parts))
     }
 
-    fn verify_for_user(&'a self, expected_user_id: Uuid, key: &[u8]) -> bool {
-        if self.user_id() != expected_user_id {
-            return false;
-        }
-
+    fn verify(&'a self, key: &[u8]) -> bool {
         if self.expiration()
             >= SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -95,18 +91,20 @@ pub trait ClientSignedToken<'a> {
             return false;
         }
 
-        let verified = Self::Verifier::verify(self.json(), self.signature(), key);
+        let parts = match self.parts() {
+            Some(p) => p,
+            None => return false,
+        };
 
-        verified
+        Self::Verifier::verify(&parts.json, &parts.signature, key)
     }
 
+    fn clear_buffers(&mut self);
     fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self;
 
-    fn user_id(&self) -> Uuid;
     fn expiration(&self) -> u64;
-    fn claims(&self) -> Self::Claims;
-    fn json(&'a self) -> &'a str;
-    fn signature(&'a self) -> &'a [u8];
+    fn parts(&'a self) -> &'a Option<TokenParts>;
+    fn claims(self) -> Self::Claims;
 }
 
 pub struct Ed25519Verifier {}
@@ -131,9 +129,6 @@ impl TokenSignatureVerifier for Ed25519Verifier {
             Err(_) => return false,
         };
 
-        match key.verify_strict(json.as_bytes(), &signature) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        key.verify_strict(json.as_bytes(), &signature).is_ok()
     }
 }

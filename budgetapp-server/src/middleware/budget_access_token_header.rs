@@ -1,4 +1,4 @@
-use budgetapp_utils::budget_token::BudgetToken;
+use budgetapp_utils::token::BudgetAccessToken ;
 
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};

@@ -306,7 +306,7 @@ impl Dao {
             key_id: Uuid::new_v4(),
             budget_id,
             public_key: budget_share_public_key,
-            expiration: expiration,
+            expiration,
             read_only,
         };
 
@@ -481,12 +481,12 @@ impl Dao {
         let entry_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&encrypted_blob);
+        sha1_hasher.update(encrypted_blob);
 
         let new_entry = NewEntry {
             id: entry_id,
             budget_id,
-            encrypted_blob: &encrypted_blob,
+            encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
@@ -523,7 +523,7 @@ impl Dao {
 
         let new_category = NewCategory {
             id: category_id,
-            budget_id: budget_id,
+            budget_id,
             encrypted_blob: &entry_and_category_data.category_encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
@@ -611,12 +611,12 @@ impl Dao {
         let category_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&encrypted_blob);
+        sha1_hasher.update(encrypted_blob);
 
         let new_category = NewCategory {
             id: category_id,
             budget_id,
-            encrypted_blob: &encrypted_blob,
+            encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };

@@ -129,13 +129,19 @@ mod tests {
                 auth_string: String::new(),
 
                 auth_string_salt: Vec::new(),
-                auth_string_iters: 1000000,
+                auth_string_memory_cost_kib: 1024,
+                auth_string_parallelism_factor: 1,
+                auth_string_iters: 2,
 
                 password_encryption_salt: Vec::new(),
-                password_encryption_iters: 5000000,
+                password_encryption_memory_cost_kib: 1024,
+                password_encryption_parallelism_factor: 1,
+                password_encryption_iters: 2,
 
                 recovery_key_salt: Vec::new(),
-                recovery_key_iters: 10000000,
+                recovery_key_memory_cost_kib: 1024,
+                recovery_key_parallelism_factor: 1,
+                recovery_key_iters: 2,
 
                 encryption_key_encrypted_with_password: Vec::new(),
                 encryption_key_encrypted_with_recovery_key: Vec::new(),
