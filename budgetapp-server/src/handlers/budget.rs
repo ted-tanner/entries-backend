@@ -13,12 +13,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::handlers::error::ServerError;
-use crate::middleware::auth::AuthorizedUserClaims;
+use crate::middleware::auth::{Access, CheckExp, FromHeader, VerifiedToken};
 use crate::middleware::budget_access_token_header::BudgetAccessToken;
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_access_token: BudgetAccessToken,
 ) -> Result<HttpResponse, ServerError> {
     let budget_id = budget_access_token.0.budget_id;
@@ -27,7 +27,7 @@ pub async fn get(
 
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.user_id, &public_key)
+        .verify_for_user(user_access_token.0.user_id, &public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -61,7 +61,7 @@ pub async fn get(
 
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
@@ -118,7 +118,7 @@ pub async fn get_multiple(
             None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
         };
 
-        if !token.verify_for_user(auth_user_claims.0.user_id, &public_key) {
+        if !token.verify_for_user(user_access_token.0.user_id, &public_key) {
             return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
         }
     }
@@ -150,7 +150,7 @@ pub async fn get_multiple(
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let new_budget = match web::block(move || {
@@ -173,7 +173,7 @@ pub async fn create(
 
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_access_token: BudgetAccessToken,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
@@ -183,7 +183,7 @@ pub async fn edit(
 
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.user_id, &public_key.public_key)
+        .verify_for_user(user_access_token.0.user_id, &public_key.public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -232,7 +232,7 @@ pub async fn edit(
 
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_access_token: BudgetAccessToken,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
@@ -242,7 +242,7 @@ pub async fn invite_user(
 
     if !budget_access_token
         .0
-        .verify_for_user(auth_user_claims.0.user_id, &public_key.public_key)
+        .verify_for_user(user_access_token.0.user_id, &public_key.public_key)
     {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
@@ -255,8 +255,8 @@ pub async fn invite_user(
         ))));
     }
 
-    let inviting_user_id = auth_user_claims.0.user_id;
-    let inviting_user_email = auth_user_claims.0.eml;
+    let inviting_user_id = user_access_token.0.user_id;
+    let inviting_user_email = user_access_token.0.eml;
 
     if invitation_info.recipient_user_email == inviting_user_email {
         return Err(ServerError::InputRejected(Some(String::from(
@@ -305,12 +305,12 @@ pub async fn invite_user(
 // TODO: Token proving ability to edit invitations
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, &user_access_token.0.eml)
     })
     .await?
     {
@@ -336,7 +336,7 @@ pub async fn retract_invitation(
 // TODO: Special new token -- budget acceptance token
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let db_thread_pool_ref = db_thread_pool.clone();
@@ -346,8 +346,8 @@ pub async fn accept_invitation(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
         budget_dao.accept_invitation(
             share_invite_id,
-            auth_user_claims.0.user_id,
-            &auth_user_claims.0.eml,
+            user_access_token.0.user_id,
+            &user_access_token.0.eml,
         )
     })
     .await?
@@ -373,12 +373,12 @@ pub async fn accept_invitation(
 
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
+        budget_dao.delete_invitation(invitation_id.share_invite_id, &user_access_token.0.eml)
     })
     .await?
     {
@@ -403,11 +403,11 @@ pub async fn decline_invitation(
 
 pub async fn get_all_pending_invitations_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_for_user(&auth_user_claims.0.eml)
+        budget_dao.get_all_pending_invitations_for_user(&user_access_token.0.eml)
     })
     .await?
     {
@@ -431,12 +431,12 @@ pub async fn get_all_pending_invitations_for_user(
 // TODO: Figure this out
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let invite = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_invitation(invitation_id.share_invite_id, &auth_user_claims.0.eml)
+        budget_dao.get_invitation(invitation_id.share_invite_id, &user_access_token.0.eml)
     })
     .await?
     {
@@ -462,12 +462,12 @@ pub async fn get_invitation(
 // TODO: Budget Access Token
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.leave_budget(budget_id.budget_id, auth_user_claims.0.user_id)
+        budget_dao.leave_budget(budget_id.budget_id, user_access_token.0.user_id)
     })
     .await?
     {
@@ -494,12 +494,12 @@ pub async fn leave_budget(
 // TODO: Check user has write access
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(entry_data.0, auth_user_claims.0.user_id)
+        budget_dao.create_entry(entry_data.0, user_access_token.0.user_id)
     })
     .await?
     {
@@ -526,12 +526,12 @@ pub async fn create_entry(
 // TODO: Check user has write access
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry_and_category(entry_and_category_data.0, auth_user_claims.0.user_id)
+        budget_dao.create_entry_and_category(entry_and_category_data.0, user_access_token.0.user_id)
     })
     .await?
     {
@@ -558,7 +558,7 @@ pub async fn create_entry_and_category(
 // TODO: Check user has write access
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     entry_data: web::Query<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -567,7 +567,7 @@ pub async fn edit_entry(
             entry_data.entry_id,
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
-            auth_user_claims.0.user_id,
+            user_access_token.0.user_id,
         )
     })
     .await?
@@ -600,12 +600,12 @@ pub async fn edit_entry(
 // TODO: Check user has write access
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id.0.entry_id, auth_user_claims.0.user_id)
+        budget_dao.delete_entry(entry_id.0.entry_id, user_access_token.0.user_id)
     })
     .await?
     {
@@ -632,12 +632,12 @@ pub async fn delete_entry(
 // TODO: Check user has write access
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(category_data.0, auth_user_claims.0.user_id)
+        budget_dao.create_category(category_data.0, user_access_token.0.user_id)
     })
     .await?
     {
@@ -664,7 +664,7 @@ pub async fn create_category(
 // TODO: Check user has write access
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     category_data: web::Query<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
@@ -673,7 +673,7 @@ pub async fn edit_category(
             category_data.category_id,
             &category_data.encrypted_blob,
             &category_data.expected_previous_data_hash,
-            auth_user_claims.0.user_id,
+            user_access_token.0.user_id,
         )
     })
     .await?
@@ -706,12 +706,12 @@ pub async fn edit_category(
 // TODO: Check user has write access
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id.0.category_id, auth_user_claims.0.user_id)
+        budget_dao.delete_category(category_id.0.category_id, user_access_token.0.user_id)
     })
     .await?
     {

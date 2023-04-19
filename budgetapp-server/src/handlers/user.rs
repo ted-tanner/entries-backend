@@ -14,7 +14,9 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::AuthorizedUserClaims;
+use crate::middleware::auth::{
+    Access, CheckExp, FromHeader, IgnoreExp, UserCreation, UserDeletion, VerifiedToken,
+};
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -89,6 +91,33 @@ pub async fn verify_creation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_creation_token: web::Query<InputToken>,
 ) -> Result<HttpResponse, ServerError> {
+    // let mut token = match AuthToken::from_str(&otp_and_token.0.signin_token) {
+    //     Ok(t) => t,
+    //     Err(_) => {
+    //         return Err(ServerError::UserUnauthorized(Some(String::from(
+    //             TOKEN_INVALID_MSG,
+    //         ))));
+    //     }
+    // };
+
+    // if !token.verify(&env::CONF.keys.token_signing_key) {
+    //     return Err(ServerError::UserUnauthorized(Some(String::from(
+    //         TOKEN_INVALID_MSG,
+    //     ))));
+    // }
+
+    // if let Err(_) = token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+    //     return Err(ServerError::UserUnauthorized(Some(String::from(
+    //         TOKEN_INVALID_MSG,
+    //     ))));
+    // }
+
+    // let token_claims = token.claims();
+
+    // if !matches!(token_claims.token_type, AuthTokenType::UserCreation) {
+    //     return Err(ServerError::UserUnauthorized(Some(String::from(INVALID_TOKEN_MSG))));
+    // }
+
     let claims = match auth_token::validate_token(
         user_creation_token.token.as_str(),
         auth_token::TokenType::UserCreation,
@@ -205,13 +234,13 @@ pub async fn verify_creation(
 
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     new_prefs: web::Json<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
-            auth_user_claims.0.user_id,
+            user_access_token.0.user_id,
             &new_prefs.encrypted_blob,
             &new_prefs.expected_previous_data_hash,
         )
@@ -244,13 +273,13 @@ pub async fn edit_preferences(
 
 pub async fn edit_keystore(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     new_keystore: web::Json<InputEditUserKeystore>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
-            auth_user_claims.0.user_id,
+            user_access_token.0.user_id,
             &new_keystore.encrypted_blob,
             &new_keystore.expected_previous_data_hash,
         )
@@ -283,7 +312,7 @@ pub async fn edit_keystore(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
@@ -291,7 +320,7 @@ pub async fn change_password(
 
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &auth_user_claims.0.eml,
+            &user_access_token.0.eml,
             env::CONF.security.authorization_attempts_reset_time,
         ) {
             Ok(a) => a,
@@ -342,7 +371,7 @@ pub async fn change_password(
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
-            auth_user_claims.0.user_id,
+            user_access_token.0.user_id,
             &new_password_data.0.new_auth_string,
             &new_password_data.0.auth_string_salt,
             new_password_data.0.auth_string_iters,
@@ -362,13 +391,13 @@ pub async fn change_password(
 
 // TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
 ) -> Result<HttpResponse, ServerError> {
     let user_deletion_token = {
         auth_token::generate_token(
             &auth_token::TokenParams {
-                user_id: auth_user_claims.0.user_id,
-                user_email: &auth_user_claims.0.eml,
+                user_id: user_access_token.0.user_id,
+                user_email: &user_access_token.0.eml,
             },
             auth_token::TokenType::UserDeletion,
             env::CONF.lifetimes.user_deletion_token_lifetime,
@@ -533,11 +562,11 @@ pub async fn delete(
 
 pub async fn is_listed_for_deletion(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
 ) -> Result<HttpResponse, ServerError> {
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(auth_user_claims.0.user_id)
+        user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
     })
     .await?
     {
@@ -564,11 +593,11 @@ pub async fn is_listed_for_deletion(
 
 pub async fn cancel_delete(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
 ) -> Result<HttpResponse, ServerError> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(auth_user_claims.0.user_id)
+        user_dao.cancel_user_deletion(user_access_token.0.user_id)
     })
     .await?
     {

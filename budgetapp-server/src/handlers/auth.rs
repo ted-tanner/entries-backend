@@ -1,6 +1,6 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    CredentialPair, InputEmail, RefreshToken, SigninToken, SigninTokenOtpPair, TokenPair,
+    CredentialPair, InputEmail, SigninToken, SigninTokenOtpPair, TokenPair,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::UserToken;
@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::AuthorizedUserClaims;
+use crate::middleware::auth::{Access, CheckExp, FromHeader, Refresh, VerifiedToken};
 
 // TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(
@@ -199,7 +199,9 @@ pub async fn verify_otp_for_signin(
     let token_claims = token.claims();
 
     if !matches!(token_claims.token_type, AuthTokenType::SignIn) {
-        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            TOKEN_INVALID_MSG,
+        ))));
     }
 
     let user_id = token_claims.user_id;
@@ -333,7 +335,7 @@ pub async fn verify_otp_for_signin(
     let token_pair = TokenPair {
         access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
         refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        server_time: SystemTime()
+        server_time: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
             .as_millis(),
@@ -373,7 +375,9 @@ pub async fn refresh_tokens(
     let token_claims = refresh_token.claims();
 
     if !matches!(token_claims.token_type, AuthTokenType::Refresh) {
-        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
+        return Err(ServerError::UserUnauthorized(Some(String::from(
+            ErrorUnauthorized(INVALID_TOKEN_MSG),
+        ))));
     }
 
     let user_id = token_claims.user_id;
@@ -420,7 +424,7 @@ pub async fn refresh_tokens(
     let token_pair = TokenPair {
         access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
         refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        server_time: SystemTime()
+        server_time: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
             .as_millis(),
@@ -431,39 +435,11 @@ pub async fn refresh_tokens(
 
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
-    auth_user_claims: AuthorizedUserClaims,
-    refresh_token: web::Json<RefreshToken>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    refresh_token: VerifiedToken<RefreshToken, FromHeader, CheckExp>,
+    // TODO: Get refresh token header from request, decode, and copy hash for blacklisting
 ) -> Result<HttpResponse, ServerError> {
-    const TOKEN_INVALID_MSG: &str = "Token is invalid";
-
-    let mut refresh_token = match AuthToken::from_str(&token.0.token) {
-        Ok(t) => t,
-        Err(_) => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                TOKEN_INVALID_MSG,
-            ))));
-        }
-    };
-
-    if !refresh_token.verify(&env::CONF.keys.token_signing_key) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    if let Err(_) = refresh_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    let token_claims = refresh_token.claims();
-
-    if !matches!(token_claims.token_type, AuthTokenType::Refresh) {
-        return future::err(ErrorUnauthorized(INVALID_TOKEN_MSG));
-    }
-
-    if token_claims.user_id != auth_user_claims.0.user_id {
+    if refresh_token.0.user_id != user_access_token.0.user_id {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
         ))));

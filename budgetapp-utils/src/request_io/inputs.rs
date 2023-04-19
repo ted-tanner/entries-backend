@@ -100,11 +100,6 @@ pub struct InputEditUserKeystore {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RefreshToken {
-    pub token: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SigninTokenOtpPair {
     pub signin_token: String,
     pub otp: String,

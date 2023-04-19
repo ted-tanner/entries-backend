@@ -11,15 +11,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
 
-pub trait TokenLocation<'a> {
-    fn get_from_request(req: &'a HttpRequest, key: &str) -> Option<&'a str>;
+trait TokenLocation {
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str>;
 }
 
 pub struct FromQuery {}
 pub struct FromHeader {}
 
-impl<'a> TokenLocation<'a> for FromQuery {
-    fn get_from_request(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
+impl TokenLocation for FromQuery {
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
         let query_string = req.query_string();
         let pos = match query_string.find(key) {
             Some(p) => p,
@@ -40,8 +40,8 @@ impl<'a> TokenLocation<'a> for FromQuery {
     }
 }
 
-impl<'a> TokenLocation<'a> for FromHeader {
-    fn get_from_request(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
+impl TokenLocation for FromHeader {
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
         let header = match req.headers().get(key) {
             Some(header) => header,
             None => return None,
@@ -54,58 +54,86 @@ impl<'a> TokenLocation<'a> for FromHeader {
     }
 }
 
-
-pub trait RequestTokenType {
+trait RequestTokenType {
     fn token_name() -> &'static str;
     fn token_type() -> AuthTokenType;
     fn token_lifetime() -> Duration;
 }
 
-pub struct AccessToken {}
-pub struct RefreshToken {}
-pub struct SignInToken {}
-pub struct UserCreationToken {}
-pub struct UserDeletionToken {}
+pub struct Access {}
+pub struct Refresh {}
+pub struct SignIn {}
+pub struct UserCreation {}
+pub struct UserDeletion {}
 
-impl RequestTokenType for AccessToken {
-    fn token_name() -> &'static str { "AccessToken" }
-    fn token_type() -> AuthTokenType { AuthTokenType::Access }
-    fn token_lifetime() -> Duration { env::CONF.lifetimes.access_token_lifetime }
+impl RequestTokenType for Access {
+    fn token_name() -> &'static str {
+        "AccessToken"
+    }
+    fn token_type() -> AuthTokenType {
+        AuthTokenType::Access
+    }
+    fn token_lifetime() -> Duration {
+        env::CONF.lifetimes.access_token_lifetime
+    }
 }
 
-impl RequestTokenType for RefreshToken {
-    fn token_name() -> &'static str { "RefreshToken" }
-    fn token_type() -> AuthTokenType { AuthTokenType::Refresh }
-    fn token_lifetime() -> Duration { env::CONF.lifetimes.refresh_token_lifetime }
+impl RequestTokenType for Refresh {
+    fn token_name() -> &'static str {
+        "RefreshToken"
+    }
+    fn token_type() -> AuthTokenType {
+        AuthTokenType::Refresh
+    }
+    fn token_lifetime() -> Duration {
+        env::CONF.lifetimes.refresh_token_lifetime
+    }
 }
 
-impl RequestTokenType for SignInToken {
-    fn token_name() -> &'static str { "SignInToken" }
-    fn token_type() -> AuthTokenType { AuthTokenType::SignIn }
-    fn token_lifetime() -> Duration { env::CONF.lifetimes.signin_token_lifetime }
+impl RequestTokenType for SignIn {
+    fn token_name() -> &'static str {
+        "SignInToken"
+    }
+    fn token_type() -> AuthTokenType {
+        AuthTokenType::SignIn
+    }
+    fn token_lifetime() -> Duration {
+        env::CONF.lifetimes.signin_token_lifetime
+    }
 }
 
-impl RequestTokenType for UserCreationToken {
-    fn token_name() -> &'static str { "UserCreation" }
-    fn token_type() -> AuthTokenType { AuthTokenType::UserCreation }
-    fn token_lifetime() -> Duration { env::CONF.lifetimes.user_creation_token_lifetime }
+impl RequestTokenType for UserCreation {
+    fn token_name() -> &'static str {
+        "UserCreation"
+    }
+    fn token_type() -> AuthTokenType {
+        AuthTokenType::UserCreation
+    }
+    fn token_lifetime() -> Duration {
+        env::CONF.lifetimes.user_creation_token_lifetime
+    }
 }
 
-impl RequestTokenType for UserDeletionToken {
-    fn token_name() -> &'static str { "UserDeletion" }
-    fn token_type() -> AuthTokenType { AuthTokenType::UserDeletion }
-    fn token_lifetime() -> Duration { env::CONF.lifetimes.user_deletion_token_lifetime }
+impl RequestTokenType for UserDeletion {
+    fn token_name() -> &'static str {
+        "UserDeletion"
+    }
+    fn token_type() -> AuthTokenType {
+        AuthTokenType::UserDeletion
+    }
+    fn token_lifetime() -> Duration {
+        env::CONF.lifetimes.user_deletion_token_lifetime
+    }
 }
 
-
-pub trait TokenExpirationValidator {
+trait TokenExpirationValidator {
     fn is_expired(expiration: u64, token_lifetime: Duration) -> bool;
 }
 
-pub struct ValidateExpiration {}
-pub struct IgnoreExpiration {}
+pub struct CheckExp {}
+pub struct IgnoreExp {}
 
-impl TokenExpirationValidator for ValidateExpiration {
+impl TokenExpirationValidator for CheckExp {
     #[inline(always)]
     fn is_expired(expiration: u64, token_lifetime: Duration) -> bool {
         let now = SystemTime::now()
@@ -117,31 +145,29 @@ impl TokenExpirationValidator for ValidateExpiration {
     }
 }
 
-impl TokenExpirationValidator for IgnoreExpiration {
+impl TokenExpirationValidator for IgnoreExp {
     #[inline(always)]
     fn is_expired(expiration: u64, token_lifetime: Duration) -> bool {
         false
     }
 }
 
-
 #[derive(Debug)]
-pub struct VerifiedTokenClaims<'a, T, L, E>(
+pub struct VerifiedToken<T, L, E>(
     pub AuthTokenClaims,
     PhantomData<T>,
-    PhantomData<&'a L>,
+    PhantomData<L>,
     PhantomData<E>,
 )
 where
     T: RequestTokenType,
-    L: TokenLocation<'a>,
+    L: TokenLocation,
     E: TokenExpirationValidator;
 
-
-impl<'a, T, L, E> FromRequest for VerifiedTokenClaims<'a, T, L, E>
+impl<T, L, E> FromRequest for VerifiedToken<T, L, E>
 where
     T: RequestTokenType,
-    L: TokenLocation<'a>,
+    L: TokenLocation,
     E: TokenExpirationValidator,
 {
     type Error = actix_web::error::Error;
@@ -176,6 +202,6 @@ where
             return future::err(ErrorUnauthorized("Token expired"));
         }
 
-        future::ok(VerifiedTokenClaims(claims, PhantomData, PhantomData, PhantomData))
+        future::ok(VerifiedToken(claims, PhantomData, PhantomData, PhantomData))
     }
 }
