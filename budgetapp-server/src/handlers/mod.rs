@@ -4,6 +4,8 @@ pub mod index;
 pub mod user;
 
 pub mod error {
+    use budgetapp_utils::token::TokenError;
+
     use actix_web::http::{header, StatusCode};
     use actix_web::{HttpResponse, HttpResponseBuilder};
     use std::fmt;
@@ -74,6 +76,25 @@ pub mod error {
             match result {
                 Ok(_) => ServerError::InternalError(None),
                 Err(e) => e,
+            }
+        }
+    }
+
+    impl From<TokenError> for ServerError {
+        fn from(result: TokenError) -> Self {
+            match result {
+                TokenError::TokenExpired => {
+                    ServerError::UserUnauthorized(Some(String::from("Invalid token")))
+                }
+                TokenError::TokenExpired => {
+                    ServerError::UserUnauthorized(Some(String::from("Token expired")))
+                }
+                TokenError::TokenMissing => {
+                    ServerError::UserUnauthorized(Some(String::from("Missing token")))
+                }
+                TokenError::WrongTokenType => {
+                    ServerError::UserUnauthorized(Some(String::from("Wrong token type")))
+                }
             }
         }
     }

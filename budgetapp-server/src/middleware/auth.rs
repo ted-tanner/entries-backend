@@ -1,8 +1,7 @@
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
-use budgetapp_utils::token::UserToken;
+use budgetapp_utils::token::{TokenError, UserToken};
 
 use actix_web::dev::Payload;
-use actix_web::error::ErrorUnauthorized;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::marker::PhantomData;
@@ -104,7 +103,7 @@ impl RequestTokenType for SignIn {
 
 impl RequestTokenType for UserCreation {
     fn token_name() -> &'static str {
-        "UserCreation"
+        "UserCreationToken"
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::UserCreation
@@ -116,7 +115,7 @@ impl RequestTokenType for UserCreation {
 
 impl RequestTokenType for UserDeletion {
     fn token_name() -> &'static str {
-        "UserDeletion"
+        "UserDeletionToken"
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::UserDeletion
@@ -126,49 +125,20 @@ impl RequestTokenType for UserDeletion {
     }
 }
 
-trait TokenExpirationValidator {
-    fn is_expired(expiration: u64, token_lifetime: Duration) -> bool;
-}
-
-pub struct CheckExp {}
-pub struct IgnoreExp {}
-
-impl TokenExpirationValidator for CheckExp {
-    #[inline(always)]
-    fn is_expired(expiration: u64, token_lifetime: Duration) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
-
-        expiration <= now
-    }
-}
-
-impl TokenExpirationValidator for IgnoreExp {
-    #[inline(always)]
-    fn is_expired(expiration: u64, token_lifetime: Duration) -> bool {
-        false
-    }
-}
-
 #[derive(Debug)]
-pub struct VerifiedToken<T, L, E>(
-    pub AuthTokenClaims,
+pub struct VerifiedToken<T, L>(
+    pub Result<AuthTokenClaims, TokenError>,
     PhantomData<T>,
     PhantomData<L>,
-    PhantomData<E>,
 )
 where
     T: RequestTokenType,
-    L: TokenLocation,
-    E: TokenExpirationValidator;
+    L: TokenLocation;
 
-impl<T, L, E> FromRequest for VerifiedToken<T, L, E>
+impl<T, L> FromRequest for VerifiedToken<T, L>
 where
     T: RequestTokenType,
     L: TokenLocation,
-    E: TokenExpirationValidator,
 {
     type Error = actix_web::error::Error;
     type Future = future::Ready<Result<Self, Self::Error>>;
@@ -176,32 +146,65 @@ where
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         let token = match L::get_from_request(req, T::token_name()) {
             Some(h) => h,
-            None => return future::err(ErrorUnauthorized("Token missing or invalid")),
+            None => {
+                return future::ok(VerifiedToken(
+                    Err(TokenError::TokenMissing),
+                    PhantomData,
+                    PhantomData,
+                ))
+            }
         };
 
         let mut decoded_token = match AuthToken::from_str(token) {
             Ok(t) => t,
-            Err(_) => return future::err(ErrorUnauthorized("Invalid token")),
+            Err(_) => {
+                return future::ok(VerifiedToken(
+                    Err(TokenError::TokenInvalid),
+                    PhantomData,
+                    PhantomData,
+                ))
+            }
         };
 
         if !decoded_token.verify(&env::CONF.keys.token_signing_key) {
-            return future::err(ErrorUnauthorized("Invalid tokenx"));
+            return future::ok(VerifiedToken(
+                Err(TokenError::TokenInvalid),
+                PhantomData,
+                PhantomData,
+            ));
         }
 
         if let Err(_) = decoded_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-            return future::err(ErrorUnauthorized("Could not decrypt token"));
+            return future::ok(VerifiedToken(
+                Err(TokenError::TokenInvalid),
+                PhantomData,
+                PhantomData,
+            ));
         }
 
         let claims = decoded_token.claims();
 
         if mem::discriminant(&claims.token_type) != mem::discriminant(&T::token_type()) {
-            return future::err(ErrorUnauthorized("Incorrect token type"));
+            return future::ok(VerifiedToken(
+                Err(TokenError::WrongTokenType),
+                PhantomData,
+                PhantomData,
+            ));
         }
 
-        if E::is_expired(claims.expiration, T::token_lifetime()) {
-            return future::err(ErrorUnauthorized("Token expired"));
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_secs();
+
+        if expiration <= now {
+            return future::ok(VerifiedToken(
+                Err(TokenError::TokenExpired),
+                PhantomData,
+                PhantomData,
+            ));
         }
 
-        future::ok(VerifiedToken(claims, PhantomData, PhantomData, PhantomData))
+        future::ok(VerifiedToken(Ok(claims), PhantomData, PhantomData))
     }
 }

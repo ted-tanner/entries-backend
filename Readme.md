@@ -563,6 +563,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Perhaps use `typed_html` crate for HTML in user verification and deletion?
 * When updating data in DAOs, combine checking the hash and updating the data into one query.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Add webauthn-rs and totp_rs

@@ -29,7 +29,7 @@ impl std::convert::TryFrom<u8> for AuthTokenType {
             3 => Ok(AuthTokenType::SignIn),
             4 => Ok(AuthTokenType::UserCreation),
             5 => Ok(AuthTokenType::UserDeletion),
-            _ => Err(TokenError::InvalidTokenType),
+            _ => Err(TokenError::WrongTokenType),
         }
     }
 }

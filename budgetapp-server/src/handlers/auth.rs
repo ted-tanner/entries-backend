@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{Access, CheckExp, FromHeader, Refresh, VerifiedToken};
+use crate::middleware::auth::{Access, FromHeader, Refresh, VerifiedToken};
 
 // TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(
@@ -435,11 +435,14 @@ pub async fn refresh_tokens(
 
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
-    refresh_token: VerifiedToken<RefreshToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    refresh_token: VerifiedToken<RefreshToken, FromHeader>,
     // TODO: Get refresh token header from request, decode, and copy hash for blacklisting
 ) -> Result<HttpResponse, ServerError> {
-    if refresh_token.0.user_id != user_access_token.0.user_id {
+    let user_access_token = user_access_token.0?;
+    let refresh_token = refresh_token.0?;
+
+    if refresh_token.user_id != user_access_token.user_id {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
         ))));
@@ -447,7 +450,7 @@ pub async fn logout(
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.blacklist_token(&refresh_token.0.token, token_claims)
+        auth_dao.blacklist_token(&refresh_token, token_claims)
     })
     .await?
     {

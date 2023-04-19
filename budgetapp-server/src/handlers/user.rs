@@ -4,7 +4,7 @@ use budgetapp_utils::request_io::{
     InputUser, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
-use budgetapp_utils::token::UserToken;
+use budgetapp_utils::token::{TokenError, UserToken};
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, db};
 
@@ -14,9 +14,7 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{
-    Access, CheckExp, FromHeader, IgnoreExp, UserCreation, UserDeletion, VerifiedToken,
-};
+use crate::middleware::auth::{Access, FromHeader, UserCreation, UserDeletion, VerifiedToken};
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -89,87 +87,80 @@ pub async fn create(
 
 pub async fn verify_creation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_creation_token: web::Query<InputToken>,
+    user_creation_token: VerifiedToken<UserCreation, FromQuery>,
 ) -> Result<HttpResponse, ServerError> {
-    // let mut token = match AuthToken::from_str(&otp_and_token.0.signin_token) {
-    //     Ok(t) => t,
-    //     Err(_) => {
-    //         return Err(ServerError::UserUnauthorized(Some(String::from(
-    //             TOKEN_INVALID_MSG,
-    //         ))));
-    //     }
-    // };
-
-    // if !token.verify(&env::CONF.keys.token_signing_key) {
-    //     return Err(ServerError::UserUnauthorized(Some(String::from(
-    //         TOKEN_INVALID_MSG,
-    //     ))));
-    // }
-
-    // if let Err(_) = token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-    //     return Err(ServerError::UserUnauthorized(Some(String::from(
-    //         TOKEN_INVALID_MSG,
-    //     ))));
-    // }
-
-    // let token_claims = token.claims();
-
-    // if !matches!(token_claims.token_type, AuthTokenType::UserCreation) {
-    //     return Err(ServerError::UserUnauthorized(Some(String::from(INVALID_TOKEN_MSG))));
-    // }
-
-    let claims = match auth_token::validate_token(
-        user_creation_token.token.as_str(),
-        auth_token::TokenType::UserCreation,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
-    ) {
+    let claims = match user_creation_token.0 {
         Ok(c) => c,
-        Err(e) => match e {
-            auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>The Budget App User Verification</title> \
-                     </head> \
-                     <body> \
-                     <h1>Could not verify account. Is the URL correct?</h1> \
-                     </body> \
-                     </html>",
-                ));
-            }
-            auth_token::TokenError::TokenExpired => {
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>The Budget App User Verification</title> \
-                     </head> \
-                     <body> \
-                     <h1>This link has expired. You will need to recreate your account.</h1> \
-                     </body> \
-                     </html>",
-                ));
-            }
-            e => {
-                log::error!("User verification endpoint: {}", e);
-                return Ok(HttpResponse::InternalServerError()
-                    .content_type("text/html")
-                    .body(
-                        "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>The Budget App User Verification</title> \
-                     </head> \
-                     <body> \
-                     <h1>Could not verify account due to an error.</h1> \
-                     <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
-                     </body> \
-                     </html>",
-                    ));
-            }
-        },
+        Err(TokenError::TokenExpired) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Verification</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link has expired. You will need to recreate your account to obtain a new link.</h1> \
+                 \
+                 <script> \
+                 const urlQueries = new URLSearchParams(window.location.search); \
+                 const token = urlQueries.get('UserCreationToken'); \
+                 \
+                 if (token !== null) { \
+                 const decoded_token = atob(token); \
+                 const claims = JSON.parse(decoded_token); \
+                 \
+                 if (claims['exp'] !== null) { \
+                 const hourAfterExpiration = claims['exp'] + 3600; \
+                 const accountAvailableForRecreate = new Date(hourAfterExpiration * 1000); \
+                 const now = new Date(); \
+                 \
+                 if (accountAvailableForRecreate > now) { \
+                 let recreateMessage = document.createElement('h3'); \
+                 \
+                 const millisUntilCanRecreate = Math.abs(now - accountAvailableForRecreate); \
+                 const minsUntilCanRecreate = Math.ceil((millisUntilCanRecreate / 1000) / 60); \
+                 \
+                 const timeString = minsUntilCanRecreate > 1 \
+                 ? minsUntilCanRecreate + ' minutes.' \
+                 : '1 minute.' \
+                 \
+                 recreateMessage.innerHTML = 'You can recreate your account in ' + timeString; \
+                 \
+                 document.body.appendChild(recreateMessage); \
+                 } \
+                 } \
+                 } \
+                 </script> \
+                 </body> \
+                 </html>"
+            ));
+        }
+        Err(TokenError::TokenMissing) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Verification</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link is invalid because it is missing a token.</h1> \
+                 </body> \
+                 </html>",
+            ));
+        }
+        Err(TokenError::TokenExpired) | Err(TokenError::WrongTokenType) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Verification</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link is invalid.</h1> \
+                 </body> \
+                 </html>",
+            ));
+        }
     };
 
     let user_id = claims.uid;
@@ -183,14 +174,19 @@ pub async fn verify_creation(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                log::error!(
+                    "Failed to verify user after validating UserCreationToken: {}",
+                    e
+                );
                 return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                     "<!DOCTYPE html> \
                      <html> \
                      <head> \
-                     <title>The Budget App User Verification</title> \
+                     <title>Entries App User Verification</title> \
                      </head> \
                      <body> \
-                     <h1>Could not find the correct account. Is the URL correct?</h1> \
+                     <h1>Could not find the correct account. This is probably an error on our part.</h1> \
+                     <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3> \
                      </body> \
                      </html>",
                 ));
@@ -203,11 +199,11 @@ pub async fn verify_creation(
                         "<!DOCTYPE html> \
                      <html> \
                      <head> \
-                     <title>The Budget App User Verification</title> \
+                     <title>Entries App User Verification</title> \
                      </head> \
                      <body> \
                      <h1>Could not verify account due to an error.</h1> \
-                     <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
+                     <h3>We're sorry. We'll try to fix this. Please try again in a few hours.</h3> \
                      </body> \
                      </html>",
                     ));
@@ -223,8 +219,8 @@ pub async fn verify_creation(
              </head> \
              <body> \
              <h1>User verified</h1> \
-             <h2>User email address: {}</h2> \
-             <h2>You can now sign into The Budget App using your email address and password.</h2> \
+             <h3>User email address: {}</h3> \
+             <h2>You can now sign into the app using your email address and password.</h2> \
              <h2>Happy budgeting!</h2> \
              </body> \
              </html>",
@@ -234,13 +230,15 @@ pub async fn verify_creation(
 
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
     new_prefs: web::Json<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
-            user_access_token.0.user_id,
+            user_access_token.user_id,
             &new_prefs.encrypted_blob,
             &new_prefs.expected_previous_data_hash,
         )
@@ -273,13 +271,15 @@ pub async fn edit_preferences(
 
 pub async fn edit_keystore(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
     new_keystore: web::Json<InputEditUserKeystore>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
-            user_access_token.0.user_id,
+            user_access_token.user_id,
             &new_keystore.encrypted_blob,
             &new_keystore.expected_previous_data_hash,
         )
@@ -312,15 +312,17 @@ pub async fn edit_keystore(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
 
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_access_token.0.eml,
+            &user_access_token.eml,
             env::CONF.security.authorization_attempts_reset_time,
         ) {
             Ok(a) => a,
@@ -371,7 +373,7 @@ pub async fn change_password(
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
-            user_access_token.0.user_id,
+            user_access_token.user_id,
             &new_password_data.0.new_auth_string,
             &new_password_data.0.auth_string_salt,
             new_password_data.0.auth_string_iters,
@@ -391,13 +393,15 @@ pub async fn change_password(
 
 // TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     let user_deletion_token = {
         auth_token::generate_token(
             &auth_token::TokenParams {
-                user_id: user_access_token.0.user_id,
-                user_email: &user_access_token.0.eml,
+                user_id: user_access_token.user_id,
+                user_email: &user_access_token.eml,
             },
             auth_token::TokenType::UserDeletion,
             env::CONF.lifetimes.user_deletion_token_lifetime,
@@ -443,7 +447,7 @@ pub async fn delete(
                     "<!DOCTYPE html> \
                          <html> \
                          <head> \
-                         <title>The Budget App Account Deletion</title> \
+                         <title>Entries App Account Deletion</title> \
                          </head> \
                          <body> \
                          <h1>Could not verify account deletion. Is the URL correct?</h1> \
@@ -456,7 +460,7 @@ pub async fn delete(
                     "<!DOCTYPE html> \
                                <html> \
                                <head> \
-                               <title>The Budget App Account Deletion</title> \
+                               <title>Entries App Account Deletion</title> \
                                </head> \
                                <body> \
                                <h1>This link has expired.</h1> \
@@ -471,7 +475,7 @@ pub async fn delete(
                           .body("<!DOCTYPE html> \
                                <html> \
                                <head> \
-                               <title>The Budget App Account Deletion</title> \
+                               <title>Entries App Account Deletion</title> \
                                </head> \
                                <body> \
                                <h1>Could not verify account deletion due to an error.</h1> \
@@ -504,7 +508,7 @@ pub async fn delete(
                     "<!DOCTYPE html> \
                                <html> \
                                <head> \
-                               <title>The Budget App Account Deletion</title> \
+                               <title>Entries App Account Deletion</title> \
                                </head> \
                                <body> \
                                <h1>Account is already scheduled to be deleted.</h1> \
@@ -517,7 +521,7 @@ pub async fn delete(
                     "<!DOCTYPE html> \
                                <html> \
                                <head> \
-                               <title>The Budget App Account Deletion</title> \
+                               <title>Entries App Account Deletion</title> \
                                </head> \
                                <body> \
                                <h1>Could not find the correct account. Is the URL correct?</h1> \
@@ -532,7 +536,7 @@ pub async fn delete(
                           .body("<!DOCTYPE html> \
                                <html> \
                                <head> \
-                               <title>The Budget App Account Deletion</title> \
+                               <title>Entries App Account Deletion</title> \
                                </head> \
                                <body> \
                                <h1>Could not verify account deletion due to an error.</h1> \
@@ -547,7 +551,7 @@ pub async fn delete(
         "<!DOCTYPE html> \
          <html> \
          <head> \
-         <title>The Budget App Account Deletion</title> \
+         <title>Entries App Account Deletion</title> \
          </head> \
          <body> \
          <h1>Your account has been scheduled for deletion.</h1> \
@@ -562,11 +566,13 @@ pub async fn delete(
 
 pub async fn is_listed_for_deletion(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
+        user_dao.check_is_user_listed_for_deletion(user_access_token.user_id)
     })
     .await?
     {
@@ -593,11 +599,13 @@ pub async fn is_listed_for_deletion(
 
 pub async fn cancel_delete(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader, CheckExp>,
+    user_access_token: VerifiedToken<AccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
+    let user_access_token = user_access_token.0?;
+
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(user_access_token.0.user_id)
+        user_dao.cancel_user_deletion(user_access_token.user_id)
     })
     .await?
     {

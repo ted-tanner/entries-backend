@@ -8,9 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub enum TokenError {
-    InvalidTokenType,
     TokenInvalid,
     TokenExpired,
+    TokenMissing,
     WrongTokenType,
 }
 
@@ -24,9 +24,9 @@ impl std::error::Error for TokenError {}
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TokenError::InvalidTokenType => write!(f, "InvalidTokenType"),
             TokenError::TokenInvalid => write!(f, "TokenInvalid"),
             TokenError::TokenExpired => write!(f, "TokenExpired"),
+            TokenError::TokenMissing => write!(f, "TokenMissing"),
             TokenError::WrongTokenType => write!(f, "WrongTokenType"),
         }
     }
