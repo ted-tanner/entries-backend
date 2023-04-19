@@ -494,7 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Rewrite auth_token.rs
+* Make sure unverified `users` table records get removed in a timely manner. This may require temporarily storing a user_created timestamp.
 * Put foreign keys in tables in `up.sql`
 * No need to enforce argon2 memory is a power of 2
 * Budget endpoints should require a budget token AND an access token. Budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key
