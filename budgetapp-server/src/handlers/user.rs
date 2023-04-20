@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputToken,
-    InputUser, OutputIsUserListedForDeletion, OutputVerificationEmailSent,
+    InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputUser,
+    OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::{TokenError, UserToken};
@@ -230,7 +230,7 @@ pub async fn verify_creation(
 
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     new_prefs: web::Json<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -271,7 +271,7 @@ pub async fn edit_preferences(
 
 pub async fn edit_keystore(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     new_keystore: web::Json<InputEditUserKeystore>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -312,7 +312,7 @@ pub async fn edit_keystore(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -389,36 +389,25 @@ pub async fn change_password(
 }
 
 // TODO: Initiate reset password by sending an email with a code ("forgot password")
-// TODO: This endpoint should be throttled by email
+// TODO: This endpoint should be debounced and not send more than one email to a given address
+//       per minutex
 
 // TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
 
-    let user_deletion_token = {
-        auth_token::generate_token(
-            &auth_token::TokenParams {
-                user_id: user_access_token.user_id,
-                user_email: &user_access_token.eml,
-            },
-            auth_token::TokenType::UserDeletion,
-            env::CONF.lifetimes.user_deletion_token_lifetime,
-            &env::CONF.keys.token_signing_key,
-            &env::CONF.keys.token_encryption_cipher,
-        )
-    };
+    let mut user_deletion_token = AuthToken::new(
+        user_access_token.user_id,
+        &user_access_token.user_email,
+        SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+        AuthTokenType::UserDeletion,
+    );
 
-    let user_deletion_token = match user_deletion_token {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate user deletion token",
-            ))));
-        }
-    };
+    user_deletion_token_lifetime.encrypt(&env::CONF.keys.token_encryption_cipher);
+    let user_deletion_token =
+        user_deletion_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
     // TODO: Don't print user deletion token; email it!
     println!("\n\nUser Deletion Token: {user_deletion_token}\n\n");
@@ -434,59 +423,82 @@ pub async fn delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_deletion_token: web::Query<InputToken>,
 ) -> Result<HttpResponse, ServerError> {
-    let claims = match auth_token::validate_token(
-        user_deletion_token.token.as_str(),
-        auth_token::TokenType::UserDeletion,
-        &env::CONF.keys.token_signing_key,
-        &env::CONF.keys.token_encryption_cipher,
-    ) {
+    let claims = match user_deletion_token.0 {
         Ok(c) => c,
-        Err(e) => match e {
-            auth_token::TokenError::TokenInvalid | auth_token::TokenError::WrongTokenType => {
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                         <html> \
-                         <head> \
-                         <title>Entries App Account Deletion</title> \
-                         </head> \
-                         <body> \
-                         <h1>Could not verify account deletion. Is the URL correct?</h1> \
-                         </body> \
-                         </html>",
-                ));
-            }
-            auth_token::TokenError::TokenExpired => {
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                               <html> \
-                               <head> \
-                               <title>Entries App Account Deletion</title> \
-                               </head> \
-                               <body> \
-                               <h1>This link has expired.</h1> \
-                               </body> \
-                               </html>",
-                ));
-            }
-            e => {
-                log::error!("User deletion endpoint: {}", e);
-                return Ok(HttpResponse::InternalServerError()
-                          .content_type("text/html")
-                          .body("<!DOCTYPE html> \
-                               <html> \
-                               <head> \
-                               <title>Entries App Account Deletion</title> \
-                               </head> \
-                               <body> \
-                               <h1>Could not verify account deletion due to an error.</h1> \
-                               <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
-                               </body> \
-                               </html>"));
-            }
-        },
+        Err(TokenError::TokenExpired) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Deletion</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link has expired. You will need initiate the deletion process again.</h1> \
+                 \
+                 <script> \
+                 const urlQueries = new URLSearchParams(window.location.search); \
+                 const token = urlQueries.get('UserDeletionToken'); \
+                 \
+                 if (token !== null) { \
+                 const decoded_token = atob(token); \
+                 const claims = JSON.parse(decoded_token); \
+                 \
+                 if (claims['exp'] !== null) { \
+                 const hourAfterExpiration = claims['exp'] + 3600; \
+                 const accountAvailableForDelete = new Date(hourAfterExpiration * 1000); \
+                 const now = new Date(); \
+                 \
+                 if (accountAvailableForDelete > now) { \
+                 let deleteMessage = document.createElement('h3'); \
+                 \
+                 const millisUntilCanDelete = Math.abs(now - accountAvailableForDelete); \
+                 const minsUntilCanDelete = Math.ceil((millisUntilCanDelete / 1000) / 60); \
+                 \
+                 const timeString = minsUntilCanDelete > 1 \
+                 ? minsUntilCanDelete + ' minutes.' \
+                 : '1 minute.' \
+                 \
+                 deleteMessage.innerHTML = 'You can re-initate deletion of your account in ' \
+                 + timeString; \
+                 \
+                 document.body.appendChild(deleteMessage); \
+                 } \
+                 } \
+                 } \
+                 </script> \
+                 </body> \
+                 </html>"
+            ));
+        }
+        Err(TokenError::TokenMissing) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Deletion</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link is invalid because it is missing a token.</h1> \
+                 </body> \
+                 </html>",
+            ));
+        }
+        Err(TokenError::TokenExpired) | Err(TokenError::WrongTokenType) => {
+            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
+                "<!DOCTYPE html> \
+                 <html> \
+                 <head> \
+                 <title>Entries App User Deletion</title> \
+                 </head> \
+                 <body> \
+                 <h1>This link is invalid.</h1> \
+                 </body> \
+                 </html>",
+            ));
+        }
     };
 
-    let user_id = claims.uid;
+    let user_id = claims.user_id;
     let days_until_deletion = env::CONF.time_delays.user_deletion_delay_days;
 
     match web::block(move || {
@@ -517,23 +529,29 @@ pub async fn delete(
                 ));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                log::error!(
+                    "Failed to schedule user deletion after validating UserDeletionToken: {}",
+                    e
+                );
                 return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                     "<!DOCTYPE html> \
-                               <html> \
-                               <head> \
-                               <title>Entries App Account Deletion</title> \
-                               </head> \
-                               <body> \
-                               <h1>Could not find the correct account. Is the URL correct?</h1> \
-                               </body> \
-                               </html>",
+                     <html> \
+                     <head> \
+                     <title>Entries App User Deletion</title> \
+                     </head> \
+                     <body> \
+                     <h1>Could not find the correct account. This is probably an error on our part.</h1> \
+                     <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3> \
+                     </body> \
+                     </html>",
                 ));
             }
             _ => {
                 log::error!("{}", e);
                 return Ok(HttpResponse::InternalServerError()
                           .content_type("text/html")
-                          .body("<!DOCTYPE html> \
+                          .body(
+                              "<!DOCTYPE html> \
                                <html> \
                                <head> \
                                <title>Entries App Account Deletion</title> \
@@ -542,7 +560,8 @@ pub async fn delete(
                                <h1>Could not verify account deletion due to an error.</h1> \
                                <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
                                </body> \
-                               </html>"));
+                               </html>"
+                          ));
             }
         },
     };
@@ -566,7 +585,7 @@ pub async fn delete(
 
 pub async fn is_listed_for_deletion(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
 
@@ -599,7 +618,7 @@ pub async fn is_listed_for_deletion(
 
 pub async fn cancel_delete(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
 

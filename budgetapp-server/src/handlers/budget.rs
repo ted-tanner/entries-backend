@@ -18,7 +18,7 @@ use crate::middleware::budget_access_token_header::BudgetAccessToken;
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: BudgetAccessToken,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -63,7 +63,7 @@ pub async fn get(
 
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -154,7 +154,7 @@ pub async fn get_multiple(
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_data: web::Json<InputBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -179,7 +179,7 @@ pub async fn create(
 
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: BudgetAccessToken,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
@@ -240,7 +240,7 @@ pub async fn edit(
 
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: BudgetAccessToken,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
@@ -315,7 +315,7 @@ pub async fn invite_user(
 // TODO: Token proving ability to edit invitations
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -348,7 +348,7 @@ pub async fn retract_invitation(
 // TODO: Special new token -- budget acceptance token
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -387,7 +387,7 @@ pub async fn accept_invitation(
 
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -419,7 +419,7 @@ pub async fn decline_invitation(
 
 pub async fn get_all_pending_invitations_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
 
@@ -449,7 +449,7 @@ pub async fn get_all_pending_invitations_for_user(
 // TODO: Figure this out
 pub async fn get_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     invitation_id: web::Query<InputShareInviteId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -482,7 +482,7 @@ pub async fn get_invitation(
 // TODO: Budget Access Token
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     budget_id: web::Query<InputBudgetId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -516,7 +516,7 @@ pub async fn leave_budget(
 // TODO: Check user has write access
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -550,7 +550,7 @@ pub async fn create_entry(
 // TODO: Check user has write access
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -584,7 +584,7 @@ pub async fn create_entry_and_category(
 // TODO: Check user has write access
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     entry_data: web::Query<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -628,7 +628,7 @@ pub async fn edit_entry(
 // TODO: Check user has write access
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -662,7 +662,7 @@ pub async fn delete_entry(
 // TODO: Check user has write access
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -696,7 +696,7 @@ pub async fn create_category(
 // TODO: Check user has write access
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     category_data: web::Query<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -740,7 +740,7 @@ pub async fn edit_category(
 // TODO: Check user has write access
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;

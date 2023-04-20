@@ -100,8 +100,7 @@ pub struct InputEditUserKeystore {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct SigninTokenOtpPair {
-    pub signin_token: String,
+pub struct InputOtp {
     pub otp: String,
 }
 
@@ -233,11 +232,6 @@ pub struct InputEditCategory {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputTime {
     pub time: SystemTime,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputToken {
-    pub token: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

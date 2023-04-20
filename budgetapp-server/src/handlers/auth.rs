@@ -1,7 +1,5 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
-use budgetapp_utils::request_io::{
-    CredentialPair, InputEmail, SigninToken, SigninTokenOtpPair, TokenPair,
-};
+use budgetapp_utils::request_io::{CredentialPair, InputEmail, InputOtp, SigninToken, TokenPair};
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::UserToken;
 use budgetapp_utils::validators::Validity;
@@ -171,41 +169,13 @@ pub async fn sign_in(
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     app_version: AppVersion,
-    otp_and_token: web::Json<SigninTokenOtpPair>,
+    signin_token: VerifiedToken<SignIn, FromHeader>,
+    otp: web::Json<InputOtp>,
 ) -> Result<HttpResponse, ServerError> {
-    const TOKEN_INVALID_MSG: &str = "Token is invalid";
+    let signin_token = signin_token.0?;
 
-    let mut token = match AuthToken::from_str(&otp_and_token.0.signin_token) {
-        Ok(t) => t,
-        Err(_) => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                TOKEN_INVALID_MSG,
-            ))));
-        }
-    };
-
-    if !token.verify(&env::CONF.keys.token_signing_key) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    if let Err(_) = token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    let token_claims = token.claims();
-
-    if !matches!(token_claims.token_type, AuthTokenType::SignIn) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    let user_id = token_claims.user_id;
-    let user_email = token_claims.user_email.clone();
+    let user_id = signin_token.user_id;
+    let user_email = signin_token.user_email.clone();
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
@@ -435,8 +405,8 @@ pub async fn refresh_tokens(
 
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<AccessToken, FromHeader>,
-    refresh_token: VerifiedToken<RefreshToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    refresh_token: VerifiedToken<Refresh, FromHeader>,
     // TODO: Get refresh token header from request, decode, and copy hash for blacklisting
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
