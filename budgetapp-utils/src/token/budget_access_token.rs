@@ -1,4 +1,4 @@
-use crate::token::{Ed25519Verifier, TokenParts, UserToken};
+use crate::token::{Ed25519Verifier, Token, TokenParts};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub struct BudgetAccessToken {
     parts: Option<TokenParts>,
 }
 
-impl<'a> UserToken<'a> for BudgetAccessToken {
+impl<'a> Token<'a> for BudgetAccessToken {
     type Claims = BudgetAccessTokenClaims;
     type InternalClaims = BudgetAccessTokenInternalClaims;
     type Verifier = Ed25519Verifier;

@@ -14,11 +14,6 @@ pub enum TokenError {
     WrongTokenType,
 }
 
-pub struct TokenParts {
-    pub json: String,
-    pub signature: Vec<u8>,
-}
-
 impl std::error::Error for TokenError {}
 
 impl fmt::Display for TokenError {
@@ -32,11 +27,16 @@ impl fmt::Display for TokenError {
     }
 }
 
+pub struct TokenParts {
+    pub json: String,
+    pub signature: Vec<u8>,
+}
+
 pub trait TokenSignatureVerifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool;
 }
 
-pub trait UserToken<'a> {
+pub trait Token<'a> {
     type Claims;
     type InternalClaims: DeserializeOwned;
     type Verifier: TokenSignatureVerifier;

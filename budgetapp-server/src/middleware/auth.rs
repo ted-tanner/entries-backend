@@ -1,5 +1,7 @@
-use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
-use budgetapp_utils::token::{TokenError, UserToken};
+use budgetapp_utils::token::auth_token::{
+    AuthToken, AuthTokenClaims, AuthTokenClaimsAndSignature, AuthTokenType,
+};
+use budgetapp_utils::token::{Token, TokenError};
 
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
@@ -126,8 +128,8 @@ impl RequestTokenType for UserDeletion {
 }
 
 #[derive(Debug)]
-pub struct VerifiedToken<T, L>(
-    pub Result<AuthTokenClaims, TokenError>,
+pub struct VerifiedToken<T: RequestTokenType, L: TokenLocation>(
+    pub Result<AuthTokenClaimsAndSignature, TokenError>,
     PhantomData<T>,
     PhantomData<L>,
 )
@@ -182,9 +184,10 @@ where
             ));
         }
 
-        let claims = decoded_token.claims();
+        let claims_and_signature = decoded_token.claims_and_signature();
+        let claims = &claims_and_signature.claims;
 
-        if mem::discriminant(&claims.token_type) != mem::discriminant(&T::token_type()) {
+        if mem::discriminant(claims.token_type) != mem::discriminant(&T::token_type()) {
             return future::ok(VerifiedToken(
                 Err(TokenError::WrongTokenType),
                 PhantomData,
@@ -197,7 +200,7 @@ where
             .expect("Failed to fetch system time")
             .as_secs();
 
-        if expiration <= now {
+        if claims.expiration <= now {
             return future::ok(VerifiedToken(
                 Err(TokenError::TokenExpired),
                 PhantomData,
@@ -205,6 +208,10 @@ where
             ));
         }
 
-        future::ok(VerifiedToken(Ok(claims), PhantomData, PhantomData))
+        future::ok(VerifiedToken(
+            Ok(claims_and_signature),
+            PhantomData,
+            PhantomData,
+        ))
     }
 }

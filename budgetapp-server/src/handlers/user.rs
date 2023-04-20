@@ -4,7 +4,7 @@ use budgetapp_utils::request_io::{
     OutputIsUserListedForDeletion, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
-use budgetapp_utils::token::{TokenError, UserToken};
+use budgetapp_utils::token::{Token, TokenError};
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, db};
 
@@ -238,7 +238,7 @@ pub async fn edit_preferences(
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
-            user_access_token.user_id,
+            user_access_token.claims.user_id,
             &new_prefs.encrypted_blob,
             &new_prefs.expected_previous_data_hash,
         )
@@ -279,7 +279,7 @@ pub async fn edit_keystore(
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
-            user_access_token.user_id,
+            user_access_token.claims.user_id,
             &new_keystore.encrypted_blob,
             &new_keystore.expected_previous_data_hash,
         )
@@ -322,7 +322,7 @@ pub async fn change_password(
 
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_access_token.eml,
+            &user_access_token.claims.eml,
             env::CONF.security.authorization_attempts_reset_time,
         ) {
             Ok(a) => a,
@@ -591,7 +591,7 @@ pub async fn is_listed_for_deletion(
 
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(user_access_token.user_id)
+        user_dao.check_is_user_listed_for_deletion(user_access_token.claims.user_id)
     })
     .await?
     {
@@ -624,7 +624,7 @@ pub async fn cancel_delete(
 
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(user_access_token.user_id)
+        user_dao.cancel_user_deletion(user_access_token.claims.user_id)
     })
     .await?
     {

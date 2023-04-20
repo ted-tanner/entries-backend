@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{CredentialPair, InputEmail, InputOtp, SigninToken, TokenPair};
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
-use budgetapp_utils::token::UserToken;
+use budgetapp_utils::token::Token;
 use budgetapp_utils::validators::Validity;
 use budgetapp_utils::{argon2_hasher, db, otp, validators};
 
@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{Access, FromHeader, Refresh, VerifiedToken};
+use crate::middleware::auth::{Access, FromHeader, Refresh, SignIn, VerifiedToken};
 
 // TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(
@@ -51,7 +51,6 @@ pub async fn sign_in(
 
     let user_email_clone1 = credentials.email.clone();
     let user_email_clone2 = credentials.email.clone();
-    let user_email_clone3 = credentials.email.clone();
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
@@ -111,6 +110,8 @@ pub async fn sign_in(
         ))));
     }
 
+    let user_id = hash_and_attempts.user_id;
+
     let does_auth_string_match_hash = web::block(move || {
         argon2_hasher::verify_hash(
             &credentials.auth_string,
@@ -123,7 +124,7 @@ pub async fn sign_in(
     if does_auth_string_match_hash {
         let mut signin_token = AuthToken::new(
             user_id,
-            &email,
+            &credentials.email,
             SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
             AuthTokenType::SignIn,
         );
@@ -174,7 +175,7 @@ pub async fn verify_otp_for_signin(
 ) -> Result<HttpResponse, ServerError> {
     let signin_token = signin_token.0?;
 
-    let user_id = signin_token.user_id;
+    let user_id = signin_token.claims.user_id;
     let user_email = signin_token.user_email.clone();
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
@@ -407,12 +408,12 @@ pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     refresh_token: VerifiedToken<Refresh, FromHeader>,
-    // TODO: Get refresh token header from request, decode, and copy hash for blacklisting
+    // TODO: Get refresh token header from request, decode, and copy signature for blacklisting
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
     let refresh_token = refresh_token.0?;
 
-    if refresh_token.user_id != user_access_token.user_id {
+    if refresh_token.claims.user_id != user_access_token.claims.user_id {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
         ))));
@@ -420,7 +421,7 @@ pub async fn logout(
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.blacklist_token(&refresh_token, token_claims)
+        auth_dao.blacklist_token(refresh_token)
     })
     .await?
     {
