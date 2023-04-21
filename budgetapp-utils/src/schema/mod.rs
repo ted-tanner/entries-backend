@@ -9,10 +9,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    blacklisted_tokens (token) {
-        token -> Text,
-        user_id -> Uuid,
-        token_expiration_time -> Timestamp,
+    blacklisted_tokens (token_signature) {
+        token_signature -> Bytea,
+        token_expiration -> Timestamp,
     }
 }
 

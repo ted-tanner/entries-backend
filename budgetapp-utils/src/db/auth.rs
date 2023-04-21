@@ -20,7 +20,6 @@ use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
-use crate::token::auth_token::AuthTokenClaims;
 
 pub struct UserAuthStringHashAndAuthAttempts {
     pub user_id: Uuid,
@@ -112,15 +111,14 @@ impl Dao {
 
     pub fn blacklist_token(
         &mut self,
-        token: &str,
-        decoded_token: AuthTokenClaims,
+        token_signature: &[u8],
+        token_expiration: u64,
     ) -> Result<(), DaoError> {
-        let expiration = UNIX_EPOCH + Duration::from_secs(decoded_token.expiration);
+        let token_expiration = UNIX_EPOCH + Duration::from_secs(token_expiration);
 
         let blacklisted_token = NewBlacklistedToken {
-            token,
-            user_id: decoded_token.user_id,
-            token_expiration_time: expiration,
+            token_signature,
+            token_expiration,
         };
 
         dsl::insert_into(blacklisted_tokens)
@@ -132,23 +130,22 @@ impl Dao {
 
     pub fn check_is_token_on_blacklist_and_blacklist(
         &mut self,
-        token: &str,
-        decoded_token: AuthTokenClaims,
+        token_signature: &[u8],
+        token_expiration: u64,
     ) -> Result<bool, DaoError> {
         let count = blacklisted_tokens
-            .filter(blacklisted_token_fields::token.eq(token))
+            .filter(blacklisted_token_fields::token_signature.eq(token_signature))
             .count()
             .get_result::<i64>(&mut self.db_thread_pool.get()?)?;
 
         if count > 0 {
             Ok(true)
         } else {
-            let expiration = UNIX_EPOCH + Duration::from_secs(decoded_token.expiration);
+            let token_expiration = UNIX_EPOCH + Duration::from_secs(token_expiration);
 
             let blacklisted_token = NewBlacklistedToken {
-                token,
-                user_id: decoded_token.user_id,
-                token_expiration_time: expiration,
+                token_signature,
+                token_expiration,
             };
 
             dsl::insert_into(blacklisted_tokens)
@@ -164,7 +161,7 @@ impl Dao {
         // opening a window for an attacker to use an expired refresh token
         Ok(diesel::delete(
             blacklisted_tokens
-                .filter(blacklisted_token_fields::token_expiration_time.lt(SystemTime::now())),
+                .filter(blacklisted_token_fields::token_expiration.lt(SystemTime::now())),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }

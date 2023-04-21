@@ -5,10 +5,11 @@ CREATE TABLE authorization_attempts (
 );
 
 CREATE TABLE blacklisted_tokens (
-    token TEXT PRIMARY KEY,
-    user_id UUID NOT NULL,
-    token_expiration_time TIMESTAMP NOT NULL
+    token_signature BYTEA PRIMARY KEY,
+    token_expiration TIMESTAMP NOT NULL
 );
+
+CREATE INDEX ON blacklisted_tokens USING HASH (token_signature);
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,

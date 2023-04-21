@@ -127,7 +127,10 @@ impl RequestTokenType for UserDeletion {
 }
 
 pub struct UnverifiedToken<T: RequestTokenType, L: TokenLocation>(
-    AuthToken,
+    pub AuthToken,
+    // PhantomData is a quirk of the Rust type system. It basically allows me to add generics
+    // to a struct without having any struct fields in the struct that use the generics. It is
+    // a zero-sized type.
     PhantomData<T>,
     PhantomData<L>,
 )
