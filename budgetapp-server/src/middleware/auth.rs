@@ -1,9 +1,8 @@
-use budgetapp_utils::token::auth_token::{
-    AuthToken, AuthTokenClaims, AuthTokenClaimsAndSignature, AuthTokenType,
-};
+use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
 use budgetapp_utils::token::{Token, TokenError};
 
 use actix_web::dev::Payload;
+use actix_web::error::ErrorUnauthorized;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::marker::PhantomData;
@@ -127,9 +126,44 @@ impl RequestTokenType for UserDeletion {
     }
 }
 
+pub struct UnverifiedToken<T: RequestTokenType, L: TokenLocation>(
+    AuthToken,
+    PhantomData<T>,
+    PhantomData<L>,
+)
+where
+    T: RequestTokenType,
+    L: TokenLocation;
+
+impl<T, L> UnverifiedToken<T, L>
+where
+    T: RequestTokenType,
+    L: TokenLocation,
+{
+    pub fn verify(self) -> Result<AuthTokenClaims, TokenError> {
+        verify_token(self.0, T::token_type())
+    }
+}
+
+impl<T, L> FromRequest for UnverifiedToken<T, L>
+where
+    T: RequestTokenType,
+    L: TokenLocation,
+{
+    type Error = actix_web::Error;
+    type Future = future::Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        match into_actix_error_res(get_and_decode_token::<T, L>(req)) {
+            Ok(c) => future::ok(UnverifiedToken(c, PhantomData, PhantomData)),
+            Err(e) => future::err(e),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct VerifiedToken<T: RequestTokenType, L: TokenLocation>(
-    pub Result<AuthTokenClaimsAndSignature, TokenError>,
+    pub AuthTokenClaims,
     PhantomData<T>,
     PhantomData<L>,
 )
@@ -142,76 +176,81 @@ where
     T: RequestTokenType,
     L: TokenLocation,
 {
-    type Error = actix_web::error::Error;
+    type Error = actix_web::Error;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let token = match L::get_from_request(req, T::token_name()) {
-            Some(h) => h,
-            None => {
-                return future::ok(VerifiedToken(
-                    Err(TokenError::TokenMissing),
-                    PhantomData,
-                    PhantomData,
-                ))
-            }
-        };
-
-        let mut decoded_token = match AuthToken::from_str(token) {
+        let decoded_token = match into_actix_error_res(get_and_decode_token::<T, L>(req)) {
             Ok(t) => t,
-            Err(_) => {
-                return future::ok(VerifiedToken(
-                    Err(TokenError::TokenInvalid),
-                    PhantomData,
-                    PhantomData,
-                ))
-            }
+            Err(e) => return future::err(e),
         };
 
-        if !decoded_token.verify(&env::CONF.keys.token_signing_key) {
-            return future::ok(VerifiedToken(
-                Err(TokenError::TokenInvalid),
-                PhantomData,
-                PhantomData,
-            ));
-        }
+        let claims = match into_actix_error_res(verify_token(decoded_token, T::token_type())) {
+            Ok(c) => c,
+            Err(e) => return future::err(e),
+        };
 
-        if let Err(_) = decoded_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-            return future::ok(VerifiedToken(
-                Err(TokenError::TokenInvalid),
-                PhantomData,
-                PhantomData,
-            ));
-        }
+        future::ok(VerifiedToken(claims, PhantomData, PhantomData))
+    }
+}
 
-        let claims_and_signature = decoded_token.claims_and_signature();
-        let claims = &claims_and_signature.claims;
+#[inline]
+fn get_and_decode_token<T, L>(req: &HttpRequest) -> Result<AuthToken, TokenError>
+where
+    T: RequestTokenType,
+    L: TokenLocation,
+{
+    let token = match L::get_from_request(req, T::token_name()) {
+        Some(h) => h,
+        None => return Err(TokenError::TokenMissing),
+    };
 
-        if mem::discriminant(claims.token_type) != mem::discriminant(&T::token_type()) {
-            return future::ok(VerifiedToken(
-                Err(TokenError::WrongTokenType),
-                PhantomData,
-                PhantomData,
-            ));
-        }
+    let mut decoded_token = match AuthToken::from_str(token) {
+        Ok(t) => t,
+        Err(_) => return Err(TokenError::TokenInvalid),
+    };
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
+    Ok(decoded_token)
+}
 
-        if claims.expiration <= now {
-            return future::ok(VerifiedToken(
-                Err(TokenError::TokenExpired),
-                PhantomData,
-                PhantomData,
-            ));
-        }
+#[inline]
+fn verify_token(
+    decoded_token: AuthToken,
+    expected_type: AuthTokenType,
+) -> Result<AuthTokenClaims, TokenError> {
+    if !decoded_token.verify(&env::CONF.keys.token_signing_key) {
+        return Err(TokenError::TokenInvalid);
+    }
 
-        future::ok(VerifiedToken(
-            Ok(claims_and_signature),
-            PhantomData,
-            PhantomData,
-        ))
+    if let Err(_) = decoded_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+        return Err(TokenError::TokenInvalid);
+    }
+
+    let claims = decoded_token.claims();
+
+    if mem::discriminant(&claims.token_type) != mem::discriminant(&expected_type) {
+        return Err(TokenError::WrongTokenType);
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Failed to fetch system time")
+        .as_secs();
+
+    if claims.expiration <= now {
+        return Err(TokenError::TokenExpired);
+    }
+
+    Ok(claims)
+}
+
+#[inline]
+fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, actix_web::Error> {
+    match result {
+        Ok(t) => Ok(t),
+        Err(TokenError::TokenInvalid) => Err(ErrorUnauthorized("Token is invalid")),
+        Err(TokenError::TokenExpired) => Err(ErrorUnauthorized("Token is expired")),
+        Err(TokenError::TokenMissing) => Err(ErrorUnauthorized("Token is missing")),
+        Err(TokenError::WrongTokenType) => Err(ErrorUnauthorized("Incorrect token type")),
     }
 }

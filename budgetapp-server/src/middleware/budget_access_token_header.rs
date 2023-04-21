@@ -1,5 +1,5 @@
 use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
-use budgetapp_utils::token::UserToken;
+use budgetapp_utils::token::Token;
 
 use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};

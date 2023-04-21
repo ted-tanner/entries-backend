@@ -173,17 +173,14 @@ pub async fn verify_otp_for_signin(
     signin_token: VerifiedToken<SignIn, FromHeader>,
     otp: web::Json<InputOtp>,
 ) -> Result<HttpResponse, ServerError> {
-    let signin_token = signin_token.0?;
-
-    let user_id = signin_token.claims.user_id;
-    let user_email = signin_token.user_email.clone();
+    // TODO: Use UnverifiedToken, use signature to check blacklist (use Arc to send it to
+    //       web::block), then verify
+    let user_id = signin_token.0.claims.user_id;
+    let user_email = signin_token.0.user_email.clone();
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
-        auth_dao.check_is_token_on_blacklist_and_blacklist(
-            otp_and_token.0.signin_token.as_str(),
-            token_claims,
-        )
+        auth_dao.check_is_token_on_blacklist_and_blacklist(&signin_token.signature, token_claims)
     })
     .await?
     {
@@ -410,6 +407,8 @@ pub async fn logout(
     refresh_token: VerifiedToken<Refresh, FromHeader>,
     // TODO: Get refresh token header from request, decode, and copy signature for blacklisting
 ) -> Result<HttpResponse, ServerError> {
+    // TODO: Use UnverifiedToken for refresh_token, use signature to check blacklist (use Arc
+    //       to send it to web::block), then verify
     let user_access_token = user_access_token.0?;
     let refresh_token = refresh_token.0?;
 

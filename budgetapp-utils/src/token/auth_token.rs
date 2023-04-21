@@ -55,12 +55,6 @@ pub struct AuthTokenClaims {
     pub token_type: AuthTokenType,
 }
 
-#[derive(Clone, Debug)]
-pub struct AuthTokenClaimsAndSignature {
-    pub claims: AuthTokenClaims,
-    pub signature: Option<Vec<u8>>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthTokenEncryptedClaims {
     pub exp: u64,    // Expiration
@@ -203,26 +197,6 @@ impl AuthToken {
         json_of_claims.extend_from_slice(&hash.into_bytes());
 
         base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
-    }
-
-    pub fn claims_and_signature(self) -> AuthTokenClaimsAndSignature {
-        let claims = match self.claims {
-            AuthTokenClaimsState::Encrypted(c) => AuthTokenClaims {
-                user_id: Uuid::nil(),
-                user_email: String::new(),
-                expiration: c.exp,
-                token_type: c.typ.try_into().unwrap_or(AuthTokenType::Nothing),
-            },
-            AuthTokenClaimsState::Unencrypted(c) => c,
-        };
-
-        AuthTokenClaimsAndSignature {
-            claims,
-            signature: match self.parts {
-                Some(p) => Some(p.signature),
-                None => None,
-            },
-        }
     }
 }
 
