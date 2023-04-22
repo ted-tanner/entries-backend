@@ -23,6 +23,16 @@ pub struct BudgetAccessToken {
     parts: Option<TokenParts>,
 }
 
+impl BudgetAccessToken {
+    pub fn key_id(&self) -> Uuid {
+        self.claims.kid
+    }
+
+    pub fn budget_id(&self) -> Uuid {
+        self.claims.bid
+    }
+}
+
 impl<'a> Token<'a> for BudgetAccessToken {
     type Claims = BudgetAccessTokenClaims;
     type InternalClaims = BudgetAccessTokenInternalClaims;

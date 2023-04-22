@@ -5,6 +5,7 @@ use budgetapp_utils::request_io::{
     InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId,
     UserInvitationToBudget,
 };
+use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
 use budgetapp_utils::token::Token;
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
@@ -22,8 +23,8 @@ pub async fn get(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: UserBudgetAccessToken,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id = budget_access_token.0.claims().budget_id;
-    let key_id = budget_access_token.0.claims().key_id;
+    let budget_id = budget_access_token.0.budget_id();
+    let key_id = budget_access_token.0.key_id();
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
     if !budget_access_token.0.verify(&public_key.public_key) {
@@ -68,26 +69,24 @@ pub async fn get_multiple(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
     let mut budget_ids = Vec::new();
 
     for token in budget_access_tokens.budget_access_tokens.iter() {
-        let token = match BudgetToken::from_str(token) {
+        let token = match BudgetAccessToken::from_str(token) {
             Ok(t) => t,
             Err(_) => {
                 return Err(ServerError::InvalidFormat(Some(String::from(
-                    "One of the provided budget access tokens was invalid",
+                    INVALID_ID_MSG,
                 ))))
             }
         };
 
-        key_ids.push(token.key_id);
-        budget_ids.push(token.budget_id);
-        tokens.insert(token.key_id, token);
+        key_ids.push(token.key_id());
+        budget_ids.push(token.budget_id());
+        tokens.insert(token.key_id(), token);
     }
 
     let budget_ids = Arc::new(budget_ids);
@@ -118,13 +117,21 @@ pub async fn get_multiple(
         return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
     }
 
-    for (key_id, public_key) in public_keys {
-        let token = match tokens.get(&key_id) {
+    for key in public_keys {
+        let token = match tokens.get(&key.key_id) {
             Some(t) => t,
             None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
         };
 
-        if !token.verify_for_user(user_access_token.user_id, &public_key) {
+        let token_parts = token.parts().expect(
+            "Token constructed from string should contain signature and json string"
+        );
+
+        if !token.verify(&token_parts.json, &token_parts.signature, &key.public_key) {
+            return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+        }
+
+        if user_access_token.user_email != token.claims().user_email {
             return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
         }
     }
@@ -779,8 +786,8 @@ async fn obtain_public_key(
     budget_id: Uuid,
     db_thread_pool: &DbThreadPool,
 ) -> Result<BudgetAccessKey, ServerError> {
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let key = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_public_budget_key(key_id, budget_id)
     })
     .await?
