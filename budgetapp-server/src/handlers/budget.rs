@@ -26,10 +26,7 @@ pub async fn get(
     let key_id = budget_access_token.0.claims().key_id;
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
-    if !budget_access_token
-        .0
-        .verify(&public_key.public_key)
-    {
+    if !budget_access_token.0.verify(&public_key.public_key) {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
         ))));

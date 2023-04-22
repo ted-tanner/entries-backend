@@ -57,20 +57,21 @@ pub async fn sign_in(
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
-    let nonce = match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_clone.email))
-        .await?
-    {
-        Ok(a) => a,
-        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(ServerError::NotFound(Some(String::from("User not found"))));
-        }
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                "Failed to obtain sign-in nonce",
-            ))));
-        }
-    };
+    let nonce =
+        match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_clone.email))
+            .await?
+        {
+            Ok(a) => a,
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+                return Err(ServerError::NotFound(Some(String::from("User not found"))));
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to obtain sign-in nonce",
+                ))));
+            }
+        };
 
     if nonce != credentials.nonce {
         return Err(ServerError::AccessForbidden(Some(String::from(
@@ -194,10 +195,8 @@ pub async fn verify_otp_for_signin(
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
-        auth_dao.check_is_token_on_blacklist_and_blacklist(
-            &signin_token_signature,
-            token_expiration,
-        )
+        auth_dao
+            .check_is_token_on_blacklist_and_blacklist(&signin_token_signature, token_expiration)
     })
     .await?
     {
