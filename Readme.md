@@ -494,6 +494,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Finish budget token stuff in budget handlers (also in `init_delete()` in user handlers)
+* When multiple copies of a token from a string must be made, wrap the token in an `Arc` instead
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
 * Put foreign keys in tables in `up.sql`

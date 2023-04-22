@@ -11,7 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{Access, FromHeader, Refresh, SignIn, VerifiedToken};
+use crate::middleware::auth::{
+    Access, FromHeader, Refresh, SignIn, UnverifiedToken, VerifiedToken,
+};
 
 // TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(
@@ -170,17 +172,28 @@ pub async fn sign_in(
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     app_version: AppVersion,
-    signin_token: VerifiedToken<SignIn, FromHeader>,
+    signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: web::Json<InputOtp>,
 ) -> Result<HttpResponse, ServerError> {
-    // TODO: Use UnverifiedToken, use signature to check blacklist (use Arc to send it to
-    //       web::block), then verify
-    let user_id = signin_token.0.claims.user_id;
-    let user_email = signin_token.0.user_email.clone();
+    let signin_token_signature = match signin_token.0.parts() {
+        Some(p) => String::from(p.signature),
+        None => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                "Invalid token",
+            ))))
+        }
+    };
+
+    let claims = signin_token.verify()?;
+    let token_expiration = claims.expiration;
+    let user_id = claims.user_id;
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
-        auth_dao.check_is_token_on_blacklist_and_blacklist(&signin_token.signature, token_claims)
+        auth_dao.check_is_token_on_blacklist_and_blacklist(
+            signin_token_signature.as_bytes(),
+            token_expiration,
+        )
     })
     .await?
     {
@@ -226,7 +239,7 @@ pub async fn verify_otp_for_signin(
     }
 
     let is_valid = match web::block(move || {
-        let otp = otp::OneTimePasscode::try_from(otp_and_token.0.otp)?;
+        let otp = otp::OneTimePasscode::try_from(otp.0.otp)?;
 
         let current_time = SystemTime::now();
 
@@ -284,7 +297,7 @@ pub async fn verify_otp_for_signin(
 
     let mut refresh_token = AuthToken::new(
         user_id,
-        &user_email,
+        &claims.user_email,
         now + env::CONF.lifetimes.refresh_token_lifetime,
         AuthTokenType::Refresh,
     );
@@ -293,7 +306,7 @@ pub async fn verify_otp_for_signin(
 
     let mut access_token = AuthToken::new(
         user_id,
-        &user_email,
+        &claims.user_email,
         now + env::CONF.lifetimes.access_token_lifetime,
         AuthTokenType::Access,
     );
@@ -315,45 +328,25 @@ pub async fn verify_otp_for_signin(
 pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
     app_version: AppVersion,
-    token: web::Json<RefreshToken>,
+    token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    const TOKEN_INVALID_MSG: &str = "Token is invalid";
-
-    let mut refresh_token = match AuthToken::from_str(&token.0.token) {
-        Ok(t) => t,
-        Err(_) => {
+    let token_signature = match token.0.parts() {
+        Some(p) => String::from(p.signature),
+        None => {
             return Err(ServerError::UserUnauthorized(Some(String::from(
-                TOKEN_INVALID_MSG,
-            ))));
+                "Invalid token",
+            ))))
         }
     };
 
-    if !refresh_token.verify(&env::CONF.keys.token_signing_key) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    if let Err(_) = refresh_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            TOKEN_INVALID_MSG,
-        ))));
-    }
-
-    let token_claims = refresh_token.claims();
-
-    if !matches!(token_claims.token_type, AuthTokenType::Refresh) {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            ErrorUnauthorized(INVALID_TOKEN_MSG),
-        ))));
-    }
+    let token_claims = token.verify()?;
 
     let user_id = token_claims.user_id;
-    let user_email = token_claims.user_email.clone();
+    let token_expiration = token_claims.expiration;
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.check_is_token_on_blacklist_and_blacklist(&token.0.token, token_claims)
+        auth_dao.check_is_token_on_blacklist_and_blacklist(&token_signature, token_expiration)
     })
     .await?
     {
@@ -371,9 +364,11 @@ pub async fn refresh_tokens(
         }
     };
 
+    let now = SystemTime::now();
+
     let mut refresh_token = AuthToken::new(
         user_id,
-        &user_email,
+        &token_claims.user_email,
         now + env::CONF.lifetimes.refresh_token_lifetime,
         AuthTokenType::Refresh,
     );
@@ -382,7 +377,7 @@ pub async fn refresh_tokens(
 
     let mut access_token = AuthToken::new(
         user_id,
-        &user_email,
+        &token_claims.user_email,
         now + env::CONF.lifetimes.access_token_lifetime,
         AuthTokenType::Access,
     );
@@ -404,15 +399,20 @@ pub async fn refresh_tokens(
 pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    refresh_token: VerifiedToken<Refresh, FromHeader>,
-    // TODO: Get refresh token header from request, decode, and copy signature for blacklisting
+    refresh_token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    // TODO: Use UnverifiedToken for refresh_token, use signature to check blacklist (use Arc
-    //       to send it to web::block), then verify
-    let user_access_token = user_access_token.0?;
-    let refresh_token = refresh_token.0?;
+    let refresh_token_signature = match refresh_token.0.parts() {
+        Some(p) => String::from(p.signature),
+        None => {
+            return Err(ServerError::UserUnauthorized(Some(String::from(
+                "Invalid token",
+            ))))
+        }
+    };
 
-    if refresh_token.claims.user_id != user_access_token.claims.user_id {
+    let refresh_token_claims = refresh_token.verify()?;
+
+    if refresh_token_claims.user_id != user_access_token.0.user_id {
         return Err(ServerError::AccessForbidden(Some(String::from(
             "Refresh token does not belong to user.",
         ))));
@@ -425,6 +425,14 @@ pub async fn logout(
     .await?
     {
         Ok(_) => (),
+        Err(DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            _,
+        ))) => {
+            return Err(ServerError::AccessForbidden(Some(String::from(
+                "Token already on blacklist",
+            ))));
+        }
         Err(e) => {
             log::error!("{}", e);
             return Err(ServerError::DatabaseTransactionError(Some(String::from(

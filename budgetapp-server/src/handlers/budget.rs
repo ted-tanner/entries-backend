@@ -11,6 +11,7 @@ use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::{Access, FromHeader, VerifiedToken};

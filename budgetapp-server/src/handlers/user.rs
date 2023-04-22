@@ -14,7 +14,9 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{Access, FromHeader, UserCreation, UserDeletion, VerifiedToken};
+use crate::middleware::auth::{
+    Access, FromHeader, FromQuery, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken,
+};
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -396,16 +398,14 @@ pub async fn change_password(
 pub async fn init_delete(
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     let mut user_deletion_token = AuthToken::new(
-        user_access_token.user_id,
-        &user_access_token.user_email,
+        user_access_token.0.user_id,
+        &user_access_token.0.user_email,
         SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
         AuthTokenType::UserDeletion,
     );
 
-    user_deletion_token_lifetime.encrypt(&env::CONF.keys.token_encryption_cipher);
+    user_deletion_token.encrypt(&env::CONF.keys.token_encryption_cipher);
     let user_deletion_token =
         user_deletion_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
@@ -421,9 +421,9 @@ pub async fn init_delete(
 
 pub async fn delete(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_deletion_token: web::Query<InputToken>,
+    user_deletion_token: UnverifiedToken<UserDeletion, FromQuery>,
 ) -> Result<HttpResponse, ServerError> {
-    let claims = match user_deletion_token.0 {
+    let claims = match user_deletion_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(

@@ -50,6 +50,11 @@ impl TryFrom<String> for OneTimePasscode {
     fn try_from(mut value: String) -> Result<Self, OtpError> {
         value.retain(|c| !c.is_whitespace());
 
+        // This is necessary. Because the string is parsed as a u32, leading zeroes will be
+        // swallowed. By ensuring that the length is 8, those leading zeroes are accounted for
+        // (if the parsed number has fewer than 8 digits, then it is known that the number of
+        // leading digits is (8 - digits in parsed u32) because only leading zeroes will be
+        // swallowed).
         if value.len() != 8 {
             return Err(OtpError::ImproperlyFormatted);
         }

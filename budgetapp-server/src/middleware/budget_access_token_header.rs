@@ -5,7 +5,7 @@ use actix_web::dev::Payload;
 use actix_web::{error, FromRequest, HttpRequest};
 use futures::future;
 
-pub struct DecodedBudgetAccessToken(pub BudgetAccessToken);
+pub struct UserBudgetAccessToken(pub BudgetAccessToken);
 
 impl FromRequest for UserBudgetAccessToken {
     type Error = error::Error;
