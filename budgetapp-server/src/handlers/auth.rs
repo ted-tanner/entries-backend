@@ -6,6 +6,7 @@ use budgetapp_utils::validators::Validity;
 use budgetapp_utils::{argon2_hasher, db, otp, validators};
 
 use actix_web::{web, HttpResponse};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
@@ -51,12 +52,12 @@ pub async fn sign_in(
         return Err(ServerError::InvalidFormat(Some(msg)));
     }
 
-    let user_email_clone1 = credentials.email.clone();
-    let user_email_clone2 = credentials.email.clone();
+    let credentials = Arc::new(credentials);
+    let credentials_clone = Arc::clone(&credentials);
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
-    let nonce = match web::block(move || auth_dao.get_and_refresh_signin_nonce(&user_email_clone1))
+    let nonce = match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_clone.email))
         .await?
     {
         Ok(a) => a,
@@ -77,10 +78,12 @@ pub async fn sign_in(
         ))));
     }
 
+    let credentials_clone = Arc::clone(&credentials);
+
     let hash_and_attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_email_clone2,
+            &credentials_clone.email,
             env::CONF.security.authorization_attempts_reset_time,
         )
     })
@@ -113,10 +116,11 @@ pub async fn sign_in(
     }
 
     let user_id = hash_and_attempts.user_id;
+    let credentials_clone = Arc::clone(&credentials);
 
     let does_auth_string_match_hash = web::block(move || {
         argon2_hasher::verify_hash(
-            &credentials.auth_string,
+            &credentials_clone.auth_string,
             &hash_and_attempts.auth_string_hash,
             &env::CONF.keys.hashing_key,
         )
@@ -134,7 +138,7 @@ pub async fn sign_in(
         signin_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
         let signin_token = SigninToken {
-            signin_token: signin_token.encode_and_sign(&env::CONF.keys.token_signing_key),
+            signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
         };
 
         let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
@@ -176,7 +180,7 @@ pub async fn verify_otp_for_signin(
     otp: web::Json<InputOtp>,
 ) -> Result<HttpResponse, ServerError> {
     let signin_token_signature = match signin_token.0.parts() {
-        Some(p) => String::from(p.signature),
+        Some(p) => p.signature.clone(),
         None => {
             return Err(ServerError::UserUnauthorized(Some(String::from(
                 "Invalid token",
@@ -191,7 +195,7 @@ pub async fn verify_otp_for_signin(
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
         auth_dao.check_is_token_on_blacklist_and_blacklist(
-            signin_token_signature.as_bytes(),
+            &signin_token_signature,
             token_expiration,
         )
     })
@@ -331,7 +335,7 @@ pub async fn refresh_tokens(
     token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let token_signature = match token.0.parts() {
-        Some(p) => String::from(p.signature),
+        Some(p) => p.signature.clone(),
         None => {
             return Err(ServerError::UserUnauthorized(Some(String::from(
                 "Invalid token",
@@ -402,7 +406,7 @@ pub async fn logout(
     refresh_token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token_signature = match refresh_token.0.parts() {
-        Some(p) => String::from(p.signature),
+        Some(p) => p.signature.clone(),
         None => {
             return Err(ServerError::UserUnauthorized(Some(String::from(
                 "Invalid token",
@@ -420,7 +424,7 @@ pub async fn logout(
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.blacklist_token(refresh_token)
+        auth_dao.blacklist_token(&refresh_token_signature, refresh_token_claims.expiration)
     })
     .await?
     {

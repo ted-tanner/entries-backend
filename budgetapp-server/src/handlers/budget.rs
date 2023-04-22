@@ -15,23 +15,27 @@ use uuid::Uuid;
 
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::{Access, FromHeader, VerifiedToken};
-use crate::middleware::budget_access_token_header::BudgetAccessToken;
+use crate::middleware::budget_access_token_header::UserBudgetAccessToken;
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: BudgetAccessToken,
+    budget_access_token: UserBudgetAccessToken,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
-    let budget_id = budget_access_token.claims.budget_id;
-    let key_id = budget_access_token.claims.key_id;
+    let budget_id = budget_access_token.0.claims().budget_id;
+    let key_id = budget_access_token.0.claims().key_id;
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
     if !budget_access_token
         .0
-        .verify_for_user(user_access_token.0.user_id, &public_key)
+        .verify(&public_key.public_key)
     {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with provided ID",
+        ))));
+    }
+
+    if user_access_token.0.user_email != budget_access_token.0.claims().user_email {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with provided ID",
         ))));
@@ -182,7 +186,7 @@ pub async fn create(
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: BudgetAccessToken,
+    budget_access_token: UserBudgetAccessToken,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
@@ -243,7 +247,7 @@ pub async fn edit(
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: BudgetAccessToken,
+    budget_access_token: UserBudgetAccessToken,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
     let user_access_token = user_access_token.0?;
