@@ -165,14 +165,14 @@ pub struct UserInvitationToBudget {
     #[serde_as(as = "Base64")]
     pub encryption_key_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
-    pub budget_share_private_key_encrypted: Vec<u8>,
+    pub budget_accept_private_key_encrypted: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub budget_info_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
     pub sender_info_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
-    pub budget_share_private_key_info_encrypted: Vec<u8>,
+    pub budget_accept_private_key_info_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 

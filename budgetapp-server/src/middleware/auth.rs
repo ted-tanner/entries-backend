@@ -2,7 +2,6 @@ use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenTy
 use budgetapp_utils::token::{Token, TokenError};
 
 use actix_web::dev::Payload;
-use actix_web::error::ErrorUnauthorized;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::marker::PhantomData;
@@ -10,51 +9,9 @@ use std::mem;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
+use crate::middleware::{into_actix_error_res, TokenLocation};
 
-trait TokenLocation {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str>;
-}
-
-pub struct FromQuery {}
-pub struct FromHeader {}
-
-impl TokenLocation for FromQuery {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
-        let query_string = req.query_string();
-        let pos = match query_string.find(key) {
-            Some(p) => p,
-            None => return None,
-        };
-
-        if query_string.len() < (pos + key.len() + 2) {
-            return None;
-        }
-
-        let token_start = pos + key.len() + 1; // + 1 to account for equals sign (=)
-        let token_end = match &query_string[token_start..].find('&') {
-            Some(p) => token_start + p,
-            None => query_string.len(),
-        };
-
-        Some(&query_string[token_start..token_end])
-    }
-}
-
-impl TokenLocation for FromHeader {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
-        let header = match req.headers().get(key) {
-            Some(header) => header,
-            None => return None,
-        };
-
-        match header.to_str() {
-            Ok(h) => return Some(h),
-            Err(_) => return None,
-        }
-    }
-}
-
-trait RequestTokenType {
+trait RequestAuthTokenType {
     fn token_name() -> &'static str;
     fn token_type() -> AuthTokenType;
     fn token_lifetime() -> Duration;
@@ -66,7 +23,7 @@ pub struct SignIn {}
 pub struct UserCreation {}
 pub struct UserDeletion {}
 
-impl RequestTokenType for Access {
+impl RequestAuthTokenType for Access {
     fn token_name() -> &'static str {
         "AccessToken"
     }
@@ -78,7 +35,7 @@ impl RequestTokenType for Access {
     }
 }
 
-impl RequestTokenType for Refresh {
+impl RequestAuthTokenType for Refresh {
     fn token_name() -> &'static str {
         "RefreshToken"
     }
@@ -90,7 +47,7 @@ impl RequestTokenType for Refresh {
     }
 }
 
-impl RequestTokenType for SignIn {
+impl RequestAuthTokenType for SignIn {
     fn token_name() -> &'static str {
         "SignInToken"
     }
@@ -102,7 +59,7 @@ impl RequestTokenType for SignIn {
     }
 }
 
-impl RequestTokenType for UserCreation {
+impl RequestAuthTokenType for UserCreation {
     fn token_name() -> &'static str {
         "UserCreationToken"
     }
@@ -114,7 +71,7 @@ impl RequestTokenType for UserCreation {
     }
 }
 
-impl RequestTokenType for UserDeletion {
+impl RequestAuthTokenType for UserDeletion {
     fn token_name() -> &'static str {
         "UserDeletionToken"
     }
@@ -126,21 +83,18 @@ impl RequestTokenType for UserDeletion {
     }
 }
 
-pub struct UnverifiedToken<T: RequestTokenType, L: TokenLocation>(
+pub struct UnverifiedToken<T: RequestAuthTokenType, L: TokenLocation>(
     pub AuthToken,
-    // PhantomData is a quirk of the Rust type system. It basically allows me to add generics
-    // to a struct without having any struct fields in the struct that use the generics. It is
-    // a zero-sized type.
     PhantomData<T>,
     PhantomData<L>,
 )
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation;
 
 impl<T, L> UnverifiedToken<T, L>
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation,
 {
     pub fn verify(self) -> Result<AuthTokenClaims, TokenError> {
@@ -150,7 +104,7 @@ where
 
 impl<T, L> FromRequest for UnverifiedToken<T, L>
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation,
 {
     type Error = actix_web::Error;
@@ -165,18 +119,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct VerifiedToken<T: RequestTokenType, L: TokenLocation>(
+pub struct VerifiedToken<T: RequestAuthTokenType, L: TokenLocation>(
     pub AuthTokenClaims,
     PhantomData<T>,
     PhantomData<L>,
 )
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation;
 
 impl<T, L> FromRequest for VerifiedToken<T, L>
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation,
 {
     type Error = actix_web::Error;
@@ -200,7 +154,7 @@ where
 #[inline]
 fn get_and_decode_token<T, L>(req: &HttpRequest) -> Result<AuthToken, TokenError>
 where
-    T: RequestTokenType,
+    T: RequestAuthTokenType,
     L: TokenLocation,
 {
     let token = match L::get_from_request(req, T::token_name()) {
@@ -208,12 +162,7 @@ where
         None => return Err(TokenError::TokenMissing),
     };
 
-    let mut decoded_token = match AuthToken::from_str(token) {
-        Ok(t) => t,
-        Err(_) => return Err(TokenError::TokenInvalid),
-    };
-
-    Ok(decoded_token)
+    Ok(AuthToken::from_str(token)?)
 }
 
 #[inline]
@@ -245,15 +194,4 @@ fn verify_token(
     }
 
     Ok(claims)
-}
-
-#[inline]
-fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, actix_web::Error> {
-    match result {
-        Ok(t) => Ok(t),
-        Err(TokenError::TokenInvalid) => Err(ErrorUnauthorized("Token is invalid")),
-        Err(TokenError::TokenExpired) => Err(ErrorUnauthorized("Token is expired")),
-        Err(TokenError::TokenMissing) => Err(ErrorUnauthorized("Token is missing")),
-        Err(TokenError::WrongTokenType) => Err(ErrorUnauthorized("Incorrect token type")),
-    }
 }

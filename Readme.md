@@ -495,6 +495,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Finish budget token stuff in budget handlers (also in `init_delete()` in user handlers)
+  - Currently at `accept_invitation`
+* `delete_invitation()` in `budget.rs<db>` doesn't delete the
+* Problem: The `budget_info_encrypted` field of the `budget_share_invites` table should contain the `budget_share_key`, but the sender/inviter won't have that `key_id` yet to encrypt. Perhaps there should be a `budget_share_key_id` field and the server should encrypt the ID using the recipient's public key.
 * When multiple copies of a token from a string must be made, wrap the token in an `Arc` instead
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).

@@ -12,9 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{
-    Access, FromHeader, Refresh, SignIn, UnverifiedToken, VerifiedToken,
-};
+use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
+use crate::middleware::FromHeader;
 
 // TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(

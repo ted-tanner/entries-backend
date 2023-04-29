@@ -229,8 +229,8 @@ impl<'a> Token<'a> for AuthToken {
     type InternalClaims = AuthTokenEncryptedClaims;
     type Verifier = HmacSha256Verifier;
 
-    fn clear_buffers(&mut self) {
-        self.parts = None;
+    fn token_name() -> &'static str {
+        "AuthToken"
     }
 
     fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {

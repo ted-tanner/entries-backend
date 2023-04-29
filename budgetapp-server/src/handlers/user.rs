@@ -14,9 +14,8 @@ use std::time::{Duration, SystemTime};
 use crate::env;
 use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
-use crate::middleware::auth::{
-    Access, FromHeader, FromQuery, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken,
-};
+use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
+use crate::middleware::{FromHeader, FromQuery};
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,

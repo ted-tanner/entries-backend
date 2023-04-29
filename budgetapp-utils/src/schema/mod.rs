@@ -16,6 +16,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    budget_accept_keys (key_id, budget_id) {
+        key_id -> Uuid,
+        budget_id -> Uuid,
+        public_key -> Bytea,
+        expiration -> Timestamp,
+        read_only -> Bool,
+    }
+}
+
+diesel::table! {
     budget_access_keys (key_id, budget_id) {
         key_id -> Uuid,
         budget_id -> Uuid,
@@ -30,22 +40,12 @@ diesel::table! {
         recipient_user_email -> Varchar,
         sender_public_key -> Bytea,
         encryption_key_encrypted -> Bytea,
-        budget_share_private_key_encrypted -> Bytea,
+        budget_accept_private_key_encrypted -> Bytea,
         budget_info_encrypted -> Bytea,
         sender_info_encrypted -> Bytea,
-        budget_share_private_key_info_encrypted -> Bytea,
+        budget_accept_private_key_info_encrypted -> Bytea,
         share_info_symmetric_key_encrypted -> Bytea,
         created_unix_timestamp_intdiv_five_million -> Int2,
-    }
-}
-
-diesel::table! {
-    budget_share_keys (key_id, budget_id) {
-        key_id -> Uuid,
-        budget_id -> Uuid,
-        public_key -> Bytea,
-        expiration -> Timestamp,
-        read_only -> Bool,
     }
 }
 
@@ -163,9 +163,9 @@ diesel::joinable!(user_deletion_request_budget_keys -> user_deletion_requests (d
 diesel::allow_tables_to_appear_in_same_query!(
     authorization_attempts,
     blacklisted_tokens,
+    budget_accept_keys,
     budget_access_keys,
     budget_share_invites,
-    budget_share_keys,
     budgets,
     categories,
     entries,

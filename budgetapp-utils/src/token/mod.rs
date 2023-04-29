@@ -1,5 +1,7 @@
 pub mod auth_token;
+pub mod budget_accept_token;
 pub mod budget_access_token;
+pub mod budget_invite_sender_token;
 
 use ed25519_dalek::{PublicKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use serde::de::DeserializeOwned;
@@ -95,9 +97,8 @@ pub trait Token<'a> {
         Self::Verifier::verify(&parts.json, &parts.signature, key)
     }
 
-    fn clear_buffers(&mut self);
+    fn token_name() -> &'static str;
     fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self;
-
     fn expiration(&self) -> u64;
     fn parts(&'a self) -> &'a Option<TokenParts>;
     fn claims(self) -> Self::Claims;
