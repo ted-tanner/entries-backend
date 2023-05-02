@@ -19,6 +19,7 @@ pub struct BudgetShareInvite {
     pub budget_info_encrypted: Vec<u8>,
     pub sender_info_encrypted: Vec<u8>,
     pub budget_accept_private_key_info_encrypted: Vec<u8>,
+    pub budget_accept_private_key_id_encrypted: Vec<u8>,
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 
     pub created_unix_timestamp_intdiv_five_million: i16,
@@ -38,6 +39,7 @@ pub struct NewBudgetShareInvite<'a> {
     pub budget_info_encrypted: &'a [u8],
     pub sender_info_encrypted: &'a [u8],
     pub budget_accept_private_key_info_encrypted: &'a [u8],
+    pub budget_accept_private_key_id_encrypted: &'a [u8],
     pub share_info_symmetric_key_encrypted: &'a [u8],
 
     pub created_unix_timestamp_intdiv_five_million: i16,

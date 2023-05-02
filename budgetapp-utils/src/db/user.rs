@@ -42,6 +42,13 @@ impl Dao {
         }
     }
 
+    pub fn get_user_public_key(&mut self, user_email: &str) -> Result<Vec<u8>, DaoError> {
+        Ok(users
+            .select(user_fields::public_key)
+            .filter(user_fields::email.eq(user_email))
+            .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
+    }
+
     pub fn create_user(
         &mut self,
         user_data: InputUser,
@@ -57,6 +64,8 @@ impl Dao {
             is_verified: false,
 
             created_timestamp: current_time,
+
+            public_key: &user_data.public_key,
 
             last_token_refresh_timestamp: current_time,
             last_token_refresh_request_app_version: app_version,
@@ -86,8 +95,6 @@ impl Dao {
                 .encryption_key_encrypted_with_password,
             encryption_key_encrypted_with_recovery_key: &user_data
                 .encryption_key_encrypted_with_recovery_key,
-
-            public_key: &user_data.public_key,
         };
 
         let mut sha1_hasher = Sha1::new();

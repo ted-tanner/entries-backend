@@ -238,3 +238,10 @@ pub struct InputTime {
 pub struct InputBudgetAccessTokenList {
     pub budget_access_tokens: Vec<String>,
 }
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputPublicKey {
+    #[serde_as(as = "Base64")]
+    pub public_key: Vec<u8>,
+}

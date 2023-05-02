@@ -2,6 +2,9 @@ use diesel::associations::GroupedBy;
 use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
+use rand::rngs::OsRng;
+use rsa::padding::PaddingScheme;
+use rsa::RSAPublicKey;
 use sha1::{Digest, Sha1};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -16,7 +19,7 @@ use crate::models::entry::{Entry, NewEntry};
 use crate::request_io::{
     InputBudget, InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
     OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
-    OutputShareIdAndKeyId,
+    OutputInvitationId,
 };
 use crate::schema::budget_accept_keys as budget_accept_key_fields;
 use crate::schema::budget_accept_keys::dsl::budget_accept_keys;
@@ -30,6 +33,10 @@ use crate::schema::categories as category_fields;
 use crate::schema::categories::dsl::categories;
 use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
+use crate::schema::user_security_data as user_security_data_fields;
+use crate::schema::user_security_data::dsl::user_security_data;
+use crate::schema::users as user_fields;
+use crate::schema::users::dsl::users;
 
 pub struct Dao {
     db_thread_pool: DbThreadPool,
@@ -289,8 +296,32 @@ impl Dao {
         budget_share_public_key: &[u8],
         expiration: SystemTime,
         read_only: bool,
-    ) -> Result<OutputShareIdAndKeyId, DaoError> {
+    ) -> Result<OutputInvitationId, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
+
+        let budget_accept_key = NewBudgetAcceptKey {
+            key_id: Uuid::new_v4(),
+            budget_id,
+            public_key: budget_share_public_key,
+            expiration,
+            read_only,
+        };
+
+        let recipient_public_key = users
+            .filter(user_fields::email.eq(user_email))
+            .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?;
+        let recipient_public_key = match RSAPublicKey::from_pkcs8(&recipient_public_key) {
+            Ok(k) => k,
+            Err(_) => {
+                return DaoError::CannotRunQuery("Could not encrypt using recipient's public key")
+            }
+        };
+
+        let budget_accept_private_key_id_encrypted = recipient_public_key.encrypt(
+            &mut OsRng,
+            PaddingScheme::new_pkcs1v15_encrypt(),
+            budget_accept_key.key_id.as_bytes(),
+        );
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -308,16 +339,9 @@ impl Dao {
             budget_info_encrypted,
             sender_info_encrypted,
             budget_accept_private_key_info_encrypted,
+            budget_accept_private_key_id_encrypted,
             share_info_symmetric_key_encrypted,
             created_unix_timestamp_intdiv_five_million,
-        };
-
-        let budget_accept_key = NewBudgetAcceptKey {
-            key_id: Uuid::new_v4(),
-            budget_id,
-            public_key: budget_share_public_key,
-            expiration,
-            read_only,
         };
 
         db_connection
@@ -334,17 +358,19 @@ impl Dao {
                 Ok(())
             })?;
 
-        Ok(OutputShareIdAndKeyId {
-            share_id: budget_share_invite.id,
-            share_key_id: budget_accept_key.key_id,
+        Ok(OutputInvitationId {
+            invitation_id: budget_share_invite.id,
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn accept_invitation(
         &mut self,
-        share_id: Uuid,
+        accept_key_id: Uuid,
+        budget_id: Uuid,
+        read_only: bool,
+        invitation_id: Uuid,
         recipient_user_email: &str,
-        share_key: BudgetAcceptKey,
         recipient_budget_user_public_key: &[u8],
     ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
@@ -354,9 +380,9 @@ impl Dao {
             .run::<_, diesel::result::Error, _>(|conn| {
                 let new_budget_access_key = NewBudgetAccessKey {
                     key_id: Uuid::new_v4(),
-                    budget_id: share_key.budget_id,
+                    budget_id,
                     public_key: recipient_budget_user_public_key,
-                    read_only: share_key.read_only,
+                    read_only,
                 };
 
                 diesel::insert_into(budget_access_keys)
@@ -364,20 +390,19 @@ impl Dao {
                     .execute(conn)?;
 
                 let budget_encryption_key_encrypted =
-                    diesel::delete(budget_share_invites.find(share_id).filter(
+                    diesel::delete(budget_share_invites.find(invitation_id).filter(
                         budget_share_invite_fields::recipient_user_email.eq(recipient_user_email),
                     ))
                     .returning(budget_share_invite_fields::encryption_key_encrypted)
                     .get_result::<Vec<u8>>(conn)?;
 
-                diesel::delete(budget_accept_keys.find((share_key.key_id, share_key.budget_id)))
-                    .execute(conn)?;
+                diesel::delete(budget_accept_keys.find((key_id, budget_id))).execute(conn)?;
 
                 Ok(OutputBudgetIdAndEncryptionKey {
-                    budget_id: share_key.budget_id,
+                    budget_id: budget_id,
                     budget_access_key_id: new_budget_access_key.key_id,
                     encryption_key_encrypted: budget_encryption_key_encrypted,
-                    read_only: share_key.read_only,
+                    read_only,
                 })
             })?;
 
@@ -387,8 +412,8 @@ impl Dao {
     // Used when the recipient deletes the invitation
     pub fn reject_invitation(
         &mut self,
-        share_id: Uuid,
-        share_key_id: Uuid,
+        invitation_id: Uuid,
+        accept_key_id: Uuid,
         recipient_user_email: &str,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
@@ -397,7 +422,7 @@ impl Dao {
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
                 let affected_row_count =
-                    diesel::delete(budget_share_invites.find(share_id).filter(
+                    diesel::delete(budget_share_invites.find(invitation_id).filter(
                         budget_share_invite_fields::recipient_user_email.eq(recipient_user_email),
                     ))
                     .execute(conn)?;
@@ -407,7 +432,7 @@ impl Dao {
                 }
 
                 diesel::delete(
-                    budget_accept_keys.filter(budget_accept_key_fields::key_id.eq(share_key_id)),
+                    budget_accept_keys.filter(budget_accept_key_fields::key_id.eq(accept_key_id)),
                 )
                 .execute(conn)
             })?;

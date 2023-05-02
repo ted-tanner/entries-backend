@@ -44,6 +44,7 @@ diesel::table! {
         budget_info_encrypted -> Bytea,
         sender_info_encrypted -> Bytea,
         budget_accept_private_key_info_encrypted -> Bytea,
+        budget_accept_private_key_id_encrypted -> Bytea,
         share_info_symmetric_key_encrypted -> Bytea,
         created_unix_timestamp_intdiv_five_million -> Int2,
     }
@@ -143,7 +144,6 @@ diesel::table! {
         recovery_key_iters -> Int4,
         encryption_key_encrypted_with_password -> Bytea,
         encryption_key_encrypted_with_recovery_key -> Bytea,
-        public_key -> Bytea,
     }
 }
 
@@ -153,6 +153,7 @@ diesel::table! {
         email -> Varchar,
         is_verified -> Bool,
         created_timestamp -> Timestamp,
+        public_key -> Bytea,
         last_token_refresh_timestamp -> Timestamp,
         last_token_refresh_request_app_version -> Varchar,
     }

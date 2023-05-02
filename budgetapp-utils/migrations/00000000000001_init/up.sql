@@ -73,8 +73,11 @@ CREATE TABLE budget_share_invites (
     -- Sender info includes the sender's name and email address
     sender_info_encrypted BYTEA NOT NULL,
     -- Information about the budget_accept_private_key, such as its expiration, whether it is
-    -- read-only, and the key_id
+    -- read-only, etc
     budget_accept_private_key_info_encrypted BYTEA NOT NULL,
+    -- The server generates this and encrypts it with with the recipient's public RSA key so
+    -- the server can forget about the association.
+    budget_accept_private_key_id_encrypted BYTEA NOT NULL,
     -- The symmetric key that is used to encrypt the *_info_encrypted fields above, encrypted
     -- with the recipient's public key. This should be sent to the user even *before* the user
     -- accepts the invitation (the user needs to decrypt the info fields)
@@ -126,6 +129,8 @@ CREATE TABLE users (
     is_verified BOOLEAN NOT NULL,
 
     created_timestamp TIMESTAMP NOT NULL,
+
+    public_key BYTEA NOT NULL, -- RSA-4096
 
     last_token_refresh_timestamp TIMESTAMP NOT NULL,
     last_token_refresh_request_app_version VARCHAR(24) NOT NULL
@@ -182,9 +187,7 @@ CREATE TABLE user_security_data (
     recovery_key_iters INT NOT NULL,
 
     encryption_key_encrypted_with_password BYTEA NOT NULL,
-    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
-
-    public_key BYTEA NOT NULL -- RSA-4096
+    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL
 );
 
 -- Foreign keys

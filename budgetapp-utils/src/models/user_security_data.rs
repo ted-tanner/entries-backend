@@ -30,8 +30,6 @@ pub struct UserSecurityData {
 
     pub encryption_key_encrypted_with_password: Vec<u8>,
     pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
-
-    pub public_key: Vec<u8>,
 }
 
 #[derive(Debug, Insertable)]
@@ -58,6 +56,4 @@ pub struct NewUserSecurityData<'a> {
 
     pub encryption_key_encrypted_with_password: &'a [u8],
     pub encryption_key_encrypted_with_recovery_key: &'a [u8],
-
-    pub public_key: &'a [u8],
 }

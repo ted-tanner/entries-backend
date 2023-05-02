@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputUser,
-    OutputIsUserListedForDeletion, OutputVerificationEmailSent,
+    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::{Token, TokenError};
@@ -16,6 +16,36 @@ use crate::handlers::error::ServerError;
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
 use crate::middleware::{FromHeader, FromQuery};
+
+// TODO: Throttle this
+pub async fn lookup_user_public_key(
+    db_thread_pool: web::Data<DbThreadPool>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
+) -> Result<HttpResponse, ServerError> {
+    let public_key = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_user_public_key(user_id)
+    })
+    .await?
+    {
+        Ok(k) => k,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(
+                    "No user with given ",
+                ))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to update user keystore",
+                ))));
+            }
+        },
+    };
+
+    Ok(HttpResponse::Ok().json(OutputPublicKey { public_key }))
+}
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,

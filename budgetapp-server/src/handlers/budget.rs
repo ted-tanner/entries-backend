@@ -2,8 +2,8 @@ use budgetapp_utils::models::budget_access_key::BudgetAccessKey;
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetAccessTokenList, InputBudgetId, InputCategoryId, InputEditBudget,
     InputEditCategory, InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId,
-    InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId,
-    UserInvitationToBudget,
+    InputPublicKey, InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
+    OutputEntryId, UserInvitationToBudget,
 };
 use budgetapp_utils::token::budget_accept_token::BudgetAcceptToken;
 use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
@@ -258,7 +258,7 @@ pub async fn invite_user(
         ))));
     }
 
-    match web::block(move || {
+    let invite_and_accept_key_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             &invitation_info.recipient_user_email,
@@ -291,9 +291,9 @@ pub async fn invite_user(
                 ))));
             }
         },
-    }
+    };
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(HttpResponse::Ok().json(invite_and_accept_key_ids))
 }
 
 pub async fn retract_invitation(
@@ -325,7 +325,7 @@ pub async fn retract_invitation(
             },
         };
 
-    if !special_access_token.0.verify(&public_key) {
+    if !invite_sender_token.0.verify(&public_key) {
         return Err(ServerError::NotFound(Some(String::from(
             "No invite with ID matching token",
         ))));
@@ -356,35 +356,56 @@ pub async fn retract_invitation(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: New special token -- budget acceptance token. Budget access token can be reused as a
-//       budget acceptance token. In this case, the key_id references the budget_accept_keys
-//       table (instead of the budget_access_keys table)
-// TODO: Make sure the user_access_token belongs to the user matching the recipient_user_email
-//       in the budget_share_invites record
-// TODO: This endpoint ahould return the budget's encryption key to the user
-
-// Accepting with the
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
+    budget_user_public_key: web::Json<InputPublicKey>,
 ) -> Result<HttpResponse, ServerError> {
     let key_id = accept_token.0.key_id();
     let budget_id = accept_token.0.budget_id();
 
-    // TODO: get_budget_accept_public_key and verify
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+    let budget_accept_key =
+        match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
+        {
+            Ok(key) => key,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(ServerError::NotFound(Some(String::from(
+                        "No share invite with ID matching token",
+                    ))));
+                }
+                _ => {
+                    log::error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                        "Failed to accept invitation",
+                    ))));
+                }
+            },
+        };
 
-    let user_access_token = user_access_token.0.claims;
+    if budget_accept_key.expiration < SystemTime::now() {
+        return Err(ServerError::NotFound(Some(String::from(
+            "Invitation has expired",
+        ))));
+    }
 
-    let db_thread_pool_ref = db_thread_pool.clone();
-    let share_invite_id = invitation_id.share_invite_id;
+    if !accept_token.0.verify(&budget_accept_key.public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No invite with ID matching token",
+        ))));
+    }
 
-    let budget_key = match web::block(move || {
+    let budget_keys = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
         budget_dao.accept_invitation(
-            share_invite_id,
-            user_access_token.claims.user_id,
-            &user_access_token.claims.eml,
+            budget_accept_key.key_id,
+            budget_accept_key.budget_id,
+            budget_accept_key.read_only,
+            accept_token.0.claims().invitation_id,
+            &user_access_token.user_email,
+            &budget_user_public_key.0.public_key,
         )
     })
     .await?
@@ -405,19 +426,50 @@ pub async fn accept_invitation(
         },
     };
 
-    Ok(HttpResponse::Ok().json(budget_key))
+    Ok(HttpResponse::Ok().json(budget_keys))
 }
 
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    invitation_id: web::Query<InputShareInviteId>,
+    accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    let key_id = accept_token.0.key_id();
+    let budget_id = accept_token.0.budget_id();
+
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+    let budget_accept_key =
+        match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
+        {
+            Ok(key) => key,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(ServerError::NotFound(Some(String::from(
+                        "No share invite with ID matching token",
+                    ))));
+                }
+                _ => {
+                    log::error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                        "Failed to decline invitation",
+                    ))));
+                }
+            },
+        };
+
+    if !accept_token.0.verify(&budget_accept_key.public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No invite with ID matching token",
+        ))));
+    }
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invitation_id.share_invite_id, &user_access_token.claims.eml)
+        budget_dao.reject_invitation(
+            accept_token.0.claims().invitation_id,
+            accept_token.0.key_id,
+            &user_access_token.user_email,
+        )
     })
     .await?
     {
@@ -444,8 +496,6 @@ pub async fn get_all_pending_invitations_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_pending_invitations_for_user(&user_access_token.claims.eml)
@@ -469,40 +519,7 @@ pub async fn get_all_pending_invitations_for_user(
     Ok(HttpResponse::Ok().json(invites))
 }
 
-// TODO: Figure this out
-pub async fn get_invitation(
-    db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    invitation_id: web::Query<InputShareInviteId>,
-) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
-    let invite = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_invitation(invitation_id.share_invite_id, &user_access_token.claims.eml)
-    })
-    .await?
-    {
-        Ok(invite) => invite,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "Share invite not found",
-                ))));
-            }
-            _ => {
-                log::error!("{}", e);
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to find invitations",
-                ))));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().json(invite))
-}
-
-// TODO: Budget Access Token
+// todo: budget access token
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,

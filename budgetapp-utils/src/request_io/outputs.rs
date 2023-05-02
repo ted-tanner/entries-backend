@@ -114,7 +114,13 @@ pub struct OutputSigninNonceData {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OutputShareIdAndKeyId {
-    pub share_id: Uuid,
-    pub share_key_id: Uuid,
+pub struct OutputInvitationId {
+    pub invitation_id: Uuid,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+pub struct OutputPublicKey {
+    #[serde_as(as = "Base64")]
+    pub public_key: Vec<u8>,
 }

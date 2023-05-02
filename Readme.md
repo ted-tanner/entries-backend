@@ -494,6 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Throttle `lookup_user_public_key` endpoint by user ID (obtained with access token)
 * Finish budget token stuff in budget handlers (also in `init_delete()` in user handlers)
   - Currently at `accept_invitation`
 * `delete_invitation()` in `budget.rs<db>` doesn't delete the
