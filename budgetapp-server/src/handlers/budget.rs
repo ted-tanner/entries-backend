@@ -519,17 +519,26 @@ pub async fn get_all_pending_invitations_for_user(
     Ok(HttpResponse::Ok().json(invites))
 }
 
-// todo: budget access token
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_id: web::Query<InputBudgetId>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    let budget_id = budget_access_token.0.budget_id();
+    let key_id = budget_access_token.0.key_id();
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+
+    if !budget_access_token.0.verify(&public_key.public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with ID matching token",
+        ))));
+    }
+
+    let claims = budget_access_token.0.claims();
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.leave_budget(budget_id.budget_id, user_access_token.claims.user_id)
+        budget_dao.leave_budget(claims.budget_id, claims.key_id)
     })
     .await?
     {
