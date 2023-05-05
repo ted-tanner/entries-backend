@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
     InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputUser,
-    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
+    InputUserId, OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::{Token, TokenError};
@@ -21,10 +21,11 @@ use crate::middleware::{FromHeader, FromQuery};
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
+    user_id: web::Data<InputUserId>,
 ) -> Result<HttpResponse, ServerError> {
     let public_key = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_public_key(user_id)
+        user_dao.get_user_public_key(user_id.0.user_id)
     })
     .await?
     {

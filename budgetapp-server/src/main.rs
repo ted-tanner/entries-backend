@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate lazy_static;
 
-use actix_http::header::http_percent_encode;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use diesel::prelude::*;

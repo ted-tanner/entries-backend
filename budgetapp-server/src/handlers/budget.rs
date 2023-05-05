@@ -1,35 +1,36 @@
 use budgetapp_utils::models::budget_access_key::BudgetAccessKey;
 use budgetapp_utils::request_io::{
-    InputBudget, InputBudgetAccessTokenList, InputBudgetId, InputCategoryId, InputEditBudget,
-    InputEditCategory, InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId,
-    InputPublicKey, InputShareInviteId, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
-    OutputEntryId, UserInvitationToBudget,
+    InputBudget, InputBudgetAccessTokenList, InputCategoryId, InputEditBudget, InputEditCategory,
+    InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId, InputPublicKey,
+    OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId, UserInvitationToBudget,
 };
 use budgetapp_utils::token::budget_accept_token::BudgetAcceptToken;
 use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
+use budgetapp_utils::token::budget_invite_sender_token::BudgetInviteSenderToken;
 use budgetapp_utils::token::Token;
 use budgetapp_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::handlers::error::ServerError;
 use crate::middleware::auth::{Access, VerifiedToken};
 use crate::middleware::special_access_token::SpecialAccessToken;
-use crate::middleware::FromHeader;
+use crate::middleware::{FromHeader, TokenLocation};
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_access(&budget_access_token)?;
+    verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     let budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_budget(budget_id)
+        budget_dao.get_budget(budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -111,7 +112,7 @@ pub async fn get_multiple(
             None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
         };
 
-        if !token.verify(&key.public_key) {
+        if !token.verify(key.public_key.as_bytes()) {
             return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
         }
     }
@@ -170,12 +171,12 @@ pub async fn edit(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
-            budget_id,
+            budget_access_token.0.budget_id(),
             &budget_data.encrypted_blob,
             &budget_data.expected_previous_data_hash,
         )
@@ -212,7 +213,7 @@ pub async fn invite_user(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let inviting_user_id = user_access_token.0.user_id;
 
@@ -233,7 +234,7 @@ pub async fn invite_user(
             &invitation_info.sender_info_encrypted,
             &invitation_info.budget_accept_private_key_info_encrypted,
             &invitation_info.share_info_symmetric_key_encrypted,
-            budget_id,
+            budget_access_token.0.budget_id(),
             &invitation_info.budget_share_public_key,
             invitation_info.expiration,
             invitation_info.read_only,
@@ -289,7 +290,7 @@ pub async fn retract_invitation(
             },
         };
 
-    if !invite_sender_token.0.verify(&public_key) {
+    if !invite_sender_token.0.verify(&invite_sender_public_key) {
         return Err(ServerError::NotFound(Some(String::from(
             "No invite with ID matching token",
         ))));
@@ -297,7 +298,7 @@ pub async fn retract_invitation(
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(special_access_token.0.invitation_id())
+        budget_dao.delete_invitation(invite_sender_token.0.invitation_id())
     })
     .await?
     {
@@ -329,7 +330,7 @@ pub async fn accept_invitation(
     let key_id = accept_token.0.key_id();
     let budget_id = accept_token.0.budget_id();
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
         match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
         {
@@ -362,7 +363,7 @@ pub async fn accept_invitation(
     }
 
     let budget_keys = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.accept_invitation(
             budget_accept_key.key_id,
             budget_accept_key.budget_id,
@@ -401,7 +402,7 @@ pub async fn decline_invitation(
     let key_id = accept_token.0.key_id();
     let budget_id = accept_token.0.budget_id();
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
         match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
         {
@@ -488,7 +489,7 @@ pub async fn leave_budget(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_access(&budget_access_token)?;
+    verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     let claims = budget_access_token.0.claims();
 
@@ -523,7 +524,7 @@ pub async fn create_entry(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -556,7 +557,7 @@ pub async fn create_entry_and_category(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -590,7 +591,7 @@ pub async fn edit_entry(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Query<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -633,7 +634,7 @@ pub async fn delete_entry(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -666,7 +667,7 @@ pub async fn create_category(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -699,7 +700,7 @@ pub async fn edit_category(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Query<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -742,7 +743,7 @@ pub async fn delete_category(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
-    verify_read_write_access(&budget_access_token)?;
+    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -795,14 +796,18 @@ async fn obtain_public_key(
     Ok(key)
 }
 
-async fn verify_read_write_access<F>(
+async fn verify_read_write_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+    db_thread_pool: &DbThreadPool,
 ) -> Result<(), ServerError> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
-    if !budget_access_token.0.verify(&public_key.public_key) {
+    if !budget_access_token
+        .0
+        .verify(public_key.public_key.as_bytes())
+    {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with ID matching token",
         ))));
@@ -817,14 +822,18 @@ async fn verify_read_write_access<F>(
     Ok(())
 }
 
-async fn verify_read_access<F>(
+async fn verify_read_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+    db_thread_pool: &DbThreadPool,
 ) -> Result<(), ServerError> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
     let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
 
-    if !budget_access_token.0.verify(&public_key.public_key) {
+    if !budget_access_token
+        .0
+        .verify(public_key.public_key.as_bytes())
+    {
         return Err(ServerError::NotFound(Some(String::from(
             "No budget with ID matching token",
         ))));

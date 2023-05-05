@@ -21,6 +21,11 @@ pub struct InputEmail {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputUserId {
+    pub user_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
 }
@@ -130,6 +135,7 @@ pub struct InputCategoryWithTempId {
     pub encrypted_blob: Vec<u8>,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
     #[serde_as(as = "Base64")]

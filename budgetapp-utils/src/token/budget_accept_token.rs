@@ -60,7 +60,7 @@ impl<'a> Token<'a> for BudgetAcceptToken {
     fn claims(self) -> Self::Claims {
         BudgetAcceptTokenClaims {
             invitation_id: self.claims.iid,
-            kid_id: self.claims.kid,
+            key_id: self.claims.kid,
             budget_id: self.claims.bid,
             expiration: self.claims.exp,
         }
