@@ -42,11 +42,11 @@ impl Dao {
         }
     }
 
-    pub fn get_user_public_key(&mut self, user_email: &str) -> Result<Vec<u8>, DaoError> {
+    pub fn get_user_public_key(&mut self, user_email: &str) -> Result<String, DaoError> {
         Ok(users
             .select(user_fields::public_key)
             .filter(user_fields::email.eq(user_email))
-            .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
+            .first::<String>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(

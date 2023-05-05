@@ -19,7 +19,7 @@ diesel::table! {
     budget_accept_keys (key_id, budget_id) {
         key_id -> Uuid,
         budget_id -> Uuid,
-        public_key -> Bytea,
+        public_key -> Text,
         expiration -> Timestamp,
         read_only -> Bool,
     }
@@ -29,7 +29,7 @@ diesel::table! {
     budget_access_keys (key_id, budget_id) {
         key_id -> Uuid,
         budget_id -> Uuid,
-        public_key -> Bytea,
+        public_key -> Text,
         read_only -> Bool,
     }
 }
@@ -38,7 +38,7 @@ diesel::table! {
     budget_share_invites (id) {
         id -> Uuid,
         recipient_user_email -> Varchar,
-        sender_public_key -> Bytea,
+        sender_public_key -> Text,
         encryption_key_encrypted -> Bytea,
         budget_accept_private_key_encrypted -> Bytea,
         budget_info_encrypted -> Bytea,
@@ -153,7 +153,7 @@ diesel::table! {
         email -> Varchar,
         is_verified -> Bool,
         created_timestamp -> Timestamp,
-        public_key -> Bytea,
+        public_key -> Text,
         last_token_refresh_timestamp -> Timestamp,
         last_token_refresh_request_app_version -> Varchar,
     }

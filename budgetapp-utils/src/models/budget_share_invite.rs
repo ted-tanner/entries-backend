@@ -11,7 +11,7 @@ pub struct BudgetShareInvite {
     pub id: Uuid,
 
     pub recipient_user_email: String,
-    pub sender_public_key: Vec<u8>,
+    pub sender_public_key: String,
 
     pub encryption_key_encrypted: Vec<u8>,
     pub budget_accept_private_key_encrypted: Vec<u8>,
@@ -31,7 +31,7 @@ pub struct NewBudgetShareInvite<'a> {
     pub id: Uuid,
 
     pub recipient_user_email: &'a str,
-    pub sender_public_key: &'a [u8],
+    pub sender_public_key: &'a str,
 
     pub encryption_key_encrypted: &'a [u8],
     pub budget_accept_private_key_encrypted: &'a [u8],

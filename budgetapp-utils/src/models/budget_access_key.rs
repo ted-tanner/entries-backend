@@ -11,7 +11,7 @@ use crate::schema::budget_access_keys;
 pub struct BudgetAccessKey {
     pub key_id: Uuid,
     pub budget_id: Uuid,
-    pub public_key: Vec<u8>,
+    pub public_key: String,
     pub read_only: bool,
 }
 
@@ -20,6 +20,6 @@ pub struct BudgetAccessKey {
 pub struct NewBudgetAccessKey<'a> {
     pub key_id: Uuid,
     pub budget_id: Uuid,
-    pub public_key: &'a [u8],
+    pub public_key: &'a str,
     pub read_only: bool,
 }

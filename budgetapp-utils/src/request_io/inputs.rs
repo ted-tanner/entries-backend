@@ -72,8 +72,7 @@ pub struct InputUser {
     #[serde_as(as = "Base64")]
     pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
 
-    #[serde_as(as = "Base64")]
-    pub public_key: Vec<u8>,
+    pub public_key: String,
 
     #[serde_as(as = "Base64")]
     pub preferences_encrypted: Vec<u8>,
@@ -131,7 +130,6 @@ pub struct InputCategoryWithTempId {
     pub encrypted_blob: Vec<u8>,
 }
 
-#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
     #[serde_as(as = "Base64")]
@@ -142,8 +140,7 @@ pub struct InputBudget {
 
     pub categories: Vec<InputCategoryWithTempId>,
 
-    #[serde_as(as = "Base64")]
-    pub user_public_budget_key: Vec<u8>,
+    pub user_public_budget_key: String,
 }
 
 #[serde_as]
@@ -159,8 +156,7 @@ pub struct InputEditBudget {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UserInvitationToBudget {
     pub recipient_user_email: String,
-    #[serde_as(as = "Base64")]
-    pub sender_public_key: Vec<u8>,
+    pub sender_public_key: String,
 
     #[serde_as(as = "Base64")]
     pub encryption_key_encrypted: Vec<u8>,
@@ -176,8 +172,7 @@ pub struct UserInvitationToBudget {
     #[serde_as(as = "Base64")]
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 
-    #[serde_as(as = "Base64")]
-    pub budget_share_public_key: Vec<u8>,
+    pub budget_share_public_key: String,
 
     pub expiration: SystemTime,
     pub read_only: bool,
@@ -239,9 +234,7 @@ pub struct InputBudgetAccessTokenList {
     pub budget_access_tokens: Vec<String>,
 }
 
-#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputPublicKey {
-    #[serde_as(as = "Base64")]
-    pub public_key: Vec<u8>,
+    pub public_key: String,
 }

@@ -25,15 +25,7 @@ pub async fn get(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound(Some(String::from(
-            "No budget with ID matching token",
-        ))));
-    }
+    verify_read_access(&budget_access_token)?;
 
     let budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -178,21 +170,7 @@ pub async fn edit(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound(Some(String::from(
-            "No budget with ID matching token",
-        ))));
-    }
-
-    if public_key.read_only == true {
-        return Err(ServerError::AccessForbidden(Some(String::from(
-            "User has read-only access to budget",
-        ))));
-    }
+    verify_read_write_access(&budget_access_token)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -234,21 +212,7 @@ pub async fn invite_user(
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound(Some(String::from(
-            "No budget with ID matching token",
-        ))));
-    }
-
-    if public_key.read_only == true {
-        return Err(ServerError::AccessForbidden(Some(String::from(
-            "User has read-only access to budget",
-        ))));
-    }
+    verify_read_write_access(&budget_access_token)?;
 
     let inviting_user_id = user_access_token.0.user_id;
 
@@ -524,15 +488,7 @@ pub async fn leave_budget(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound(Some(String::from(
-            "No budget with ID matching token",
-        ))));
-    }
+    verify_read_access(&budget_access_token)?;
 
     let claims = budget_access_token.0.claims();
 
@@ -561,18 +517,17 @@ pub async fn leave_budget(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(entry_data.0, user_access_token.claims.user_id)
+        budget_dao.create_entry(entry_data.0, budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -580,7 +535,7 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with ID matching token or user does not have edit privileges",
+                    "No budget with ID matching token",
                 ))));
             }
             _ => {
@@ -595,19 +550,18 @@ pub async fn create_entry(
     Ok(HttpResponse::Created().json(OutputEntryId { entry_id }))
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao
-            .create_entry_and_category(entry_and_category_data.0, user_access_token.claims.user_id)
+            .create_entry_and_category(entry_and_category_data.0, budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -615,7 +569,7 @@ pub async fn create_entry_and_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with ID matching token or user does not have edit privileges",
+                    "No budget with ID matching token",
                 ))));
             }
             _ => {
@@ -630,14 +584,13 @@ pub async fn create_entry_and_category(
     Ok(HttpResponse::Created().json(entry_and_category_ids))
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Query<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -645,7 +598,7 @@ pub async fn edit_entry(
             entry_data.entry_id,
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
-            user_access_token.claims.user_id,
+            budget_access_token.0.budget_id(),
         )
     })
     .await?
@@ -659,7 +612,7 @@ pub async fn edit_entry(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No entry with ID matching token or user does not have edit privileges",
+                    "No entry with ID matching token",
                 ))));
             }
             _ => {
@@ -674,18 +627,17 @@ pub async fn edit_entry(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id.0.entry_id, user_access_token.claims.user_id)
+        budget_dao.delete_entry(entry_id.0.entry_id, budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -693,7 +645,7 @@ pub async fn delete_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No entry with ID matching token or user does not have edit privileges",
+                    "No entry with ID matching token",
                 ))));
             }
             _ => {
@@ -708,18 +660,17 @@ pub async fn delete_entry(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(category_data.0, user_access_token.claims.user_id)
+        budget_dao.create_category(category_data.0, budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -727,7 +678,7 @@ pub async fn create_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No budget with ID matching token or user does not have edit privileges",
+                    "No budget with ID matching token",
                 ))));
             }
             _ => {
@@ -742,14 +693,13 @@ pub async fn create_category(
     Ok(HttpResponse::Created().json(OutputCategoryId { category_id }))
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Query<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -757,7 +707,7 @@ pub async fn edit_category(
             category_data.category_id,
             &category_data.encrypted_blob,
             &category_data.expected_previous_data_hash,
-            user_access_token.claims.user_id,
+            budget_access_token.0.budget_id(),
         )
     })
     .await?
@@ -771,7 +721,7 @@ pub async fn edit_category(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No category with ID matching token or user does not have edit privileges",
+                    "No category with ID matching token",
                 ))));
             }
             _ => {
@@ -786,18 +736,17 @@ pub async fn edit_category(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: Budget Access Token
-// TODO: Check user has write access
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
+    verify_read_write_access(&budget_access_token)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id.0.category_id, user_access_token.claims.user_id)
+        budget_dao.delete_category(category_id.0.category_id, budget_access_token.0.budget_id())
     })
     .await?
     {
@@ -805,7 +754,7 @@ pub async fn delete_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No category with ID matching token or user does not have edit privileges",
+                    "No category with ID matching token",
                 ))));
             }
             _ => {
@@ -844,4 +793,42 @@ async fn obtain_public_key(
     };
 
     Ok(key)
+}
+
+async fn verify_read_write_access<F>(
+    budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+) -> Result<(), ServerError> {
+    let budget_id = budget_access_token.0.budget_id();
+    let key_id = budget_access_token.0.key_id();
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+
+    if !budget_access_token.0.verify(&public_key.public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with ID matching token",
+        ))));
+    }
+
+    if public_key.read_only == true {
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "User has read-only access to budget",
+        ))));
+    }
+
+    Ok(())
+}
+
+async fn verify_read_access<F>(
+    budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+) -> Result<(), ServerError> {
+    let budget_id = budget_access_token.0.budget_id();
+    let key_id = budget_access_token.0.key_id();
+    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+
+    if !budget_access_token.0.verify(&public_key.public_key) {
+        return Err(ServerError::NotFound(Some(String::from(
+            "No budget with ID matching token",
+        ))));
+    }
+
+    Ok(())
 }

@@ -28,7 +28,7 @@ CREATE TABLE budget_accept_keys (
     key_id UUID UNIQUE NOT NULL,
     budget_id UUID NOT NULL,
 
-    public_key BYTEA NOT NULL, -- Ed25519
+    public_key TEXT NOT NULL, -- Ed25519
 
     expiration TIMESTAMP NOT NULL,
     read_only BOOLEAN NOT NULL,
@@ -41,7 +41,7 @@ CREATE INDEX ON budget_accept_keys USING HASH (key_id);
 CREATE TABLE budget_access_keys (
     key_id UUID UNIQUE NOT NULL,
     budget_id UUID NOT NULL,
-    public_key BYTEA NOT NULL, -- Ed25591
+    public_key TEXT NOT NULL, -- Ed25591
     read_only BOOLEAN NOT NULL,
     PRIMARY KEY (key_id, budget_id)
 );
@@ -54,7 +54,7 @@ CREATE TABLE budget_share_invites (
     recipient_user_email VARCHAR(255) NOT NULL,
     -- The sender can sign a token to prove to the server that they are authorized to
     -- retract/delete a budget_share_invite
-    sender_public_key BYTEA NOT NULL, -- Ed25519
+    sender_public_key TEXT NOT NULL, -- Ed25519
 
     -- Encrypted with recipient's public key. This should never get sent to the recipient user
     -- until the invite has been accepted
@@ -130,7 +130,7 @@ CREATE TABLE users (
 
     created_timestamp TIMESTAMP NOT NULL,
 
-    public_key BYTEA NOT NULL, -- RSA-4096
+    public_key TEXT NOT NULL, -- RSA-4096
 
     last_token_refresh_timestamp TIMESTAMP NOT NULL,
     last_token_refresh_request_app_version VARCHAR(24) NOT NULL

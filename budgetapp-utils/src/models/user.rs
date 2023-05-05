@@ -14,7 +14,7 @@ pub struct User {
 
     pub created_timestamp: SystemTime,
 
-    pub public_key: Vec<u8>,
+    pub public_key: String,
 
     pub last_token_refresh_timestamp: SystemTime,
     pub last_token_refresh_request_app_version: String,
@@ -29,7 +29,7 @@ pub struct NewUser<'a> {
 
     pub created_timestamp: SystemTime,
 
-    pub public_key: &'a [u8],
+    pub public_key: &'a str,
 
     pub last_token_refresh_timestamp: SystemTime,
     pub last_token_refresh_request_app_version: &'a str,
