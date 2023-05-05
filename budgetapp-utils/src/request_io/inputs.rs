@@ -21,11 +21,6 @@ pub struct InputEmail {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputUserId {
-    pub user_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetId {
     pub budget_id: Uuid,
 }

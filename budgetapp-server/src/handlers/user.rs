@@ -1,7 +1,7 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputEditUserKeystore, InputEditUserPrefs, InputNewAuthStringAndEncryptedPassword, InputUser,
-    InputUserId, OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
+    InputEditUserKeystore, InputEditUserPrefs, InputEmail, InputNewAuthStringAndEncryptedPassword,
+    InputUser, OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::{Token, TokenError};
@@ -21,11 +21,11 @@ use crate::middleware::{FromHeader, FromQuery};
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    user_id: web::Data<InputUserId>,
+    user_email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
     let public_key = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_public_key(user_id.0.user_id)
+        user_dao.get_user_public_key(&user_email.email)
     })
     .await?
     {
@@ -105,7 +105,7 @@ pub async fn create(
 
     user_creation_token.encrypt(&env::CONF.keys.token_encryption_cipher);
     let user_creation_token =
-        user_creation_token.encode_and_sign(&env::CONF.keys.token_signing_key);
+        user_creation_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
     // TODO: Don't print user creation token; email it!
     println!("\n\nUser Creation Token: {user_creation_token}\n\n");
@@ -119,9 +119,9 @@ pub async fn create(
 
 pub async fn verify_creation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_creation_token: VerifiedToken<UserCreation, FromQuery>,
+    user_creation_token: UnverifiedToken<UserCreation, FromQuery>,
 ) -> Result<HttpResponse, ServerError> {
-    let claims = match user_creation_token.0 {
+    let claims = match user_creation_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
@@ -180,7 +180,9 @@ pub async fn verify_creation(
                  </html>",
             ));
         }
-        Err(TokenError::TokenExpired) | Err(TokenError::WrongTokenType) => {
+        Err(TokenError::TokenExpired)
+        | Err(TokenError::WrongTokenType)
+        | Err(TokenError::TokenInvalid) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                 "<!DOCTYPE html> \
                  <html> \
@@ -195,11 +197,9 @@ pub async fn verify_creation(
         }
     };
 
-    let user_id = claims.uid;
-
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.verify_user_creation(user_id)
+        user_dao.verify_user_creation(claims.user_id)
     })
     .await?
     {

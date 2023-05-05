@@ -5,6 +5,10 @@ use crate::handlers;
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/user")
+            .route(
+                "/lookup_user_public_key",
+                web::post().to(handlers::user::lookup_user_public_key),
+            )
             .route("/create", web::post().to(handlers::user::create))
             .route(
                 "/verify_creation",

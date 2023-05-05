@@ -33,10 +33,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::get().to(handlers::budget::get_all_pending_invitations_for_user),
             )
             .route(
-                "/get_invitation",
-                web::get().to(handlers::budget::get_invitation),
-            )
-            .route(
                 "/leave_budget",
                 web::delete().to(handlers::budget::leave_budget),
             )

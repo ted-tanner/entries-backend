@@ -267,7 +267,6 @@ pub async fn retract_invitation(
     invite_sender_token: SpecialAccessToken<BudgetInviteSenderToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let invitation_id = invite_sender_token.0.invitation_id();
-    let budget_id = invite_sender_token.0.budget_id();
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let invite_sender_public_key =
@@ -290,7 +289,10 @@ pub async fn retract_invitation(
             },
         };
 
-    if !invite_sender_token.0.verify(&invite_sender_public_key) {
+    if !invite_sender_token
+        .0
+        .verify(invite_sender_public_key.as_bytes())
+    {
         return Err(ServerError::NotFound(Some(String::from(
             "No invite with ID matching token",
         ))));
@@ -356,7 +358,10 @@ pub async fn accept_invitation(
         ))));
     }
 
-    if !accept_token.0.verify(&budget_accept_key.public_key) {
+    if !accept_token
+        .0
+        .verify(budget_accept_key.public_key.as_bytes())
+    {
         return Err(ServerError::NotFound(Some(String::from(
             "No invite with ID matching token",
         ))));
@@ -369,7 +374,7 @@ pub async fn accept_invitation(
             budget_accept_key.budget_id,
             budget_accept_key.read_only,
             accept_token.0.claims().invitation_id,
-            &user_access_token.user_email,
+            &user_access_token.0.user_email,
             &budget_user_public_key.0.public_key,
         )
     })
