@@ -188,7 +188,7 @@ pub struct InputEntryId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEncryptedBlob {
     #[serde_as(as = "Base64")]
-    encrypted_blob: Vec<u8>,
+    pub encrypted_blob: Vec<u8>,
 }
 
 #[serde_as]
@@ -203,6 +203,7 @@ pub struct InputEntryAndCategory {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditEntry {
+    pub entry_id: Uuid,
     #[serde_as(as = "Base64")]
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]

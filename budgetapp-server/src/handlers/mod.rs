@@ -83,7 +83,7 @@ pub mod error {
     impl From<TokenError> for ServerError {
         fn from(result: TokenError) -> Self {
             match result {
-                TokenError::TokenExpired => {
+                TokenError::TokenInvalid => {
                     ServerError::UserUnauthorized(Some(String::from("Invalid token")))
                 }
                 TokenError::TokenExpired => {

@@ -175,7 +175,7 @@ pub async fn sign_in(
 
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
-    app_version: AppVersion,
+    _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: web::Json<InputOtp>,
 ) -> Result<HttpResponse, ServerError> {
@@ -329,7 +329,7 @@ pub async fn verify_otp_for_signin(
 
 pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
-    app_version: AppVersion,
+    _app_version: AppVersion,
     token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let token_signature = match token.0.parts() {

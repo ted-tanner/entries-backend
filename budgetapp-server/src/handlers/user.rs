@@ -4,7 +4,6 @@ use budgetapp_utils::request_io::{
     InputNewAuthStringAndEncryptedPassword, InputUser, OutputIsUserListedForDeletion,
     OutputPublicKey, OutputVerificationEmailSent,
 };
-use budgetapp_utils::schema::user_preferences::user_id;
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
 use budgetapp_utils::token::{Token, TokenError};
@@ -185,9 +184,7 @@ pub async fn verify_creation(
                  </html>",
             ));
         }
-        Err(TokenError::TokenExpired)
-        | Err(TokenError::WrongTokenType)
-        | Err(TokenError::TokenInvalid) => {
+        Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                 "<!DOCTYPE html> \
                  <html> \
@@ -312,7 +309,7 @@ pub async fn edit_keystore(
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
-            user_access_token.claims.user_id,
+            user_access_token.0.user_id,
             &new_keystore.encrypted_blob,
             &new_keystore.expected_previous_data_hash,
         )
@@ -451,24 +448,28 @@ pub async fn init_delete(
         tokens.insert(token.key_id(), token);
     }
 
+    let key_ids = Arc::new(key_ids);
+    let key_ids_ref = Arc::clone(&key_ids);
+
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-    let public_keys =
-        match web::block(move || budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids))
-            .await?
-        {
-            Ok(b) => b,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
-                }
-                _ => {
-                    log::error!("{}", e);
-                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                        "Failed to get budget data corresponding to budget access token",
-                    ))));
-                }
-            },
-        };
+    let public_keys = match web::block(move || {
+        budget_dao.get_multiple_public_budget_keys(&*key_ids_ref, &budget_ids)
+    })
+    .await?
+    {
+        Ok(b) => b,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to get budget data corresponding to budget access token",
+                ))));
+            }
+        },
+    };
 
     if public_keys.len() != tokens.len() {
         return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
@@ -487,13 +488,14 @@ pub async fn init_delete(
 
     let deletion_token_expiration =
         SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime;
-    let delete_me_time = deletion_token_expiration + env::CONF.time_delays.user_deletion_delay_days;
+    let delete_me_time = deletion_token_expiration
+        + Duration::from_secs(env::CONF.time_delays.user_deletion_delay_days * 24 * 3600);
 
     let user_id = user_access_token.0.user_id;
 
     match web::block(move || {
-        let mut user_dao = db::budget::Dao::new(&db_thread_pool_ref);
-        user_dao.save_user_deletion_budget_keys(&key_ids, user_id, delete_me_time)
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.save_user_deletion_budget_keys(&*key_ids, user_id, delete_me_time)
     })
     .await?
     {
@@ -596,9 +598,7 @@ pub async fn delete(
                  </html>",
             ));
         }
-        Err(TokenError::TokenExpired)
-        | Err(TokenError::WrongTokenType)
-        | Err(TokenError::TokenInvalid) => {
+        Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                 "<!DOCTYPE html> \
                  <html> \
@@ -693,7 +693,7 @@ pub async fn delete(
          <h2>Your account will be deleted in about {} days. You can cancel your account deletion from the app.</h2> \
          </body> \
          </html>",
-        claims.eml,
+        claims.user_email,
         days_until_deletion,
     )))
 }
@@ -702,11 +702,9 @@ pub async fn is_listed_for_deletion(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(user_access_token.claims.user_id)
+        user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
     })
     .await?
     {
@@ -735,11 +733,9 @@ pub async fn cancel_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(user_access_token.claims.user_id)
+        user_dao.cancel_user_deletion(user_access_token.0.user_id)
     })
     .await?
     {

@@ -394,7 +394,7 @@ pub fn hash_auth_string(
     hash_params: &HashParams,
     hashing_key: &[u8; 32],
 ) -> String {
-    let mut salt = vec![0u8; hash_params.salt_len];
+    let mut salt = Vec::with_capacity(hash_params.salt_len);
 
     salt.try_fill(&mut OsRng)
         .expect("Failed to obtain random bytes");
@@ -425,7 +425,8 @@ pub fn hash_argon2id(
     memory_kib: u32,
     lanes: u32,
 ) -> BinaryHash {
-    let mut hash_buffer = vec![0u8; usize::try_from(hash_len).expect("Invalid hash length")];
+    let mut hash_buffer =
+        Vec::with_capacity(usize::try_from(hash_len).expect("Invalid hash length"));
 
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),

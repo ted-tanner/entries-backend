@@ -22,14 +22,24 @@ where
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let token = match L::get_from_request(req, T::token_name()) {
-            Some(t) => t,
-            None => return into_actix_error_res(TokenError::TokenMissing),
+        let token = into_actix_error_res(match L::get_from_request(req, T::token_name()) {
+            Some(t) => Ok(t),
+            None => Err(TokenError::TokenMissing),
+        });
+
+        let token = match token {
+            Ok(t) => t,
+            Err(e) => return future::err(e),
         };
 
-        let decoded_token = match T::from_str(&token) {
+        let decoded_token = into_actix_error_res(match T::from_str(&token) {
+            Ok(t) => Ok(t),
+            Err(_e) => Err(TokenError::TokenInvalid),
+        });
+
+        let decoded_token = match decoded_token {
             Ok(t) => t,
-            Err(e) => return into_actix_error_res(TokenError::TokenMissing),
+            Err(e) => return future::err(e),
         };
 
         future::ok(SpecialAccessToken(decoded_token, PhantomData, PhantomData))

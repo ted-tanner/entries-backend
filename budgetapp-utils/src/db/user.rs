@@ -301,7 +301,6 @@ impl Dao {
         &mut self,
         user_id: Uuid,
         time_until_deletion: Duration,
-        budget_access_key_ids: &[Uuid],
     ) -> Result<(), DaoError> {
         let new_request = NewUserDeletionRequest {
             id: Uuid::new_v4(),

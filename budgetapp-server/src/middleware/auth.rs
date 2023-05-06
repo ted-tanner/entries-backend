@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::env;
 use crate::middleware::{into_actix_error_res, TokenLocation};
 
-trait RequestAuthTokenType {
+pub trait RequestAuthTokenType {
     fn token_name() -> &'static str;
     fn token_type() -> AuthTokenType;
     fn token_lifetime() -> Duration;
@@ -167,7 +167,7 @@ where
 
 #[inline]
 fn verify_token(
-    decoded_token: AuthToken,
+    mut decoded_token: AuthToken,
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
     if !decoded_token.verify(&env::CONF.keys.token_signing_key) {

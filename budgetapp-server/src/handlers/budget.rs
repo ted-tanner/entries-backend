@@ -23,7 +23,7 @@ use crate::middleware::{FromHeader, TokenLocation};
 
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
@@ -55,7 +55,7 @@ pub async fn get(
 
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
@@ -166,7 +166,7 @@ pub async fn create(
 
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     budget_data: web::Json<InputEditBudget>,
 ) -> Result<HttpResponse, ServerError> {
@@ -214,7 +214,7 @@ pub async fn invite_user(
 ) -> Result<HttpResponse, ServerError> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    let inviting_user_id = user_access_token.0.user_id;
+    let _inviting_user_id = user_access_token.0.user_id;
 
     if invitation_info.recipient_user_email == user_access_token.0.user_email {
         return Err(ServerError::InputRejected(Some(String::from(
@@ -262,7 +262,7 @@ pub async fn invite_user(
 
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     invite_sender_token: SpecialAccessToken<BudgetInviteSenderToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     let invitation_id = invite_sender_token.0.invitation_id();
@@ -426,18 +426,23 @@ pub async fn decline_invitation(
             },
         };
 
-    if !accept_token.0.verify(&budget_accept_key.public_key) {
+    if !accept_token
+        .0
+        .verify(budget_accept_key.public_key.as_bytes())
+    {
         return Err(ServerError::NotFound(Some(String::from(
             "No invite with ID matching token",
         ))));
     }
 
+    let accept_token_claims = accept_token.0.claims();
+
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.reject_invitation(
-            accept_token.0.claims().invitation_id,
-            accept_token.0.key_id,
-            &user_access_token.user_email,
+            accept_token_claims.invitation_id,
+            accept_token_claims.key_id,
+            &user_access_token.0.user_email,
         )
     })
     .await?
@@ -467,7 +472,7 @@ pub async fn get_all_pending_invitations_for_user(
 ) -> Result<HttpResponse, ServerError> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_for_user(&user_access_token.claims.eml)
+        budget_dao.get_all_pending_invitations_for_user(&user_access_token.0.user_email)
     })
     .await?
     {
@@ -490,7 +495,7 @@ pub async fn get_all_pending_invitations_for_user(
 
 pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
 ) -> Result<HttpResponse, ServerError> {
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
@@ -524,7 +529,7 @@ pub async fn leave_budget(
 
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
@@ -532,7 +537,10 @@ pub async fn create_entry(
 
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(entry_data.0, budget_access_token.0.budget_id())
+        budget_dao.create_entry(
+            &entry_data.0.encrypted_blob,
+            budget_access_token.0.budget_id(),
+        )
     })
     .await?
     {
@@ -557,7 +565,7 @@ pub async fn create_entry(
 
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
 ) -> Result<HttpResponse, ServerError> {
@@ -591,16 +599,16 @@ pub async fn create_entry_and_category(
 
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    entry_data: web::Query<InputEditEntry>,
+    entry_data: web::Json<InputEditEntry>,
 ) -> Result<HttpResponse, ServerError> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_entry(
-            entry_data.entry_id,
+            entry_data.0.entry_id,
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
             budget_access_token.0.budget_id(),
@@ -634,7 +642,7 @@ pub async fn edit_entry(
 
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_id: web::Query<InputEntryId>,
 ) -> Result<HttpResponse, ServerError> {
@@ -667,7 +675,7 @@ pub async fn delete_entry(
 
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Json<InputEncryptedBlob>,
 ) -> Result<HttpResponse, ServerError> {
@@ -675,7 +683,10 @@ pub async fn create_category(
 
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(category_data.0, budget_access_token.0.budget_id())
+        budget_dao.create_category(
+            &category_data.0.encrypted_blob,
+            budget_access_token.0.budget_id(),
+        )
     })
     .await?
     {
@@ -700,9 +711,9 @@ pub async fn create_category(
 
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    category_data: web::Query<InputEditCategory>,
+    category_data: web::Json<InputEditCategory>,
 ) -> Result<HttpResponse, ServerError> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
@@ -743,7 +754,7 @@ pub async fn edit_category(
 
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_id: web::Query<InputCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
