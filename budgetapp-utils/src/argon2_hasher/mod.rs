@@ -76,15 +76,15 @@ impl TokenizedHash {
         let mut has_t = false;
         let mut has_p = false;
 
-        let mut v = String::with_capacity(10);
-        let mut m = String::with_capacity(10);
-        let mut t = String::with_capacity(10);
-        let mut p = String::with_capacity(10);
+        let mut v = 0..0;
+        let mut m = 0..0;
+        let mut t = 0..0;
+        let mut p = 0..0;
 
-        let mut salt = String::with_capacity(64);
-        let mut hash = String::with_capacity(128);
+        let mut salt = String::with_capacity(22); // 16 bytes, base64-encoded (no padding)
+        let mut hash = String::with_capacity(43); // 32 bytes, base64-encoded (no padding)
 
-        for c in parameterized_hash.chars() {
+        for (i, c) in parameterized_hash.chars().enumerate() {
             match state {
                 HashStates::Start => {
                     state = match c {
@@ -172,7 +172,7 @@ impl TokenizedHash {
 
                 HashStates::VEquals => {
                     if c.is_ascii_digit() {
-                        v.push(c);
+                        v = i..(i + 1);
                         state = HashStates::VValue;
                     } else {
                         return Err(());
@@ -183,7 +183,7 @@ impl TokenizedHash {
                     if c == '$' {
                         state = HashStates::VComplete;
                     } else if c.is_ascii_digit() {
-                        v.push(c);
+                        v.end += 1;
                     } else {
                         return Err(());
                     }
@@ -211,7 +211,7 @@ impl TokenizedHash {
 
                 HashStates::MEquals => {
                     if c.is_ascii_digit() {
-                        m.push(c);
+                        m = i..(i + 1);
                         state = HashStates::MValue;
                     } else {
                         return Err(());
@@ -222,7 +222,7 @@ impl TokenizedHash {
                     if c == ',' {
                         state = HashStates::MComplete;
                     } else if c.is_ascii_digit() {
-                        m.push(c);
+                        m.end += 1;
                     } else if c == '$' && has_t && has_p {
                         state = HashStates::Salt;
                     } else {
@@ -253,7 +253,7 @@ impl TokenizedHash {
 
                 HashStates::TEquals => {
                     if c.is_ascii_digit() {
-                        t.push(c);
+                        t = i..(i + 1);
                         state = HashStates::TValue;
                     } else {
                         return Err(());
@@ -264,7 +264,7 @@ impl TokenizedHash {
                     if c == ',' {
                         state = HashStates::TComplete;
                     } else if c.is_ascii_digit() {
-                        t.push(c);
+                        t.end += 1;
                     } else if c == '$' && has_m && has_p {
                         state = HashStates::Salt;
                     } else {
@@ -295,7 +295,7 @@ impl TokenizedHash {
 
                 HashStates::PEquals => {
                     if c.is_ascii_digit() {
-                        p.push(c);
+                        p = i..(i + 1);
                         state = HashStates::PValue;
                     } else {
                         return Err(());
@@ -306,7 +306,7 @@ impl TokenizedHash {
                     if c == ',' {
                         state = HashStates::PComplete;
                     } else if c.is_ascii_digit() {
-                        p.push(c);
+                        p.end += 1;
                     } else if c == '$' && has_m && has_t {
                         state = HashStates::Salt;
                     } else {
@@ -359,15 +359,16 @@ impl TokenizedHash {
         hash.shrink_to_fit();
 
         Ok(TokenizedHash {
-            v: v.parse()
+            v: parameterized_hash[v]
+                .parse()
                 .expect("Lexer put invalid character in v (should be an integer)"),
-            memory_kib: m
+            memory_kib: parameterized_hash[m]
                 .parse()
                 .expect("Lexer put invalid character in m (should be an integer)"),
-            iterations: t
+            iterations: parameterized_hash[t]
                 .parse()
                 .expect("Lexer put invalid character in t (should be an integer)"),
-            lanes: p
+            lanes: parameterized_hash[p]
                 .parse()
                 .expect("Lexer put invalid character in p (should be an integer)"),
             b64_salt: salt,
@@ -383,7 +384,7 @@ impl BinaryHash {
         let b64_hash = base64::encode_config(self.hash, base64::STANDARD_NO_PAD);
         format!(
             "$argon2id$v={}$m={},t={},p={}${}${}",
-            self.v, self.memory_kib, self.iterations, self.lanes, b64_salt, b64_hash
+            self.v, self.memory_kib, self.iterations, self.lanes, b64_salt, b64_hash,
         )
     }
 }

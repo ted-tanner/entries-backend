@@ -8,7 +8,7 @@ max_db_connections = 48
 hash_iterations = 2
 hash_length = 32
 hash_mem_size_kib = 128
-hash_lanes = 2
+hash_lanes = 1
 salt_length_bytes = 16
 
 [keys]
