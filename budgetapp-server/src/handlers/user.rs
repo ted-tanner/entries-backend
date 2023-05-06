@@ -41,7 +41,7 @@ pub async fn lookup_user_public_key(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to update user keystore",
                 ))));
@@ -62,10 +62,12 @@ pub async fn create(
     }
 
     let email = user_data.email.clone();
+    let user_data = Arc::new(user_data);
+    let user_data_ref = Arc::clone(&user_data);
 
-    let user_id = match web::block(move || {
-        let auth_string_hash = argon2_hasher::hash_auth_string(
-            &user_data.auth_string,
+    let auth_string_hash = match web::block(move || {
+        argon2_hasher::hash_auth_string(
+            &user_data_ref.auth_string,
             &argon2_hasher::HashParams {
                 salt_len: env::CONF.hashing.salt_length_bytes,
                 hash_len: env::CONF.hashing.hash_length,
@@ -74,10 +76,22 @@ pub async fn create(
                 hash_lanes: env::CONF.hashing.hash_lanes,
             },
             &env::CONF.keys.hashing_key,
-        );
+        )
+    })
+    .await?
+    {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(ServerError::InternalError(Some(String::from(
+                "Failed to hash auth atring",
+            ))));
+        }
+    };
 
+    let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(user_data.0, &app_version.0, &auth_string_hash)
+        user_dao.create_user(&user_data.0, &app_version.0, &auth_string_hash)
     })
     .await?
     {
@@ -92,7 +106,7 @@ pub async fn create(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::InternalError(Some(String::from(
                     "Failed to create user",
                 ))));
@@ -226,7 +240,7 @@ pub async fn verify_creation(
                 ));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Ok(HttpResponse::InternalServerError()
                     .content_type("text/html")
                     .body(
@@ -290,7 +304,7 @@ pub async fn edit_preferences(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to update user preferences",
                 ))));
@@ -329,7 +343,7 @@ pub async fn edit_keystore(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to update user keystore",
                 ))));
@@ -356,7 +370,7 @@ pub async fn change_password(
         ) {
             Ok(a) => a,
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to check authorization attempt count",
                 ))));
@@ -412,7 +426,7 @@ pub async fn change_password(
     .await
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
-        log::error!("{}", e);
+        log::error!("{e}");
         ServerError::DatabaseTransactionError(Some(String::from("Failed to update password")))
     })
 }
@@ -463,7 +477,7 @@ pub async fn init_delete(
                 return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to get budget data corresponding to budget access token",
                 ))));
@@ -505,7 +519,7 @@ pub async fn init_delete(
                 return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to save user deletion budget keys",
                 ))));
@@ -662,7 +676,7 @@ pub async fn delete(
                 ));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Ok(HttpResponse::InternalServerError()
                           .content_type("text/html")
                           .body(
@@ -716,7 +730,7 @@ pub async fn is_listed_for_deletion(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to cancel user deletion",
                 ))));
@@ -747,7 +761,7 @@ pub async fn cancel_delete(
                 ))));
             }
             _ => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to cancel user deletion",
                 ))));

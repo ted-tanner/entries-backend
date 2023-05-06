@@ -31,7 +31,7 @@ pub async fn obtain_nonce_and_auth_string_salt(
             return Err(ServerError::NotFound(Some(String::from("User not found"))));
         }
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to obtain nonce or authentication string data",
             ))));
@@ -65,7 +65,7 @@ pub async fn sign_in(
                 return Err(ServerError::NotFound(Some(String::from("User not found"))));
             }
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
                     "Failed to obtain sign-in nonce",
                 ))));
@@ -94,7 +94,7 @@ pub async fn sign_in(
             return Err(ServerError::NotFound(Some(String::from("User not found"))));
         }
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check authorization attempt count",
             ))));
@@ -155,7 +155,7 @@ pub async fn sign_in(
         ) {
             Ok(p) => p,
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::InternalError(Some(String::from(
                     "Failed to generate OTP",
                 ))));
@@ -206,7 +206,7 @@ pub async fn verify_otp_for_signin(
             ))));
         }
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::InternalError(Some(String::from(
                 "Error verifying token",
             ))));
@@ -225,7 +225,7 @@ pub async fn verify_otp_for_signin(
     {
         Ok(a) => a,
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to check OTP attempt count",
             ))));
@@ -281,7 +281,7 @@ pub async fn verify_otp_for_signin(
                 ))))
             }
             otp::OtpError::Error(_) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return Err(ServerError::InternalError(Some(String::from(
                     "Validating passcode failed",
                 ))));
@@ -359,7 +359,7 @@ pub async fn refresh_tokens(
             ))));
         }
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::InternalError(Some(String::from(
                 "Error verifying token",
             ))));
@@ -436,7 +436,7 @@ pub async fn logout(
             ))));
         }
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{e}");
             return Err(ServerError::DatabaseTransactionError(Some(String::from(
                 "Failed to blacklist token",
             ))));

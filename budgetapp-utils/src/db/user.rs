@@ -51,7 +51,7 @@ impl Dao {
 
     pub fn create_user(
         &mut self,
-        user_data: InputUser,
+        user_data: &InputUser,
         app_version: &str,
         auth_string_hash: &str,
     ) -> Result<Uuid, DaoError> {

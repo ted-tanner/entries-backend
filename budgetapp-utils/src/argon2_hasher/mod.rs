@@ -1,11 +1,28 @@
-use log::error;
 use rand::{rngs::OsRng, Fill};
 use std::ffi::CStr;
+use std::fmt;
 
 use crate::argon2::{
     argon2_error_message, argon2id_ctx, Argon2_Context, Argon2_ErrorCodes_ARGON2_OK,
     Argon2_version_ARGON2_VERSION_13,
 };
+
+#[derive(Debug)]
+pub enum Argon2HasherError {
+    InvalidParameter(&'static str),
+    LibraryError(String),
+}
+
+impl std::error::Error for Argon2HasherError {}
+
+impl fmt::Display for Argon2HasherError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Argon2HasherError::InvalidParameter(msg) => write!(f, "InvalidParameter: {}", msg),
+            Argon2HasherError::LibraryError(msg) => write!(f, "LibraryError: {}", msg),
+        }
+    }
+}
 
 struct TokenizedHash {
     pub v: u32,
@@ -358,22 +375,16 @@ impl TokenizedHash {
         salt.shrink_to_fit();
         hash.shrink_to_fit();
 
-        Ok(TokenizedHash {
-            v: parameterized_hash[v]
-                .parse()
-                .expect("Lexer put invalid character in v (should be an integer)"),
-            memory_kib: parameterized_hash[m]
-                .parse()
-                .expect("Lexer put invalid character in m (should be an integer)"),
-            iterations: parameterized_hash[t]
-                .parse()
-                .expect("Lexer put invalid character in t (should be an integer)"),
-            lanes: parameterized_hash[p]
-                .parse()
-                .expect("Lexer put invalid character in p (should be an integer)"),
-            b64_salt: salt,
-            b64_hash: hash,
-        })
+        unsafe {
+            Ok(TokenizedHash {
+                v: parameterized_hash[v].parse().unwrap_unchecked(),
+                memory_kib: parameterized_hash[m].parse().unwrap_unchecked(),
+                iterations: parameterized_hash[t].parse().unwrap_unchecked(),
+                lanes: parameterized_hash[p].parse().unwrap_unchecked(),
+                b64_salt: salt,
+                b64_hash: hash,
+            })
+        }
     }
 }
 
@@ -394,14 +405,14 @@ pub fn hash_auth_string(
     auth_string: &str,
     hash_params: &HashParams,
     hashing_key: &[u8; 32],
-) -> String {
+) -> Result<String, Argon2HasherError> {
     let mut salt = Vec::with_capacity(hash_params.salt_len);
     unsafe { salt.set_len(hash_params.salt_len) };
 
     salt.try_fill(&mut OsRng)
         .expect("Failed to obtain random bytes");
 
-    hash_argon2id(
+    Ok(hash_argon2id(
         auth_string,
         hashing_key,
         &salt[..],
@@ -409,8 +420,8 @@ pub fn hash_auth_string(
         hash_params.hash_iterations,
         hash_params.hash_mem_size_kib,
         hash_params.hash_lanes,
-    )
-    .into_hash_string()
+    )?
+    .into_hash_string())
 }
 
 #[inline]
@@ -426,25 +437,46 @@ pub fn hash_argon2id(
     iterations: u32,
     memory_kib: u32,
     lanes: u32,
-) -> BinaryHash {
-    let mut hash_buffer = Vec::with_capacity(hash_len.try_into().expect("Invalid hash length"));
-    unsafe { hash_buffer.set_len(hash_len.try_into().unwrap_unchecked()) };
+) -> Result<BinaryHash, Argon2HasherError> {
+    let hash_len_usize = match usize::try_from(hash_len) {
+        Ok(l) => l,
+        Err(_) => return Err(Argon2HasherError::InvalidParameter("hash_len is too big")),
+    };
 
+    let mut hash_buffer = Vec::with_capacity(hash_len_usize);
+    unsafe {
+        hash_buffer.set_len(hash_len_usize);
+    }
+
+    // Some buffers here are cast to *mut to pass to C. C will not modify these buffers
+    // so this is safe
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),
-        outlen: hash_buffer
-            .len()
-            .try_into()
-            .expect("Auth string hash is too long"),
+        // hash_len was originally converted from a u32 to a usize, so this is safe
+        outlen: unsafe { hash_buffer.len().try_into().unwrap_unchecked() },
         pwd: auth_string.as_bytes() as *const _ as *mut _,
-        pwdlen: auth_string
-            .len()
-            .try_into()
-            .expect("Auth string is too long"),
+        pwdlen: match auth_string.len().try_into() {
+            Ok(l) => l,
+            Err(_) => {
+                return Err(Argon2HasherError::InvalidParameter(
+                    "Auth string is too long",
+                ))
+            }
+        },
         salt: salt.as_ptr() as *mut _,
-        saltlen: salt.len().try_into().expect("Auth string salt is too long"),
+        saltlen: match salt.len().try_into() {
+            Ok(l) => l,
+            Err(_) => return Err(Argon2HasherError::InvalidParameter("Salt is too long")),
+        },
         secret: key.as_ptr() as *mut _,
-        secretlen: key.len().try_into().expect("Key is too long"),
+        secretlen: match key.len().try_into() {
+            Ok(l) => l,
+            Err(_) => {
+                return Err(Argon2HasherError::InvalidParameter(
+                    "Secret hashing key is too long",
+                ))
+            }
+        },
         ad: std::ptr::null_mut(),
         adlen: 0,
         t_cost: iterations,
@@ -460,46 +492,58 @@ pub fn hash_argon2id(
     let result = unsafe { argon2id_ctx(&mut ctx as *mut Argon2_Context) };
 
     if result != Argon2_ErrorCodes_ARGON2_OK {
-        let err_msg = format!("Failed to hash auth string: {}", unsafe {
+        let err_msg = String::from(unsafe {
             std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
         });
-        error!("{}", err_msg);
-        panic!("{}", err_msg);
+
+        return Err(Argon2HasherError::LibraryError(err_msg));
     }
 
-    BinaryHash {
+    Ok(BinaryHash {
         v: 19,
         memory_kib,
         iterations,
         lanes,
         salt: Vec::from(salt),
         hash: hash_buffer,
-    }
+    })
 }
 
 pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8; 32]) -> bool {
     let tokenized_hash = match TokenizedHash::from_str(hash) {
         Ok(h) => h,
-        Err(_) => {
-            error!("Hash passed to verifier was invalid");
-            return false;
-        }
+        Err(_) => return false,
     };
 
-    let decoded_salt = base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD)
-        .expect("Failed to decode salt");
-    let decoded_hash = base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD)
-        .expect("Failed to decode hash");
+    let decoded_salt = match base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD)
+    {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
 
-    let hashed_auth_string = hash_argon2id(
+    let decoded_hash = match base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD)
+    {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+
+    let decoded_hash_len = match u32::try_from(decoded_hash.len()) {
+        Ok(l) => l,
+        Err(_) => return false,
+    };
+
+    let hashed_auth_string = match hash_argon2id(
         auth_string,
         key,
         &decoded_salt[..],
-        decoded_hash.len().try_into().expect("Hash is too long"),
+        decoded_hash_len,
         tokenized_hash.iterations,
         tokenized_hash.memory_kib,
         tokenized_hash.lanes,
-    );
+    ) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
 
     if hashed_auth_string.v != tokenized_hash.v {
         return false;
@@ -706,7 +750,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_auth_string(auth_string, &hash_params, &[1u8; 32]);
+        let hash = hash_auth_string(auth_string, &hash_params, &[1u8; 32]).unwrap();
 
         assert!(!hash.contains(auth_string));
     }
@@ -723,7 +767,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
 
         assert!(verify_hash(auth_string, &hash, &[0u8; 32],));
     }
@@ -740,7 +784,7 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
 
         assert!(!verify_hash("@pa$$20rd-Test", &hash, &[0u8; 32],));
     }
@@ -757,8 +801,8 @@ mod tests {
             hash_lanes: 2,
         };
 
-        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]);
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
 
-        assert!(!verify_hash(auth_string, &hash, &[1u8; 32],));
+        assert!(!verify_hash(auth_string, &hash, &[1u8; 32]));
     }
 }
