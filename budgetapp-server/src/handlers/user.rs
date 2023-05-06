@@ -1,14 +1,19 @@
 use budgetapp_utils::db::{DaoError, DbThreadPool};
 use budgetapp_utils::request_io::{
-    InputEditUserKeystore, InputEditUserPrefs, InputEmail, InputNewAuthStringAndEncryptedPassword,
-    InputUser, OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
+    InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
+    InputNewAuthStringAndEncryptedPassword, InputUser, OutputIsUserListedForDeletion,
+    OutputPublicKey, OutputVerificationEmailSent,
 };
+use budgetapp_utils::schema::user_preferences::user_id;
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
+use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
 use budgetapp_utils::token::{Token, TokenError};
 use budgetapp_utils::validators::{self, Validity};
 use budgetapp_utils::{argon2_hasher, db};
 
 use actix_web::{web, HttpResponse};
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crate::env;
@@ -256,7 +261,7 @@ pub async fn verify_creation(
              <h2>Happy budgeting!</h2> \
              </body> \
              </html>",
-        claims.eml,
+        claims.user_email,
     )))
 }
 
@@ -265,12 +270,10 @@ pub async fn edit_preferences(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_prefs: web::Json<InputEditUserPrefs>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
-            user_access_token.claims.user_id,
+            user_access_token.0.user_id,
             &new_prefs.encrypted_blob,
             &new_prefs.expected_previous_data_hash,
         )
@@ -306,8 +309,6 @@ pub async fn edit_keystore(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_keystore: web::Json<InputEditUserKeystore>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
@@ -347,14 +348,13 @@ pub async fn change_password(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
 ) -> Result<HttpResponse, ServerError> {
-    let user_access_token = user_access_token.0?;
-
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
+    let user_id = user_access_token.0.user_id;
 
     let does_current_auth_match = web::block(move || {
         let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_access_token.claims.eml,
+            &user_access_token.0.user_email,
             env::CONF.security.authorization_attempts_reset_time,
         ) {
             Ok(a) => a,
@@ -405,7 +405,7 @@ pub async fn change_password(
 
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
-            user_access_token.user_id,
+            user_id,
             &new_password_data.0.new_auth_string,
             &new_password_data.0.auth_string_salt,
             new_password_data.0.auth_string_iters,
@@ -422,16 +422,99 @@ pub async fn change_password(
 
 // TODO: Initiate reset password by sending an email with a code ("forgot password")
 // TODO: This endpoint should be debounced and not send more than one email to a given address
-//       per minutex
+//       per minute
 
 // TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
+    db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
+    budget_access_tokens: web::Data<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, ServerError> {
+    const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
+
+    let mut tokens = HashMap::new();
+    let mut key_ids = Vec::new();
+    let mut budget_ids = Vec::new();
+
+    for token in budget_access_tokens.budget_access_tokens.iter() {
+        let token = match BudgetAccessToken::from_str(token) {
+            Ok(t) => t,
+            Err(_) => {
+                return Err(ServerError::InvalidFormat(Some(String::from(
+                    INVALID_ID_MSG,
+                ))))
+            }
+        };
+
+        key_ids.push(token.key_id());
+        budget_ids.push(token.budget_id());
+        tokens.insert(token.key_id(), token);
+    }
+
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let public_keys =
+        match web::block(move || budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids))
+            .await?
+        {
+            Ok(b) => b,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+                }
+                _ => {
+                    log::error!("{}", e);
+                    return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                        "Failed to get budget data corresponding to budget access token",
+                    ))));
+                }
+            },
+        };
+
+    if public_keys.len() != tokens.len() {
+        return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+    }
+
+    for key in public_keys {
+        let token = match tokens.get(&key.key_id) {
+            Some(t) => t,
+            None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
+        };
+
+        if !token.verify(key.public_key.as_bytes()) {
+            return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+        }
+    }
+
+    let deletion_token_expiration =
+        SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime;
+    let delete_me_time = deletion_token_expiration + env::CONF.time_delays.user_deletion_delay_days;
+
+    let user_id = user_access_token.0.user_id;
+
+    match web::block(move || {
+        let mut user_dao = db::budget::Dao::new(&db_thread_pool_ref);
+        user_dao.save_user_deletion_budget_keys(&key_ids, user_id, delete_me_time)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+            }
+            _ => {
+                log::error!("{}", e);
+                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                    "Failed to save user deletion budget keys",
+                ))));
+            }
+        },
+    }
+
     let mut user_deletion_token = AuthToken::new(
         user_access_token.0.user_id,
         &user_access_token.0.user_email,
-        SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+        deletion_token_expiration,
         AuthTokenType::UserDeletion,
     );
 
@@ -513,7 +596,9 @@ pub async fn delete(
                  </html>",
             ));
         }
-        Err(TokenError::TokenExpired) | Err(TokenError::WrongTokenType) => {
+        Err(TokenError::TokenExpired)
+        | Err(TokenError::WrongTokenType)
+        | Err(TokenError::TokenInvalid) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
                 "<!DOCTYPE html> \
                  <html> \

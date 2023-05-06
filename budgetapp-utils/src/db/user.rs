@@ -275,6 +275,28 @@ impl Dao {
         Ok(())
     }
 
+    pub fn save_user_deletion_budget_keys(
+        &mut self,
+        budget_access_key_ids: &[Uuid],
+        user_id: Uuid,
+        delete_me_time: SystemTime,
+    ) -> Result<(), DaoError> {
+        let deletion_request_budget_keys = budget_access_key_ids
+            .iter()
+            .map(|key_id| NewUserDeletionRequestBudgetKey {
+                key_id: *key_id,
+                user_id,
+                delete_me_time,
+            })
+            .collect::<Vec<_>>();
+
+        dsl::insert_into(user_deletion_request_budget_keys)
+            .values(&deletion_request_budget_keys)
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
     pub fn initiate_user_deletion(
         &mut self,
         user_id: Uuid,
@@ -288,29 +310,9 @@ impl Dao {
             ready_for_deletion_time: SystemTime::now() + time_until_deletion,
         };
 
-        let mut request_budget_keys = Vec::new();
-        for key_id in budget_access_key_ids.iter() {
-            request_budget_keys.push(NewUserDeletionRequestBudgetKey {
-                key_id: *key_id,
-                deletion_request_id: new_request.id,
-            });
-        }
-
-        let mut db_connection = self.db_thread_pool.get()?;
-
-        db_connection
-            .build_transaction()
-            .run::<_, diesel::result::Error, _>(|conn| {
-                dsl::insert_into(user_deletion_requests)
-                    .values(&new_request)
-                    .execute(conn)?;
-
-                dsl::insert_into(user_deletion_request_budget_keys)
-                    .values(&request_budget_keys)
-                    .execute(conn)?;
-
-                Ok(())
-            })?;
+        dsl::insert_into(user_deletion_requests)
+            .values(&new_request)
+            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -334,8 +336,8 @@ impl Dao {
                 let budget_key_ids = user_deletion_request_budget_keys
                     .select(user_deletion_request_budget_key_fields::key_id)
                     .filter(
-                        user_deletion_request_budget_key_fields::deletion_request_id
-                            .eq(user_deletion_request.id),
+                        user_deletion_request_budget_key_fields::user_id
+                            .eq(user_deletion_request.user_id),
                     )
                     .load::<Uuid>(conn)?;
 

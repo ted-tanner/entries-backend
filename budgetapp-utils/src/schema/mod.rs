@@ -97,7 +97,8 @@ diesel::table! {
 diesel::table! {
     user_deletion_request_budget_keys (key_id) {
         key_id -> Uuid,
-        deletion_request_id -> Uuid,
+        user_id -> Uuid,
+        delete_me_time -> Timestamp,
     }
 }
 
@@ -158,8 +159,6 @@ diesel::table! {
         last_token_refresh_request_app_version -> Varchar,
     }
 }
-
-diesel::joinable!(user_deletion_request_budget_keys -> user_deletion_requests (deletion_request_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     authorization_attempts,

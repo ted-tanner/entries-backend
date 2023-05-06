@@ -149,10 +149,17 @@ CREATE INDEX ON user_deletion_requests USING HASH (user_id);
 
 CREATE TABLE user_deletion_request_budget_keys (
     key_id UUID PRIMARY KEY,
-    deletion_request_id UUID NOT NULL
+    -- Using a users table key rather than user_deletion_requests table key so that this table
+    -- may be queried using data available in an auth token, like the user_id. This table can
+    -- be related to the user_deletion_requests table indirectly by joining on user_id for
+    -- both tables.
+    user_id UUID NOT NULL,
+    -- This record should be deleted after this time
+    delete_me_time TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON user_deletion_request_budget_keys USING HASH (deletion_request_id);
+CREATE INDEX ON user_deletion_request_budget_keys USING HASH (user_id);
+CREATE INDEX ON user_deletion_request_budget_keys USING BTREE (delete_me_time);
 
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
@@ -201,7 +208,7 @@ ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES 
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE signin_nonces ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT request_key FOREIGN KEY(deletion_request_id) REFERENCES user_deletion_requests(id) ON DELETE CASCADE;
+ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;
 ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

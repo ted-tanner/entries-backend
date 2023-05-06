@@ -81,9 +81,8 @@ pub async fn get_multiple(
     let budget_ids = Arc::new(budget_ids);
     let budget_ids_ref = Arc::clone(&budget_ids);
 
-    let db_thread_pool_ref = db_thread_pool.clone();
+    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool_ref);
         budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
     })
     .await?

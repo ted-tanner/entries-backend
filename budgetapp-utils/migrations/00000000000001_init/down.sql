@@ -9,7 +9,7 @@ ALTER TABLE entries DROP CONSTRAINT budget_key;
 ALTER TABLE otp_attempts DROP CONSTRAINT user_key;
 ALTER TABLE signin_nonces DROP CONSTRAINT user_key;
 ALTER TABLE user_deletion_requests DROP CONSTRAINT user_key;
-ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT request_key;
+ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT user_key;
 ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT key_key;
 ALTER TABLE user_keystores DROP CONSTRAINT user_key;
 ALTER TABLE user_preferences DROP CONSTRAINT user_key;
