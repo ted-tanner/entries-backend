@@ -426,19 +426,24 @@ pub fn hash_argon2id(
     memory_kib: u32,
     lanes: u32,
 ) -> BinaryHash {
-    let mut hash_buffer =
-        Vec::with_capacity(usize::try_from(hash_len).expect("Invalid hash length"));
+    let mut hash_buffer = Vec::with_capacity(hash_len.try_into().expect("Invalid hash length"));
     unsafe { hash_buffer.set_len(hash_len.try_into().unwrap_unchecked()) };
 
     let mut ctx = Argon2_Context {
         out: hash_buffer.as_mut_ptr(),
-        outlen: u32::try_from(hash_buffer.len()).expect("Auth string hash is too long"),
+        outlen: hash_buffer
+            .len()
+            .try_into()
+            .expect("Auth string hash is too long"),
         pwd: auth_string.as_bytes() as *const _ as *mut _,
-        pwdlen: u32::try_from(auth_string.len()).expect("Auth string is too long"),
+        pwdlen: auth_string
+            .len()
+            .try_into()
+            .expect("Auth string is too long"),
         salt: salt.as_ptr() as *mut _,
-        saltlen: u32::try_from(salt.len()).expect("Auth string salt is too long"),
+        saltlen: salt.len().try_into().expect("Auth string salt is too long"),
         secret: key.as_ptr() as *mut _,
-        secretlen: u32::try_from(key.len()).expect("Key is too long"),
+        secretlen: key.len().try_into().expect("Key is too long"),
         ad: std::ptr::null_mut(),
         adlen: 0,
         t_cost: iterations,
