@@ -72,7 +72,7 @@ mod tests {
     use budgetapp_utils::request_io::InputUser;
     use budgetapp_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
     use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
-    use budgetapp_utils::token::UserToken;
+    use budgetapp_utils::token::Token;
 
     use aes_gcm::{
         aead::{KeyInit, OsRng},
@@ -138,7 +138,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
-            public_key: Vec::new(),
+            public_key: String::new(),
 
             preferences_encrypted: Vec::new(),
             user_keystore_encrypted: Vec::new(),
@@ -170,16 +170,25 @@ mod tests {
 
         unexpired_token.encrypt(&cipher);
 
+        let pretend_expired_token = pretend_expired_token.sign_and_encode(&[0; 64]);
+        let pretend_expired_token = AuthToken::from_str(&pretend_expired_token).unwrap();
+        let pretend_expired_token_parts = pretend_expired_token.parts();
+        let pretend_expired_token_signature =
+            &pretend_expired_token_parts.as_ref().unwrap().signature;
+
         let expired_blacklisted = NewBlacklistedToken {
-            token: &pretend_expired_token.sign_and_encode(&[0; 64]),
-            user_id,
-            token_expiration_time: SystemTime::now() - Duration::from_secs(3600),
+            token_signature: pretend_expired_token_signature,
+            token_expiration: SystemTime::now() - Duration::from_secs(3600),
         };
 
+        let unexpired_token = unexpired_token.sign_and_encode(&[0; 64]);
+        let unexpired_token = AuthToken::from_str(&unexpired_token).unwrap();
+        let unexpired_token_parts = unexpired_token.parts();
+        let unexpired_token_signature = &unexpired_token_parts.as_ref().unwrap().signature;
+
         let unexpired_blacklisted = NewBlacklistedToken {
-            token: &unexpired_token.sign_and_encode(&[0; 64]),
-            user_id,
-            token_expiration_time: SystemTime::now() + Duration::from_secs(3600),
+            token_signature: unexpired_token_signature,
+            token_expiration: SystemTime::now() + Duration::from_secs(3600),
         };
 
         let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
@@ -199,16 +208,10 @@ mod tests {
         job.run_handler_func().await.unwrap();
 
         assert!(!dao
-            .check_is_token_on_blacklist_and_blacklist(
-                &pretend_expired_token.sign_and_encode(&[0; 64]),
-                pretend_expired_token.claims(),
-            )
+            .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0,)
             .unwrap());
         assert!(dao
-            .check_is_token_on_blacklist_and_blacklist(
-                &unexpired_token.sign_and_encode(&[0; 64]),
-                unexpired_token.claims()
-            )
+            .check_is_token_on_blacklist_and_blacklist(unexpired_token_signature, 0)
             .unwrap());
     }
 }
