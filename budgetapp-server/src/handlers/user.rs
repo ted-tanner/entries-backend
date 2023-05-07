@@ -21,15 +21,17 @@ use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
 use crate::middleware::{FromHeader, FromQuery};
 
-// TODO: Throttle this
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, ServerError> {
-    let public_key = match web::block(move || {
+    let public_key_and_attempts = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_public_key(&user_email.email)
+        user_dao.get_user_public_key_and_mark_attempt(
+            &user_email.email,
+            env::CONF.security.user_lookup_attempts_reset_time,
+        )
     })
     .await?
     {
@@ -37,19 +39,29 @@ pub async fn lookup_user_public_key(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(Some(String::from(
-                    "No user with given ",
+                    "No user with given email address",
                 ))));
             }
             _ => {
                 log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to update user keystore",
+                    "Failed to get user;s public key",
                 ))));
             }
         },
     };
 
-    Ok(HttpResponse::Ok().json(OutputPublicKey { public_key }))
+    if public_key_and_attempts.attempt_count > env::CONF.security.user_lookup_max_attempts
+        && public_key_and_attempts.expiration_time >= SystemTime::now()
+    {
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "Too many login attempts. Try again in a few minutes.",
+        ))));
+    }
+
+    Ok(HttpResponse::Ok().json(OutputPublicKey {
+        public_key: public_key_and_attempts.public_key,
+    }))
 }
 
 pub async fn create(

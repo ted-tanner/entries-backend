@@ -9,6 +9,7 @@ pub struct Conf {
     pub clear_authorization_attempts_job: ClearAuthorizationAttemptsJobConf,
     pub clear_otp_attempts_job: ClearOtpAttemptsJobConf,
     pub clear_unverified_users_job: ClearUnverifiedUsersJobConf,
+    pub clear_user_lookup_attempts_job: ClearUserLookupAttemtpsJobConf,
     pub delete_users_job: DeleteUsersJobConf,
     pub unblacklist_expired_tokens_job: UnblacklistExpiredTokensJobConf,
 }
@@ -42,6 +43,12 @@ pub struct ClearOtpAttemptsJobConf {
 pub struct ClearUnverifiedUsersJobConf {
     pub job_frequency_secs: u64,
     pub max_unverified_user_age_days: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClearUserLookupAttemtpsJobConf {
+    pub job_frequency_secs: u64,
+    pub attempts_lifetime_mins: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

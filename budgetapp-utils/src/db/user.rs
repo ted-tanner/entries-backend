@@ -10,6 +10,7 @@ use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
+use crate::models::user_lookup_attempts::NewUserLookupAttempts;
 use crate::models::user_preferences::NewUserPreferences;
 use crate::models::user_security_data::NewUserSecurityData;
 
@@ -24,12 +25,20 @@ use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
+use crate::schema::user_lookup_attempts as user_lookup_attempts_fields;
+use crate::schema::user_lookup_attempts::dsl::user_lookup_attempts;
 use crate::schema::user_preferences as user_preferences_fields;
 use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
+
+pub struct UserPublicKeyAndLookupAttempts {
+    pub public_key: String,
+    pub attempt_count: i16,
+    pub expiration_time: SystemTime,
+}
 
 pub struct Dao {
     db_thread_pool: DbThreadPool,
@@ -42,11 +51,62 @@ impl Dao {
         }
     }
 
-    pub fn get_user_public_key(&mut self, user_email: &str) -> Result<String, DaoError> {
-        Ok(users
-            .select(user_fields::public_key)
-            .filter(user_fields::email.eq(user_email))
-            .first::<String>(&mut self.db_thread_pool.get()?)?)
+    pub fn get_user_public_key_and_mark_attempt(
+        &mut self,
+        user_email: &str,
+        attempts_lifetime: Duration,
+    ) -> Result<UserPublicKeyAndLookupAttempts, DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        let key_and_attempts = db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let new_attempt = NewUserLookupAttempts {
+                    user_email,
+                    attempt_count: 1,
+                    expiration_time: SystemTime::now() + attempts_lifetime,
+                };
+
+                let (attempt_count, expiration_time) = dsl::insert_into(user_lookup_attempts)
+                    .values(&new_attempt)
+                    .on_conflict(user_lookup_attempts_fields::user_email)
+                    .do_update()
+                    .set(
+                        user_lookup_attempts_fields::attempt_count
+                            .eq(user_lookup_attempts_fields::attempt_count + 1),
+                    )
+                    .returning((
+                        user_lookup_attempts_fields::attempt_count,
+                        user_lookup_attempts_fields::expiration_time,
+                    ))
+                    .get_result::<(i16, SystemTime)>(conn)?;
+
+                let public_key = users
+                    .select(user_fields::public_key)
+                    .filter(user_fields::email.eq(user_email))
+                    .first::<String>(conn)?;
+
+                Ok(UserPublicKeyAndLookupAttempts {
+                    public_key,
+                    attempt_count,
+                    expiration_time,
+                })
+            })?;
+
+        Ok(key_and_attempts)
+    }
+
+    pub fn clear_user_lookup_attempt_count(
+        &mut self,
+        attempts_lifetime: Duration,
+    ) -> Result<usize, DaoError> {
+        let expiration_cut_off = SystemTime::now() - attempts_lifetime;
+
+        Ok(diesel::delete(
+            user_lookup_attempts
+                .filter(user_lookup_attempts_fields::expiration_time.lt(expiration_cut_off)),
+        )
+        .execute(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(

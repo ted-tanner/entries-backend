@@ -122,6 +122,12 @@ CREATE TABLE signin_nonces (
     nonce INT NOT NULL
 );
 
+CREATE TABLE user_lookup_attempts (
+    user_email VARCHAR(255) PRIMARY KEY,
+    attempt_count SMALLINT NOT NULL,
+    expiration_time TIMESTAMP NOT NULL
+);
+
 CREATE TABLE users (
     id UUID PRIMARY KEY,
 
@@ -207,6 +213,7 @@ ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENC
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE signin_nonces ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
+ALTER TABLE user_lookup_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;

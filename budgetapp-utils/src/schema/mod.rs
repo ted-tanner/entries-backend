@@ -120,6 +120,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_lookup_attempts (user_email) {
+        user_email -> Varchar,
+        attempt_count -> Int2,
+        expiration_time -> Timestamp,
+    }
+}
+
+diesel::table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -174,6 +182,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_deletion_request_budget_keys,
     user_deletion_requests,
     user_keystores,
+    user_lookup_attempts,
     user_preferences,
     user_security_data,
     users,

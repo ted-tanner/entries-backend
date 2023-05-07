@@ -494,9 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Throttle `lookup_user_public_key` endpoint by user ID (obtained with access token)
-* Finish budget token stuff in budget handlers (also in `init_delete()` in user handlers)
-  - Currently at `accept_invitation`
+* Delete `user_deletion_request_budget_keys` regularly
 * `delete_invitation()` in `budget.rs<db>` doesn't delete the
 * Problem: The `budget_info_encrypted` field of the `budget_share_invites` table should contain the `budget_share_key`, but the sender/inviter won't have that `key_id` yet to encrypt. Perhaps there should be a `budget_share_key_id` field and the server should encrypt the ID using the recipient's public key.
 * When multiple copies of a token from a string must be made, wrap the token in an `Arc` instead
@@ -570,6 +568,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Use a lot more left joins to reduce # of queries
 * Perhaps use `typed_html` crate for HTML in user verification and deletion?
 * When updating data in DAOs, combine checking the hash and updating the data into one query.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm

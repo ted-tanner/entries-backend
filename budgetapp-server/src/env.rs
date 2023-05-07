@@ -83,6 +83,8 @@ pub struct Security {
     pub otp_attempts_reset_time: Duration,
     pub authorization_max_attempts: i16,
     pub authorization_attempts_reset_time: Duration,
+    pub user_lookup_max_attempts: i16,
+    pub user_lookup_attempts_reset_time: Duration,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -91,6 +93,8 @@ pub struct RawSecurity {
     pub otp_attempts_reset_mins: u64,
     pub authorization_max_attempts: i16,
     pub authorization_attempts_reset_mins: u64,
+    pub user_lookup_max_attempts: i16,
+    pub user_lookup_attempts_reset_mins: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -264,6 +268,10 @@ fn build_conf() -> Result<Conf, String> {
             authorization_max_attempts: raw_conf.security.authorization_max_attempts,
             authorization_attempts_reset_time: Duration::from_secs(
                 raw_conf.security.authorization_attempts_reset_mins * 60,
+            ),
+            user_lookup_max_attempts: raw_conf.security.user_lookup_max_attempts,
+            user_lookup_attempts_reset_time: Duration::from_secs(
+                raw_conf.security.user_lookup_attempts_reset_mins * 60,
             ),
         },
         time_delays: raw_conf.time_delays,

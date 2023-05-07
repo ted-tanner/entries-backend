@@ -11,8 +11,8 @@ mod jobs;
 mod runner;
 
 use jobs::{
-    ClearAuthorizationAttemptsJob, ClearOtpAttemptsJob, ClearUnverifiedUsersJob, DeleteUsersJob,
-    UnblacklistExpiredTokensJob,
+    ClearAuthorizationAttemptsJob, ClearOtpAttemptsJob, ClearUnverifiedUsersJob,
+    ClearUserLookupAttemptsJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
 };
 
 fn main() {
@@ -56,7 +56,11 @@ fn main() {
             let mut job_runner = env::runner::JOB_RUNNER.lock().await;
 
             job_runner.register(Box::new(ClearAuthorizationAttemptsJob::new(
-                Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
+                Duration::from_secs(
+                    env::CONF
+                        .clear_authorization_attempts_job
+                        .job_frequency_secs,
+                ),
                 Duration::from_secs(
                     env::CONF
                         .clear_authorization_attempts_job
@@ -80,6 +84,17 @@ fn main() {
                         .max_unverified_user_age_days
                         * 24
                         * 60
+                        * 60,
+                ),
+                env::db::DB_THREAD_POOL.clone(),
+            )));
+
+            job_runner.register(Box::new(ClearUserLookupAttemptsJob::new(
+                Duration::from_secs(env::CONF.clear_user_lookup_attempts_job.job_frequency_secs),
+                Duration::from_secs(
+                    env::CONF
+                        .clear_user_lookup_attempts_job
+                        .attempts_lifetime_mins
                         * 60,
                 ),
                 env::db::DB_THREAD_POOL.clone(),

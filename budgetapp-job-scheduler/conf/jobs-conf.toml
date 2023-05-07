@@ -10,16 +10,20 @@ worker_threads = 2
 max_blocking_threads = 32
 
 [clear_authorization_attempts_job]
-job_frequency_secs = 120
+job_frequency_secs = 90
 attempts_lifetime_mins = 15
 
 [clear_otp_attempts_job]
-job_frequency_secs = 120 
+job_frequency_secs = 90 
 attempts_lifetime_mins = 15
 
 [clear_unverified_users_job]
 job_frequency_secs = 86400
 max_unverified_user_age_days = 7
+
+[clear_user_lookup_attempts_job]
+job_frequency_secs = 40
+attempts_lifetime_mins = 5
 
 [delete_users_job]
 job_frequency_secs = 86400

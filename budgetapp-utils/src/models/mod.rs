@@ -12,5 +12,6 @@ pub mod user;
 pub mod user_deletion_request;
 pub mod user_deletion_request_budget_key;
 pub mod user_keystore;
+pub mod user_lookup_attempts;
 pub mod user_preferences;
 pub mod user_security_data;

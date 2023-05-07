@@ -8,11 +8,11 @@ use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizat
 use crate::models::blacklisted_token::NewBlacklistedToken;
 use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
 use crate::request_io::OutputSigninNonceData;
-use crate::schema::authorization_attempts as authorization_attempt_fields;
+use crate::schema::authorization_attempts as authorization_attempts_fields;
 use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-use crate::schema::otp_attempts as otp_attempt_fields;
+use crate::schema::otp_attempts as otp_attempts_fields;
 use crate::schema::otp_attempts::dsl::otp_attempts;
 use crate::schema::signin_nonces as signin_nonce_fields;
 use crate::schema::signin_nonces::dsl::signin_nonces;
@@ -89,11 +89,11 @@ impl Dao {
 
                 let attempts = dsl::insert_into(authorization_attempts)
                     .values(&new_attempt)
-                    .on_conflict(authorization_attempt_fields::user_id)
+                    .on_conflict(authorization_attempts_fields::user_id)
                     .do_update()
                     .set(
-                        authorization_attempt_fields::attempt_count
-                            .eq(authorization_attempt_fields::attempt_count + 1),
+                        authorization_attempts_fields::attempt_count
+                            .eq(authorization_attempts_fields::attempt_count + 1),
                     )
                     .get_result::<AuthorizationAttempts>(conn)?;
 
@@ -173,7 +173,7 @@ impl Dao {
         let expiration_cut_off = SystemTime::now() - attempts_lifetime;
 
         Ok(diesel::delete(
-            otp_attempts.filter(otp_attempt_fields::expiration_time.lt(expiration_cut_off)),
+            otp_attempts.filter(otp_attempts_fields::expiration_time.lt(expiration_cut_off)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }
@@ -186,7 +186,7 @@ impl Dao {
 
         Ok(diesel::delete(
             authorization_attempts
-                .filter(authorization_attempt_fields::expiration_time.lt(expiration_cut_off)),
+                .filter(authorization_attempts_fields::expiration_time.lt(expiration_cut_off)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }
@@ -206,9 +206,9 @@ impl Dao {
 
         Ok(dsl::insert_into(otp_attempts)
             .values(&new_attempt)
-            .on_conflict(otp_attempt_fields::user_id)
+            .on_conflict(otp_attempts_fields::user_id)
             .do_update()
-            .set(otp_attempt_fields::attempt_count.eq(otp_attempt_fields::attempt_count + 1))
+            .set(otp_attempts_fields::attempt_count.eq(otp_attempts_fields::attempt_count + 1))
             .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 
