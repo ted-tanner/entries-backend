@@ -9,6 +9,7 @@ pub mod error {
     use actix_web::http::{header, StatusCode};
     use actix_web::{HttpResponse, HttpResponseBuilder};
     use std::fmt;
+    use tokio::sync::oneshot;
 
     #[allow(dead_code)]
     #[derive(Debug)]
@@ -68,6 +69,12 @@ pub mod error {
     impl From<actix_web::error::BlockingError> for ServerError {
         fn from(_result: actix_web::error::BlockingError) -> Self {
             ServerError::InternalError(Some(String::from("Actix thread pool failure")))
+        }
+    }
+
+    impl From<oneshot::error::RecvError> for ServerError {
+        fn from(_result: oneshot::error::RecvError) -> Self {
+            ServerError::InternalError(Some(String::from("Rayon thread pool failure")))
         }
     }
 

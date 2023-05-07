@@ -494,6 +494,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Use Rayon for long-running CPU-bound operations such as password hashing. See https://ryhl.io/blog/async-what-is-blocking/
 * Delete `user_deletion_request_budget_keys` regularly
 * `delete_invitation()` in `budget.rs<db>` doesn't delete the
 * Problem: The `budget_info_encrypted` field of the `budget_share_invites` table should contain the `budget_share_key`, but the sender/inviter won't have that `key_id` yet to encrypt. Perhaps there should be a `budget_share_key_id` field and the server should encrypt the ID using the recipient's public key.

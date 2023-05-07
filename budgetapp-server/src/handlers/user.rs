@@ -14,6 +14,7 @@ use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::sync::oneshot;
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -77,8 +78,10 @@ pub async fn create(
     let user_data = Arc::new(user_data);
     let user_data_ref = Arc::clone(&user_data);
 
-    let auth_string_hash = match web::block(move || {
-        argon2_hasher::hash_auth_string(
+    let (sender, receiver) = oneshot::channel();
+
+    rayon::spawn(move || {
+        let hash = argon2_hasher::hash_auth_string(
             &user_data_ref.auth_string,
             &argon2_hasher::HashParams {
                 salt_len: env::CONF.hashing.salt_length_bytes,
@@ -88,10 +91,12 @@ pub async fn create(
                 hash_lanes: env::CONF.hashing.hash_lanes,
             },
             &env::CONF.keys.hashing_key,
-        )
-    })
-    .await?
-    {
+        );
+
+        sender.send(hash).expect("Sending to channel failed");
+    });
+
+    let auth_string_hash = match receiver.await? {
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
@@ -375,37 +380,46 @@ pub async fn change_password(
     let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
 
-    let does_current_auth_match = web::block(move || {
-        let hash_and_attempts = match auth_dao.get_user_auth_string_hash_and_mark_attempt(
+    let hash_and_attempts = match web::block(move || {
+        auth_dao.get_user_auth_string_hash_and_mark_attempt(
             &user_access_token.0.user_email,
             env::CONF.security.authorization_attempts_reset_time,
-        ) {
-            Ok(a) => a,
-            Err(e) => {
-                log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to check authorization attempt count",
-                ))));
-            }
-        };
-
-        if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
-            && hash_and_attempts.expiration_time >= SystemTime::now()
-        {
-            return Err(ServerError::AccessForbidden(Some(String::from(
-                "Too many login attempts. Try again in a few minutes.",
+        )
+    })
+    .await?
+    {
+        Ok(a) => a,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                "Failed to check authorization attempt count",
             ))));
         }
+    };
 
-        Ok(argon2_hasher::verify_hash(
+    if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
+        && hash_and_attempts.expiration_time >= SystemTime::now()
+    {
+        return Err(ServerError::AccessForbidden(Some(String::from(
+            "Too many login attempts. Try again in a few minutes.",
+        ))));
+    }
+
+    let (sender, receiver) = oneshot::channel();
+
+    rayon::spawn(move || {
+        let does_current_auth_match = argon2_hasher::verify_hash(
             &current_auth_string,
             &hash_and_attempts.auth_string_hash,
             &env::CONF.keys.hashing_key,
-        ))
-    })
-    .await??;
+        );
 
-    if !does_current_auth_match {
+        sender
+            .send(does_current_auth_match)
+            .expect("Sending to channel failed");
+    });
+
+    if !receiver.await? {
         return Err(ServerError::UserUnauthorized(Some(String::from(
             "Current auth string was incorrect",
         ))));

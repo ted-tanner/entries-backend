@@ -8,6 +8,7 @@ use budgetapp_utils::{argon2_hasher, db, otp, validators};
 use actix_web::{web, HttpResponse};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::oneshot;
 
 use crate::env;
 use crate::handlers::error::ServerError;
@@ -52,12 +53,12 @@ pub async fn sign_in(
     }
 
     let credentials = Arc::new(credentials);
-    let credentials_clone = Arc::clone(&credentials);
+    let credentials_ref = Arc::clone(&credentials);
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let nonce =
-        match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_clone.email))
+        match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_ref.email))
             .await?
         {
             Ok(a) => a,
@@ -78,12 +79,12 @@ pub async fn sign_in(
         ))));
     }
 
-    let credentials_clone = Arc::clone(&credentials);
+    let credentials_ref = Arc::clone(&credentials);
 
     let hash_and_attempts = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &credentials_clone.email,
+            &credentials_ref.email,
             env::CONF.security.authorization_attempts_reset_time,
         )
     })
@@ -116,61 +117,66 @@ pub async fn sign_in(
     }
 
     let user_id = hash_and_attempts.user_id;
-    let credentials_clone = Arc::clone(&credentials);
+    let credentials_ref = Arc::clone(&credentials);
 
-    let does_auth_string_match_hash = web::block(move || {
-        argon2_hasher::verify_hash(
-            &credentials_clone.auth_string,
+    let (sender, receiver) = oneshot::channel();
+
+    rayon::spawn(move || {
+        let does_auth_string_match_hash = argon2_hasher::verify_hash(
+            &credentials_ref.auth_string,
             &hash_and_attempts.auth_string_hash,
             &env::CONF.keys.hashing_key,
-        )
-    })
-    .await?;
-
-    if does_auth_string_match_hash {
-        let mut signin_token = AuthToken::new(
-            user_id,
-            &credentials.email,
-            SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
-            AuthTokenType::SignIn,
         );
 
-        signin_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        sender
+            .send(does_auth_string_match_hash)
+            .expect("Sending to channel failed");
+    });
 
-        let signin_token = SigninToken {
-            signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        };
-
-        let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
-
-        // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
-        // it is sent. The verification endpoint will check the code for the current time as well as a future
-        // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
-        // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
-        let otp = match otp::generate_otp(
-            hash_and_attempts.user_id,
-            end_time,
-            env::CONF.lifetimes.otp_lifetime,
-            &env::CONF.keys.otp_key,
-        ) {
-            Ok(p) => p,
-            Err(e) => {
-                log::error!("{e}");
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Failed to generate OTP",
-                ))));
-            }
-        };
-
-        // TODO: Don't log this, email it!
-        println!("\n\nOTP: {}\n\n", &otp);
-
-        Ok(HttpResponse::Ok().json(signin_token))
-    } else {
-        Err(ServerError::UserUnauthorized(Some(String::from(
+    if !receiver.await? {
+        return Err(ServerError::UserUnauthorized(Some(String::from(
             "Incorrect email or auth string",
-        ))))
+        ))));
     }
+
+    let mut signin_token = AuthToken::new(
+        user_id,
+        &credentials.email,
+        SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
+        AuthTokenType::SignIn,
+    );
+
+    signin_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+
+    let signin_token = SigninToken {
+        signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+    };
+
+    let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
+
+    // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
+    // it is sent. The verification endpoint will check the code for the current time as well as a future
+    // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
+    // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
+    let otp = match otp::generate_otp(
+        hash_and_attempts.user_id,
+        end_time,
+        env::CONF.lifetimes.otp_lifetime,
+        &env::CONF.keys.otp_key,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(ServerError::InternalError(Some(String::from(
+                "Failed to generate OTP",
+            ))));
+        }
+    };
+
+    // TODO: Don't log this, email it!
+    println!("\n\nOTP: {}\n\n", &otp);
+
+    Ok(HttpResponse::Ok().json(signin_token))
 }
 
 pub async fn verify_otp_for_signin(
