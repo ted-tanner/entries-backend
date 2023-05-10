@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum Validity {
     Valid,
-    Invalid(String),
+    Invalid(&'static str),
 }
 
 impl Validity {
@@ -16,40 +16,36 @@ impl Validity {
 
 pub fn validate_email_address(email: &str) -> Validity {
     if email.chars().count() > 320 {
-        return Validity::Invalid(String::from("Email address cannot contain a space."));
+        return Validity::Invalid("Email address cannot contain a space.");
     }
 
     for c in email.chars() {
         if c == ' ' || !c.is_ascii() {
-            return Validity::Invalid(String::from("Email address cannot contain a space."));
+            return Validity::Invalid("Email address cannot contain a space.");
         }
     }
 
     if email.contains("@.") {
-        return Validity::Invalid(String::from(
-            "Domain name in email address cannot begin with a period.",
-        ));
+        return Validity::Invalid("Domain name in email address cannot begin with a period.");
     }
 
     let email = match email.split_once('@') {
         Some(s) => s,
-        None => {
-            return Validity::Invalid(String::from("Email address must contain an at symbol (@)."))
-        }
+        None => return Validity::Invalid("Email address must contain an at symbol (@)."),
     };
 
     if email.0.is_empty() || email.1.len() < 3 {
-        return Validity::Invalid(String::from("Email username or domain name is to short."));
+        return Validity::Invalid("Email username or domain name is to short.");
     }
 
     if email.1.contains('@') || !email.1.contains('.') {
-        return Validity::Invalid(String::from(
+        return Validity::Invalid(
             "Email address must have only one at symbol (@) and the domain must contain a period.",
-        ));
+        );
     }
 
     if email.1.ends_with('.') {
-        return Validity::Invalid(String::from("Email address cannot end with a period."));
+        return Validity::Invalid("Email address cannot end with a period.");
     }
 
     Validity::Valid

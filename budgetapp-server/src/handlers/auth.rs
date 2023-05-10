@@ -29,13 +29,13 @@ pub async fn obtain_nonce_and_auth_string_salt(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(ServerError::NotFound(Some(String::from("User not found"))));
+            return Err(ServerError::NotFound("User not found"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(
                 "Failed to obtain nonce or authentication string data",
-            ))));
+            ));
         }
     };
 
@@ -49,7 +49,7 @@ pub async fn sign_in(
     credentials: web::Json<CredentialPair>,
 ) -> Result<HttpResponse, ServerError> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
-        return Err(ServerError::InvalidFormat(Some(msg)));
+        return Err(ServerError::InvalidFormat(msg));
     }
 
     let credentials = Arc::new(credentials);
@@ -63,20 +63,18 @@ pub async fn sign_in(
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(ServerError::NotFound(Some(String::from("User not found"))));
+                return Err(ServerError::NotFound("User not found"));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to obtain sign-in nonce",
-                ))));
+                ));
             }
         };
 
     if nonce != credentials.nonce {
-        return Err(ServerError::AccessForbidden(Some(String::from(
-            "Incorrect nonce",
-        ))));
+        return Err(ServerError::AccessForbidden("Incorrect nonce"));
     }
 
     let credentials_ref = Arc::clone(&credentials);
@@ -92,28 +90,28 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(ServerError::NotFound(Some(String::from("User not found"))));
+            return Err(ServerError::NotFound("User not found"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(
                 "Failed to check authorization attempt count",
-            ))));
+            ));
         }
     };
 
     if !hash_and_attempts.is_user_verified {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "User has not accepted verification email",
-        ))));
+        ));
     }
 
     if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "Too many login attempts. Try again in a few minutes.",
-        ))));
+        ));
     }
 
     let user_id = hash_and_attempts.user_id;
@@ -134,9 +132,9 @@ pub async fn sign_in(
     });
 
     if !receiver.await? {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
+        return Err(ServerError::UserUnauthorized(
             "Incorrect email or auth string",
-        ))));
+        ));
     }
 
     let mut signin_token = AuthToken::new(
@@ -167,9 +165,7 @@ pub async fn sign_in(
         Ok(p) => p,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to generate OTP",
-            ))));
+            return Err(ServerError::InternalError("Failed to generate OTP"));
         }
     };
 
@@ -187,11 +183,7 @@ pub async fn verify_otp_for_signin(
 ) -> Result<HttpResponse, ServerError> {
     let signin_token_signature = match signin_token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                "Invalid token",
-            ))))
-        }
+        None => return Err(ServerError::UserUnauthorized("Invalid token")),
     };
 
     let claims = signin_token.verify()?;
@@ -207,15 +199,11 @@ pub async fn verify_otp_for_signin(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                "Token has expired",
-            ))));
+            return Err(ServerError::UserUnauthorized("Token has expired"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError(Some(String::from(
-                "Error verifying token",
-            ))));
+            return Err(ServerError::InternalError("Error verifying token"));
         }
     };
 
@@ -232,18 +220,18 @@ pub async fn verify_otp_for_signin(
         Ok(a) => a,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(
                 "Failed to check OTP attempt count",
-            ))));
+            ));
         }
     };
 
     if attempts.attempt_count > env::CONF.security.otp_max_attempts
         && attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "Too many attempts. Try again in a few minutes.",
-        ))));
+        ));
     }
 
     let is_valid = match web::block(move || {
@@ -277,28 +265,20 @@ pub async fn verify_otp_for_signin(
         Ok(v) => v,
         Err(e) => match e {
             otp::OtpError::Unauthorized => {
-                return Err(ServerError::UserUnauthorized(Some(String::from(
-                    "Incorrect passcode",
-                ))))
+                return Err(ServerError::UserUnauthorized("Incorrect passcode"))
             }
             otp::OtpError::ImproperlyFormatted => {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "Invalid passcode",
-                ))))
+                return Err(ServerError::InputRejected("Invalid passcode"))
             }
             otp::OtpError::Error(_) => {
                 log::error!("{e}");
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Validating passcode failed",
-                ))));
+                return Err(ServerError::InternalError("Validating passcode failed"));
             }
         },
     };
 
     if !is_valid {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
-            "Incorrect passcode",
-        ))));
+        return Err(ServerError::UserUnauthorized("Incorrect passcode"));
     }
 
     let now = SystemTime::now();
@@ -340,11 +320,7 @@ pub async fn refresh_tokens(
 ) -> Result<HttpResponse, ServerError> {
     let token_signature = match token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                "Invalid token",
-            ))))
-        }
+        None => return Err(ServerError::UserUnauthorized("Invalid token")),
     };
 
     let token_claims = token.verify()?;
@@ -360,15 +336,11 @@ pub async fn refresh_tokens(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                "Token has expired",
-            ))));
+            return Err(ServerError::UserUnauthorized("Token has expired"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError(Some(String::from(
-                "Error verifying token",
-            ))));
+            return Err(ServerError::InternalError("Error verifying token"));
         }
     };
 
@@ -411,19 +383,15 @@ pub async fn logout(
 ) -> Result<HttpResponse, ServerError> {
     let refresh_token_signature = match refresh_token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => {
-            return Err(ServerError::UserUnauthorized(Some(String::from(
-                "Invalid token",
-            ))))
-        }
+        None => return Err(ServerError::UserUnauthorized("Invalid token")),
     };
 
     let refresh_token_claims = refresh_token.verify()?;
 
     if refresh_token_claims.user_id != user_access_token.0.user_id {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "Refresh token does not belong to user.",
-        ))));
+        ));
     }
 
     match web::block(move || {
@@ -437,15 +405,13 @@ pub async fn logout(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             _,
         ))) => {
-            return Err(ServerError::AccessForbidden(Some(String::from(
-                "Token already on blacklist",
-            ))));
+            return Err(ServerError::AccessForbidden("Token already on blacklist"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(
                 "Failed to blacklist token",
-            ))));
+            ));
         }
     }
 

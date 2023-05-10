@@ -39,15 +39,13 @@ pub async fn lookup_user_public_key(
         Ok(k) => k,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with given email address",
-                ))));
+                return Err(ServerError::NotFound("No user with given email address"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
-                    "Failed to get user;s public key",
-                ))));
+                return Err(ServerError::DatabaseTransactionError(
+                    "Failed to get user's public key",
+                ));
             }
         },
     };
@@ -55,9 +53,9 @@ pub async fn lookup_user_public_key(
     if public_key_and_attempts.attempt_count > env::CONF.security.user_lookup_max_attempts
         && public_key_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "Too many login attempts. Try again in a few minutes.",
-        ))));
+        ));
     }
 
     Ok(HttpResponse::Ok().json(OutputPublicKey {
@@ -71,7 +69,7 @@ pub async fn create(
     user_data: web::Json<InputUser>,
 ) -> Result<HttpResponse, ServerError> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
-        return Err(ServerError::InvalidFormat(Some(msg)));
+        return Err(ServerError::InvalidFormat(msg));
     }
 
     let email = user_data.email.clone();
@@ -100,9 +98,7 @@ pub async fn create(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError(Some(String::from(
-                "Failed to hash auth atring",
-            ))));
+            return Err(ServerError::InternalError("Failed to hash auth atring"));
         }
     };
 
@@ -118,15 +114,13 @@ pub async fn create(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                return Err(ServerError::AlreadyExists(Some(String::from(
+                return Err(ServerError::AlreadyExists(
                     "A user with the given email address already exists",
-                ))));
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::InternalError(Some(String::from(
-                    "Failed to create user",
-                ))));
+                return Err(ServerError::InternalError("Failed to create user"));
             }
         },
     };
@@ -311,20 +305,16 @@ pub async fn edit_preferences(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "Out of date hash",
-                ))));
+                return Err(ServerError::InputRejected("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with provided ID",
-                ))));
+                return Err(ServerError::NotFound("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to update user preferences",
-                ))));
+                ));
             }
         },
     };
@@ -350,20 +340,16 @@ pub async fn edit_keystore(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected(Some(String::from(
-                    "Out of date hash",
-                ))));
+                return Err(ServerError::InputRejected("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with provided ID",
-                ))));
+                return Err(ServerError::NotFound("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to update user keystore",
-                ))));
+                ));
             }
         },
     };
@@ -391,18 +377,18 @@ pub async fn change_password(
         Ok(a) => a,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(Some(String::from(
+            return Err(ServerError::DatabaseTransactionError(
                 "Failed to check authorization attempt count",
-            ))));
+            ));
         }
     };
 
     if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(Some(String::from(
+        return Err(ServerError::AccessForbidden(
             "Too many login attempts. Try again in a few minutes.",
-        ))));
+        ));
     }
 
     let (sender, receiver) = oneshot::channel();
@@ -420,9 +406,9 @@ pub async fn change_password(
     });
 
     if !receiver.await? {
-        return Err(ServerError::UserUnauthorized(Some(String::from(
+        return Err(ServerError::UserUnauthorized(
             "Current auth string was incorrect",
-        ))));
+        ));
     }
 
     web::block(move || {
@@ -453,7 +439,7 @@ pub async fn change_password(
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         log::error!("{e}");
-        ServerError::DatabaseTransactionError(Some(String::from("Failed to update password")))
+        ServerError::DatabaseTransactionError("Failed to update password")
     })
 }
 
@@ -476,11 +462,7 @@ pub async fn init_delete(
     for token in budget_access_tokens.budget_access_tokens.iter() {
         let token = match BudgetAccessToken::from_str(token) {
             Ok(t) => t,
-            Err(_) => {
-                return Err(ServerError::InvalidFormat(Some(String::from(
-                    INVALID_ID_MSG,
-                ))))
-            }
+            Err(_) => return Err(ServerError::InvalidFormat(INVALID_ID_MSG)),
         };
 
         key_ids.push(token.key_id());
@@ -500,29 +482,29 @@ pub async fn init_delete(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+                return Err(ServerError::NotFound(INVALID_ID_MSG));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to get budget data corresponding to budget access token",
-                ))));
+                ));
             }
         },
     };
 
     if public_keys.len() != tokens.len() {
-        return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+        return Err(ServerError::NotFound(INVALID_ID_MSG));
     }
 
     for key in public_keys {
         let token = match tokens.get(&key.key_id) {
             Some(t) => t,
-            None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
+            None => return Err(ServerError::NotFound(INVALID_ID_MSG)),
         };
 
         if !token.verify(&key.public_key) {
-            return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+            return Err(ServerError::NotFound(INVALID_ID_MSG));
         }
     }
 
@@ -542,13 +524,13 @@ pub async fn init_delete(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
+                return Err(ServerError::NotFound(INVALID_ID_MSG));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to save user deletion budget keys",
-                ))));
+                ));
             }
         },
     }
@@ -751,15 +733,13 @@ pub async fn is_listed_for_deletion(
         Ok(l) => l,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with provided ID",
-                ))));
+                return Err(ServerError::NotFound("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to cancel user deletion",
-                ))));
+                ));
             }
         },
     };
@@ -782,15 +762,13 @@ pub async fn cancel_delete(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(Some(String::from(
-                    "No user with provided ID",
-                ))));
+                return Err(ServerError::NotFound("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(Some(String::from(
+                return Err(ServerError::DatabaseTransactionError(
                     "Failed to cancel user deletion",
-                ))));
+                ));
             }
         },
     };

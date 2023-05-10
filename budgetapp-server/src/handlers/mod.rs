@@ -15,16 +15,16 @@ pub mod error {
     #[derive(Debug)]
     pub enum ServerError {
         // 400 Errors
-        InvalidFormat(Option<String>),
-        InputRejected(Option<String>),
-        AlreadyExists(Option<String>),
-        UserUnauthorized(Option<String>),
-        AccessForbidden(Option<String>),
-        NotFound(Option<String>),
+        InvalidFormat(&'static str),
+        InputRejected(&'static str),
+        AlreadyExists(&'static str),
+        UserUnauthorized(&'static str),
+        AccessForbidden(&'static str),
+        NotFound(&'static str),
 
         // 500 Errors
-        InternalError(Option<String>),
-        DatabaseTransactionError(Option<String>),
+        InternalError(&'static str),
+        DatabaseTransactionError(&'static str),
     }
 
     impl std::error::Error for ServerError {}
@@ -68,20 +68,20 @@ pub mod error {
 
     impl From<actix_web::error::BlockingError> for ServerError {
         fn from(_result: actix_web::error::BlockingError) -> Self {
-            ServerError::InternalError(Some(String::from("Actix thread pool failure")))
+            ServerError::InternalError("Actix thread pool failure")
         }
     }
 
     impl From<oneshot::error::RecvError> for ServerError {
         fn from(_result: oneshot::error::RecvError) -> Self {
-            ServerError::InternalError(Some(String::from("Rayon thread pool failure")))
+            ServerError::InternalError("Rayon thread pool failure")
         }
     }
 
     impl From<std::result::Result<HttpResponse, ServerError>> for ServerError {
         fn from(result: std::result::Result<HttpResponse, ServerError>) -> Self {
             match result {
-                Ok(_) => ServerError::InternalError(None),
+                Ok(_) => ServerError::InternalError("Unknown error"),
                 Err(e) => e,
             }
         }
@@ -90,36 +90,20 @@ pub mod error {
     impl From<TokenError> for ServerError {
         fn from(result: TokenError) -> Self {
             match result {
-                TokenError::TokenInvalid => {
-                    ServerError::UserUnauthorized(Some(String::from("Invalid token")))
-                }
-                TokenError::TokenExpired => {
-                    ServerError::UserUnauthorized(Some(String::from("Token expired")))
-                }
-                TokenError::TokenMissing => {
-                    ServerError::UserUnauthorized(Some(String::from("Missing token")))
-                }
-                TokenError::WrongTokenType => {
-                    ServerError::UserUnauthorized(Some(String::from("Wrong token type")))
-                }
+                TokenError::TokenInvalid => ServerError::UserUnauthorized("Invalid token"),
+                TokenError::TokenExpired => ServerError::UserUnauthorized("Token expired"),
+                TokenError::TokenMissing => ServerError::UserUnauthorized("Missing token"),
+                TokenError::WrongTokenType => ServerError::UserUnauthorized("Wrong token type"),
             }
         }
     }
 
-    fn format_err(
-        f: &mut fmt::Formatter<'_>,
-        error_txt: &str,
-        msg: &Option<String>,
-    ) -> fmt::Result {
+    fn format_err(f: &mut fmt::Formatter<'_>, error_txt: &str, msg: &str) -> fmt::Result {
         write!(
             f,
             "{{ \"error_msg\": \"{}{}\" }}",
             error_txt,
-            if msg.is_some() {
-                format!(": {}", msg.as_ref().unwrap())
-            } else {
-                String::new()
-            }
+            format!(": {}", msg)
         )
     }
 }
