@@ -1,6 +1,7 @@
 use rand::{rngs::OsRng, Fill};
 use std::ffi::CStr;
 use std::fmt;
+use std::mem::MaybeUninit;
 
 use crate::argon2::{
     argon2_error_message, argon2id_ctx, Argon2_Context, Argon2_ErrorCodes_ARGON2_OK,
@@ -406,11 +407,15 @@ pub fn hash_auth_string(
     hash_params: &HashParams,
     hashing_key: &[u8; 32],
 ) -> Result<String, Argon2HasherError> {
-    let mut salt = Vec::with_capacity(hash_params.salt_len);
-    unsafe { salt.set_len(hash_params.salt_len) };
+    let mut salt = MaybeUninit::new(Vec::with_capacity(hash_params.salt_len));
+    let salt = unsafe {
+        (*salt.as_mut_ptr()).set_len(hash_params.salt_len);
+        (*salt.as_mut_ptr())
+            .try_fill(&mut OsRng)
+            .expect("Failed to obtain random bytes");
 
-    salt.try_fill(&mut OsRng)
-        .expect("Failed to obtain random bytes");
+        salt.assume_init()
+    };
 
     Ok(hash_argon2id(
         auth_string,
@@ -443,10 +448,15 @@ pub fn hash_argon2id(
         Err(_) => return Err(Argon2HasherError::InvalidParameter("hash_len is too big")),
     };
 
-    let mut hash_buffer = Vec::with_capacity(hash_len_usize);
-    unsafe {
-        hash_buffer.set_len(hash_len_usize);
-    }
+    let mut hash_buffer = MaybeUninit::new(Vec::with_capacity(hash_len_usize));
+    let mut hash_buffer = unsafe {
+        (*hash_buffer.as_mut_ptr()).set_len(hash_len_usize);
+        (*hash_buffer.as_mut_ptr())
+            .try_fill(&mut OsRng)
+            .expect("Failed to obtain random bytes");
+
+        hash_buffer.assume_init()
+    };
 
     // Some buffers here are cast to *mut to pass to C. C will not modify these buffers
     // so this is safe

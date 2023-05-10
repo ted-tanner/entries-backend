@@ -475,7 +475,7 @@ pub async fn init_delete(
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
-        budget_dao.get_multiple_public_budget_keys(&*key_ids_ref, &budget_ids)
+        budget_dao.get_multiple_public_budget_keys(&key_ids_ref, &budget_ids)
     })
     .await?
     {
@@ -517,7 +517,7 @@ pub async fn init_delete(
 
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.save_user_deletion_budget_keys(&*key_ids, user_id, delete_me_time)
+        user_dao.save_user_deletion_budget_keys(&key_ids, user_id, delete_me_time)
     })
     .await?
     {

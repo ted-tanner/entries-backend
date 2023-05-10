@@ -32,7 +32,7 @@ where
             Err(e) => return future::err(e),
         };
 
-        let decoded_token = into_actix_error_res(match T::from_str(&token) {
+        let decoded_token = into_actix_error_res(match T::from_str(token) {
             Ok(t) => Ok(t),
             Err(_e) => Err(TokenError::TokenInvalid),
         });

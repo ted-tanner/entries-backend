@@ -44,8 +44,8 @@ impl TokenLocation for FromHeader {
         };
 
         match header.to_str() {
-            Ok(h) => return Some(h),
-            Err(_) => return None,
+            Ok(h) => Some(h),
+            Err(_) => None,
         }
     }
 }

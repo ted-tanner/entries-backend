@@ -162,7 +162,7 @@ where
         None => return Err(TokenError::TokenMissing),
     };
 
-    Ok(AuthToken::from_str(token)?)
+    AuthToken::from_str(token)
 }
 
 #[inline]
@@ -174,7 +174,10 @@ fn verify_token(
         return Err(TokenError::TokenInvalid);
     }
 
-    if let Err(_) = decoded_token.decrypt(&env::CONF.keys.token_encryption_cipher) {
+    if decoded_token
+        .decrypt(&env::CONF.keys.token_encryption_cipher)
+        .is_err()
+    {
         return Err(TokenError::TokenInvalid);
     }
 

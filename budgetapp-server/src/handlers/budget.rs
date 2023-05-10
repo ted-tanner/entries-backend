@@ -337,7 +337,7 @@ pub async fn invite_user(
     })
     .await?
     {
-        Ok(_) => (),
+        Ok(i) => i,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound(
@@ -849,7 +849,7 @@ async fn obtain_public_key(
     budget_id: Uuid,
     db_thread_pool: &DbThreadPool,
 ) -> Result<BudgetAccessKey, ServerError> {
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let mut budget_dao = db::budget::Dao::new(db_thread_pool);
     let key = match web::block(move || budget_dao.get_public_budget_key(key_id, budget_id)).await? {
         Ok(b) => b,
         Err(e) => match e {
@@ -874,13 +874,13 @@ async fn verify_read_write_access<F: TokenLocation>(
 ) -> Result<(), ServerError> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+    let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
 
     if !budget_access_token.0.verify(&public_key.public_key) {
         return Err(ServerError::NotFound("No budget with ID matching token"));
     }
 
-    if public_key.read_only == true {
+    if public_key.read_only {
         return Err(ServerError::AccessForbidden(
             "User has read-only access to budget",
         ));
@@ -895,7 +895,7 @@ async fn verify_read_access<F: TokenLocation>(
 ) -> Result<(), ServerError> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, &db_thread_pool).await?;
+    let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
 
     if !budget_access_token.0.verify(&public_key.public_key) {
         return Err(ServerError::NotFound("No budget with ID matching token"));

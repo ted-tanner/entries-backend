@@ -99,11 +99,6 @@ pub mod error {
     }
 
     fn format_err(f: &mut fmt::Formatter<'_>, error_txt: &str, msg: &str) -> fmt::Result {
-        write!(
-            f,
-            "{{ \"error_msg\": \"{}{}\" }}",
-            error_txt,
-            format!(": {}", msg)
-        )
+        write!(f, "{{ \"error_msg\": \"{}: {}\" }}", error_txt, msg,)
     }
 }
