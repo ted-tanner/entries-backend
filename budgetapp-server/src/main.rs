@@ -122,7 +122,7 @@ async fn main() -> std::io::Result<()> {
     let db_workers = if let Some(count) = env::CONF.connections.max_db_connections {
         count
     } else {
-        cpu_count as u32 * 2
+        cpu_count as u32 * 4
     };
 
     log::info!("Connecting to database...");

@@ -35,7 +35,7 @@ use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
 pub struct UserPublicKeyAndLookupAttempts {
-    pub public_key: String,
+    pub public_key: Vec<u8>,
     pub attempt_count: i16,
     pub expiration_time: SystemTime,
 }
@@ -84,7 +84,7 @@ impl Dao {
                 let public_key = users
                     .select(user_fields::public_key)
                     .filter(user_fields::email.eq(user_email))
-                    .first::<String>(conn)?;
+                    .first::<Vec<u8>>(conn)?;
 
                 Ok(UserPublicKeyAndLookupAttempts {
                     public_key,
@@ -107,6 +107,16 @@ impl Dao {
                 .filter(user_lookup_attempts_fields::expiration_time.lt(expiration_cut_off)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn get_user_public_key_without_marking_attempt(
+        &mut self,
+        user_email: &str,
+    ) -> Result<Vec<u8>, DaoError> {
+        Ok(users
+            .select(user_fields::public_key)
+            .filter(user_fields::email.eq(user_email))
+            .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn create_user(

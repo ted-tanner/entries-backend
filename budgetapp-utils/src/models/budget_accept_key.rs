@@ -12,7 +12,7 @@ use crate::schema::budget_accept_keys;
 pub struct BudgetAcceptKey {
     pub key_id: Uuid,
     pub budget_id: Uuid,
-    pub public_key: String,
+    pub public_key: Vec<u8>,
     pub expiration: SystemTime,
     pub read_only: bool,
 }
@@ -22,7 +22,7 @@ pub struct BudgetAcceptKey {
 pub struct NewBudgetAcceptKey<'a> {
     pub key_id: Uuid,
     pub budget_id: Uuid,
-    pub public_key: &'a str,
+    pub public_key: &'a [u8],
     pub expiration: SystemTime,
     pub read_only: bool,
 }

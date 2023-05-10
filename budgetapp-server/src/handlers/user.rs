@@ -521,7 +521,7 @@ pub async fn init_delete(
             None => return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG)))),
         };
 
-        if !token.verify(key.public_key.as_bytes()) {
+        if !token.verify(&key.public_key) {
             return Err(ServerError::NotFound(Some(String::from(INVALID_ID_MSG))));
         }
     }

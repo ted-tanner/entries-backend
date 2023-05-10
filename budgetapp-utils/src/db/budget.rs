@@ -2,8 +2,6 @@ use diesel::associations::GroupedBy;
 use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use rand::rngs::OsRng;
-use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Encrypt, RsaPublicKey};
 use sha1::{Digest, Sha1};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -32,8 +30,6 @@ use crate::schema::categories as category_fields;
 use crate::schema::categories::dsl::categories;
 use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
-use crate::schema::users as user_fields;
-use crate::schema::users::dsl::users;
 
 pub struct Dao {
     db_thread_pool: DbThreadPool,
@@ -83,11 +79,11 @@ impl Dao {
     pub fn get_budget_invite_sender_public_key(
         &mut self,
         invitation_id: Uuid,
-    ) -> Result<String, DaoError> {
+    ) -> Result<Vec<u8>, DaoError> {
         Ok(budget_share_invites
             .select(budget_share_invite_fields::sender_public_key)
             .find(invitation_id)
-            .get_result::<String>(&mut self.db_thread_pool.get()?)?)
+            .get_result::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_budget(&mut self, budget_id: Uuid) -> Result<OutputBudget, DaoError> {
@@ -282,52 +278,28 @@ impl Dao {
     pub fn invite_user(
         &mut self,
         recipient_user_email: &str,
-        sender_public_key: &str,
+        sender_public_key: &[u8],
         encryption_key_encrypted: &[u8],
-        budget_accept_private_key_encrypted: &[u8],
         budget_info_encrypted: &[u8],
         sender_info_encrypted: &[u8],
-        budget_accept_private_key_info_encrypted: &[u8],
         share_info_symmetric_key_encrypted: &[u8],
         budget_id: Uuid,
-        budget_share_public_key: &str,
         expiration: SystemTime,
         read_only: bool,
+        budget_accept_key_id: Uuid,
+        budget_accept_key_id_encrypted: &[u8],
+        budget_accept_public_key: &[u8],
+        budget_accept_private_key_encrypted: &[u8],
+        budget_accept_key_info_encrypted: &[u8],
     ) -> Result<OutputInvitationId, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let budget_accept_key = NewBudgetAcceptKey {
-            key_id: Uuid::new_v4(),
+            key_id: budget_accept_key_id,
             budget_id,
-            public_key: budget_share_public_key,
+            public_key: budget_accept_public_key,
             expiration,
             read_only,
-        };
-
-        let recipient_public_key = users
-            .select(user_fields::public_key)
-            .filter(user_fields::email.eq(recipient_user_email))
-            .first::<String>(&mut self.db_thread_pool.get()?)?;
-        let recipient_public_key = match RsaPublicKey::from_public_key_pem(&recipient_public_key) {
-            Ok(k) => k,
-            Err(_) => {
-                return Err(DaoError::CannotRunQuery(
-                    "Could not encrypt using recipient's public key",
-                ));
-            }
-        };
-
-        let budget_accept_private_key_id_encrypted = match recipient_public_key.encrypt(
-            &mut OsRng,
-            Pkcs1v15Encrypt,
-            budget_accept_key.key_id.as_bytes(),
-        ) {
-            Ok(k) => k,
-            Err(_) => {
-                return Err(DaoError::CannotRunQuery(
-                    "Could not encrypt using recipient's public key",
-                ));
-            }
         };
 
         let now = SystemTime::now()
@@ -345,8 +317,8 @@ impl Dao {
             budget_accept_private_key_encrypted,
             budget_info_encrypted,
             sender_info_encrypted,
-            budget_accept_private_key_info_encrypted,
-            budget_accept_private_key_id_encrypted: &budget_accept_private_key_id_encrypted,
+            budget_accept_key_info_encrypted,
+            budget_accept_key_id_encrypted,
             share_info_symmetric_key_encrypted,
             created_unix_timestamp_intdiv_five_million,
         };
@@ -378,7 +350,7 @@ impl Dao {
         read_only: bool,
         invitation_id: Uuid,
         recipient_user_email: &str,
-        recipient_budget_user_public_key: &str,
+        recipient_budget_user_public_key: &[u8],
     ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -466,7 +438,7 @@ impl Dao {
                 budget_share_invite_fields::budget_accept_private_key_encrypted,
                 budget_share_invite_fields::budget_info_encrypted,
                 budget_share_invite_fields::sender_info_encrypted,
-                budget_share_invite_fields::budget_accept_private_key_info_encrypted,
+                budget_share_invite_fields::budget_accept_key_info_encrypted,
                 budget_share_invite_fields::share_info_symmetric_key_encrypted,
             ))
             .filter(budget_share_invite_fields::recipient_user_email.eq(user_email))

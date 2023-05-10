@@ -118,7 +118,9 @@ pub struct OutputInvitationId {
     pub invitation_id: Uuid,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
 pub struct OutputPublicKey {
-    pub public_key: String,
+    #[serde_as(as = "Base64")]
+    pub public_key: Vec<u8>,
 }
