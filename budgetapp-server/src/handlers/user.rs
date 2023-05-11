@@ -72,7 +72,10 @@ pub async fn create(
         return Err(ServerError::InvalidFormat(msg));
     }
 
-    let email = user_data.email.clone();
+    if user_data.auth_string.len() > 512 {
+        return Err(ServerError::ImATeapot("Provided password is too long"));
+    }
+
     let user_data = Arc::new(user_data);
     let user_data_ref = Arc::clone(&user_data);
 
@@ -102,9 +105,11 @@ pub async fn create(
         }
     };
 
+    let user_data_ref = Arc::clone(&user_data);
+
     let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data.0, &app_version.0, &auth_string_hash)
+        user_dao.create_user(&user_data_ref.0, &app_version.0, &auth_string_hash)
     })
     .await?
     {
@@ -127,7 +132,7 @@ pub async fn create(
 
     let mut user_creation_token = AuthToken::new(
         user_id,
-        &email,
+        &user_data.email,
         SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
         AuthTokenType::UserCreation,
     );
@@ -365,6 +370,12 @@ pub async fn change_password(
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
+
+    if new_password_data.current_auth_string.len() > 512
+        || new_password_data.new_auth_string.len() > 512
+    {
+        return Err(ServerError::ImATeapot("Provided password is too long"));
+    }
 
     let hash_and_attempts = match web::block(move || {
         auth_dao.get_user_auth_string_hash_and_mark_attempt(

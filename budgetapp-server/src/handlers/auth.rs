@@ -52,6 +52,10 @@ pub async fn sign_in(
         return Err(ServerError::InvalidFormat(msg));
     }
 
+    if credentials.auth_string.len() > 512 {
+        return Err(ServerError::ImATeapot("Provided password is too long"));
+    }
+
     let credentials = Arc::new(credentials);
     let credentials_ref = Arc::clone(&credentials);
 

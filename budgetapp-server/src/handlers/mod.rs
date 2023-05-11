@@ -21,6 +21,7 @@ pub mod error {
         UserUnauthorized(&'static str),
         AccessForbidden(&'static str),
         NotFound(&'static str),
+        ImATeapot(&'static str),
 
         // 500 Errors
         InternalError(&'static str),
@@ -38,6 +39,7 @@ pub mod error {
                 ServerError::UserUnauthorized(msg) => format_err(f, "User unauthorized", msg),
                 ServerError::AccessForbidden(msg) => format_err(f, "Access forbidden", msg),
                 ServerError::NotFound(msg) => format_err(f, "Not found", msg),
+                ServerError::ImATeapot(msg) => format_err(f, "I'm a teapot", msg),
                 ServerError::InternalError(msg) => format_err(f, "Internal server error", msg),
                 ServerError::DatabaseTransactionError(msg) => {
                     format_err(f, "Database transaction failed", msg)
@@ -58,6 +60,7 @@ pub mod error {
                 ServerError::InvalidFormat(_)
                 | ServerError::InputRejected(_)
                 | ServerError::AlreadyExists(_) => StatusCode::BAD_REQUEST,
+                ServerError::ImATeapot(_) => StatusCode::IM_A_TEAPOT,
                 ServerError::UserUnauthorized(_) => StatusCode::UNAUTHORIZED,
                 ServerError::AccessForbidden(_) => StatusCode::FORBIDDEN,
                 ServerError::NotFound(_) => StatusCode::NOT_FOUND,

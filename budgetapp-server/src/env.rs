@@ -144,13 +144,6 @@ fn build_conf() -> Result<Conf, String> {
         Err(e) => return Err(format!("Parsing '{CONF_FILE_PATH}' failed: {e}")),
     };
 
-    if !raw_conf.hashing.hash_mem_size_kib.is_power_of_two() {
-        return Err(format!(
-            "Hash memory size must be a power of two. {} is not a power of two in '{}'.",
-            CONF.hashing.hash_mem_size_kib, CONF_FILE_PATH,
-        ));
-    }
-
     if raw_conf.lifetimes.signin_token_lifetime_mins < raw_conf.lifetimes.otp_lifetime_mins * 2 {
         return Err(format!(
             "Sign-in token lifetime must be at least double the OTP lifetime in '{CONF_FILE_PATH}'"

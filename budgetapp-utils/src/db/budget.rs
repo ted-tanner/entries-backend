@@ -420,7 +420,6 @@ impl Dao {
         Ok(())
     }
 
-    // Used when the sender deletes the invitation, not the recipient
     pub fn delete_invitation(&mut self, invitation_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -468,7 +467,6 @@ impl Dao {
         Ok(())
     }
 
-    // TODO: Check read_only in the handler after getting the public key
     pub fn create_entry(
         &mut self,
         encrypted_blob: &[u8],

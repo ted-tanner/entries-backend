@@ -456,6 +456,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * When a user goes to delete their data, show a warning that some user information will be temporarily visible on the server until the deletion is carried out. This information includes: 1) How many budgets a user is part of and 2) when these budgets were last edited. Other details about the budget will remain encrypted and unaccessible to the server.
 * Mention that budgets that go unmodified for a year will be deleted
 * Users need to be able to ignore specific email addresses that invite them to budgets (gets saved in user preferences)
+* Maximum of 512 characters in a password
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -495,59 +496,28 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Delete `user_deletion_request_budget_keys` regularly
-* `delete_invitation()` in `budget.rs<db>` doesn't delete the
-* Problem: The `budget_info_encrypted` field of the `budget_share_invites` table should contain the `budget_share_key`, but the sender/inviter won't have that `key_id` yet to encrypt. Perhaps there should be a `budget_share_key_id` field and the server should encrypt the ID using the recipient's public key.
-* When multiple copies of a token from a string must be made, wrap the token in an `Arc` instead
+* Delete expired budget invitations regularly
+* Delete expired budget accept keys regularly
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
-* Put foreign keys in tables in `up.sql`
-* No need to enforce argon2 memory is a power of 2
-* Budget endpoints should require a budget token AND an access token. Budget tokens signed with private RSA keys don’t identify a user but can only be generated if the user has the private key
-  - Store budget keys (along with keys for signing token generation) as an encrypted JSON blob in a database table. Perhaps name it `user_keystore`.
-* Blacklist only the hashes of tokens. Don't store the user_id associated with the token in the DB.
 * Rename app to "Entries"
-* If update comes for data that doesn’t exist, create it
-* Limit public keys per budget to 200.
-* Get rid of last_token_refresh_time. It isn't needed (because deleting user data without knowing which budgets the user owns isn't worth it) and is an unnecessary piece of data to know about a user.
-  - Don't collect version either. The client will send version with every request. Handlers that require a specific minimum version can use the AppVersion middleware to check the version. A response code (perhaps 418 I'm A teapot) should indicate that the client is too out-of-date to properly handle the response the server will give.
-* Get rid of user `created_timestamp` and `rsa_key_created_timestamp`.
-* Send UNIX timestamp with refresh token
-* Users remove themselves from budgets by removing their public key (must provide token verified with the public key they are removing, of course. If final public key is removed from a budget, the server deletes the entire budget.
-* A user deletion request should include a list of public keys to remove from budgets.
-* Each budget has a list of Ed25519 public keys for users it allows access to. By proving it has the private key, a user can update the budget. To share a budget, a user signs a token (that expires 30 days later) that allows a user with a particular email to register for a budget and encrypts it with the receiver's key. The receiver generates a key pair and shares the public key with the server, certifying with the token that he/she has been invited to the budget. The server returns the budget encryption key that the sender has encrypted using the receiver's public key. When a client updates a budget, the client must send a token containing a UNIX timestamp for expiration, a user_id that specifies which user can use the token, a budget_id, and a key_id that is signed with the private key on the user's device and verified by the server using the public key that the server has (must match the key_id and budget_id).
+* If update comes for data that doesn’t exist, create it. This allows a user to recreate data in a shared budget if another user deleted it while it was being edited.
+* Limit public keys per budget to 200. This prevents searching for a key from taking a long time.
+* Throttle obtain_nonce_and_auth_string_salt endpoint
+* Throttle budget invites to prevent spam
 * Return codes with more information for the app (i.e. first few chars of response payload give more information about errors)
-* Get rid of data tombstones and user tombstones! Use a field `deletion_date` that is null by default, unless the data has been deleted.
-* Provide hashing parameters to client along with salt. The server should have a reasonable length limit on auth_strings before it chooses not to process them.
-* Maximum of 40 people can be invited/joined to a budget. Unaccepted invites should expire after 1 week (use a timestamp to enforce this, but also create a cron job to clean out old invites).
-* Throttle budget invites to 1 per second per user.
-* In env.rs for budgetapp-server, rename `Conf` struct to `RawConf`. `build_conf()` should then crate a new `Conf` struct that has all the preprocessing done for fields that need it (such as the ChaCha key for tokens; a cipher should be initialized in env.rs with the key and then referred used for auth tokens). Validation can also be done (for example, ensuring the ChaCha key is the correct length)
-  - Zeroize old RawConf memory for keys
-* Ability to change encryption key. This should also log all other users out.
+* Provide hashing parameters to client along with salt.
+*  Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * TOTP Should *not* allow just expired or upcoming codes to be used. The must be a better solution.
 * Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
-* Use a `signin_nonce` for both signing in with a password and verifying OTP.
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
-* Keys should all be specified in hex (and be of a specified length)
-* Change Email endpoint (user must verify email)
-* User sign in (and obtaining nonce) should mask when a user is not found
-* For signing in with a password, require a nonce to prevent replay attacks.
-* Create user nonce record when creating user (with a null nonce)
-* Endpoint that returns authentication salt AND a server nonce (save the server nonce)
 * Endpoints for getting and updating user_security_data
-  - Password_encryption_salt and iters + encryption_key_user_password
-  - Recovery data
-  - Update data
-* Change password via a token ("reset password"/"forgot password" instead of "change password")
+  - Password_encryption_salt and encryption_key_user_password
+  - Recovery keys
+* Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
-* Return error codes from the API with the message (i.e. a number indicating what the failure was). ServerError should take a code
-* Clear `budget_share_invites` and `buddy_requests` that are greater than 30 days old
-* For budgets, create a tombstone for every user that belongs to the budget (so related_user_id can be enforced)
-* Try wrapping `web::Data` fields in a mutex or a `RefCell` so it can be zeroized (or just try making it mut)
-* The server should check tombstones automatically if an item isn't found but is in the tombstone table and respond that the item has been deleted with an HTTP "410 Gone" (do this for the `user_tombstone` too). Make sure this only works with the proper authorization and user_id from a token.
-* Tombstones should be cleared after 366 days
-* Send the server's time in the heartbeat
-* Create user endpoint must have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
+* Create user endpoint should have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * Get email delivery set up (MailJet?)
   - OTP for sign in
   - OTP for change password
@@ -556,28 +526,27 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - User creation verification
   - User deletion verification
   - Budget shared? Users need a way to turn off this notification
-* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key).
-* RSA key rotation. Users must re-encrypt all budget_share_invites they've received using their new public key.
+* Update ed25519-dalek crate
 * Search through TODOs in code
 * Unit tests!
 * Update readme documentation
   - Add a section for the job scheduler
 * White paper
-* Should the app be renamed "Good Budgets"? "Simple Budgets"?
-* Budgets that are not modified for a year will be deleted
 
 ### Do it later
 
-* Use a lot more left joins to reduce # of queries
+* Add webauthn-rs and totp_rs
+* Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
+* Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
+* Update crates (like base64)
+* Get rid of last_token_refresh_time. It isn't needed and is an unnecessary piece of data to know about a user.
+  - Don't collect version either. The client will send version with every request. Handlers that require a specific minimum version can use the AppVersion middleware to check the version. A response code (perhaps 418 I'm A teapot) should indicate that the client is too out-of-date to properly handle the response the server will give.
 * Perhaps use `typed_html` crate for HTML in user verification and deletion?
 * When updating data in DAOs, combine checking the hash and updating the data into one query.
-* Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
-* Add webauthn-rs and totp_rs
-* Update crates (like base64)
 * Change key when someone leaves budgets and send it, encrypted, to all others in budget
+* Change Email endpoint (user must verify email)
 * Duplicate a budget, including entries (perhaps make including entries optional)
 * When decoding tokens, use string views rather than splitting into separate strings
-* Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
 * Don't reach out to db as part of validating refresh token in the auth_token module. Instead, check blacklisted token explicitly from the handler
 * Only get certain fields of a user or budget when requesting. i.e. use `SELECT field1, field2, etc WHERE ...` in query instead of `SELECT * WHERE ...`
 * Handle all checks if user is in budget within the query being made
@@ -601,6 +570,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `budgetapp_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
 * Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
 * Languages/localization
+* Budgets that are not modified for a year will be deleted?
 
 ### Note on timezones
 
