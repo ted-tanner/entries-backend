@@ -501,13 +501,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
 * Rename app to "Entries"
-* Limit public keys per budget to 200. This prevents searching for a key from taking a long time.
 * Throttle obtain_nonce_and_auth_string_salt endpoint
 * Throttle budget invites to prevent spam
-* Return codes with more information for the app (i.e. first few chars of response payload give more information about errors)
 * Provide hashing parameters to client along with salt.
-*  Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
-* TOTP Should *not* allow just expired or upcoming codes to be used. The must be a better solution.
+* TOTP Should *not* allow upcoming codes or codes that just expired to be used. There must be a better solution.
 * Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
 * Endpoints for getting and updating user_security_data
@@ -535,6 +532,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do it later
 
 * Add webauthn-rs and totp_rs
+* Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
 * Update crates (like base64)

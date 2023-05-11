@@ -11,16 +11,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 
 use crate::env;
-use crate::handlers::error::ServerError;
+use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::FromHeader;
 
-// TODO: Should this mask when a user is not found by returning random data?
 pub async fn obtain_nonce_and_auth_string_salt(
     db_thread_pool: web::Data<DbThreadPool>,
     email: web::Query<InputEmail>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let nonce_data = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_auth_string_salt_and_signin_nonce(&email.0.email)
@@ -29,11 +28,11 @@ pub async fn obtain_nonce_and_auth_string_salt(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(ServerError::NotFound("User not found"));
+            return Err(HttpErrorResponse::DoesNotExist("User not found"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
+            return Err(HttpErrorResponse::InternalError(
                 "Failed to obtain nonce or authentication string data",
             ));
         }
@@ -42,18 +41,18 @@ pub async fn obtain_nonce_and_auth_string_salt(
     Ok(HttpResponse::Ok().json(nonce_data))
 }
 
-// TODO: Should this mask when a user is not found by hashing a password and comparing it
-//       against a dummy (to prevent timing attacks)?
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
-        return Err(ServerError::InvalidFormat(msg));
+        return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
 
     if credentials.auth_string.len() > 512 {
-        return Err(ServerError::ImATeapot("Provided password is too long"));
+        return Err(HttpErrorResponse::InputTooLong(
+            "Provided password is too long. Max: 512 bytes",
+        ));
     }
 
     let credentials = Arc::new(credentials);
@@ -67,18 +66,18 @@ pub async fn sign_in(
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(ServerError::NotFound("User not found"));
+                return Err(HttpErrorResponse::DoesNotExist("User not found"));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to obtain sign-in nonce",
                 ));
             }
         };
 
     if nonce != credentials.nonce {
-        return Err(ServerError::AccessForbidden("Incorrect nonce"));
+        return Err(HttpErrorResponse::IncorrectNonce("Incorrect nonce"));
     }
 
     let credentials_ref = Arc::clone(&credentials);
@@ -94,18 +93,18 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(ServerError::NotFound("User not found"));
+            return Err(HttpErrorResponse::DoesNotExist("User not found"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
+            return Err(HttpErrorResponse::InternalError(
                 "Failed to check authorization attempt count",
             ));
         }
     };
 
     if !hash_and_attempts.is_user_verified {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::PendingAction(
             "User has not accepted verification email",
         ));
     }
@@ -113,7 +112,7 @@ pub async fn sign_in(
     if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::TooManyAttempts(
             "Too many login attempts. Try again in a few minutes.",
         ));
     }
@@ -136,7 +135,7 @@ pub async fn sign_in(
     });
 
     if !receiver.await? {
-        return Err(ServerError::UserUnauthorized(
+        return Err(HttpErrorResponse::IncorrectCredential(
             "Incorrect email or auth string",
         ));
     }
@@ -169,7 +168,7 @@ pub async fn sign_in(
         Ok(p) => p,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError("Failed to generate OTP"));
+            return Err(HttpErrorResponse::InternalError("Failed to generate OTP"));
         }
     };
 
@@ -184,10 +183,10 @@ pub async fn verify_otp_for_signin(
     _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: web::Json<InputOtp>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let signin_token_signature = match signin_token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => return Err(ServerError::UserUnauthorized("Invalid token")),
+        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
     };
 
     let claims = signin_token.verify()?;
@@ -203,11 +202,11 @@ pub async fn verify_otp_for_signin(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(ServerError::UserUnauthorized("Token has expired"));
+            return Err(HttpErrorResponse::TokenExpired("Token has expired"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError("Error verifying token"));
+            return Err(HttpErrorResponse::InternalError("Error verifying token"));
         }
     };
 
@@ -224,7 +223,7 @@ pub async fn verify_otp_for_signin(
         Ok(a) => a,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
+            return Err(HttpErrorResponse::InternalError(
                 "Failed to check OTP attempt count",
             ));
         }
@@ -233,7 +232,7 @@ pub async fn verify_otp_for_signin(
     if attempts.attempt_count > env::CONF.security.otp_max_attempts
         && attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::TooManyAttempts(
             "Too many attempts. Try again in a few minutes.",
         ));
     }
@@ -269,20 +268,22 @@ pub async fn verify_otp_for_signin(
         Ok(v) => v,
         Err(e) => match e {
             otp::OtpError::Unauthorized => {
-                return Err(ServerError::UserUnauthorized("Incorrect passcode"))
+                return Err(HttpErrorResponse::IncorrectCredential("Incorrect passcode"))
             }
             otp::OtpError::ImproperlyFormatted => {
-                return Err(ServerError::InputRejected("Invalid passcode"))
+                return Err(HttpErrorResponse::IncorrectlyFormed("Invalid passcode"))
             }
             otp::OtpError::Error(_) => {
                 log::error!("{e}");
-                return Err(ServerError::InternalError("Validating passcode failed"));
+                return Err(HttpErrorResponse::InternalError(
+                    "Validating passcode failed",
+                ));
             }
         },
     };
 
     if !is_valid {
-        return Err(ServerError::UserUnauthorized("Incorrect passcode"));
+        return Err(HttpErrorResponse::IncorrectCredential("Incorrect passcode"));
     }
 
     let now = SystemTime::now();
@@ -321,10 +322,10 @@ pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
     token: UnverifiedToken<Refresh, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let token_signature = match token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => return Err(ServerError::UserUnauthorized("Invalid token")),
+        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
     };
 
     let token_claims = token.verify()?;
@@ -340,11 +341,11 @@ pub async fn refresh_tokens(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(ServerError::UserUnauthorized("Token has expired"));
+            return Err(HttpErrorResponse::TokenExpired("Token has expired"));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError("Error verifying token"));
+            return Err(HttpErrorResponse::InternalError("Error verifying token"));
         }
     };
 
@@ -384,16 +385,16 @@ pub async fn logout(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     refresh_token: UnverifiedToken<Refresh, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let refresh_token_signature = match refresh_token.0.parts() {
         Some(p) => p.signature.clone(),
-        None => return Err(ServerError::UserUnauthorized("Invalid token")),
+        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
     };
 
     let refresh_token_claims = refresh_token.verify()?;
 
     if refresh_token_claims.user_id != user_access_token.0.user_id {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::UserDisallowed(
             "Refresh token does not belong to user.",
         ));
     }
@@ -409,11 +410,13 @@ pub async fn logout(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             _,
         ))) => {
-            return Err(ServerError::AccessForbidden("Token already on blacklist"));
+            return Err(HttpErrorResponse::ConflictWithExisting(
+                "Token already on blacklist",
+            ));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
+            return Err(HttpErrorResponse::InternalError(
                 "Failed to blacklist token",
             ));
         }

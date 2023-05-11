@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
 
 use crate::env;
-use crate::handlers::error::ServerError;
+use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
 use crate::middleware::{FromHeader, FromQuery};
@@ -26,7 +26,7 @@ pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<InputEmail>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let public_key_and_attempts = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_public_key_and_mark_attempt(
@@ -39,11 +39,13 @@ pub async fn lookup_user_public_key(
         Ok(k) => k,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with given email address"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No user with given email address",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get user's public key",
                 ));
             }
@@ -53,7 +55,7 @@ pub async fn lookup_user_public_key(
     if public_key_and_attempts.attempt_count > env::CONF.security.user_lookup_max_attempts
         && public_key_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::TooManyAttempts(
             "Too many login attempts. Try again in a few minutes.",
         ));
     }
@@ -67,13 +69,15 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     app_version: AppVersion,
     user_data: web::Json<InputUser>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
-        return Err(ServerError::InvalidFormat(msg));
+        return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
 
     if user_data.auth_string.len() > 512 {
-        return Err(ServerError::ImATeapot("Provided password is too long"));
+        return Err(HttpErrorResponse::InputTooLong(
+            "Provided password is too long. Max: 512 bytes",
+        ));
     }
 
     let user_data = Arc::new(user_data);
@@ -101,7 +105,9 @@ pub async fn create(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::InternalError("Failed to hash auth atring"));
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to hash auth atring",
+            ));
         }
     };
 
@@ -119,13 +125,13 @@ pub async fn create(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                return Err(ServerError::AlreadyExists(
+                return Err(HttpErrorResponse::ConflictWithExisting(
                     "A user with the given email address already exists",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::InternalError("Failed to create user"));
+                return Err(HttpErrorResponse::InternalError("Failed to create user"));
             }
         },
     };
@@ -154,7 +160,7 @@ pub async fn create(
 pub async fn verify_creation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_creation_token: UnverifiedToken<UserCreation, FromQuery>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = match user_creation_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
@@ -296,7 +302,7 @@ pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_prefs: web::Json<InputEditUserPrefs>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
@@ -310,14 +316,14 @@ pub async fn edit_preferences(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with provided ID"));
+                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to update user preferences",
                 ));
             }
@@ -331,7 +337,7 @@ pub async fn edit_keystore(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_keystore: web::Json<InputEditUserKeystore>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
@@ -345,14 +351,14 @@ pub async fn edit_keystore(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with provided ID"));
+                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to update user keystore",
                 ));
             }
@@ -366,7 +372,7 @@ pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
@@ -374,7 +380,9 @@ pub async fn change_password(
     if new_password_data.current_auth_string.len() > 512
         || new_password_data.new_auth_string.len() > 512
     {
-        return Err(ServerError::ImATeapot("Provided password is too long"));
+        return Err(HttpErrorResponse::InputTooLong(
+            "Provided password is too long. Max: 512 bytes",
+        ));
     }
 
     let hash_and_attempts = match web::block(move || {
@@ -388,7 +396,7 @@ pub async fn change_password(
         Ok(a) => a,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
+            return Err(HttpErrorResponse::InternalError(
                 "Failed to check authorization attempt count",
             ));
         }
@@ -397,7 +405,7 @@ pub async fn change_password(
     if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
         && hash_and_attempts.expiration_time >= SystemTime::now()
     {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::TooManyAttempts(
             "Too many login attempts. Try again in a few minutes.",
         ));
     }
@@ -417,7 +425,7 @@ pub async fn change_password(
     });
 
     if !receiver.await? {
-        return Err(ServerError::UserUnauthorized(
+        return Err(HttpErrorResponse::IncorrectCredential(
             "Current auth string was incorrect",
         ));
     }
@@ -450,7 +458,7 @@ pub async fn change_password(
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         log::error!("{e}");
-        ServerError::DatabaseTransactionError("Failed to update password")
+        HttpErrorResponse::InternalError("Failed to update password")
     })
 }
 
@@ -463,7 +471,7 @@ pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Data<InputBudgetAccessTokenList>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
 
     let mut tokens = HashMap::new();
@@ -473,7 +481,7 @@ pub async fn init_delete(
     for token in budget_access_tokens.budget_access_tokens.iter() {
         let token = match BudgetAccessToken::from_str(token) {
             Ok(t) => t,
-            Err(_) => return Err(ServerError::InvalidFormat(INVALID_ID_MSG)),
+            Err(_) => return Err(HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG)),
         };
 
         key_ids.push(token.key_id());
@@ -493,11 +501,11 @@ pub async fn init_delete(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get budget data corresponding to budget access token",
                 ));
             }
@@ -505,17 +513,17 @@ pub async fn init_delete(
     };
 
     if public_keys.len() != tokens.len() {
-        return Err(ServerError::NotFound(INVALID_ID_MSG));
+        return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
     }
 
     for key in public_keys {
         let token = match tokens.get(&key.key_id) {
             Some(t) => t,
-            None => return Err(ServerError::NotFound(INVALID_ID_MSG)),
+            None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
         };
 
         if !token.verify(&key.public_key) {
-            return Err(ServerError::NotFound(INVALID_ID_MSG));
+            return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
         }
     }
 
@@ -535,11 +543,11 @@ pub async fn init_delete(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to save user deletion budget keys",
                 ));
             }
@@ -570,7 +578,7 @@ pub async fn init_delete(
 pub async fn delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_deletion_token: UnverifiedToken<UserDeletion, FromQuery>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = match user_deletion_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
@@ -734,7 +742,7 @@ pub async fn delete(
 pub async fn is_listed_for_deletion(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let is_listed_for_deletion = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
@@ -744,11 +752,11 @@ pub async fn is_listed_for_deletion(
         Ok(l) => l,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with provided ID"));
+                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to cancel user deletion",
                 ));
             }
@@ -763,7 +771,7 @@ pub async fn is_listed_for_deletion(
 pub async fn cancel_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.cancel_user_deletion(user_access_token.0.user_id)
@@ -773,11 +781,11 @@ pub async fn cancel_delete(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with provided ID"));
+                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to cancel user deletion",
                 ));
             }

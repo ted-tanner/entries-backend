@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use crate::handlers::error::ServerError;
+use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::auth::{Access, VerifiedToken};
 use crate::middleware::special_access_token::SpecialAccessToken;
 use crate::middleware::{FromHeader, TokenLocation};
@@ -31,7 +31,7 @@ pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     let budget = match web::block(move || {
@@ -43,11 +43,13 @@ pub async fn get(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get budget data",
                 ));
             }
@@ -61,7 +63,7 @@ pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
@@ -70,7 +72,7 @@ pub async fn get_multiple(
     for token in budget_access_tokens.budget_access_tokens.iter() {
         let token = match BudgetAccessToken::from_str(token) {
             Ok(t) => t,
-            Err(_) => return Err(ServerError::InvalidFormat(INVALID_ID_MSG)),
+            Err(_) => return Err(HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG)),
         };
 
         key_ids.push(token.key_id());
@@ -90,11 +92,11 @@ pub async fn get_multiple(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get budget data",
                 ));
             }
@@ -102,17 +104,17 @@ pub async fn get_multiple(
     };
 
     if public_keys.len() != tokens.len() {
-        return Err(ServerError::NotFound(INVALID_ID_MSG));
+        return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
     }
 
     for key in public_keys {
         let token = match tokens.get(&key.key_id) {
             Some(t) => t,
-            None => return Err(ServerError::NotFound(INVALID_ID_MSG)),
+            None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
         };
 
         if !token.verify(&key.public_key) {
-            return Err(ServerError::NotFound(INVALID_ID_MSG));
+            return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
         }
     }
 
@@ -125,13 +127,13 @@ pub async fn get_multiple(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(
+                return Err(HttpErrorResponse::DoesNotExist(
                     "One of the provided IDs did not match a budget",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get budget data",
                 ));
             }
@@ -145,7 +147,7 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     budget_data: web::Json<InputBudget>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_budget(budget_data.0)
@@ -155,9 +157,7 @@ pub async fn create(
         Ok(b) => b,
         Err(e) => {
             log::error!("{e}");
-            return Err(ServerError::DatabaseTransactionError(
-                "Failed to create budget",
-            ));
+            return Err(HttpErrorResponse::InternalError("Failed to create budget"));
         }
     };
 
@@ -169,7 +169,7 @@ pub async fn edit(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     budget_data: web::Json<InputEditBudget>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
@@ -185,16 +185,16 @@ pub async fn edit(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to edit budget",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to edit budget"));
             }
         },
     };
@@ -222,11 +222,11 @@ pub async fn invite_user(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     if invitation_info.recipient_user_email == user_access_token.0.user_email {
-        return Err(ServerError::InputRejected(
+        return Err(HttpErrorResponse::InvalidState(
             "Inviter and recipient are the same",
         ));
     }
@@ -247,11 +247,11 @@ pub async fn invite_user(
         Ok(k) => k,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No user with given email"));
+                return Err(HttpErrorResponse::DoesNotExist("No user with given email"));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get recipient user's public key",
                 ));
             }
@@ -271,7 +271,7 @@ pub async fn invite_user(
             Ok(k) => k,
             Err(_) => {
                 sender
-                    .send(Err(ServerError::InvalidFormat(
+                    .send(Err(HttpErrorResponse::IncorrectlyFormed(
                         "Recipient user's public key is incorrectly formatted",
                     )))
                     .expect("Sending to channel failed");
@@ -341,15 +341,13 @@ pub async fn invite_user(
         Ok(i) => i,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(
+                return Err(HttpErrorResponse::DoesNotExist(
                     "No budget or invite with ID matching token",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to share budget",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to share budget"));
             }
         },
     };
@@ -361,7 +359,7 @@ pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     invite_sender_token: SpecialAccessToken<BudgetInviteSenderToken, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let invitation_id = invite_sender_token.0.invitation_id();
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -372,13 +370,13 @@ pub async fn retract_invitation(
             Ok(k) => k,
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(
+                    return Err(HttpErrorResponse::DoesNotExist(
                         "No invitation with ID matching token",
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(ServerError::DatabaseTransactionError(
+                    return Err(HttpErrorResponse::InternalError(
                         "Failed to get public budget access key",
                     ));
                 }
@@ -386,7 +384,9 @@ pub async fn retract_invitation(
         };
 
     if !invite_sender_token.0.verify(&invite_sender_public_key) {
-        return Err(ServerError::NotFound("No invite with ID matching token"));
+        return Err(HttpErrorResponse::DoesNotExist(
+            "No invite with ID matching token",
+        ));
     }
 
     match web::block(move || {
@@ -398,13 +398,13 @@ pub async fn retract_invitation(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(
+                return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to delete invitation",
                 ));
             }
@@ -419,7 +419,7 @@ pub async fn accept_invitation(
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
     budget_user_public_key: web::Json<InputPublicKey>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.key_id();
     let budget_id = accept_token.0.budget_id();
 
@@ -430,13 +430,13 @@ pub async fn accept_invitation(
             Ok(key) => key,
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(
+                    return Err(HttpErrorResponse::DoesNotExist(
                         "No share invite with ID matching token",
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(ServerError::DatabaseTransactionError(
+                    return Err(HttpErrorResponse::InternalError(
                         "Failed to accept invitation",
                     ));
                 }
@@ -444,11 +444,13 @@ pub async fn accept_invitation(
         };
 
     if budget_accept_key.expiration < SystemTime::now() {
-        return Err(ServerError::NotFound("Invitation has expired"));
+        return Err(HttpErrorResponse::OutOfDate("Invitation has expired"));
     }
 
     if !accept_token.0.verify(&budget_accept_key.public_key) {
-        return Err(ServerError::NotFound("No invite with ID matching token"));
+        return Err(HttpErrorResponse::DoesNotExist(
+            "No invite with ID matching token",
+        ));
     }
 
     let budget_keys = match web::block(move || {
@@ -467,13 +469,13 @@ pub async fn accept_invitation(
         Ok(key) => key,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(
+                return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to accept invitation",
                 ));
             }
@@ -487,7 +489,7 @@ pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.key_id();
     let budget_id = accept_token.0.budget_id();
 
@@ -498,13 +500,13 @@ pub async fn decline_invitation(
             Ok(key) => key,
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(ServerError::NotFound(
+                    return Err(HttpErrorResponse::DoesNotExist(
                         "No share invite with ID matching token",
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(ServerError::DatabaseTransactionError(
+                    return Err(HttpErrorResponse::InternalError(
                         "Failed to decline invitation",
                     ));
                 }
@@ -512,7 +514,9 @@ pub async fn decline_invitation(
         };
 
     if !accept_token.0.verify(&budget_accept_key.public_key) {
-        return Err(ServerError::NotFound("No invite with ID matching token"));
+        return Err(HttpErrorResponse::DoesNotExist(
+            "No invite with ID matching token",
+        ));
     }
 
     let accept_token_claims = accept_token.0.claims();
@@ -530,13 +534,13 @@ pub async fn decline_invitation(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound(
+                return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to decline invitation",
                 ));
             }
@@ -549,7 +553,7 @@ pub async fn decline_invitation(
 pub async fn get_all_pending_invitations_for_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_pending_invitations_for_user(&user_access_token.0.user_email)
@@ -563,7 +567,7 @@ pub async fn get_all_pending_invitations_for_user(
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to find invitations",
                 ));
             }
@@ -577,7 +581,7 @@ pub async fn leave_budget(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     let claims = budget_access_token.0.claims();
@@ -591,11 +595,13 @@ pub async fn leave_budget(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("User budget association not found"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to remove association with budget",
                 ));
             }
@@ -610,7 +616,7 @@ pub async fn create_entry(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Json<InputEncryptedBlobAndCategoryId>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let entry_id = match web::block(move || {
@@ -626,17 +632,21 @@ pub async fn create_entry(
         Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
-            )) => return Err(ServerError::NotFound("No category matching ID")),
+            )) => {
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(
+                    "No category matching ID",
+                ))
+            }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to create entry",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to create entry"));
             }
         },
     };
@@ -649,7 +659,7 @@ pub async fn create_entry_and_category(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_and_category_data: web::Json<InputEntryAndCategory>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let entry_and_category_ids = match web::block(move || {
@@ -662,13 +672,13 @@ pub async fn create_entry_and_category(
         Ok(ids) => ids,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to create entry",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to create entry"));
             }
         },
     };
@@ -681,7 +691,7 @@ pub async fn edit_entry(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_data: web::Json<InputEditEntry>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
@@ -699,20 +709,24 @@ pub async fn edit_entry(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No entry with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No entry with ID matching token",
+                ));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
-            )) => return Err(ServerError::NotFound("No category matching ID")),
+            )) => {
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(
+                    "No category matching ID",
+                ))
+            }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to update entry",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to update entry"));
             }
         },
     };
@@ -725,7 +739,7 @@ pub async fn delete_entry(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     entry_id: web::Query<InputEntryId>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
@@ -737,13 +751,13 @@ pub async fn delete_entry(
         Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No entry with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No entry with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
-                    "Failed to delete entry",
-                ));
+                return Err(HttpErrorResponse::InternalError("Failed to delete entry"));
             }
         },
     };
@@ -756,7 +770,7 @@ pub async fn create_category(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Json<InputEncryptedBlob>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let category_id = match web::block(move || {
@@ -771,11 +785,13 @@ pub async fn create_category(
         Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to create category",
                 ));
             }
@@ -790,7 +806,7 @@ pub async fn edit_category(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_data: web::Json<InputEditCategory>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
@@ -807,14 +823,16 @@ pub async fn edit_category(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDateHash => {
-                return Err(ServerError::InputRejected("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No category with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No category with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to update category",
                 ));
             }
@@ -829,7 +847,7 @@ pub async fn delete_category(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     category_id: web::Query<InputCategoryId>,
-) -> Result<HttpResponse, ServerError> {
+) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
@@ -841,11 +859,13 @@ pub async fn delete_category(
         Ok(id) => id,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No category with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No category with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to delete category",
                 ));
             }
@@ -859,17 +879,19 @@ async fn obtain_public_key(
     key_id: Uuid,
     budget_id: Uuid,
     db_thread_pool: &DbThreadPool,
-) -> Result<BudgetAccessKey, ServerError> {
+) -> Result<BudgetAccessKey, HttpErrorResponse> {
     let mut budget_dao = db::budget::Dao::new(db_thread_pool);
     let key = match web::block(move || budget_dao.get_public_budget_key(key_id, budget_id)).await? {
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(ServerError::NotFound("No budget with ID matching token"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No budget with ID matching token",
+                ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(ServerError::DatabaseTransactionError(
+                return Err(HttpErrorResponse::InternalError(
                     "Failed to get public budget access key",
                 ));
             }
@@ -882,17 +904,19 @@ async fn obtain_public_key(
 async fn verify_read_write_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
     db_thread_pool: &DbThreadPool,
-) -> Result<(), ServerError> {
+) -> Result<(), HttpErrorResponse> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
     let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
 
     if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound("No budget with ID matching token"));
+        return Err(HttpErrorResponse::DoesNotExist(
+            "No budget with ID matching token",
+        ));
     }
 
     if public_key.read_only {
-        return Err(ServerError::AccessForbidden(
+        return Err(HttpErrorResponse::ReadOnlyAccess(
             "User has read-only access to budget",
         ));
     }
@@ -903,13 +927,15 @@ async fn verify_read_write_access<F: TokenLocation>(
 async fn verify_read_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
     db_thread_pool: &DbThreadPool,
-) -> Result<(), ServerError> {
+) -> Result<(), HttpErrorResponse> {
     let budget_id = budget_access_token.0.budget_id();
     let key_id = budget_access_token.0.key_id();
     let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
 
     if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(ServerError::NotFound("No budget with ID matching token"));
+        return Err(HttpErrorResponse::DoesNotExist(
+            "No budget with ID matching token",
+        ));
     }
 
     Ok(())
