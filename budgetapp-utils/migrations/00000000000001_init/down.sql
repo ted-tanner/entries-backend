@@ -6,6 +6,7 @@ ALTER TABLE budget_access_keys DROP CONSTRAINT budget_key;
 ALTER TABLE budget_share_invites DROP CONSTRAINT recipient_key;
 ALTER TABLE categories DROP CONSTRAINT budget_key;
 ALTER TABLE entries DROP CONSTRAINT budget_key;
+ALTER TABLE entries DROP CONSTRAINT category_key;
 ALTER TABLE otp_attempts DROP CONSTRAINT user_key;
 ALTER TABLE signin_nonces DROP CONSTRAINT user_key;
 ALTER TABLE user_lookup_attempts DROP CONSTRAINT user_key;

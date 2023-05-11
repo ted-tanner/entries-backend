@@ -470,6 +470,7 @@ impl Dao {
     pub fn create_entry(
         &mut self,
         encrypted_blob: &[u8],
+        category_id: Option<Uuid>,
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -481,6 +482,7 @@ impl Dao {
         let new_entry = NewEntry {
             id: entry_id,
             budget_id,
+            category_id,
             encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
@@ -503,17 +505,6 @@ impl Dao {
         let entry_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&entry_and_category_data.entry_encrypted_blob);
-
-        let new_entry = NewEntry {
-            id: entry_id,
-            budget_id,
-            encrypted_blob: &entry_and_category_data.entry_encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
-            modified_timestamp: current_time,
-        };
-
-        let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&entry_and_category_data.category_encrypted_blob);
 
         let new_category = NewCategory {
@@ -524,16 +515,28 @@ impl Dao {
             modified_timestamp: current_time,
         };
 
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_and_category_data.entry_encrypted_blob);
+
+        let new_entry = NewEntry {
+            id: entry_id,
+            budget_id,
+            category_id: Some(category_id),
+            encrypted_blob: &entry_and_category_data.entry_encrypted_blob,
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            modified_timestamp: current_time,
+        };
+
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                dsl::insert_into(entries).values(&new_entry).execute(conn)?;
-
                 dsl::insert_into(categories)
                     .values(&new_category)
                     .execute(conn)?;
+
+                dsl::insert_into(entries).values(&new_entry).execute(conn)?;
 
                 Ok(())
             })?;
@@ -549,6 +552,7 @@ impl Dao {
         entry_id: Uuid,
         entry_encrypted_blob: &[u8],
         expected_previous_data_hash: &[u8],
+        category_id: Option<Uuid>,
         budget_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
@@ -574,6 +578,7 @@ impl Dao {
                         .filter(entry_fields::budget_id.eq(budget_id)),
                 )
                 .set((
+                    entry_fields::category_id.eq(category_id),
                     entry_fields::encrypted_blob.eq(entry_encrypted_blob),
                     entry_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finalize().as_slice()),
                     entry_fields::modified_timestamp.eq(SystemTime::now()),

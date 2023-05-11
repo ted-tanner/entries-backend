@@ -501,7 +501,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
 * Rename app to "Entries"
-* If update comes for data that doesn’t exist, create it. This allows a user to recreate data in a shared budget if another user deleted it while it was being edited.
 * Limit public keys per budget to 200. This prevents searching for a key from taking a long time.
 * Throttle obtain_nonce_and_auth_string_salt endpoint
 * Throttle budget invites to prevent spam

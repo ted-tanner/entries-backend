@@ -73,6 +73,7 @@ diesel::table! {
     entries (id) {
         id -> Uuid,
         budget_id -> Uuid,
+        category_id -> Nullable<Uuid>,
         encrypted_blob -> Bytea,
         encrypted_blob_sha1_hash -> Bytea,
         modified_timestamp -> Timestamp,
@@ -174,6 +175,8 @@ diesel::table! {
         last_token_refresh_request_app_version -> Varchar,
     }
 }
+
+diesel::joinable!(entries -> categories (category_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     authorization_attempts,

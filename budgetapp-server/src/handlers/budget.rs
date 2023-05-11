@@ -1,8 +1,9 @@
 use budgetapp_utils::models::budget_access_key::BudgetAccessKey;
 use budgetapp_utils::request_io::{
     InputBudget, InputBudgetAccessTokenList, InputCategoryId, InputEditBudget, InputEditCategory,
-    InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId, InputPublicKey,
-    OutputBudgetShareInviteWithoutKey, OutputCategoryId, OutputEntryId, UserInvitationToBudget,
+    InputEditEntry, InputEncryptedBlob, InputEncryptedBlobAndCategoryId, InputEntryAndCategory,
+    InputEntryId, InputPublicKey, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
+    OutputEntryId, UserInvitationToBudget,
 };
 use budgetapp_utils::token::budget_accept_token::BudgetAcceptToken;
 use budgetapp_utils::token::budget_access_token::BudgetAccessToken;
@@ -608,7 +609,7 @@ pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    entry_data: web::Json<InputEncryptedBlob>,
+    entry_data: web::Json<InputEncryptedBlobAndCategoryId>,
 ) -> Result<HttpResponse, ServerError> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
@@ -616,6 +617,7 @@ pub async fn create_entry(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry(
             &entry_data.0.encrypted_blob,
+            entry_data.0.category_id,
             budget_access_token.0.budget_id(),
         )
     })
@@ -626,6 +628,10 @@ pub async fn create_entry(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound("No budget with ID matching token"));
             }
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::ForeignKeyViolation,
+                _,
+            )) => return Err(ServerError::NotFound("No category matching ID")),
             _ => {
                 log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(
@@ -684,6 +690,7 @@ pub async fn edit_entry(
             entry_data.0.entry_id,
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
+            entry_data.0.category_id,
             budget_access_token.0.budget_id(),
         )
     })
@@ -697,6 +704,10 @@ pub async fn edit_entry(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(ServerError::NotFound("No entry with ID matching token"));
             }
+            DaoError::QueryFailure(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::ForeignKeyViolation,
+                _,
+            )) => return Err(ServerError::NotFound("No category matching ID")),
             _ => {
                 log::error!("{e}");
                 return Err(ServerError::DatabaseTransactionError(

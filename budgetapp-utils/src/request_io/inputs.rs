@@ -190,6 +190,14 @@ pub struct InputEncryptedBlob {
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputEncryptedBlobAndCategoryId {
+    #[serde_as(as = "Base64")]
+    pub encrypted_blob: Vec<u8>,
+    pub category_id: Option<Uuid>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEntryAndCategory {
     #[serde_as(as = "Base64")]
     pub entry_encrypted_blob: Vec<u8>,
@@ -205,6 +213,7 @@ pub struct InputEditEntry {
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]
     pub expected_previous_data_hash: Vec<u8>,
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
