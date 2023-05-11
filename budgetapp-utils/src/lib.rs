@@ -14,7 +14,6 @@ mod test_env;
 
 pub mod argon2_hasher;
 pub mod db;
-pub mod definitions;
 pub mod models;
 pub mod otp;
 pub mod request_io;

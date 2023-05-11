@@ -14,20 +14,28 @@ pub struct UnblacklistExpiredTokensJob {
 }
 
 impl UnblacklistExpiredTokensJob {
-    pub fn new(job_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(
+        job_frequency: Duration,
+        last_run_time: SystemTime,
+        db_thread_pool: DbThreadPool,
+    ) -> Self {
         Self {
             job_frequency,
             db_thread_pool,
             is_running: false,
-            last_run_time: SystemTime::now(),
+            last_run_time,
         }
+    }
+
+    pub fn name() -> &'static str {
+        "Unblacklist Expired Tokens"
     }
 }
 
 #[async_trait]
 impl Job for UnblacklistExpiredTokensJob {
     fn name(&self) -> &'static str {
-        "Unblacklist Expired Tokens"
+        Self::name()
     }
 
     fn run_frequency(&self) -> Duration {
@@ -52,6 +60,10 @@ impl Job for UnblacklistExpiredTokensJob {
 
     fn set_running_state_running(&mut self) {
         self.is_running = true;
+    }
+
+    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+        &self.db_thread_pool
     }
 
     async fn run_handler_func(&mut self) -> Result<(), JobError> {
@@ -91,6 +103,7 @@ mod tests {
         thread::sleep(Duration::from_millis(1));
         let mut job = UnblacklistExpiredTokensJob::new(
             Duration::from_millis(1),
+            SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
         thread::sleep(Duration::from_millis(1));
@@ -201,6 +214,7 @@ mod tests {
 
         let mut job = UnblacklistExpiredTokensJob::new(
             Duration::from_millis(1),
+            SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
         job.run_handler_func().await.unwrap();

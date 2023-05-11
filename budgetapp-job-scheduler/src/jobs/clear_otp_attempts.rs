@@ -19,6 +19,7 @@ impl ClearOtpAttemptsJob {
     pub fn new(
         job_frequency: Duration,
         attempts_lifetime: Duration,
+        last_run_time: SystemTime,
         db_thread_pool: DbThreadPool,
     ) -> Self {
         Self {
@@ -26,15 +27,19 @@ impl ClearOtpAttemptsJob {
             attempts_lifetime,
             db_thread_pool,
             is_running: false,
-            last_run_time: SystemTime::now(),
+            last_run_time,
         }
+    }
+
+    pub fn name() -> &'static str {
+        "Clear OTP Attempts"
     }
 }
 
 #[async_trait]
 impl Job for ClearOtpAttemptsJob {
     fn name(&self) -> &'static str {
-        "Clear OTP Attempts"
+        Self::name()
     }
 
     fn run_frequency(&self) -> Duration {
@@ -59,6 +64,10 @@ impl Job for ClearOtpAttemptsJob {
 
     fn set_running_state_running(&mut self) {
         self.is_running = true;
+    }
+
+    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+        &self.db_thread_pool
     }
 
     async fn run_handler_func(&mut self) -> Result<(), JobError> {
@@ -96,6 +105,7 @@ mod tests {
         let mut job = ClearOtpAttemptsJob::new(
             Duration::from_millis(1),
             Duration::from_millis(1),
+            SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
         thread::sleep(Duration::from_millis(1));
@@ -176,6 +186,7 @@ mod tests {
         let mut job = ClearOtpAttemptsJob::new(
             Duration::from_secs(1),
             Duration::from_secs(1),
+            SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
 
@@ -201,6 +212,7 @@ mod tests {
         let mut job = ClearOtpAttemptsJob::new(
             Duration::from_millis(1),
             Duration::from_millis(1),
+            SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
         job.run_handler_func().await.unwrap();

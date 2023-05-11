@@ -12,7 +12,8 @@ pub use clear_user_lookup_attempts::ClearUserLookupAttemptsJob;
 pub use delete_users::DeleteUsersJob;
 pub use unblacklist_expired_tokens::UnblacklistExpiredTokensJob;
 
-use budgetapp_utils::db::DaoError;
+use budgetapp_utils::db::job_registry::Dao as JobRegistryDao;
+use budgetapp_utils::db::{DaoError, DbThreadPool};
 
 use async_trait::async_trait;
 use std::fmt;
@@ -69,6 +70,8 @@ pub trait Job: Send {
     fn set_running_state_not_running(&mut self);
     fn set_running_state_running(&mut self);
 
+    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool;
+
     fn ready(&self) -> bool {
         !self.is_running() && SystemTime::now() > self.last_run_time() + self.run_frequency()
     }
@@ -76,6 +79,14 @@ pub trait Job: Send {
     async fn execute(&mut self) -> Result<(), JobError> {
         if self.ready() {
             self.set_last_run_time(SystemTime::now());
+
+            // If the job runs more frequently than every two minutes, don't record it. The
+            // time is recorded to allow jobs to be run sooner upon startup if they haven't
+            // been run in the environment recently. This doesn't matter for frequently-run
+            // jobs.
+            if self.run_frequency() >= Duration::from_secs(60 * 2) {
+                self.record_run().await?;
+            }
 
             self.set_running_state_running();
             let res = self.run_handler_func().await;
@@ -87,11 +98,25 @@ pub trait Job: Send {
         }
     }
 
+    async fn record_run(&mut self) -> Result<(), JobError> {
+        let mut dao = JobRegistryDao::new(self.get_db_thread_pool_ref());
+        let name = self.name();
+
+        tokio::task::spawn_blocking(move || {
+            dao.set_job_last_run_timestamp(name, SystemTime::now())
+        })
+        .await??;
+
+        Ok(())
+    }
+
     async fn run_handler_func(&mut self) -> Result<(), JobError>;
 }
 
 #[cfg(test)]
 pub mod tests {
+    use crate::env;
+
     use super::*;
 
     use async_trait::async_trait;
@@ -146,6 +171,10 @@ pub mod tests {
             self.is_running = true;
         }
 
+        fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+            &env::db::DB_THREAD_POOL
+        }
+
         async fn run_handler_func(&mut self) -> Result<(), JobError> {
             *self.runs.lock().unwrap() += 1;
             Ok(())
@@ -183,4 +212,7 @@ pub mod tests {
 
         assert_eq!(*job_run_count.lock().unwrap(), 1);
     }
+
+    // TODO: Test record_run()
+    // TODO: Test get_db_thread_pool_ref()
 }

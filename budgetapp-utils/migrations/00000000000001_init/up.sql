@@ -111,6 +111,11 @@ CREATE TABLE entries (
     modified_timestamp TIMESTAMP NOT NULL
 );
 
+CREATE TABLE job_registry (
+    job_name VARCHAR(255) PRIMARY KEY,
+    last_run_timestamp TIMESTAMP NOT NULL
+);
+
 CREATE TABLE otp_attempts (
     user_id UUID PRIMARY KEY,
     attempt_count SMALLINT NOT NULL,

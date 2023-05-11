@@ -24,6 +24,7 @@ DROP TABLE budget_access_keys;
 DROP TABLE budget_share_invites;
 DROP TABLE categories;
 DROP TABLE entries;
+DROP TABLE job_registry;
 DROP TABLE otp_attempts;
 DROP TABLE signin_nonces;
 DROP TABLE user_lookup_attempts;

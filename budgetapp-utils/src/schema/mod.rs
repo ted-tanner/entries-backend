@@ -80,6 +80,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    job_registry (job_name) {
+        job_name -> Varchar,
+        last_run_timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
     otp_attempts (user_id) {
         user_id -> Uuid,
         attempt_count -> Int2,
@@ -177,6 +184,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     budgets,
     categories,
     entries,
+    job_registry,
     otp_attempts,
     signin_nonces,
     user_deletion_request_budget_keys,

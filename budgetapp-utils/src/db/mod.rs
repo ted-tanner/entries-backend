@@ -4,6 +4,7 @@ use std::fmt;
 
 pub mod auth;
 pub mod budget;
+pub mod job_registry;
 pub mod user;
 
 pub type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;

@@ -6,6 +6,7 @@ pub mod budget_access_key;
 pub mod budget_share_invite;
 pub mod category;
 pub mod entry;
+pub mod job_registry_item;
 pub mod otp_attempts;
 pub mod signin_nonce;
 pub mod user;

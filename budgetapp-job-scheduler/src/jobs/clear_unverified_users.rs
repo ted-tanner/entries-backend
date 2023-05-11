@@ -19,6 +19,7 @@ impl ClearUnverifiedUsersJob {
     pub fn new(
         job_frequency: Duration,
         max_unverified_user_age: Duration,
+        last_run_time: SystemTime,
         db_thread_pool: DbThreadPool,
     ) -> Self {
         Self {
@@ -26,15 +27,19 @@ impl ClearUnverifiedUsersJob {
             max_unverified_user_age,
             db_thread_pool,
             is_running: false,
-            last_run_time: SystemTime::now(),
+            last_run_time,
         }
+    }
+
+    pub fn name() -> &'static str {
+        "Clear Unverified Users"
     }
 }
 
 #[async_trait]
 impl Job for ClearUnverifiedUsersJob {
     fn name(&self) -> &'static str {
-        "Clear Unverified Users"
+        Self::name()
     }
 
     fn run_frequency(&self) -> Duration {
@@ -59,6 +64,10 @@ impl Job for ClearUnverifiedUsersJob {
 
     fn set_running_state_running(&mut self) {
         self.is_running = true;
+    }
+
+    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+        &self.db_thread_pool
     }
 
     async fn run_handler_func(&mut self) -> Result<(), JobError> {
