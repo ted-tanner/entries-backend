@@ -1,4 +1,4 @@
-a# The Budget App (Server)
+# The Budget App (Server)
 
 ## Cloning Repository
 
