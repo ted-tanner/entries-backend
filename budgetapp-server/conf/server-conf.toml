@@ -25,14 +25,6 @@ user_creation_token_lifetime_days = 7
 user_deletion_token_lifetime_days = 3
 otp_lifetime_mins = 5
 
-[security]
-otp_max_attempts = 8
-otp_attempts_reset_mins = 15
-authorization_max_attempts = 12
-authorization_attempts_reset_mins = 15
-user_lookup_max_attempts = 30,
-user_lookup_attempts_reset_mins = 5,
-
 [time_delays]
 user_deletion_delay_days = 7
 

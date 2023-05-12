@@ -239,8 +239,7 @@ pub async fn invite_user(
 
     let mut user_dao = db::user::Dao::new(&db_thread_pool);
     let recipient_public_key = match web::block(move || {
-        user_dao
-            .get_user_public_key_without_marking_attempt(&invitation_info_ref.recipient_user_email)
+        user_dao.get_user_public_key(&invitation_info_ref.recipient_user_email)
     })
     .await?
     {

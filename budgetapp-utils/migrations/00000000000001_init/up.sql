@@ -1,9 +1,3 @@
-CREATE TABLE authorization_attempts (
-    user_id UUID PRIMARY KEY,
-    attempt_count SMALLINT NOT NULL,
-    expiration_time TIMESTAMP NOT NULL
-);
-
 CREATE TABLE blacklisted_tokens (
     token_signature BYTEA PRIMARY KEY,
     token_expiration TIMESTAMP NOT NULL
@@ -118,22 +112,18 @@ CREATE TABLE job_registry (
     last_run_timestamp TIMESTAMP NOT NULL
 );
 
-CREATE TABLE otp_attempts (
-    user_id UUID PRIMARY KEY,
-    attempt_count SMALLINT NOT NULL,
-    expiration_time TIMESTAMP NOT NULL
-);
-
 CREATE TABLE signin_nonces (
     user_email VARCHAR(255) PRIMARY KEY,
     nonce INT NOT NULL
 );
 
-CREATE TABLE user_lookup_attempts (
-    user_email VARCHAR(255) PRIMARY KEY,
-    attempt_count SMALLINT NOT NULL,
-    expiration_time TIMESTAMP NOT NULL
+CREATE TABLE throttleable_attempts (
+    identifier_hash BIGINT PRIMARY KEY,
+    attempt_count INT NOT NULL,
+    expiration_timestamp TIMESTAMP NOT NULL
 );
+
+CREATE INDEX ON budget_share_invites USING HASH (recipient_user_email);
 
 CREATE TABLE users (
     id UUID PRIMARY KEY,
@@ -212,16 +202,13 @@ CREATE TABLE user_security_data (
 
 -- Foreign keys
 
-ALTER TABLE authorization_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE budget_accept_keys ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_access_keys ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL;
-ALTER TABLE otp_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE signin_nonces ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
-ALTER TABLE user_lookup_attempts ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;

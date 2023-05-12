@@ -4,16 +4,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::authorization_attempts::{AuthorizationAttempts, NewAuthorizationAttempts};
 use crate::models::blacklisted_token::NewBlacklistedToken;
-use crate::models::otp_attempts::{NewOtpAttempts, OtpAttempts};
 use crate::request_io::OutputSigninNonceData;
-use crate::schema::authorization_attempts as authorization_attempts_fields;
-use crate::schema::authorization_attempts::dsl::authorization_attempts;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-use crate::schema::otp_attempts as otp_attempts_fields;
-use crate::schema::otp_attempts::dsl::otp_attempts;
 use crate::schema::signin_nonces as signin_nonce_fields;
 use crate::schema::signin_nonces::dsl::signin_nonces;
 use crate::schema::user_security_data as user_security_data_fields;
@@ -21,12 +15,10 @@ use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
-pub struct UserAuthStringHashAndAuthAttempts {
+pub struct UserAuthStringHashAndStatus {
     pub user_id: Uuid,
     pub is_user_verified: bool,
     pub auth_string_hash: String,
-    pub attempt_count: i16,
-    pub expiration_time: SystemTime,
 }
 
 pub struct Dao {
@@ -40,14 +32,13 @@ impl Dao {
         }
     }
 
-    pub fn get_user_auth_string_hash_and_mark_attempt(
+    pub fn get_user_auth_string_hash_and_status(
         &mut self,
         user_email: &str,
-        attempts_lifetime: Duration,
-    ) -> Result<UserAuthStringHashAndAuthAttempts, DaoError> {
+    ) -> Result<UserAuthStringHashAndStatus, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        let hash_and_attempts = db_connection
+        let hash_and_status = db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
                 let (user_id, is_user_verified, auth_string_hash) = users
@@ -64,12 +55,10 @@ impl Dao {
                     .get_result::<(Uuid, bool, Option<String>)>(conn)?;
 
                 if !is_user_verified {
-                    return Ok(UserAuthStringHashAndAuthAttempts {
+                    return Ok(UserAuthStringHashAndStatus {
                         user_id,
                         is_user_verified,
                         auth_string_hash: String::new(),
-                        attempt_count: 0,
-                        expiration_time: UNIX_EPOCH,
                     });
                 }
 
@@ -79,34 +68,14 @@ impl Dao {
                     return Err(diesel::result::Error::NotFound);
                 }
 
-                let expiration_time = SystemTime::now() + attempts_lifetime;
-
-                let new_attempt = NewAuthorizationAttempts {
-                    user_id,
-                    attempt_count: 1,
-                    expiration_time,
-                };
-
-                let attempts = dsl::insert_into(authorization_attempts)
-                    .values(&new_attempt)
-                    .on_conflict(authorization_attempts_fields::user_id)
-                    .do_update()
-                    .set(
-                        authorization_attempts_fields::attempt_count
-                            .eq(authorization_attempts_fields::attempt_count + 1),
-                    )
-                    .get_result::<AuthorizationAttempts>(conn)?;
-
-                Ok(UserAuthStringHashAndAuthAttempts {
+                Ok(UserAuthStringHashAndStatus {
                     user_id,
                     is_user_verified,
                     auth_string_hash,
-                    attempt_count: attempts.attempt_count,
-                    expiration_time: attempts.expiration_time,
                 })
             })?;
 
-        Ok(hash_and_attempts)
+        Ok(hash_and_status)
     }
 
     pub fn blacklist_token(
@@ -164,52 +133,6 @@ impl Dao {
                 .filter(blacklisted_token_fields::token_expiration.lt(SystemTime::now())),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn clear_otp_verification_count(
-        &mut self,
-        attempts_lifetime: Duration,
-    ) -> Result<usize, DaoError> {
-        let expiration_cut_off = SystemTime::now() - attempts_lifetime;
-
-        Ok(diesel::delete(
-            otp_attempts.filter(otp_attempts_fields::expiration_time.lt(expiration_cut_off)),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn clear_authorization_attempt_count(
-        &mut self,
-        attempts_lifetime: Duration,
-    ) -> Result<usize, DaoError> {
-        let expiration_cut_off = SystemTime::now() - attempts_lifetime;
-
-        Ok(diesel::delete(
-            authorization_attempts
-                .filter(authorization_attempts_fields::expiration_time.lt(expiration_cut_off)),
-        )
-        .execute(&mut self.db_thread_pool.get()?)?)
-    }
-
-    pub fn get_and_increment_otp_verification_count(
-        &mut self,
-        user_id: Uuid,
-        attempts_lifetime: Duration,
-    ) -> Result<OtpAttempts, DaoError> {
-        let expiration_time = SystemTime::now() + attempts_lifetime;
-
-        let new_attempt = NewOtpAttempts {
-            user_id,
-            attempt_count: 1,
-            expiration_time,
-        };
-
-        Ok(dsl::insert_into(otp_attempts)
-            .values(&new_attempt)
-            .on_conflict(otp_attempts_fields::user_id)
-            .do_update()
-            .set(otp_attempts_fields::attempt_count.eq(otp_attempts_fields::attempt_count + 1))
-            .get_result::<OtpAttempts>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn get_and_refresh_signin_nonce(&mut self, user_email: &str) -> Result<i32, DaoError> {

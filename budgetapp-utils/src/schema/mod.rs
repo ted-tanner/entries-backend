@@ -1,14 +1,6 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    authorization_attempts (user_id) {
-        user_id -> Uuid,
-        attempt_count -> Int2,
-        expiration_time -> Timestamp,
-    }
-}
-
-diesel::table! {
     blacklisted_tokens (token_signature) {
         token_signature -> Bytea,
         token_expiration -> Timestamp,
@@ -88,17 +80,17 @@ diesel::table! {
 }
 
 diesel::table! {
-    otp_attempts (user_id) {
-        user_id -> Uuid,
-        attempt_count -> Int2,
-        expiration_time -> Timestamp,
+    signin_nonces (user_email) {
+        user_email -> Varchar,
+        nonce -> Int4,
     }
 }
 
 diesel::table! {
-    signin_nonces (user_email) {
-        user_email -> Varchar,
-        nonce -> Int4,
+    throttleable_attempts (identifier_hash) {
+        identifier_hash -> Int8,
+        attempt_count -> Int4,
+        expiration_timestamp -> Timestamp,
     }
 }
 
@@ -124,14 +116,6 @@ diesel::table! {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
         encrypted_blob_sha1_hash -> Bytea,
-    }
-}
-
-diesel::table! {
-    user_lookup_attempts (user_email) {
-        user_email -> Varchar,
-        attempt_count -> Int2,
-        expiration_time -> Timestamp,
     }
 }
 
@@ -179,7 +163,6 @@ diesel::table! {
 diesel::joinable!(entries -> categories (category_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    authorization_attempts,
     blacklisted_tokens,
     budget_accept_keys,
     budget_access_keys,
@@ -188,12 +171,11 @@ diesel::allow_tables_to_appear_in_same_query!(
     categories,
     entries,
     job_registry,
-    otp_attempts,
     signin_nonces,
+    throttleable_attempts,
     user_deletion_request_budget_keys,
     user_deletion_requests,
     user_keystores,
-    user_lookup_attempts,
     user_preferences,
     user_security_data,
     users,

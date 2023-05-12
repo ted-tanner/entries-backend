@@ -20,19 +20,26 @@ use crate::env;
 use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
+use crate::middleware::throttle::Throttle;
 use crate::middleware::{FromHeader, FromQuery};
 
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<InputEmail>,
+    throttle: Throttle<30, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let public_key_and_attempts = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_public_key_and_mark_attempt(
-            &user_email.email,
-            env::CONF.security.user_lookup_attempts_reset_time,
+    throttle
+        .enforce(
+            &user_access_token.0.user_id,
+            "lookup_user_public_key",
+            &db_thread_pool,
         )
+        .await?;
+
+    let public_key = match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.get_user_public_key(&user_email.email)
     })
     .await?
     {
@@ -52,17 +59,7 @@ pub async fn lookup_user_public_key(
         },
     };
 
-    if public_key_and_attempts.attempt_count > env::CONF.security.user_lookup_max_attempts
-        && public_key_and_attempts.expiration_time >= SystemTime::now()
-    {
-        return Err(HttpErrorResponse::TooManyAttempts(
-            "Too many login attempts. Try again in a few minutes.",
-        ));
-    }
-
-    Ok(HttpResponse::Ok().json(OutputPublicKey {
-        public_key: public_key_and_attempts.public_key,
-    }))
+    Ok(HttpResponse::Ok().json(OutputPublicKey { public_key }))
 }
 
 pub async fn create(
@@ -385,11 +382,8 @@ pub async fn change_password(
         ));
     }
 
-    let hash_and_attempts = match web::block(move || {
-        auth_dao.get_user_auth_string_hash_and_mark_attempt(
-            &user_access_token.0.user_email,
-            env::CONF.security.authorization_attempts_reset_time,
-        )
+    let hash = match web::block(move || {
+        auth_dao.get_user_auth_string_hash_and_status(&user_access_token.0.user_email)
     })
     .await?
     {
@@ -397,25 +391,17 @@ pub async fn change_password(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(
-                "Failed to check authorization attempt count",
+                "Failed to get user auth string",
             ));
         }
     };
-
-    if hash_and_attempts.attempt_count > env::CONF.security.authorization_max_attempts
-        && hash_and_attempts.expiration_time >= SystemTime::now()
-    {
-        return Err(HttpErrorResponse::TooManyAttempts(
-            "Too many login attempts. Try again in a few minutes.",
-        ));
-    }
 
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
         let does_current_auth_match = argon2_hasher::verify_hash(
             &current_auth_string,
-            &hash_and_attempts.auth_string_hash,
+            &hash.auth_string_hash,
             &env::CONF.keys.hashing_key,
         );
 

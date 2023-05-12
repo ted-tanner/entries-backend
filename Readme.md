@@ -492,9 +492,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - A sender can retract an invitation by signing a token that the server verifies came from the sender (the sender generates an Ed25519 key pair and gives the server the public key, which the server saves in the share invite)
 * Note on what is possible: Though a review of our server source code will show that we do not record who has access to which budget, when a user retrieves or modifies a budget we see who the user is and which budget they have signed a token to access. It is, therefore, *technically* possible for us to capture that information and see which budgets a user is accessing. It is a promise that we make that we *will not* record this information, and we provide the server's source code to support our claims that we don't capture this data. We know of no way to restrict users' access to each other's budgets without some way of identifying the user. In our case, this identification happens when users reveal that they hold a private key certifying access to a budget by cryptographically signing a token. This token scheme allows users to prove to the server that they have exclusive access to a budget without us needing to store evidence of a relationship between a user and a budget in our database.
   - While it is technically possible for us to capture which budgets a user has access to, it is *not* possible for us to decrypt details about a budget or its entries. Those details are encrypted with a key that is only accessible with a user's password, which never leaves the user's device(s), not even during authentication.
+* To prevent revealing which email addresses use our service in the endpoint for obtaining the auth string hashing parameters, we return phony data when a user is not found. This phony data needs to change infrequently to adequately mimic a user's nonce. This is done by seeding a random number generator with the number of days since the unix epoch and then hashing the random number with the email address from the request. The nonce is a masked-off portion of the hash. To prevent timing attacks, this hashing takes place with every request to this endpoint regardless of whether or not it will be used.
 
 ### Minimum Viable Product
 
+* Default argon2 params to tell the client: m=256mb, p=2, t=18
+* Clear throttling table weekly (just to make sure it doesn't get too long)
+* Throttle `obtain_nonce_and_auth_string_salt` handler by the x-forwarded-for header
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
 * Delete expired budget accept keys regularly
@@ -507,9 +511,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * TOTP Should *not* allow upcoming codes or codes that just expired to be used. There must be a better solution.
 * Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
-* Endpoints for getting and updating user_security_data
-  - Password_encryption_salt and encryption_key_user_password
-  - Recovery keys
+* Endpoints for generating new recovery keys
 * Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
 * Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
@@ -568,6 +570,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
 * Languages/localization
 * Budgets that are not modified for a year will be deleted?
+* Full endpoint documentation
 
 ### Note on timezones
 

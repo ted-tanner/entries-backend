@@ -13,10 +13,7 @@ mod env;
 mod jobs;
 mod runner;
 
-use jobs::{
-    ClearAuthorizationAttemptsJob, ClearOtpAttemptsJob, ClearUnverifiedUsersJob,
-    ClearUserLookupAttemptsJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
-};
+use jobs::{ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob};
 
 fn main() {
     Logger::with(LogSpecification::info())
@@ -63,29 +60,6 @@ fn main() {
         .block_on(async move {
             let mut job_runner = env::runner::JOB_RUNNER.lock().await;
 
-            job_runner.register(Box::new(ClearAuthorizationAttemptsJob::new(
-                Duration::from_secs(
-                    env::CONF
-                        .clear_authorization_attempts_job
-                        .job_frequency_secs,
-                ),
-                Duration::from_secs(
-                    env::CONF
-                        .clear_authorization_attempts_job
-                        .attempts_lifetime_mins
-                        * 60,
-                ),
-                get_last_run_time(ClearAuthorizationAttemptsJob::name(), &registry),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
-
-            job_runner.register(Box::new(ClearOtpAttemptsJob::new(
-                Duration::from_secs(env::CONF.clear_otp_attempts_job.job_frequency_secs),
-                Duration::from_secs(env::CONF.clear_otp_attempts_job.attempts_lifetime_mins * 60),
-                get_last_run_time(ClearAuthorizationAttemptsJob::name(), &registry),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
-
             job_runner.register(Box::new(ClearUnverifiedUsersJob::new(
                 Duration::from_secs(env::CONF.clear_unverified_users_job.job_frequency_secs),
                 Duration::from_secs(
@@ -97,18 +71,6 @@ fn main() {
                         * 60,
                 ),
                 get_last_run_time(ClearUnverifiedUsersJob::name(), &registry),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
-
-            job_runner.register(Box::new(ClearUserLookupAttemptsJob::new(
-                Duration::from_secs(env::CONF.clear_user_lookup_attempts_job.job_frequency_secs),
-                Duration::from_secs(
-                    env::CONF
-                        .clear_user_lookup_attempts_job
-                        .attempts_lifetime_mins
-                        * 60,
-                ),
-                get_last_run_time(ClearUserLookupAttemptsJob::name(), &registry),
                 env::db::DB_THREAD_POOL.clone(),
             )));
 
