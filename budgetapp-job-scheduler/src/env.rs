@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+use std::sync::RwLock;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Conf {
@@ -41,21 +42,22 @@ pub struct UnblacklistExpiredTokensJobConf {
 }
 
 lazy_static! {
+    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::new());
     pub static ref CONF: Conf = build_conf();
 }
 
 fn build_conf() -> Conf {
-    const CONF_FILE_PATH: &str = "conf/jobs-conf.toml";
+    let conf_file_path = CONF_FILE_PATH.read().expect("Lock was poisoned");
 
-    let mut conf_file = File::open(CONF_FILE_PATH).unwrap_or_else(|_| {
-        eprintln!("ERROR: Expected configuration file at '{CONF_FILE_PATH}'");
+    let mut conf_file = File::open::<&str>(conf_file_path.as_ref()).unwrap_or_else(|_| {
+        eprintln!("ERROR: Expected configuration file at '{conf_file_path}'");
         std::process::exit(1);
     });
 
     let mut contents = String::new();
     conf_file.read_to_string(&mut contents).unwrap_or_else(|_| {
         eprintln!(
-            "ERROR: Configuration file at '{CONF_FILE_PATH}' should be a text file in the TOML format."
+            "ERROR: Configuration file at '{conf_file_path}' should be a text file in the TOML format."
         );
         std::process::exit(1);
     });
@@ -63,10 +65,17 @@ fn build_conf() -> Conf {
     match toml::from_str::<Conf>(&contents) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("ERROR: Parsing '{CONF_FILE_PATH}' failed: {e}");
+            eprintln!("ERROR: Parsing '{conf_file_path}' failed: {e}");
             std::process::exit(1);
         }
     }
+}
+
+pub fn initialize(conf_file_path: &str) {
+    *CONF_FILE_PATH.write().expect("Lock was poisioned") = String::from(conf_file_path);
+
+    // Forego lazy initialization in order to validate conf file
+    lazy_static::initialize(&crate::env::CONF);
 }
 
 pub mod db {

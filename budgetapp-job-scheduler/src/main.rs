@@ -16,6 +16,40 @@ mod runner;
 use jobs::{ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob};
 
 fn main() {
+    let mut conf_file_path: Option<String> = None;
+    let mut args = std::env::args();
+
+    // Eat the first argument, which is the relative path to the executable
+    args.next();
+
+    while let Some(arg) = args.next() {
+        match arg.to_lowercase().as_str() {
+            "--config" => {
+                conf_file_path = {
+                    let next_arg = args.next();
+
+                    match next_arg {
+                        Some(p) => Some(p),
+                        None => {
+                            eprintln!(
+                                "ERROR: --config option specified but no config file path was given",
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                };
+
+                continue;
+            }
+            a => {
+                eprintln!("ERROR: Invalid argument: {}", &a);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    env::initialize(&conf_file_path.unwrap_or(String::from("conf/jobs-conf.toml")));
+
     Logger::with(LogSpecification::info())
         .log_to_file(FileSpec::default().directory("./logs"))
         .rotate(

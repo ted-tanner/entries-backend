@@ -19,6 +19,7 @@ mod services;
 async fn main() -> std::io::Result<()> {
     let mut ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let mut port = 9000u16;
+    let mut conf_file_path: Option<String> = None;
 
     let mut args = std::env::args();
 
@@ -75,6 +76,23 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
+            "--config" => {
+                conf_file_path = {
+                    let next_arg = args.next();
+
+                    match next_arg {
+                        Some(p) => Some(p),
+                        None => {
+                            eprintln!(
+                                "ERROR: --config option specified but no config file path was given",
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                };
+
+                continue;
+            }
             a => {
                 eprintln!("ERROR: Invalid argument: {}", &a);
                 std::process::exit(1);
@@ -83,6 +101,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     let base_addr = format!("{}:{}", &ip, &port);
+    env::initialize(&conf_file_path.unwrap_or(String::from("conf/server-conf.toml")));
 
     let _logger = Logger::with(LogSpecification::info())
         .log_to_file(FileSpec::default().directory("./logs"))
@@ -108,8 +127,6 @@ async fn main() -> std::io::Result<()> {
         .use_utc()
         .start()
         .expect("Failed to start logger");
-
-    env::initialize();
 
     let cpu_count = num_cpus::get();
 

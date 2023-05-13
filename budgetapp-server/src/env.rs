@@ -2,6 +2,7 @@ use aes_gcm::{aead::KeyInit, Aes128Gcm};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+use std::sync::RwLock;
 use std::time::Duration;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -87,6 +88,7 @@ pub struct Workers {
 }
 
 lazy_static! {
+    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::new());
     pub static ref CONF: Conf = match build_conf() {
         Ok(c) => c,
         Err(e) => {
@@ -97,13 +99,13 @@ lazy_static! {
 }
 
 fn build_conf() -> Result<Conf, String> {
-    const CONF_FILE_PATH: &str = "conf/server-conf.toml";
+    let conf_file_path = CONF_FILE_PATH.read().expect("Lock was poisoned");
 
-    let mut conf_file = match File::open(CONF_FILE_PATH) {
+    let mut conf_file = match File::open::<&str>(conf_file_path.as_ref()) {
         Ok(f) => f,
         Err(e) => {
             return Err(format!(
-                "Couldn't open configuration file at '{CONF_FILE_PATH}': {e}"
+                "Couldn't open configuration file at '{conf_file_path}': {e}"
             ))
         }
     };
@@ -113,19 +115,19 @@ fn build_conf() -> Result<Conf, String> {
         Ok(_) => (),
         Err(_) => {
             return Err(format!(
-                "Configuration file at '{CONF_FILE_PATH}' should be a text file in the TOML format"
+                "Configuration file at '{conf_file_path}' should be a text file in the TOML format"
             ));
         }
     }
 
     let raw_conf = match toml::from_str::<RawConf>(&contents) {
         Ok(t) => t,
-        Err(e) => return Err(format!("Parsing '{CONF_FILE_PATH}' failed: {e}")),
+        Err(e) => return Err(format!("Parsing '{conf_file_path}' failed: {e}")),
     };
 
     if raw_conf.lifetimes.signin_token_lifetime_mins < raw_conf.lifetimes.otp_lifetime_mins * 2 {
         return Err(format!(
-            "Sign-in token lifetime must be at least double the OTP lifetime in '{CONF_FILE_PATH}'"
+            "Sign-in token lifetime must be at least double the OTP lifetime in '{conf_file_path}'"
         ));
     }
 
@@ -134,7 +136,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
-                "Failed to base64 decode hashing_key_b64 from '{CONF_FILE_PATH}': {e}"
+                "Failed to base64 decode hashing_key_b64 from '{conf_file_path}': {e}"
             ))
         }
     };
@@ -143,7 +145,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(_) => {
             return Err(format!(
-            "hashing_key_b64 in '{CONF_FILE_PATH}' must have a size of {HASHING_KEY_SIZE} bytes"
+            "hashing_key_b64 in '{conf_file_path}' must have a size of {HASHING_KEY_SIZE} bytes"
             ))
         }
     };
@@ -153,7 +155,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
-                "Failed to base64 decode otp_key_b64 from '{CONF_FILE_PATH}': {e}"
+                "Failed to base64 decode otp_key_b64 from '{conf_file_path}': {e}"
             ))
         }
     };
@@ -162,7 +164,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(_) => {
             return Err(format!(
-                "otp_key_b64 in '{CONF_FILE_PATH}' must have a size of {OTP_KEY_SIZE} bytes"
+                "otp_key_b64 in '{conf_file_path}' must have a size of {OTP_KEY_SIZE} bytes"
             ))
         }
     };
@@ -172,7 +174,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
-                "Failed to base64 decode token_signing_key_b64 from '{CONF_FILE_PATH}': {e}"
+                "Failed to base64 decode token_signing_key_b64 from '{conf_file_path}': {e}"
             ))
         }
     };
@@ -181,7 +183,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(_) => {
             return Err(format!(
-            "signing_key_b64 in '{CONF_FILE_PATH}' must have a size of {TOKEN_SIGNING_KEY_SIZE} bytes"
+            "signing_key_b64 in '{conf_file_path}' must have a size of {TOKEN_SIGNING_KEY_SIZE} bytes"
             ))
         },
     };
@@ -191,7 +193,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
-                "Failed to base64 decode token_encryption_key_b64 from '{CONF_FILE_PATH}': {e}"
+                "Failed to base64 decode token_encryption_key_b64 from '{conf_file_path}': {e}"
             ))
         }
     };
@@ -200,7 +202,7 @@ fn build_conf() -> Result<Conf, String> {
         Ok(k) => k,
         Err(_) => {
             return Err(format!(
-            "encryption_key_b64 in '{CONF_FILE_PATH}' must have a size of {TOKEN_ENCRYPTION_KEY_SIZE} bytes"
+            "encryption_key_b64 in '{conf_file_path}' must have a size of {TOKEN_ENCRYPTION_KEY_SIZE} bytes"
             ))
         },
     };
@@ -249,7 +251,9 @@ pub mod testing {
     }
 }
 
-pub fn initialize() {
+pub fn initialize(conf_file_path: &str) {
+    *CONF_FILE_PATH.write().expect("Lock was poisioned") = String::from(conf_file_path);
+
     // Forego lazy initialization in order to validate conf file
     lazy_static::initialize(&crate::env::CONF);
 }
