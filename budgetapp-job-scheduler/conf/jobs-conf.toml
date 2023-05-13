@@ -5,12 +5,12 @@ database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budget
 max_db_connections = 8
 
 [runner]
-update_frequency_secs = 1
+update_frequency_secs = 5
 worker_threads = 2
 max_blocking_threads = 60
 
 [clear_unverified_users_job]
-job_frequency_secs = 20
+job_frequency_secs = 86400
 max_unverified_user_age_days = 7
 
 [delete_users_job]

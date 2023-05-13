@@ -67,7 +67,7 @@ pub trait Job: Send {
     fn get_db_thread_pool_ref(&self) -> &DbThreadPool;
 
     fn ready(&self) -> bool {
-        !self.is_running() && SystemTime::now() > self.last_run_time() + self.run_frequency()
+        !self.is_running() && SystemTime::now() >= self.last_run_time() + self.run_frequency()
     }
 
     async fn execute(&mut self) -> Result<(), JobError> {
@@ -77,7 +77,7 @@ pub trait Job: Send {
             // If the job runs more frequently than every two minutes, don't record it. The
             // time is recorded to allow jobs to be run sooner upon startup if they haven't
             // been run in the environment recently. This doesn't matter for frequently-run
-            // jobs.
+            // jobs, so it isn't worth the DB hits.
             if self.run_frequency() >= Duration::from_secs(60 * 2) {
                 self.record_run().await?;
             }
