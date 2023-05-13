@@ -64,7 +64,7 @@ pub trait Job: Send {
     fn set_running_state_not_running(&mut self);
     fn set_running_state_running(&mut self);
 
-    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool;
+    fn get_db_thread_pool_ref(&self) -> &DbThreadPool;
 
     fn ready(&self) -> bool {
         !self.is_running() && SystemTime::now() > self.last_run_time() + self.run_frequency()
@@ -165,7 +165,7 @@ pub mod tests {
             self.is_running = true;
         }
 
-        fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+        fn get_db_thread_pool_ref(&self) -> &DbThreadPool {
             &env::db::DB_THREAD_POOL
         }
 

@@ -66,7 +66,7 @@ impl Job for ClearUnverifiedUsersJob {
         self.is_running = true;
     }
 
-    fn get_db_thread_pool_ref<'a>(&'a self) -> &'a DbThreadPool {
+    fn get_db_thread_pool_ref(&self) -> &DbThreadPool {
         &self.db_thread_pool
     }
 

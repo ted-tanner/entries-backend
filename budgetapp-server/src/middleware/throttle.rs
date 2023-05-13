@@ -32,7 +32,7 @@ impl<const TRIES: i32, const MINS: u64> Throttle<TRIES, MINS> {
         // Reinterpret the u64 hash as an i64 (Postgres supports i64s but not u64s).
         // This is safe and does not affect the uniqueness of the hash value.
         let combined_hash = unsafe { std::mem::transmute::<_, i64>(combined_hash.0) };
-        let mut dao = db::throttle::Dao::new(&db_thread_pool);
+        let mut dao = db::throttle::Dao::new(db_thread_pool);
 
         let attempt_count = match web::block(move || {
             let expiration_time = SystemTime::now() + Duration::from_secs(60 * MINS);

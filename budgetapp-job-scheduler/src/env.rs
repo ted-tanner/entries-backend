@@ -42,7 +42,7 @@ pub struct UnblacklistExpiredTokensJobConf {
 }
 
 lazy_static! {
-    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::new());
+    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::from("conf/jobs-conf.toml"));
     pub static ref CONF: Conf = build_conf();
 }
 

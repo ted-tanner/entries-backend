@@ -88,7 +88,7 @@ pub struct Workers {
 }
 
 lazy_static! {
-    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::new());
+    static ref CONF_FILE_PATH: RwLock<String> = RwLock::new(String::from("conf/server-conf.toml"));
     pub static ref CONF: Conf = match build_conf() {
         Ok(c) => c,
         Err(e) => {
