@@ -496,18 +496,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Default argon2 params to tell the client: m=256mb, p=2, t=18
 * Clear throttling table weekly (just to make sure it doesn't get too long)
-* Throttle `obtain_nonce_and_auth_string_salt` handler by the x-forwarded-for header
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
 * Delete expired budget accept keys regularly
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
 * Rename app to "Entries"
-* Throttle obtain_nonce_and_auth_string_salt endpoint
-* Throttle budget invites to prevent spam
 * Provide hashing parameters to client along with salt.
+  - Default argon2 params to tell the client: m=256mb, p=2, t=18
 * TOTP Should *not* allow upcoming codes or codes that just expired to be used. There must be a better solution.
 * Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.

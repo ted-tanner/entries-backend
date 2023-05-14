@@ -25,6 +25,7 @@ use uuid::Uuid;
 use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::auth::{Access, VerifiedToken};
 use crate::middleware::special_access_token::SpecialAccessToken;
+use crate::middleware::throttle::Throttle;
 use crate::middleware::{FromHeader, TokenLocation};
 
 pub async fn get(
@@ -222,7 +223,12 @@ pub async fn invite_user(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
+    throttle: Throttle<10, 1>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    throttle
+        .enforce(&user_access_token.0.user_id, "invite_user", &db_thread_pool)
+        .await?;
+
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     if invitation_info.recipient_user_email == user_access_token.0.user_email {
