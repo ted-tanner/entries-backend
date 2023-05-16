@@ -5,9 +5,10 @@ use budgetapp_utils::request_io::{
 use budgetapp_utils::token::auth_token::{AuthToken, AuthTokenType};
 use budgetapp_utils::token::Token;
 use budgetapp_utils::validators::Validity;
-use budgetapp_utils::{argon2_hasher, db, otp, validators};
+use budgetapp_utils::{argon2_hasher, db, validators};
 
 use actix_web::{web, HttpResponse};
+use rand::rngs::OsRng;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
@@ -76,7 +77,7 @@ pub async fn obtain_nonce_and_auth_string_salt(
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     credentials: web::Json<CredentialPair>,
-    throttle: Throttle<12, 10>,
+    throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
@@ -118,9 +119,9 @@ pub async fn sign_in(
     }
 
     let credentials_ref = Arc::clone(&credentials);
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let hash_and_status = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_user_auth_string_hash_and_status(&credentials_ref.email)
     })
     .await?
@@ -179,31 +180,37 @@ pub async fn sign_in(
         signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
     };
 
-    let end_time = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
+    let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
+    let mut otp = String::with_capacity(8);
 
-    // Add the lifetime of a generated code to the system time so the code doesn't expire quickly after
-    // it is sent. The verification endpoint will check the code for the current time as well as a future
-    // code. The real lifetime of the code the user gets is somewhere between OTP_LIFETIME_SECS and
-    // OTP_LIFETIME_SECS * 2. A user's code will be valid for a maximum of OTP_LIFETIME_SECS * 2.
-    let otp = match otp::generate_otp(
-        hash_and_status.user_id,
-        end_time,
-        env::CONF.lifetimes.otp_lifetime,
-        &env::CONF.keys.otp_key,
-    ) {
-        Ok(p) => p,
+    for _ in 0..8 {
+        let rand_alpha = OsRng.gen_range(b'A'..=b'Z') as char;
+        otp.push(rand_alpha);
+    }
+
+    // TODO: Don't log this, email it (after saving it)!
+    println!("\n\nOTP: {}-{}\n\n", &otp[..4], &otp[4..]);
+
+    match web::block(move || {
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.save_otp(&otp, user_id, otp_expiration)
+    })
+    .await?
+    {
+        Ok(a) => a,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(HttpErrorResponse::DoesNotExist("User not found"));
+        }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Failed to generate OTP"));
+            return Err(HttpErrorResponse::InternalError("Failed to save OTP"));
         }
     };
-
-    // TODO: Don't log this, email it!
-    println!("\n\nOTP: {}\n\n", &otp);
 
     Ok(HttpResponse::Ok().json(signin_token))
 }
 
+// TODO
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
@@ -224,8 +231,8 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao
             .check_is_token_on_blacklist_and_blacklist(&signin_token_signature, token_expiration)
     })
@@ -241,56 +248,55 @@ pub async fn verify_otp_for_signin(
         }
     };
 
-    let is_valid = match web::block(move || {
-        let otp = otp::OneTimePasscode::try_from(otp.0.otp)?;
-
-        let current_time = SystemTime::now();
-
-        let mut is_valid = otp::verify_otp(
-            otp,
-            user_id,
-            current_time,
-            env::CONF.lifetimes.otp_lifetime,
-            &env::CONF.keys.otp_key,
-        )?;
-
-        // A future code gets sent to the user, so check a current and future code
-        if !is_valid {
-            is_valid = otp::verify_otp(
-                otp,
-                user_id,
-                current_time + env::CONF.lifetimes.otp_lifetime,
-                env::CONF.lifetimes.otp_lifetime,
-                &env::CONF.keys.otp_key,
-            )?;
+    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+    let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
+        Ok(o) => o,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(HttpErrorResponse::IncorrectCredential("OTP has expired"));
         }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
+        }
+    };
 
-        Ok(is_valid)
+    let now = SystemTime::now();
+
+    if now > saved_otp.expiration {
+        return Err(HttpErrorResponse::IncorrectCredential("OTP has expired"));
+    }
+
+    let given_otp = otp.otp.as_bytes();
+    let saved_otp = saved_otp.otp.as_bytes();
+
+    if given_otp.len() != saved_otp.len() {
+        return Err(HttpErrorResponse::IncorrectCredential("Incorrect OTP"));
+    }
+
+    let mut otps_dont_match = 0u8;
+
+    // Do bitwise comparison to prevent timing attacks
+    for (i, saved_otp_char) in saved_otp.iter().enumerate() {
+        otps_dont_match |= saved_otp_char ^ given_otp[i];
+    }
+
+    if otps_dont_match != 0 {
+        return Err(HttpErrorResponse::IncorrectCredential("Incorrect OTP"));
+    }
+
+    let user_id = claims.user_id;
+
+    match web::block(move || {
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.delete_otp(user_id)
     })
     .await?
     {
-        Ok(v) => v,
-        Err(e) => match e {
-            otp::OtpError::Unauthorized => {
-                return Err(HttpErrorResponse::IncorrectCredential("Incorrect passcode"))
-            }
-            otp::OtpError::ImproperlyFormatted => {
-                return Err(HttpErrorResponse::IncorrectlyFormed("Invalid passcode"))
-            }
-            otp::OtpError::Error(_) => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
-                    "Validating passcode failed",
-                ));
-            }
-        },
+        Ok(_) => (),
+        Err(e) => log::error!("{e}"),
     };
 
-    if !is_valid {
-        return Err(HttpErrorResponse::IncorrectCredential("Incorrect passcode"));
-    }
-
-    let now = SystemTime::now();
+    let user_id = claims.user_id;
 
     let mut refresh_token = AuthToken::new(
         user_id,
@@ -299,8 +305,6 @@ pub async fn verify_otp_for_signin(
         AuthTokenType::Refresh,
     );
 
-    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-
     let mut access_token = AuthToken::new(
         user_id,
         &claims.user_email,
@@ -308,6 +312,7 @@ pub async fn verify_otp_for_signin(
         AuthTokenType::Access,
     );
 
+    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
     access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
     let token_pair = TokenPair {

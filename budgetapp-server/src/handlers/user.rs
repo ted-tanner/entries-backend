@@ -27,7 +27,7 @@ pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<InputEmail>,
-    throttle: Throttle<30, 5>,
+    throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
         .enforce(
@@ -66,6 +66,7 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     app_version: AppVersion,
     user_data: web::Json<InputUser>,
+    throttle: Throttle<5, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
@@ -76,6 +77,10 @@ pub async fn create(
             "Provided password is too long. Max: 512 bytes",
         ));
     }
+
+    throttle
+        .enforce(&user_data.email, "create_user", &db_thread_pool)
+        .await?;
 
     let user_data = Arc::new(user_data);
     let user_data_ref = Arc::clone(&user_data);

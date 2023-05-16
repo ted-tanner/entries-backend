@@ -5,11 +5,14 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::NewBlacklistedToken;
+use crate::models::user_otp::{NewUserOtp, UserOtp};
 use crate::request_io::OutputSigninNonceData;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::signin_nonces as signin_nonce_fields;
 use crate::schema::signin_nonces::dsl::signin_nonces;
+use crate::schema::user_otps as user_otp_fields;
+use crate::schema::user_otps::dsl::user_otps;
 use crate::schema::user_security_data as user_security_data_fields;
 use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
@@ -123,6 +126,43 @@ impl Dao {
 
             Ok(false)
         }
+    }
+
+    pub fn get_otp(&mut self, user_id: Uuid) -> Result<UserOtp, DaoError> {
+        Ok(user_otps
+            .find(user_id)
+            .get_result(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn save_otp(
+        &mut self,
+        otp: &str,
+        user_id: Uuid,
+        expiration: SystemTime,
+    ) -> Result<(), DaoError> {
+        let new_otp = NewUserOtp {
+            user_id,
+            otp,
+            expiration,
+        };
+
+        dsl::insert_into(user_otps)
+            .values(&new_otp)
+            .on_conflict(user_otp_fields::user_id)
+            .do_update()
+            .set((
+                user_otp_fields::otp.eq(otp),
+                user_otp_fields::expiration.eq(expiration),
+            ))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn delete_otp(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+        dsl::delete(user_otps.find(user_id)).execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn clear_all_expired_tokens(&mut self) -> Result<usize, DaoError> {

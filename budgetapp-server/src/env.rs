@@ -44,7 +44,6 @@ pub struct Hashing {
 pub struct Keys {
     pub hashing_key: [u8; 32],
     pub token_signing_key: [u8; 64],
-    pub otp_key: [u8; 64],
     // Will already be zeroized by the aes_gcm crate with the zeroize feature
     #[zeroize(skip)]
     pub token_encryption_cipher: Aes128Gcm,
@@ -55,7 +54,6 @@ pub struct RawKeys {
     pub hashing_key_b64: String,
     pub token_signing_key_b64: String,
     pub token_encryption_key_b64: String,
-    pub otp_key_b64: String,
 }
 
 pub struct Lifetimes {
@@ -150,25 +148,6 @@ fn build_conf() -> Result<Conf, String> {
         }
     };
 
-    const OTP_KEY_SIZE: usize = 64;
-    let otp_key = match base64::decode(&raw_conf.keys.otp_key_b64) {
-        Ok(k) => k,
-        Err(e) => {
-            return Err(format!(
-                "Failed to base64 decode otp_key_b64 from '{conf_file_path}': {e}"
-            ))
-        }
-    };
-
-    let otp_key: [u8; OTP_KEY_SIZE] = match otp_key.try_into() {
-        Ok(k) => k,
-        Err(_) => {
-            return Err(format!(
-                "otp_key_b64 in '{conf_file_path}' must have a size of {OTP_KEY_SIZE} bytes"
-            ))
-        }
-    };
-
     const TOKEN_SIGNING_KEY_SIZE: usize = 64;
     let token_signing_key = match base64::decode(&raw_conf.keys.token_signing_key_b64) {
         Ok(k) => k,
@@ -213,7 +192,6 @@ fn build_conf() -> Result<Conf, String> {
         keys: Keys {
             hashing_key,
             token_signing_key,
-            otp_key,
             token_encryption_cipher: Aes128Gcm::new(&token_encryption_key.into()),
         },
         lifetimes: Lifetimes {

@@ -170,6 +170,12 @@ CREATE TABLE user_keystores (
     encrypted_blob_sha1_hash BYTEA NOT NULL
 );
 
+CREATE TABLE user_otps (
+    user_id UUID PRIMARY KEY,
+    otp VARCHAR(8) NOT NULL,
+    expiration TIMESTAMP NOT NULL
+);
+
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
@@ -213,5 +219,6 @@ ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) 
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;
 ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_otps ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

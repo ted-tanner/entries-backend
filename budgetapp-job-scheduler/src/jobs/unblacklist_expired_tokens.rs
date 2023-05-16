@@ -155,6 +155,8 @@ mod tests {
 
             preferences_encrypted: Vec::new(),
             user_keystore_encrypted: Vec::new(),
+
+            acknowledge_agreement: true,
         };
 
         let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);

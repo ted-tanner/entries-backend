@@ -147,8 +147,17 @@ pub async fn get_multiple(
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     budget_data: web::Json<InputBudget>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    throttle
+        .enforce(
+            &user_access_token.0.user_id,
+            "create_budget",
+            &db_thread_pool,
+        )
+        .await?;
+
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_budget(budget_data.0)
@@ -223,7 +232,7 @@ pub async fn invite_user(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
-    throttle: Throttle<10, 1>,
+    throttle: Throttle<15, 3>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
         .enforce(&user_access_token.0.user_id, "invite_user", &db_thread_pool)

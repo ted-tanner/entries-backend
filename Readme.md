@@ -457,6 +457,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Mention that budgets that go unmodified for a year will be deleted
 * Users need to be able to ignore specific email addresses that invite them to budgets (gets saved in user preferences)
 * Maximum of 512 characters in a password
+* Client should handle all the "throttle" cases with a nice message explaining the user needs to wait
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -496,24 +497,24 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Add webauthn-rs
 * Clear throttling table weekly (just to make sure it doesn't get too long)
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
 * Delete expired budget accept keys regularly
+* Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
 * Rename app to "Entries"
 * Provide hashing parameters to client along with salt.
   - Default argon2 params to tell the client: m=256mb, p=2, t=18
-* TOTP Should *not* allow upcoming codes or codes that just expired to be used. There must be a better solution.
-* Different TOTP key per user for additional security (rotate with every sign in) stored as bytes in the DB
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
 * Endpoints for generating new recovery keys
 * Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
-* Throttle the "forgot password" endpoint. Create a record and make sure that emails can only be sent once every 30 minutes.
+* Throttle the "forgot password" endpoint (1 time every 5 minutes). Create a record and make sure that emails can only be sent once every 30 minutes.
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Create user endpoint should have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
-* Get email delivery set up (MailJet?)
+* Get email delivery set up (Amazon SES?)
   - OTP for sign in
   - OTP for change password
   - Forgot Password
@@ -530,7 +531,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Add webauthn-rs and totp_rs
+* Add totp_rs
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations

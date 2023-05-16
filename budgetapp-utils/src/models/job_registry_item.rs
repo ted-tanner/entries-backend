@@ -1,10 +1,10 @@
-use diesel::{Insertable, Queryable, QueryableByName};
+use diesel::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 use crate::schema::job_registry;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
+#[derive(Clone, Debug, Serialize, Deserialize, Identifiable, Queryable)]
 #[diesel(table_name = job_registry, primary_key(job_name))]
 pub struct JobRegistryItem {
     pub job_name: String,

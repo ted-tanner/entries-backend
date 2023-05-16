@@ -79,6 +79,8 @@ pub struct InputUser {
     pub preferences_encrypted: Vec<u8>,
     #[serde_as(as = "Base64")]
     pub user_keystore_encrypted: Vec<u8>,
+
+    pub acknowledge_agreement: bool,
 }
 
 #[serde_as]
