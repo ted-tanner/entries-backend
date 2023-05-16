@@ -497,7 +497,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Add webauthn-rs
 * Clear throttling table weekly (just to make sure it doesn't get too long)
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
@@ -531,7 +530,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Add totp_rs
+* Add webauthn-rs and totp_rs
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
