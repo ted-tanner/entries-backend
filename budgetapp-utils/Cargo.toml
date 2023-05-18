@@ -6,11 +6,13 @@ edition.workspace = true
 
 [dependencies]
 aes-gcm = "0.10"
+async-trait = "0.1"
 base64 = "0.13"
 diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
 ed25519-dalek = "1.0"
 hex = "0.4"
 hmac = "0.12"
+lettre = { version = "0.10", features = ["tokio1-native-tls"] }
 log = "0.4"
 num_cpus = "1.14"
 rand = "0.8"

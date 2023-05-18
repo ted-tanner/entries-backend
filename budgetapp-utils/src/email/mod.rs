@@ -2,11 +2,12 @@ pub mod senders;
 
 #[derive(Debug)]
 pub enum EmailError {
-    InvalidCredential,
+    RelayConnectionFailed(String),
     IncompleteEmail(&'static str),
     FailedToSend(String),
 }
 
+use async_trait::async_trait;
 use std::fmt;
 
 impl std::error::Error for EmailError {}
@@ -14,15 +15,16 @@ impl std::error::Error for EmailError {}
 impl fmt::Display for EmailError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EmailError::InvalidCredential => write!(f, "EmailError: Invalid credential"),
+            EmailError::RelayConnectionFailed(e) => write!(f, "EmailError: Relay connection failed: {e}"),
             EmailError::IncompleteEmail(e) => write!(f, "EmailError: Incomplete email: {e}"),
             EmailError::FailedToSend(e) => write!(f, "EmailError: Failed to send: {e}"),
         }
     }
 }
 
+#[async_trait]
 pub trait EmailSender {
-    fn send(&self, body: &str, dest: &str) -> Result<(), EmailError>;
+    async fn send(&self, body: &str, dest: &str) -> Result<(), EmailError>;
 }
 
 pub struct EmailBuilder<'a> {
@@ -60,7 +62,7 @@ impl<'a> EmailBuilder<'a> {
         self.sender = Some(sender);
     }
 
-    pub fn send(&self) -> Result<(), EmailError> {
+    pub async fn send(&self) -> Result<(), EmailError> {
         let body = match self.body {
             Some(b) => b,
             None => return Err(EmailError::IncompleteEmail("Email is missing a body")),
@@ -84,6 +86,6 @@ impl<'a> EmailBuilder<'a> {
             }
         };
 
-        sender.send(body, dest)
+        sender.send(body, dest).await
     }
 }

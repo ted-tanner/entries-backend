@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
 
+use budgetapp_utils::email::senders::AmazonSes;
+
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use diesel::prelude::*;
@@ -8,7 +10,7 @@ use diesel::r2d2::{self, ConnectionManager};
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
 };
-use std::net::{IpAddr, Ipv4Addr};
+use std::time::Duration;
 
 mod env;
 mod handlers;
@@ -17,7 +19,6 @@ mod services;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mut ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let mut port = 9000u16;
     let mut conf_file_path: Option<String> = None;
 
@@ -55,27 +56,6 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
-            "--ip" => {
-                ip = {
-                    let next_arg = args.next();
-
-                    match next_arg {
-                        Some(s) => match s.parse::<IpAddr>() {
-                            Ok(i) => i,
-                            Err(_) => {
-                                eprintln!("ERROR: Invalid IP address");
-                                std::process::exit(1);
-                            }
-                        },
-                        None => {
-                            eprintln!("ERROR: --ip option specified but no IP was given");
-                            std::process::exit(1);
-                        }
-                    }
-                };
-
-                continue;
-            }
             "--config" => {
                 conf_file_path = {
                     let next_arg = args.next();
@@ -100,7 +80,7 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    let base_addr = format!("{}:{}", &ip, &port);
+    let base_addr = format!("127.0.0.1:{}", &port);
     env::initialize(&conf_file_path.unwrap_or(String::from("conf/server-conf.toml")));
 
     let _logger = Logger::with(LogSpecification::info())
@@ -156,6 +136,8 @@ async fn main() -> std::io::Result<()> {
         ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
     let db_thread_pool = match r2d2::Pool::builder()
         .max_size(db_max_connections)
+        // TODO: Add idle_timeout to config
+        .idle_timeout(Some(Duration::from_secs(25)))
         .build(db_connection_manager)
     {
         Ok(c) => c,
@@ -167,9 +149,35 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
+    log::info!("Connecting to SMTP relay...");
+
+    // TODO: If test build, always use mock SMTP that just prints the email. Else check if
+    //       email is enabled in the config
+
+    // TODO: Add address to config
+    // TODO: Add pool_max_size to config
+    // TODO: Add idle_timeout to config
+    let smtp_thread_pool = AmazonSes::with_credentials(
+        &env::CONF.keys.amazon_ses_username,
+        &env::CONF.keys.amazon_ses_key,
+        "email-smtp.us-west-2.amazonaws.com",
+        24, // 2 * num_cpus
+        Duration::from_secs(25),
+    )
+    .expect("Failed to connect to SMTP relay");
+
+    match smtp_thread_pool.test_connection().await {
+        Ok(true) => (),
+        Ok(false) => panic!("Failed to connect to SMTP relay"),
+        Err(e) => panic!("Failed to connect to SMTP relay: {e}"),
+    }
+
+    log::info!("Successfully connected to SMTP relay");
+
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(db_thread_pool.clone()))
+            .app_data(Data::new(smtp_thread_pool.clone()))
             .configure(services::api::configure)
             .configure(services::web::configure)
             .wrap(actix_web::middleware::Logger::default())

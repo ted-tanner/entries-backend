@@ -40,6 +40,11 @@ pub struct Hashing {
     pub salt_length_bytes: usize,
 }
 
+#[derive(Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
+pub struct Email {
+    pub email_enabled: bool,
+}
+
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Keys {
     pub hashing_key: [u8; 32],
@@ -47,6 +52,8 @@ pub struct Keys {
     // Will already be zeroized by the aes_gcm crate with the zeroize feature
     #[zeroize(skip)]
     pub token_encryption_cipher: Aes128Gcm,
+    pub amazon_ses_username: String,
+    pub amazon_ses_key: String,
 }
 
 #[derive(Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
@@ -54,6 +61,8 @@ pub struct RawKeys {
     pub hashing_key_b64: String,
     pub token_signing_key_b64: String,
     pub token_encryption_key_b64: String,
+    pub amazon_ses_username: String,
+    pub amazon_ses_key: String,
 }
 
 pub struct Lifetimes {
@@ -193,6 +202,8 @@ fn build_conf() -> Result<Conf, String> {
             hashing_key,
             token_signing_key,
             token_encryption_cipher: Aes128Gcm::new(&token_encryption_key.into()),
+            amazon_ses_username: raw_conf.keys.amazon_ses_username.clone(),
+            amazon_ses_key: raw_conf.keys.amazon_ses_key.clone(),
         },
         lifetimes: Lifetimes {
             access_token_lifetime: Duration::from_secs(

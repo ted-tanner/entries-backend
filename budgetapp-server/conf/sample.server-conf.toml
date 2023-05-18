@@ -2,6 +2,7 @@
 
 [connections]
 database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
+# If omitted, defaults to 4 * CPU count
 max_db_connections = 48
 
 [hashing]
@@ -11,10 +12,18 @@ hash_mem_size_kib = 128
 hash_lanes = 1
 salt_length_bytes = 16
 
+[email]
+email_enabled = true
+
+# To generate secure random key and convert to base 64:
+# dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64
+# where bs is the number of bytes in the key
 [keys]
-hashing_key_b64 = "DxftwcsQpY3abXLcPZx93E7wwhIKdqoRoQ9YxmAyRWE=" # 32 bytes
-token_signing_key_b64 = "sTBPAz+FCvty/nSFmsFOEy749cFoT7KzgmBbht0w3y6FSZNI9eOyT8+CeiiO0a15AZZedWWsV18L7hymA8usXw==" # 64 bytes
-token_encryption_key_b64 = "JIxcJ855KUBS8hj0+ki7rQ==" # 16 bytes
+hashing_key_b64 = "KEY" # 32 bytes
+token_signing_key_b64 = "KEY" # 64 bytes
+token_encryption_key_b64 = "KEY" # 16 bytes
+amazon_ses_username = "USERNAME"
+amazon_ses_password = "PASSWORD" # For the AWS us-west-2 region only
 
 [lifetimes]
 access_token_lifetime_mins = 8
@@ -28,4 +37,5 @@ otp_lifetime_mins = 5
 user_deletion_delay_days = 7
 
 [workers]
+# If omitted, defaults to CPU count
 actix_workers = 12
