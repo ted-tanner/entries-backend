@@ -23,7 +23,7 @@ hashing_key_b64 = "KEY" # 32 bytes
 token_signing_key_b64 = "KEY" # 64 bytes
 token_encryption_key_b64 = "KEY" # 16 bytes
 amazon_ses_username = "USERNAME"
-amazon_ses_password = "PASSWORD" # For the AWS us-west-2 region only
+amazon_ses_key = "KEY"
 
 [lifetimes]
 access_token_lifetime_mins = 8
