@@ -40,11 +40,10 @@ impl AmazonSes {
     }
 
     pub async fn test_connection(&self) -> Result<bool, EmailError> {
-        match self.smtp_thread_pool.test_connection().await {
-            Ok(b) => Ok(b),
-            Err(e) => Err(EmailError::RelayConnectionFailed(e.to_string()))
-        }
-    }
+        self.smtp_thread_pool.test_connection().await.map_err(
+            |e| EmailError::RelayConnectionFailed(e.to_string())
+        )
+     }
 }
 
 #[async_trait]
