@@ -14,6 +14,7 @@ ed25519-dalek = { version = "2.0.0-rc.2", features = ["rand_core"] }
 flexi_logger = { version = "0.24", features = ["async", "compress"] }
 futures = "0.3"
 lazy_static = "1.4"
+lettre = "0.10"
 log = "0.4"
 num_cpus = "1.14"
 rand = "0.8"

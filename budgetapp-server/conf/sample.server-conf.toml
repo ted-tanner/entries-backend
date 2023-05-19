@@ -1,9 +1,11 @@
 # This configuration is for testing purposes only
 
-[connections]
+[db]
 database_uri = "postgres://budgetappdbuser:0Psrku4jzIRi5mD0ctOB@localhost/budgetapp_test"
 # If omitted, defaults to 4 * CPU count
 max_db_connections = 48
+# If omitted, defaults to 25 secs
+db_idle_timeout_secs = 25
 
 [hashing]
 hash_iterations = 2
@@ -14,6 +16,13 @@ salt_length_bytes = 16
 
 [email]
 email_enabled = true
+from_address = "Entries App <no-reply@entriesapp.com>"
+reply_to_address = "Entries App Support <support@entriesapp.com>"
+smtp_address = "email-smtp.us-west-2.amazonaws.com"
+# If omitted, defaults to 2 * CPU count
+max_smtp_connections = 24
+# If omitted, defaults to 25 secs
+smtp_idle_timeout_secs = 25
 
 # To generate secure random key and convert to base 64:
 # dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64

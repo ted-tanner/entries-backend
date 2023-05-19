@@ -1,4 +1,5 @@
 use aes_gcm::{aead::KeyInit, Aes128Gcm};
+use lettre::message::Mailbox;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
@@ -7,8 +8,9 @@ use std::time::Duration;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub struct Conf {
-    pub connections: Connections,
+    pub db: Db,
     pub hashing: Hashing,
+    pub email: Email,
     pub keys: Keys,
     pub lifetimes: Lifetimes,
     pub time_delays: TimeDelays,
@@ -17,18 +19,26 @@ pub struct Conf {
 
 #[derive(Deserialize, Serialize)]
 pub struct RawConf {
-    pub connections: Connections,
+    pub db: RawDb,
     pub hashing: Hashing,
+    pub email: RawEmail,
     pub keys: RawKeys,
     pub lifetimes: RawLifetimes,
     pub time_delays: TimeDelays,
     pub workers: Workers,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct Connections {
+pub struct Db {
     pub database_uri: String,
     pub max_db_connections: Option<u32>,
+    pub db_idle_timeout_secs: Option<Duration>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct RawDb {
+    pub database_uri: String,
+    pub max_db_connections: Option<u32>,
+    pub db_idle_timeout_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -40,9 +50,23 @@ pub struct Hashing {
     pub salt_length_bytes: usize,
 }
 
-#[derive(Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct Email {
     pub email_enabled: bool,
+    pub from_address: Mailbox,
+    pub reply_to_address: Mailbox,
+    pub smtp_address: String,
+    pub max_smtp_connections: Option<u32>,
+    pub smtp_idle_timeout_secs: Option<Duration>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct RawEmail {
+    pub email_enabled: bool,
+    pub from_address: String,
+    pub reply_to_address: String,
+    pub smtp_address: String,
+    pub max_smtp_connections: Option<u32>,
+    pub smtp_idle_timeout_secs: Option<u64>,
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -138,6 +162,26 @@ fn build_conf() -> Result<Conf, String> {
         ));
     }
 
+    let db_idle_timeout_secs = raw_conf
+        .db
+        .db_idle_timeout_secs
+        .map(|t| Duration::from_secs(t));
+
+    let from_address: Mailbox = match raw_conf.email.from_address.parse() {
+        Ok(a) => a,
+        Err(e) => return Err(format!("Parsing email from_address failed: {e}")),
+    };
+
+    let reply_to_address: Mailbox = match raw_conf.email.reply_to_address.parse() {
+        Ok(a) => a,
+        Err(e) => return Err(format!("Parsing email reply_to_address failed: {e}")),
+    };
+
+    let smtp_idle_timeout_secs = raw_conf
+        .email
+        .smtp_idle_timeout_secs
+        .map(|t| Duration::from_secs(t));
+
     const HASHING_KEY_SIZE: usize = 32;
     let hashing_key = match base64::decode(&raw_conf.keys.hashing_key_b64) {
         Ok(k) => k,
@@ -196,7 +240,19 @@ fn build_conf() -> Result<Conf, String> {
     };
 
     Ok(Conf {
-        connections: raw_conf.connections,
+        db: Db {
+            database_uri: raw_conf.db.database_uri,
+            max_db_connections: raw_conf.db.max_db_connections,
+            db_idle_timeout_secs,
+        },
+        email: Email {
+            email_enabled: raw_conf.email.email_enabled,
+            from_address,
+            reply_to_address,
+            smtp_address: raw_conf.email.smtp_address,
+            max_smtp_connections: raw_conf.email.max_smtp_connections,
+            smtp_idle_timeout_secs,
+        },
         hashing: raw_conf.hashing,
         keys: Keys {
             hashing_key,
@@ -234,8 +290,8 @@ pub mod testing {
 
     lazy_static! {
         pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
-            crate::env::CONF.connections.database_uri.as_str(),
-            crate::env::CONF.connections.max_db_connections,
+            crate::env::CONF.db.database_uri.as_str(),
+            crate::env::CONF.db.max_db_connections,
         );
     }
 }

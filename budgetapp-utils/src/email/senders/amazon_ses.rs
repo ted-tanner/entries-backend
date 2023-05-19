@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use lettre::{AsyncSmtpTransport, Tokio1Executor};
-use lettre::transport::smtp::PoolConfig;
+use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::PoolConfig;
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::time::Duration;
 
-use crate::email::{EmailSender, EmailError};
+use crate::email::{EmailError, EmailMessage, EmailSender};
 
-#[derive(Clone)]
 pub struct AmazonSes {
     smtp_thread_pool: AsyncSmtpTransport<Tokio1Executor>,
 }
@@ -32,7 +32,7 @@ impl AmazonSes {
             .pool_config(
                 PoolConfig::new()
                     .max_size(pool_max_size)
-                    .idle_timeout(idle_timeout)
+                    .idle_timeout(idle_timeout),
             )
             .build::<Tokio1Executor>();
 
@@ -40,16 +40,37 @@ impl AmazonSes {
     }
 
     pub async fn test_connection(&self) -> Result<bool, EmailError> {
-        self.smtp_thread_pool.test_connection().await.map_err(
-            |e| EmailError::RelayConnectionFailed(e.to_string())
-        )
-     }
+        self.smtp_thread_pool
+            .test_connection()
+            .await
+            .map_err(|e| EmailError::RelayConnectionFailed(e.to_string()))
+    }
 }
 
 #[async_trait]
 impl EmailSender for AmazonSes {
-    async fn send(&self, body: &str, dest: &str) -> Result<(), EmailError> {
-        // TODO
-        Ok(())
+    async fn send<'a>(&self, message: EmailMessage<'a>) -> Result<(), EmailError> {
+        let content_type = if message.is_html {
+            ContentType::TEXT_HTML
+        } else {
+            ContentType::TEXT_PLAIN
+        };
+
+        let email = Message::builder()
+            .from(message.from)
+            .reply_to(message.reply_to)
+            .to(message
+                .destination
+                .parse()
+                .map_err(|_| EmailError::InvalidDestination)?)
+            .subject(message.subject)
+            .header(content_type)
+            .body(message.body)
+            .map_err(|e| EmailError::InvalidMessage(e))?;
+
+        match self.smtp_thread_pool.send(email).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(EmailError::FailedToSend(e)),
+        }
     }
 }

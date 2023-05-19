@@ -1,7 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
 
-use budgetapp_utils::email::senders::AmazonSes;
+use budgetapp_utils::email::senders::{AmazonSes, MockSender};
+use budgetapp_utils::email::EmailSender;
 
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
@@ -10,6 +11,7 @@ use diesel::r2d2::{self, ConnectionManager};
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
 };
+use std::sync::Arc;
 use std::time::Duration;
 
 mod env;
@@ -110,34 +112,27 @@ async fn main() -> std::io::Result<()> {
 
     let cpu_count = num_cpus::get();
 
-    let actix_workers = if let Some(count) = env::CONF.workers.actix_workers {
-        count
-    } else {
-        cpu_count
-    };
-
-    let db_workers = if let Some(count) = env::CONF.connections.max_db_connections {
-        count
-    } else {
-        cpu_count as u32 * 4
-    };
+    let actix_workers = env::CONF.workers.actix_workers.unwrap_or(cpu_count);
+    let db_max_connections = env::CONF
+        .db
+        .max_db_connections
+        .unwrap_or(cpu_count as u32 * 4);
 
     log::info!("Connecting to database...");
 
     // To prevent resource starvation, max connections must be at least as large as the number of
     // actix workers,
-    let db_max_connections = if actix_workers > db_workers as usize {
+    let db_max_connections = if actix_workers > db_max_connections as usize {
         actix_workers as u32
     } else {
-        db_workers
+        db_max_connections
     };
 
     let db_connection_manager =
-        ConnectionManager::<PgConnection>::new(env::CONF.connections.database_uri.as_str());
+        ConnectionManager::<PgConnection>::new(env::CONF.db.database_uri.as_str());
     let db_thread_pool = match r2d2::Pool::builder()
         .max_size(db_max_connections)
-        // TODO: Add idle_timeout to config
-        .idle_timeout(Some(Duration::from_secs(25)))
+        .idle_timeout(env::CONF.db.db_idle_timeout_secs)
         .build(db_connection_manager)
     {
         Ok(c) => c,
@@ -149,30 +144,42 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    log::info!("Connecting to SMTP relay...");
+    let smtp_thread_pool: Box<dyn EmailSender> = if env::CONF.email.email_enabled {
+        log::info!("Connecting to SMTP relay...");
 
-    // TODO: If test build, always use mock SMTP that just prints the email. Else check if
-    //       email is enabled in the config
+        let max_smtp_connections = env::CONF.email.max_smtp_connections.unwrap_or(
+            (2 * cpu_count)
+                .try_into()
+                .expect("max_smtp_connections is too large"),
+        );
 
-    // TODO: Add address to config
-    // TODO: Add pool_max_size to config
-    // TODO: Add idle_timeout to config
-    let smtp_thread_pool = AmazonSes::with_credentials(
-        &env::CONF.keys.amazon_ses_username,
-        &env::CONF.keys.amazon_ses_key,
-        "email-smtp.us-west-2.amazonaws.com",
-        24, // 2 * num_cpus
-        Duration::from_secs(25),
-    )
-    .expect("Failed to connect to SMTP relay");
+        let smtp_thread_pool = AmazonSes::with_credentials(
+            &env::CONF.keys.amazon_ses_username,
+            &env::CONF.keys.amazon_ses_key,
+            &env::CONF.email.smtp_address,
+            max_smtp_connections,
+            env::CONF
+                .email
+                .smtp_idle_timeout_secs
+                .unwrap_or(Duration::from_secs(25)),
+        )
+        .expect("Failed to connect to SMTP relay");
 
-    match smtp_thread_pool.test_connection().await {
-        Ok(true) => (),
-        Ok(false) => panic!("Failed to connect to SMTP relay"),
-        Err(e) => panic!("Failed to connect to SMTP relay: {e}"),
-    }
+        match smtp_thread_pool.test_connection().await {
+            Ok(true) => (),
+            Ok(false) => panic!("Failed to connect to SMTP relay"),
+            Err(e) => panic!("Failed to connect to SMTP relay: {e}"),
+        }
 
-    log::info!("Successfully connected to SMTP relay");
+        log::info!("Successfully connected to SMTP relay");
+
+        Box::new(smtp_thread_pool)
+    } else {
+        log::info!("Emails are disabled. Using mock SMTP thread pool.");
+        Box::new(MockSender::new())
+    };
+
+    let smtp_thread_pool = Arc::new(smtp_thread_pool);
 
     HttpServer::new(move || {
         App::new()
