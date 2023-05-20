@@ -1,0 +1,24 @@
+[package]
+name = "entries_job_scheduler"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+entries_utils = { path = "../entries-utils" }
+flexi_logger = { version = "0.24", features = ["compress"], default_features = false }
+futures = "0.3"
+lazy_static = "1.4"
+log = "0.4"
+num_cpus = "1.15"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.25", features = ["rt-multi-thread", "time"] }
+toml = "0.5"
+uuid = { version = "1.2", features = ["serde", "v4"] }
+
+[dev-dependencies]
+aes-gcm = "0.10"
+diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
+tokio = { version = "1.23", features = ["macros"] }
+rand = "0.8"

@@ -1,0 +1,2 @@
+database_uri = "postgres://entriesdbuser:0Psrku4jzIRi5mD0ctOB@localhost/entries_test"
+max_db_connections = 24

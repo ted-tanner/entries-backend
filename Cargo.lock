@@ -396,86 +396,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "budgetapp_job_scheduler"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "async-trait",
- "budgetapp_utils",
- "diesel",
- "flexi_logger",
- "futures",
- "lazy_static",
- "log",
- "num_cpus",
- "rand 0.8.5",
- "serde",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "budgetapp_server"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-rt",
- "actix-web",
- "aes-gcm",
- "base64 0.13.1",
- "budgetapp_utils",
- "diesel",
- "ed25519-dalek 2.0.0-rc.2",
- "flexi_logger",
- "futures",
- "lazy_static",
- "lettre",
- "log",
- "num_cpus",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rayon",
- "rsa",
- "serde",
- "serde_json",
- "sha2 0.10.6",
- "tokio",
- "toml",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "budgetapp_utils"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "async-trait",
- "base64 0.13.1",
- "bindgen",
- "cc",
- "diesel",
- "ed25519-dalek 1.0.1",
- "hex",
- "hmac",
- "lazy_static",
- "lettre",
- "log",
- "num_cpus",
- "r2d2",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "serde_with",
- "sha1",
- "sha2 0.10.6",
- "toml",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,6 +822,86 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071a31f4ee85403370b58aca746f01041ede6f0da2730960ad001edc2b71b394"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "entries_job_scheduler"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "async-trait",
+ "diesel",
+ "entries_utils",
+ "flexi_logger",
+ "futures",
+ "lazy_static",
+ "log",
+ "num_cpus",
+ "rand 0.8.5",
+ "serde",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "entries_server"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-rt",
+ "actix-web",
+ "aes-gcm",
+ "base64 0.13.1",
+ "diesel",
+ "ed25519-dalek 2.0.0-rc.2",
+ "entries_utils",
+ "flexi_logger",
+ "futures",
+ "lazy_static",
+ "lettre",
+ "log",
+ "num_cpus",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2 0.10.6",
+ "tokio",
+ "toml",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "entries_utils"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "async-trait",
+ "base64 0.13.1",
+ "bindgen",
+ "cc",
+ "diesel",
+ "ed25519-dalek 1.0.1",
+ "hex",
+ "hmac",
+ "lazy_static",
+ "lettre",
+ "log",
+ "num_cpus",
+ "r2d2",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha1",
+ "sha2 0.10.6",
+ "toml",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

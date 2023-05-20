@@ -1,4 +1,4 @@
-# The Budget App (Server)
+# Entries App (Server)
 
 ## Cloning Repository
 
@@ -98,7 +98,7 @@ If the `createdb` command fails, do the following:
 3. Now, create a role for your machine user account.
 
     ```
-    CREATE ROLE [username] WITH createdb LOGIN PASSWORD '[password]';
+    CREATE ROLE [username] WITH createdb LOGIN ENCRYPTED PASSWORD '[password]';
     ALTER USER [username] WITH createrole;
     ```
 
@@ -119,9 +119,9 @@ If the `createdb` command fails, do the following:
 Now, in `psql`, create a user and a database for the application.
 
 ```
-CREATE USER budgetappdbuser WITH ENCRYPTED password '[password]';
-ALTER USER budgetappdbuser CREATEDB;
-CREATE DATABASE budgetapp OWNER budgetappdbuser ENCODING UTF8;
+CREATE USER entriesdbuser WITH ENCRYPTED PASSWORD '[password]';
+ALTER USER entriesdbuser CREATEDB;
+CREATE DATABASE entries OWNER entriesdbuser ENCODING UTF8;
 ```
 
 Obviously, for production the password should be something that doesn't suck and won't be lost. By "doesn't suck" I mean that this password is *extremely* sensitive and should be random and long (like, 40+ characters long).
@@ -135,7 +135,7 @@ The server uses an ORM library called Diesel. Diesel wraps up the migrations nic
 To run the migrations, just run the (properly configured) server with the `--run-migrations` flag:
 
 ```
-./budgetapp-server --run-migrations
+./entries-server --run-migrations
 ```
 
 During development, it might be helpful to be able to quickly run, revert, and redo the migrations on a test database. Diesel provides a tool for doing this, which can be installed via Cargo:
@@ -169,11 +169,11 @@ CONFIG SET requirepass "[password]"
 
 ## Server Configuration
 
-Certain behaviors of the server can be configured with the `budgetapp.toml` file in the conf folder. This configuration file (and the folder containing it) must be included alongside the binary distribution of the server in order for the server to run properly.
+Certain behaviors of the server can be configured with the `server-conf.toml` file in the conf folder. This configuration file (and the folder containing it) must be included alongside the binary distribution of the server in order for the server to run properly.
 
-**SECURITY WARNING:** In production, the `budgetapp.toml` file contains sensitive secrets. DO NOT push any sensitive keys to a git repository or make the file viewable or accessible to an untrusted party (or even to a trusted party if it can be avoided).
+**SECURITY WARNING:** In production, the `server-conf.toml` file contains sensitive secrets. DO NOT push any sensitive keys to a git repository or make the file viewable or accessible to an untrusted party (or even to a trusted party if it can be avoided).
 
-The configuration settings from `budgetapp.toml` are documented below:
+The configuration settings from `server-conf.toml` are documented below:
 
 ### Connections
 
@@ -294,7 +294,7 @@ The server accepts a number of command-line arguments to change default behavior
 
   ##### Example
   ```
-  ./budgetapp-server --port 9002
+  ./entries-server --port 9002
   ```
 
 * `--ip [IP_ADDR]`
@@ -303,7 +303,7 @@ The server accepts a number of command-line arguments to change default behavior
 
   ##### Example
   ```
-  ./budgetapp-server --ip 10.0.0.12
+  ./entries-server --ip 10.0.0.12
   ```
 
 * `--run-migrations`
@@ -312,7 +312,7 @@ The server accepts a number of command-line arguments to change default behavior
 
   ##### Example
   ```
-  ./budgetapp-server --run-migrations
+  ./entries-server --run-migrations
   ```
 
 * `--schedule-cron-jobs`
@@ -321,13 +321,13 @@ The server accepts a number of command-line arguments to change default behavior
 
   ##### Example
   ```
-  ./budgetapp-server --schedule-cron-jobs
+  ./entries-server --schedule-cron-jobs
   ```
 
 Multiple command-line arguments can be specified and in any order. For example:
 
 ```
-./budgetapp-server --schedule-cron-jobs --port 8765 --run-migrations
+./entries-server --schedule-cron-jobs --port 8765 --run-migrations
 ```
 
 When running the server with `cargo run`, command-line arguments specified after `--` will be passed through to the server:
@@ -550,20 +550,20 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Budget comments, entry comments
   - Reactions to said comments
 * As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
-* Validation for `budgetapp_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
+* Validation for `entries_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
 * Use lifetimes to reduce they copying of strings (e.g. TokenPair, TokenClaims, perhaps some of the OutputX structs, etc)
 * Budget user get request logic should be handled in a query to eliminate multiple queries
-* Create mock in Dao to test DB stuff in budgetapp-utils
+* Create mock in Dao to test DB stuff in entries-utils
 * Replace lazy_static with OnceCell
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
-* In `budgetapp_server::handlers::budget::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget. See the comment in the code for an idea of how to do this performantly
+* In `entries_server::handlers::budget::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget. See the comment in the code for an idea of how to do this performantly
 * OTP attempts, password attempts, and blacklisted tokens can be moved to Redis
 * Comments (budget comments, entry comments, etc.)
 * Publicly export models (so imports look like this `use crate::models::BuddyRequest;` rather than `use crate::models::buddy_request::BuddyRequest;`
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 * Reject accept/decline budget shares and buddy requests if already accepted or declined
 * Admin console
-* If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `budgetapp_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
+* If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `entries_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
 * Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
 * Languages/localization
 * Budgets that are not modified for a year will be deleted?
