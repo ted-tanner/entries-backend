@@ -16,9 +16,9 @@ impl OtpMessage {
                </head>
              <body>
                <h1>Entries App Verification Code</h1>
-               <h2 style=\"font-family: 'Courier New', monospace; user-select: all;
+               <h2 style=\"font-family: 'Courier New', monospace; user-select: all; \
                -webkit-user-select: all;\"><b>{} {}</b></h2>
-               <p>We will never ask you for this code over the phone or email.
+               <p>We will never ask you for this code over the phone or email. \
                <b>Your code expires in {} minutes.</b></p>
              </body>
              </html>",

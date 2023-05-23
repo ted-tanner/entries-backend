@@ -1,4 +1,11 @@
 use entries_utils::db::{DaoError, DbThreadPool};
+use entries_utils::html::templates::{
+    DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
+    DeleteUserInternalErrorPage, DeleteUserInvalidLinkPage, DeleteUserLinkMissingTokenPage,
+    DeleteUserSuccessPage, VerifyUserAccountNotFoundPage, VerifyUserExpiredLinkPage,
+    VerifyUserInternalErrorPage, VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage,
+    VerifyUserSuccessPage,
+};
 use entries_utils::request_io::{
     InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
     InputNewAuthStringAndEncryptedPassword, InputUser, OutputIsUserListedForDeletion,
@@ -166,74 +173,19 @@ pub async fn verify_creation(
     let claims = match user_creation_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html>
-                 <html>
-                   <head>
-                     <title>Entries App User Verification</title>
-                   </head>
-                   <body>
-                     <h1>This link has expired. You will need to recreate your account to obtain a new link.</h1>
-
-                     <script>
-                       const urlQueries = new URLSearchParams(window.location.search);
-                       const token = urlQueries.get('UserCreationToken');
-
-                       if (token !== null) {
-                         const decoded_token = atob(token);
-                         const claims = JSON.parse(decoded_token);
-
-                         if (claims['exp'] !== null) {
-                           const hourAfterExpiration = claims['exp'] + 3600;
-                           const accountAvailableForRecreate = new Date(hourAfterExpiration * 1000);
-                           const now = new Date();
-
-                           if (accountAvailableForRecreate > now) {
-                             let recreateMessage = document.createElement('h3');
-
-                             const millisUntilCanRecreate = Math.abs(now - accountAvailableForRecreate);
-                             const minsUntilCanRecreate = Math.ceil((millisUntilCanRecreate / 1000) / 60);
-
-                             const timeString = minsUntilCanRecreate > 1
-                               ? minsUntilCanRecreate + ' minutes.'
-                               : '1 minute.'
-
-                             recreateMessage.innerHTML = 'You can recreate your account in ' + timeString;
-
-                             document.body.appendChild(recreateMessage);
-                           }
-                         }
-                       }
-                     </script>
-                   </body>
-                 </html>"
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(VerifyUserExpiredLinkPage::generate()));
         }
         Err(TokenError::TokenMissing) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html>
-                 <html>
-                   <head>
-                     <title>Entries App User Verification</title>
-                   </head>
-                   <body>
-                     <h1>This link is invalid because it is missing a token.</h1>
-                   </body>
-                 </html>",
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(VerifyUserLinkMissingTokenPage::generate()));
         }
         Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html>
-                 <html>
-                   <head>
-                     <title>Entries App User Verification</title>
-                   </head>
-                   <body>
-                     <h1>This link is invalid.</h1>
-                   </body>
-                 </html>",
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(VerifyUserInvalidLinkPage::generate()));
         }
     };
 
@@ -250,54 +202,22 @@ pub async fn verify_creation(
                     "Failed to verify user after validating UserCreationToken: {}",
                     e
                 );
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html>
-                     <html>
-                       <head>
-                         <title>Entries App User Verification</title>
-                       </head>
-                       <body>
-                         <h1>Could not find the correct account. This is probably an error on our part.</h1>
-                         <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3>
-                       </body>
-                     </html>",
-                ));
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(VerifyUserAccountNotFoundPage::generate()));
             }
             _ => {
                 log::error!("{e}");
                 return Ok(HttpResponse::InternalServerError()
                     .content_type("text/html")
-                    .body(
-                        "<!DOCTYPE html>
-                         <html>
-                           <head>
-                             <title>Entries App User Verification</title>
-                           </head>
-                           <body>
-                             <h1>Could not verify account due to an error.</h1>
-                             <h3>We're sorry. We'll try to fix this. Please try again in a few hours.</h3>
-                           </body>
-                         </html>",
-                    ));
+                    .body(VerifyUserInternalErrorPage::generate()));
             }
         },
     };
 
-    Ok(HttpResponse::Ok().content_type("text/html").body(format!(
-        "<!DOCTYPE html>
-         <html>
-           <head>
-             <title>Entries App User Verification</title>
-           </head>
-           <body>
-             <h1>User verified</h1>
-             <h3>User email address: {}</h3>
-             <h2>You can now sign into the app using your email address and password.</h2>
-             <h2>Happy budgeting!</h2>
-           </body>
-         </html>",
-        claims.user_email,
-    )))
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .body(VerifyUserSuccessPage::generate(&claims.user_email)))
 }
 
 pub async fn edit_preferences(
@@ -457,7 +377,6 @@ pub async fn change_password(
 // TODO: This endpoint should be debounced and not send more than one email to a given address
 //       per minute
 
-// TODO: Need to get list of budget tokens and validate them
 pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
@@ -573,75 +492,19 @@ pub async fn delete(
     let claims = match user_deletion_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Deletion</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link has expired. You will need initiate the deletion process again.</h1> \
-                 \
-                 <script> \
-                 const urlQueries = new URLSearchParams(window.location.search); \
-                 const token = urlQueries.get('UserDeletionToken'); \
-                 \
-                 if (token !== null) { \
-                 const decoded_token = atob(token); \
-                 const claims = JSON.parse(decoded_token); \
-                 \
-                 if (claims['exp'] !== null) { \
-                 const hourAfterExpiration = claims['exp'] + 3600; \
-                 const accountAvailableForDelete = new Date(hourAfterExpiration * 1000); \
-                 const now = new Date(); \
-                 \
-                 if (accountAvailableForDelete > now) { \
-                 let deleteMessage = document.createElement('h3'); \
-                 \
-                 const millisUntilCanDelete = Math.abs(now - accountAvailableForDelete); \
-                 const minsUntilCanDelete = Math.ceil((millisUntilCanDelete / 1000) / 60); \
-                 \
-                 const timeString = minsUntilCanDelete > 1 \
-                 ? minsUntilCanDelete + ' minutes.' \
-                 : '1 minute.' \
-                 \
-                 deleteMessage.innerHTML = 'You can re-initate deletion of your account in ' \
-                 + timeString; \
-                 \
-                 document.body.appendChild(deleteMessage); \
-                 } \
-                 } \
-                 } \
-                 </script> \
-                 </body> \
-                 </html>"
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(DeleteUserExpiredLinkPage::generate()));
         }
         Err(TokenError::TokenMissing) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Deletion</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link is invalid because it is missing a token.</h1> \
-                 </body> \
-                 </html>",
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(DeleteUserLinkMissingTokenPage::generate()));
         }
         Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
-            return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Deletion</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link is invalid.</h1> \
-                 </body> \
-                 </html>",
-            ));
+            return Ok(HttpResponse::BadRequest()
+                .content_type("text/html")
+                .body(DeleteUserInvalidLinkPage::generate()));
         }
     };
 
@@ -663,71 +526,34 @@ pub async fn delete(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                               <html> \
-                               <head> \
-                               <title>Entries App Account Deletion</title> \
-                               </head> \
-                               <body> \
-                               <h1>Account is already scheduled to be deleted.</h1> \
-                               </body> \
-                               </html>",
-                ));
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(DeleteUserAlreadyScheduledPage::generate()));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 log::error!(
                     "Failed to schedule user deletion after validating UserDeletionToken: {}",
                     e
                 );
-                return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>Entries App User Deletion</title> \
-                     </head> \
-                     <body> \
-                     <h1>Could not find the correct account. This is probably an error on our part.</h1> \
-                     <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3> \
-                     </body> \
-                     </html>",
-                ));
+                return Ok(HttpResponse::BadRequest()
+                    .content_type("text/html")
+                    .body(DeleteUserAccountNotFoundPage::generate()));
             }
             _ => {
                 log::error!("{e}");
                 return Ok(HttpResponse::InternalServerError()
-                          .content_type("text/html")
-                          .body(
-                              "<!DOCTYPE html> \
-                               <html> \
-                               <head> \
-                               <title>Entries App Account Deletion</title> \
-                               </head> \
-                               <body> \
-                               <h1>Could not verify account deletion due to an error.</h1> \
-                               <h2>We're sorry. We'll try to fix this. Please try again in a few hours.</h2> \
-                               </body> \
-                               </html>"
-                          ));
+                    .content_type("text/html")
+                    .body(DeleteUserInternalErrorPage::generate()));
             }
         },
     };
 
-    Ok(HttpResponse::Ok().content_type("text/html").body(format!(
-        "<!DOCTYPE html> \
-         <html> \
-         <head> \
-         <title>Entries App Account Deletion</title> \
-         </head> \
-         <body> \
-         <h1>Your account has been scheduled for deletion.</h1> \
-         <h2>User email address: {}</h2> \
-         <h2>Your account will be deleted in about {} days. You can cancel your account deletion from the app.</h2> \
-         </body> \
-         </html>",
-        claims.user_email,
-        days_until_deletion,
-    )))
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .body(DeleteUserSuccessPage::generate(
+            &claims.user_email,
+            days_until_deletion,
+        )))
 }
 
 pub async fn is_listed_for_deletion(

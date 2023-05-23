@@ -243,7 +243,11 @@ fn build_conf() -> Result<Conf, String> {
             db_idle_timeout_secs,
         },
         email: Email {
-            email_enabled: raw_conf.email.email_enabled,
+            email_enabled: if cfg!(test) {
+                false
+            } else {
+                raw_conf.email.email_enabled
+            },
             from_address,
             reply_to_address,
             smtp_address: raw_conf.email.smtp_address,
