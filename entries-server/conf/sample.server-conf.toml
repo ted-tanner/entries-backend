@@ -15,9 +15,9 @@ hash_lanes = 1
 salt_length_bytes = 16
 
 [email]
-email_enabled = true
-from_address = "Entries App <no-reply@entries.com>"
-reply_to_address = "Entries App Support <support@entries.com>"
+email_enabled = false
+from_address = "Entries App <no-reply@entriesapp.com>"
+reply_to_address = "Entries App Support <support@entriesapp.com>"
 smtp_address = "email-smtp.us-west-2.amazonaws.com"
 # If omitted, defaults to 2 * CPU count
 max_smtp_connections = 24

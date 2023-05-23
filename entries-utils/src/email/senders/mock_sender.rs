@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::email::{EmailError, EmailMessage, EmailSender};
 
+#[derive(Default)]
 pub struct MockSender {}
 
 impl MockSender {

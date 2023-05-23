@@ -162,10 +162,7 @@ fn build_conf() -> Result<Conf, String> {
         ));
     }
 
-    let db_idle_timeout_secs = raw_conf
-        .db
-        .db_idle_timeout_secs
-        .map(|t| Duration::from_secs(t));
+    let db_idle_timeout_secs = raw_conf.db.db_idle_timeout_secs.map(Duration::from_secs);
 
     let from_address: Mailbox = match raw_conf.email.from_address.parse() {
         Ok(a) => a,
@@ -180,7 +177,7 @@ fn build_conf() -> Result<Conf, String> {
     let smtp_idle_timeout_secs = raw_conf
         .email
         .smtp_idle_timeout_secs
-        .map(|t| Duration::from_secs(t));
+        .map(Duration::from_secs);
 
     const HASHING_KEY_SIZE: usize = 32;
     let hashing_key = match base64::decode(&raw_conf.keys.hashing_key_b64) {

@@ -1,4 +1,5 @@
 pub mod senders;
+pub mod templates;
 
 use lettre::message::Mailbox;
 

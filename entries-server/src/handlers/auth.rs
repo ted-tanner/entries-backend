@@ -1,4 +1,6 @@
 use entries_utils::db::{DaoError, DbThreadPool};
+use entries_utils::email::templates::OtpMessage;
+use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::request_io::{
     CredentialPair, InputEmail, InputOtp, OutputSigninNonceData, SigninToken, TokenPair,
 };
@@ -76,6 +78,7 @@ pub async fn obtain_nonce_and_auth_string_salt(
 
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
+    smtp_thread_pool: web::Data<Arc<dyn EmailSender>>,
     credentials: web::Json<CredentialPair>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -188,12 +191,12 @@ pub async fn sign_in(
         otp.push(rand_alpha);
     }
 
-    // TODO: Don't log this, email it (after saving it)!
-    println!("\n\nOTP: {}-{}\n\n", &otp[..4], &otp[4..]);
+    let otp = Arc::new(otp);
+    let otp_ref = Arc::clone(&otp);
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.save_otp(&otp, user_id, otp_expiration)
+        auth_dao.save_otp(otp_ref.as_ref(), user_id, otp_expiration)
     })
     .await?
     {
@@ -204,6 +207,25 @@ pub async fn sign_in(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError("Failed to save OTP"));
+        }
+    };
+
+    let message = EmailMessage {
+        body: OtpMessage::generate(&otp[..4], &otp[4..], env::CONF.lifetimes.otp_lifetime),
+        subject: "Your one-time passcode",
+        from: env::CONF.email.from_address.clone(),
+        reply_to: env::CONF.email.reply_to_address.clone(),
+        destination: &credentials.email,
+        is_html: true,
+    };
+
+    match smtp_thread_pool.send(message).await {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to send OTP to email address",
+            ));
         }
     };
 

@@ -167,71 +167,71 @@ pub async fn verify_creation(
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Verification</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link has expired. You will need to recreate your account to obtain a new link.</h1> \
-                 \
-                 <script> \
-                 const urlQueries = new URLSearchParams(window.location.search); \
-                 const token = urlQueries.get('UserCreationToken'); \
-                 \
-                 if (token !== null) { \
-                 const decoded_token = atob(token); \
-                 const claims = JSON.parse(decoded_token); \
-                 \
-                 if (claims['exp'] !== null) { \
-                 const hourAfterExpiration = claims['exp'] + 3600; \
-                 const accountAvailableForRecreate = new Date(hourAfterExpiration * 1000); \
-                 const now = new Date(); \
-                 \
-                 if (accountAvailableForRecreate > now) { \
-                 let recreateMessage = document.createElement('h3'); \
-                 \
-                 const millisUntilCanRecreate = Math.abs(now - accountAvailableForRecreate); \
-                 const minsUntilCanRecreate = Math.ceil((millisUntilCanRecreate / 1000) / 60); \
-                 \
-                 const timeString = minsUntilCanRecreate > 1 \
-                 ? minsUntilCanRecreate + ' minutes.' \
-                 : '1 minute.' \
-                 \
-                 recreateMessage.innerHTML = 'You can recreate your account in ' + timeString; \
-                 \
-                 document.body.appendChild(recreateMessage); \
-                 } \
-                 } \
-                 } \
-                 </script> \
-                 </body> \
+                "<!DOCTYPE html>
+                 <html>
+                   <head>
+                     <title>Entries App User Verification</title>
+                   </head>
+                   <body>
+                     <h1>This link has expired. You will need to recreate your account to obtain a new link.</h1>
+
+                     <script>
+                       const urlQueries = new URLSearchParams(window.location.search);
+                       const token = urlQueries.get('UserCreationToken');
+
+                       if (token !== null) {
+                         const decoded_token = atob(token);
+                         const claims = JSON.parse(decoded_token);
+
+                         if (claims['exp'] !== null) {
+                           const hourAfterExpiration = claims['exp'] + 3600;
+                           const accountAvailableForRecreate = new Date(hourAfterExpiration * 1000);
+                           const now = new Date();
+
+                           if (accountAvailableForRecreate > now) {
+                             let recreateMessage = document.createElement('h3');
+
+                             const millisUntilCanRecreate = Math.abs(now - accountAvailableForRecreate);
+                             const minsUntilCanRecreate = Math.ceil((millisUntilCanRecreate / 1000) / 60);
+
+                             const timeString = minsUntilCanRecreate > 1
+                               ? minsUntilCanRecreate + ' minutes.'
+                               : '1 minute.'
+
+                             recreateMessage.innerHTML = 'You can recreate your account in ' + timeString;
+
+                             document.body.appendChild(recreateMessage);
+                           }
+                         }
+                       }
+                     </script>
+                   </body>
                  </html>"
             ));
         }
         Err(TokenError::TokenMissing) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Verification</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link is invalid because it is missing a token.</h1> \
-                 </body> \
+                "<!DOCTYPE html>
+                 <html>
+                   <head>
+                     <title>Entries App User Verification</title>
+                   </head>
+                   <body>
+                     <h1>This link is invalid because it is missing a token.</h1>
+                   </body>
                  </html>",
             ));
         }
         Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
             return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                "<!DOCTYPE html> \
-                 <html> \
-                 <head> \
-                 <title>Entries App User Verification</title> \
-                 </head> \
-                 <body> \
-                 <h1>This link is invalid.</h1> \
-                 </body> \
+                "<!DOCTYPE html>
+                 <html>
+                   <head>
+                     <title>Entries App User Verification</title>
+                   </head>
+                   <body>
+                     <h1>This link is invalid.</h1>
+                   </body>
                  </html>",
             ));
         }
@@ -251,15 +251,15 @@ pub async fn verify_creation(
                     e
                 );
                 return Ok(HttpResponse::BadRequest().content_type("text/html").body(
-                    "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>Entries App User Verification</title> \
-                     </head> \
-                     <body> \
-                     <h1>Could not find the correct account. This is probably an error on our part.</h1> \
-                     <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3> \
-                     </body> \
+                    "<!DOCTYPE html>
+                     <html>
+                       <head>
+                         <title>Entries App User Verification</title>
+                       </head>
+                       <body>
+                         <h1>Could not find the correct account. This is probably an error on our part.</h1>
+                         <h3>We apologize. We'll try to fix this. Please try again in a few hours.</h3>
+                       </body>
                      </html>",
                 ));
             }
@@ -268,34 +268,34 @@ pub async fn verify_creation(
                 return Ok(HttpResponse::InternalServerError()
                     .content_type("text/html")
                     .body(
-                        "<!DOCTYPE html> \
-                     <html> \
-                     <head> \
-                     <title>Entries App User Verification</title> \
-                     </head> \
-                     <body> \
-                     <h1>Could not verify account due to an error.</h1> \
-                     <h3>We're sorry. We'll try to fix this. Please try again in a few hours.</h3> \
-                     </body> \
-                     </html>",
+                        "<!DOCTYPE html>
+                         <html>
+                           <head>
+                             <title>Entries App User Verification</title>
+                           </head>
+                           <body>
+                             <h1>Could not verify account due to an error.</h1>
+                             <h3>We're sorry. We'll try to fix this. Please try again in a few hours.</h3>
+                           </body>
+                         </html>",
                     ));
             }
         },
     };
 
     Ok(HttpResponse::Ok().content_type("text/html").body(format!(
-        "<!DOCTYPE html> \
-             <html> \
-             <head> \
-             <title>Entries App User Verification</title> \
-             </head> \
-             <body> \
-             <h1>User verified</h1> \
-             <h3>User email address: {}</h3> \
-             <h2>You can now sign into the app using your email address and password.</h2> \
-             <h2>Happy budgeting!</h2> \
-             </body> \
-             </html>",
+        "<!DOCTYPE html>
+         <html>
+           <head>
+             <title>Entries App User Verification</title>
+           </head>
+           <body>
+             <h1>User verified</h1>
+             <h3>User email address: {}</h3>
+             <h2>You can now sign into the app using your email address and password.</h2>
+             <h2>Happy budgeting!</h2>
+           </body>
+         </html>",
         claims.user_email,
     )))
 }

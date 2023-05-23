@@ -504,7 +504,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
 * Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
-* Rename app to "Entries"
 * Provide hashing parameters to client along with salt.
   - Default argon2 params to tell the client: m=256mb, p=2, t=18
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
@@ -514,13 +513,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Schedule a job that clears out old records of forgot password endpoint hits
 * Create user endpoint should have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * Get email delivery set up (Amazon SES?)
-  - OTP for sign in
-  - OTP for change password
-  - Forgot Password
-  - OTP for forgot password
-  - User creation verification
-  - User deletion verification
-  - Budget shared? Users need a way to turn off this notification
+  - [x] OTP for sign in 
+  - [ ] OTP for change password
+  - [ ] Forgot Password
+  - [ ] OTP for forgot password
+  - [ ] User creation verification
+  - [ ] User deletion verification
+  - [ ] Budget shared? Users need a way to turn off this notification
 * Update ed25519-dalek crate
 * Search through TODOs in code
 * Unit tests!

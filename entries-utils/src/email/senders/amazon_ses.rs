@@ -66,7 +66,7 @@ impl EmailSender for AmazonSes {
             .subject(message.subject)
             .header(content_type)
             .body(message.body)
-            .map_err(|e| EmailError::InvalidMessage(e))?;
+            .map_err(EmailError::InvalidMessage)?;
 
         match self.smtp_thread_pool.send(email).await {
             Ok(_) => Ok(()),
