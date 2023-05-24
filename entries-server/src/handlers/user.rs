@@ -1,4 +1,6 @@
 use entries_utils::db::{DaoError, DbThreadPool};
+use entries_utils::email::templates::UserVerificationMessage;
+use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::html::templates::{
     DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
     DeleteUserInternalErrorPage, DeleteUserInvalidLinkPage, DeleteUserLinkMissingTokenPage,
@@ -71,6 +73,7 @@ pub async fn lookup_user_public_key(
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
+    smtp_thread_pool: web::Data<EmailSender>,
     app_version: AppVersion,
     user_data: web::Json<InputUser>,
     throttle: Throttle<5, 5>,
@@ -156,8 +159,28 @@ pub async fn create(
     let user_creation_token =
         user_creation_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
-    // TODO: Don't print user creation token; email it!
-    println!("\n\nUser Creation Token: {user_creation_token}\n\n");
+    let message = EmailMessage {
+        body: UserVerificationMessage::generate(
+            &env::CONF.endpoints.user_verification_url,
+            &user_creation_token,
+            env::CONF.lifetimes.user_creation_token_lifetime,
+        ),
+        subject: "Verify your account",
+        from: env::CONF.email.from_address.clone(),
+        reply_to: env::CONF.email.reply_to_address.clone(),
+        destination: &user_data.email,
+        is_html: true,
+    };
+
+    match smtp_thread_pool.send(message).await {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to send user verification token to user's email address",
+            ));
+        }
+    };
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,

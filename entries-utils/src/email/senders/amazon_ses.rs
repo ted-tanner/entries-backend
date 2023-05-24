@@ -5,7 +5,7 @@ use lettre::transport::smtp::PoolConfig;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::time::Duration;
 
-use crate::email::{EmailError, EmailMessage, EmailSender};
+use crate::email::{EmailError, EmailMessage, SendEmail};
 
 pub struct AmazonSes {
     smtp_thread_pool: AsyncSmtpTransport<Tokio1Executor>,
@@ -48,7 +48,7 @@ impl AmazonSes {
 }
 
 #[async_trait]
-impl EmailSender for AmazonSes {
+impl SendEmail for AmazonSes {
     async fn send<'a>(&self, message: EmailMessage<'a>) -> Result<(), EmailError> {
         let content_type = if message.is_html {
             ContentType::TEXT_HTML

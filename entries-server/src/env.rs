@@ -11,6 +11,7 @@ pub struct Conf {
     pub db: Db,
     pub hashing: Hashing,
     pub email: Email,
+    pub endpoints: Endpoints,
     pub keys: Keys,
     pub lifetimes: Lifetimes,
     pub time_delays: TimeDelays,
@@ -22,6 +23,7 @@ pub struct RawConf {
     pub db: RawDb,
     pub hashing: Hashing,
     pub email: RawEmail,
+    pub endpoints: Endpoints,
     pub keys: RawKeys,
     pub lifetimes: RawLifetimes,
     pub time_delays: TimeDelays,
@@ -67,6 +69,11 @@ pub struct RawEmail {
     pub smtp_address: String,
     pub max_smtp_connections: Option<u32>,
     pub smtp_idle_timeout_secs: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Endpoints {
+    pub user_verification_url: String,
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -254,6 +261,7 @@ fn build_conf() -> Result<Conf, String> {
             max_smtp_connections: raw_conf.email.max_smtp_connections,
             smtp_idle_timeout_secs,
         },
+        endpoints: raw_conf.endpoints,
         hashing: raw_conf.hashing,
         keys: Keys {
             hashing_key,

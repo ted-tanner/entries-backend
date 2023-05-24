@@ -78,7 +78,7 @@ pub async fn obtain_nonce_and_auth_string_salt(
 
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
-    smtp_thread_pool: web::Data<Arc<dyn EmailSender>>,
+    smtp_thread_pool: web::Data<EmailSender>,
     credentials: web::Json<CredentialPair>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -224,7 +224,7 @@ pub async fn sign_in(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(
-                "Failed to send OTP to email address",
+                "Failed to send OTP to user's email address",
             ));
         }
     };

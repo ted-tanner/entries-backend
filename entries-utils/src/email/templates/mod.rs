@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 pub struct OtpMessage {}
+pub struct UserVerificationMessage {}
 
 impl OtpMessage {
     pub fn generate(otp_part1: &str, otp_part2: &str, otp_lifetime: Duration) -> String {
@@ -25,6 +26,32 @@ impl OtpMessage {
             otp_part1,
             otp_part2,
             otp_lifetime.as_secs() / 60,
+        )
+    }
+}
+
+impl UserVerificationMessage {
+    pub fn generate(url: &str, token: &str, token_lifetime: Duration) -> String {
+        let link = format!("{}?UserCreationToken={}", url, token);
+        format!(
+            "<html>
+               <head>
+                 <style>
+                   body {{
+                     font-family: Arial, sans-serif;
+                     text-align: center;
+                   }}
+                 </style>
+               </head>
+             <body>
+               <h1>Entries App Account Verification Link</h1>
+               <p><a href=\"{}\">{}</a></p>
+               <p><b>This link will expire in {} days.</b></p>
+             </body>
+             </html>",
+            link,
+            link,
+            token_lifetime.as_secs() / (60 * 60 * 24),
         )
     }
 }

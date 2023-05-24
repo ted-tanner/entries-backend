@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::email::{EmailError, EmailMessage, EmailSender};
+use crate::email::{EmailError, EmailMessage, SendEmail};
 
 #[derive(Default)]
 pub struct MockSender {}
@@ -12,7 +12,7 @@ impl MockSender {
 }
 
 #[async_trait]
-impl EmailSender for MockSender {
+impl SendEmail for MockSender {
     async fn send<'a>(&self, message: EmailMessage<'a>) -> Result<(), EmailError> {
         println!("\n\n{:#?}\n\n", message);
         Ok(())

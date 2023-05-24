@@ -2,7 +2,7 @@
 extern crate lazy_static;
 
 use entries_utils::email::senders::{AmazonSes, MockSender};
-use entries_utils::email::EmailSender;
+use entries_utils::email::SendEmail;
 
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
@@ -144,7 +144,7 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    let smtp_thread_pool: Box<dyn EmailSender> = if env::CONF.email.email_enabled {
+    let smtp_thread_pool: Box<dyn SendEmail> = if env::CONF.email.email_enabled {
         log::info!("Connecting to SMTP relay...");
 
         let max_smtp_connections = env::CONF.email.max_smtp_connections.unwrap_or(

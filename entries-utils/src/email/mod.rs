@@ -2,6 +2,7 @@ pub mod senders;
 pub mod templates;
 
 use lettre::message::Mailbox;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum EmailError {
@@ -40,6 +41,8 @@ pub struct EmailMessage<'a> {
 }
 
 #[async_trait]
-pub trait EmailSender: Send + Sync {
+pub trait SendEmail: Send + Sync {
     async fn send<'a>(&self, message: EmailMessage<'a>) -> Result<(), EmailError>;
 }
+
+pub type EmailSender = Arc<dyn SendEmail>;
