@@ -26,6 +26,7 @@ smtp_idle_timeout_secs = 25
 
 [endpoints]
 user_verification_url = "https://api.entriesapp.com/user/verify_creation"
+user_verification_url = "https://api.entriesapp.com/user/delete"
 
 # To generate secure random key and convert to base 64:
 # dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64

@@ -2,6 +2,7 @@ use std::time::Duration;
 
 pub struct OtpMessage {}
 pub struct UserVerificationMessage {}
+pub struct UserDeletionConfirmationMessage {}
 
 impl OtpMessage {
     pub fn generate(otp_part1: &str, otp_part2: &str, otp_lifetime: Duration) -> String {
@@ -45,8 +46,40 @@ impl UserVerificationMessage {
                </head>
              <body>
                <h1>Entries App Account Verification Link</h1>
-               <p><a href=\"{}\">{}</a></p>
+               <p><a href=\"{}\" “rel=”nofollow”>{}</a></p>
                <p><b>This link will expire in {} days.</b></p>
+             </body>
+             </html>",
+            link,
+            link,
+            token_lifetime.as_secs() / (60 * 60 * 24),
+        )
+    }
+}
+
+impl UserDeletionConfirmationMessage {
+    pub fn generate(url: &str, token: &str, token_lifetime: Duration) -> String {
+        let link = format!("{}?UserDeletionToken={}", url, token);
+
+        format!(
+            "<html>
+               <head>
+                 <style>
+                   body {{
+                     font-family: Arial, sans-serif;
+                     text-align: center;
+                   }}
+                 </style>
+               </head>
+             <body>
+               <h1>Entries App Account Deletion Confirmation Link</h1>
+               <p>Clicking the link below will schedule your Entries App account for \
+               deletion.</p>
+               <p><a href=\"{}\" “rel=”nofollow”>{}</a></p>
+               <p><b>This link will expire in {} days.</b></p>
+               <br />
+               <p><i>Changed your mind? Just ignore this email and don't click the \
+               link.</i></p>
              </body>
              </html>",
             link,

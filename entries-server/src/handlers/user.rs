@@ -402,6 +402,7 @@ pub async fn change_password(
 
 pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
+    smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Data<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -498,8 +499,28 @@ pub async fn init_delete(
     let user_deletion_token =
         user_deletion_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
-    // TODO: Don't print user deletion token; email it!
-    println!("\n\nUser Deletion Token: {user_deletion_token}\n\n");
+    let message = EmailMessage {
+        body: UserVerificationMessage::generate(
+            &env::CONF.endpoints.user_deletion_url,
+            &user_deletion_token,
+            env::CONF.lifetimes.user_deletion_token_lifetime,
+        ),
+        subject: "Confirm the deletion of your Entries App account",
+        from: env::CONF.email.from_address.clone(),
+        reply_to: env::CONF.email.reply_to_address.clone(),
+        destination: &user_access_token.0.user_email,
+        is_html: true,
+    };
+
+    match smtp_thread_pool.send(message).await {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to send user deletion token to user's email address",
+            ));
+        }
+    };
 
     Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
         email_sent: true,

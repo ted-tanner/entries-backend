@@ -74,6 +74,7 @@ pub struct RawEmail {
 #[derive(Deserialize, Serialize)]
 pub struct Endpoints {
     pub user_verification_url: String,
+    pub user_deletion_url: String,
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]

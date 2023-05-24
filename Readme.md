@@ -497,6 +497,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Don't route api to /api in services (same with web)
 * Clear throttling table weekly (just to make sure it doesn't get too long)
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
@@ -514,11 +515,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Create user endpoint should have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
 * Get email delivery set up (Amazon SES?)
   - [x] OTP for sign in 
-  - [ ] OTP for change password
+  - [x] OTP for change password
   - [ ] Forgot Password
-  - [ ] OTP for forgot password
-  - [ ] User creation verification
-  - [ ] User deletion verification
+  - [x] OTP for forgot password
+  - [x] User creation verification
+  - [x] User deletion verification
   - [ ] Budget shared? Users need a way to turn off this notification
 * Update ed25519-dalek crate
 * Search through TODOs in code
