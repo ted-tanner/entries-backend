@@ -458,6 +458,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Users need to be able to ignore specific email addresses that invite them to budgets (gets saved in user preferences)
 * Maximum of 512 characters in a password
 * Client should handle all the "throttle" cases with a nice message explaining the user needs to wait
+* When an action will send an email (e.g. creating account, signing in, deleting account, etc.), tell users to check their spam box
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
