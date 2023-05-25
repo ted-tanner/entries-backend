@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::NewBlacklistedToken;
 use crate::models::user_otp::{NewUserOtp, UserOtp};
-use crate::request_io::OutputSigninNonceData;
+use crate::request_io::OutputSigninNonceAndHashParams;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::signin_nonces as signin_nonce_fields;
@@ -196,26 +196,30 @@ impl Dao {
         Ok(nonce)
     }
 
-    pub fn get_auth_string_salt_and_signin_nonce(
+    pub fn get_auth_string_data_signin_nonce(
         &mut self,
         user_email: &str,
-    ) -> Result<OutputSigninNonceData, DaoError> {
-        let (auth_string_salt, auth_string_iters, signin_nonce) = user_security_data
+    ) -> Result<OutputSigninNonceAndHashParams, DaoError> {
+        let (salt, mem_cost, parallel, iters, nonce) = user_security_data
             .left_join(users.on(user_fields::id.eq(user_security_data_fields::user_id)))
             .left_join(signin_nonces.on(signin_nonce_fields::user_email.eq(user_fields::email)))
             .filter(user_fields::email.eq(user_email))
             .select((
                 user_security_data_fields::auth_string_salt,
+                user_security_data_fields::auth_string_memory_cost_kib,
+                user_security_data_fields::auth_string_parallelism_factor,
                 user_security_data_fields::auth_string_iters,
                 signin_nonce_fields::nonce.nullable(),
             ))
-            .first::<(Vec<u8>, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
+            .first::<(Vec<u8>, i32, i32, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
 
-        if let Some(nonce) = signin_nonce {
-            Ok(OutputSigninNonceData {
-                auth_string_salt,
-                auth_string_iters,
-                nonce,
+        if let Some(n) = nonce {
+            Ok(OutputSigninNonceAndHashParams {
+                auth_string_salt: salt,
+                auth_string_memory_cost_kib: mem_cost,
+                auth_string_parallelism_factor: parallel,
+                auth_string_iters: iters,
+                nonce: n,
             })
         } else {
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound))

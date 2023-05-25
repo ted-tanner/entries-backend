@@ -105,11 +105,13 @@ pub struct OutputIsUserListedForDeletion {
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
-pub struct OutputSigninNonceData {
+pub struct OutputSigninNonceAndHashParams {
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
-
+    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_parallelism_factor: i32,
     pub auth_string_iters: i32,
+
     pub nonce: i32,
 }
 

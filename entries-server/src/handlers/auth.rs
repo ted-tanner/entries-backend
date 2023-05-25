@@ -2,7 +2,7 @@ use entries_utils::db::{DaoError, DbThreadPool};
 use entries_utils::email::templates::OtpMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::request_io::{
-    CredentialPair, InputEmail, InputOtp, OutputSigninNonceData, SigninToken, TokenPair,
+    CredentialPair, InputEmail, InputOtp, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::Token;
@@ -25,7 +25,7 @@ use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, Verified
 use crate::middleware::throttle::Throttle;
 use crate::middleware::FromHeader;
 
-pub async fn obtain_nonce_and_auth_string_salt(
+pub async fn obtain_nonce_and_auth_string_params(
     db_thread_pool: web::Data<DbThreadPool>,
     email: web::Query<InputEmail>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -49,15 +49,17 @@ pub async fn obtain_nonce_and_auth_string_salt(
     // The bounds are hardcoded. This is safe.
     let phony_nonce = unsafe { i32::from_be_bytes(hash[16..20].try_into().unwrap_unchecked()) };
 
-    let phony_params = OutputSigninNonceData {
+    let phony_params = OutputSigninNonceAndHashParams {
         auth_string_salt: phony_salt,
+        auth_string_memory_cost_kib: 250000,
+        auth_string_parallelism_factor: 2,
         auth_string_iters: 18,
         nonce: phony_nonce,
     };
 
     let real_params = match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.get_auth_string_salt_and_signin_nonce(&email.0.email)
+        auth_dao.get_auth_string_data_signin_nonce(&email.0.email)
     })
     .await?
     {

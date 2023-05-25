@@ -497,16 +497,13 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Don't route api to /api in services (same with web)
 * Clear throttling table weekly (just to make sure it doesn't get too long)
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
 * Delete expired budget accept keys regularly
 * Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
-* Make sure unverified `users` table records get removed in a timely manner (every hour). This may require temporarily storing a user_created timestamp.
-* Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every hour).
-* Provide hashing parameters to client along with salt.
-  - Default argon2 params to tell the client: m=256mb, p=2, t=18
+* Make sure unverified `users` table records get removed in a timely manner (every 59 mins). This may require temporarily storing a user_created timestamp.
+* Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every 59 mins).
 * Never tell the client to hash with fewer than a certain number of iterations of argon2.
 * Endpoints for generating new recovery keys
 * Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
