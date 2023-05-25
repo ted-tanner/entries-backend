@@ -63,4 +63,9 @@ impl Dao {
 
         Ok(attempt_count)
     }
+
+    pub fn clear_throttle_table(&mut self) -> Result<(), DaoError> {
+        diesel::delete(throttleable_attempts).execute(&mut self.db_thread_pool.get()?)?;
+        Ok(())
+    }
 }

@@ -498,19 +498,15 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Clear throttling table weekly (just to make sure it doesn't get too long)
 * Delete `user_deletion_request_budget_keys` regularly
 * Delete expired budget invitations regularly
 * Delete expired budget accept keys regularly
 * Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
 * Make sure unverified `users` table records get removed in a timely manner (every 59 mins). This may require temporarily storing a user_created timestamp.
 * Make sure undeleted `user_deletion_requests` and `user_deletion_request_budget_keys` table records get removed in a timely manner (every 59 mins).
-* Never tell the client to hash with fewer than a certain number of iterations of argon2.
 * Endpoints for generating new recovery keys
 * Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
-* Throttle the "forgot password" endpoint (1 time every 5 minutes). Create a record and make sure that emails can only be sent once every 30 minutes.
-  - Schedule a job that clears out old records of forgot password endpoint hits
-* Create user endpoint should have an `acknowledge_agreement` field. If the field is false, the endpoint returns a 400 error
+* Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
 * Get email delivery set up (Amazon SES?)
   - [x] OTP for sign in 
   - [x] OTP for change password
@@ -519,7 +515,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - [x] User creation verification
   - [x] User deletion verification
   - [ ] Budget shared? Users need a way to turn off this notification
-* Update ed25519-dalek crate
 * Search through TODOs in code
 * Unit tests!
 * Update readme documentation
@@ -529,6 +524,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do it later
 
 * Add webauthn-rs and totp_rs
+* Update ed25519-dalek crate
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations
