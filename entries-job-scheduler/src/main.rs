@@ -13,7 +13,10 @@ mod env;
 mod jobs;
 mod runner;
 
-use jobs::{ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob, ClearThrottleTableJob};
+use jobs::{
+    ClearOldUserDeletionRequestsJob, ClearThrottleTableJob, ClearUnverifiedUsersJob,
+    DeleteUsersJob, UnblacklistExpiredTokensJob,
+};
 
 fn main() {
     let mut conf_file_path: Option<String> = None;
@@ -93,6 +96,16 @@ fn main() {
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
             let mut job_runner = env::runner::JOB_RUNNER.lock().await;
+
+            job_runner.register(Box::new(ClearOldUserDeletionRequestsJob::new(
+                Duration::from_secs(
+                    env::CONF
+                        .clear_old_user_deletion_requests_job
+                        .job_frequency_secs,
+                ),
+                get_last_run_time(ClearOldUserDeletionRequestsJob::name(), &registry),
+                env::db::DB_THREAD_POOL.clone(),
+            )));
 
             job_runner.register(Box::new(ClearThrottleTableJob::new(
                 Duration::from_secs(env::CONF.clear_throttle_table_job.job_frequency_secs),

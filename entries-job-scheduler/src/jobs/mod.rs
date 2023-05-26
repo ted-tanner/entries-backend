@@ -1,9 +1,11 @@
-mod clear_throttle_table_job;
+mod clear_old_user_deletion_requests;
+mod clear_throttle_table;
 mod clear_unverified_users;
 mod delete_users;
 mod unblacklist_expired_tokens;
 
-pub use clear_throttle_table_job::ClearThrottleTableJob;
+pub use clear_old_user_deletion_requests::ClearOldUserDeletionRequestsJob;
+pub use clear_throttle_table::ClearThrottleTableJob;
 pub use clear_unverified_users::ClearUnverifiedUsersJob;
 pub use delete_users::DeleteUsersJob;
 pub use unblacklist_expired_tokens::UnblacklistExpiredTokensJob;

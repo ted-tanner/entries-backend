@@ -10,7 +10,6 @@ use crate::schema::user_deletion_requests;
 pub struct UserDeletionRequest {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub deletion_request_time: SystemTime,
     pub ready_for_deletion_time: SystemTime,
 }
 
@@ -19,6 +18,5 @@ pub struct UserDeletionRequest {
 pub struct NewUserDeletionRequest {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub deletion_request_time: SystemTime,
     pub ready_for_deletion_time: SystemTime,
 }

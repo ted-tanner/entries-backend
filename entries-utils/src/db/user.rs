@@ -305,7 +305,6 @@ impl Dao {
         let new_request = NewUserDeletionRequest {
             id: Uuid::new_v4(),
             user_id,
-            deletion_request_time: SystemTime::now(),
             ready_for_deletion_time: SystemTime::now() + time_until_deletion,
         };
 
@@ -377,5 +376,29 @@ impl Dao {
             dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
                 .get_result(&mut self.db_thread_pool.get()?)?,
         )
+    }
+
+    pub fn delete_old_user_deletion_requests(&mut self) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                let user_ids = diesel::delete(user_deletion_request_budget_keys.filter(
+                    user_deletion_request_budget_key_fields::delete_me_time.le(SystemTime::now()),
+                ))
+                .returning(user_deletion_request_budget_key_fields::user_id)
+                .get_results::<Uuid>(conn)?;
+
+                diesel::delete(
+                    user_deletion_requests
+                        .filter(user_deletion_request_fields::user_id.eq_any(user_ids)),
+                )
+                .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
     }
 }

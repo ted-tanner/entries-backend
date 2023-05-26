@@ -7,7 +7,8 @@ use std::sync::RwLock;
 pub struct Conf {
     pub connections: Connections,
     pub runner: RunnerConf,
-    pub clear_throttle_table_job: ClearThrottleTableJob,
+    pub clear_old_user_deletion_requests_job: ClearOldUserDeletionRequestsJobConf,
+    pub clear_throttle_table_job: ClearThrottleTableJobConf,
     pub clear_unverified_users_job: ClearUnverifiedUsersJobConf,
     pub delete_users_job: DeleteUsersJobConf,
     pub unblacklist_expired_tokens_job: UnblacklistExpiredTokensJobConf,
@@ -27,7 +28,12 @@ pub struct RunnerConf {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ClearThrottleTableJob {
+pub struct ClearOldUserDeletionRequestsJobConf {
+    pub job_frequency_secs: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClearThrottleTableJobConf {
     pub job_frequency_secs: u64,
 }
 

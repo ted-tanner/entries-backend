@@ -144,7 +144,6 @@ CREATE INDEX ON users USING HASH (email);
 CREATE TABLE user_deletion_requests (
     id UUID PRIMARY KEY,
     user_id UUID UNIQUE NOT NULL,
-    deletion_request_time TIMESTAMP NOT NULL,
     ready_for_deletion_time TIMESTAMP NOT NULL
 );
 
