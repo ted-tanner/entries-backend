@@ -421,9 +421,39 @@ impl Dao {
     }
 
     pub fn delete_invitation(&mut self, invitation_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(budget_share_invites.find(invitation_id))
+            .execute(&mut self.db_thread_pool.get()?)?;
+        Ok(())
+    }
+
+    pub fn delete_all_expired_invitations(&mut self) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
-        diesel::delete(budget_share_invites.find(invitation_id)).execute(&mut db_connection)?;
+        // Not using a database transaction here because these can be deleted separately from
+        // each other
+        diesel::delete(
+            budget_accept_keys.filter(budget_accept_key_fields::expiration.lt(SystemTime::now())),
+        )
+        .execute(&mut db_connection)?;
+
+        let now_minus_five_million_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("now() should be after UNIX_EPOCH")
+            .as_secs()
+            - 5_000_000;
+
+        let segment_intdiv_five_million = now_minus_five_million_secs / 5_000_000;
+        let segment_intdiv_five_million: i16 = segment_intdiv_five_million
+            .try_into()
+            .expect("Unix epoch time divided by 5 million should fit in an i16");
+
+        diesel::delete(
+            budget_share_invites.filter(
+                budget_share_invite_fields::created_unix_timestamp_intdiv_five_million
+                    .lt(segment_intdiv_five_million),
+            ),
+        )
+        .execute(&mut db_connection)?;
 
         Ok(())
     }
