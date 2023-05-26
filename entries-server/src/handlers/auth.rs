@@ -1,6 +1,7 @@
 use entries_utils::db::{DaoError, DbThreadPool};
 use entries_utils::email::templates::OtpMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
+use entries_utils::otp::Otp;
 use entries_utils::request_io::{
     CredentialPair, InputEmail, InputOtp, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
@@ -10,7 +11,6 @@ use entries_utils::validators::Validity;
 use entries_utils::{argon2_hasher, db, validators};
 
 use actix_web::{web, HttpResponse};
-use rand::rngs::OsRng;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
@@ -186,14 +186,8 @@ pub async fn sign_in(
     };
 
     let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
-    let mut otp = String::with_capacity(8);
 
-    for _ in 0..8 {
-        let rand_alpha = OsRng.gen_range(b'A'..=b'Z') as char;
-        otp.push(rand_alpha);
-    }
-
-    let otp = Arc::new(otp);
+    let otp = Arc::new(Otp::generate());
     let otp_ref = Arc::clone(&otp);
 
     match web::block(move || {
@@ -242,35 +236,12 @@ pub async fn verify_otp_for_signin(
     otp: web::Json<InputOtp>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let signin_token_signature = match signin_token.0.parts() {
-        Some(p) => p.signature.clone(),
-        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
-    };
-
     let claims = signin_token.verify()?;
-    let token_expiration = claims.expiration;
     let user_id = claims.user_id;
 
     throttle
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
-
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-    match web::block(move || {
-        auth_dao
-            .check_is_token_on_blacklist_and_blacklist(&signin_token_signature, token_expiration)
-    })
-    .await?
-    {
-        Ok(false) => (),
-        Ok(true) => {
-            return Err(HttpErrorResponse::TokenExpired("Token has expired"));
-        }
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Error verifying token"));
-        }
-    };
 
     let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
@@ -290,21 +261,7 @@ pub async fn verify_otp_for_signin(
         return Err(HttpErrorResponse::IncorrectCredential("OTP has expired"));
     }
 
-    let given_otp = otp.otp.as_bytes();
-    let saved_otp = saved_otp.otp.as_bytes();
-
-    if given_otp.len() != saved_otp.len() {
-        return Err(HttpErrorResponse::IncorrectCredential("Incorrect OTP"));
-    }
-
-    let mut otps_dont_match = 0u8;
-
-    // Do bitwise comparison to prevent timing attacks
-    for (i, saved_otp_char) in saved_otp.iter().enumerate() {
-        otps_dont_match |= saved_otp_char ^ given_otp[i];
-    }
-
-    if otps_dont_match != 0 {
+    if !Otp::are_equal(&otp.otp, &saved_otp.otp) {
         return Err(HttpErrorResponse::IncorrectCredential("Incorrect OTP"));
     }
 

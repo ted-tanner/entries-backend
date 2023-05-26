@@ -217,7 +217,9 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 
         // Do bitwise comparison to prevent timing attacks
         for (i, correct_hash_byte) in correct_hash.iter().enumerate() {
-            hashes_dont_match |= correct_hash_byte ^ signature[i];
+            unsafe {
+                hashes_dont_match |= correct_hash_byte ^ signature.get_unchecked(i);
+            }
         }
 
         hashes_dont_match == 0

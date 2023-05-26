@@ -498,6 +498,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+*argon2 -> argon2_bindings
 * Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
 * Make sure unverified `users` table records get removed in a timely manner (every 59 mins). This may require temporarily storing a user_created timestamp.
 * Endpoints for generating new recovery keys
@@ -505,9 +506,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
 * Get email delivery set up (Amazon SES?)
   - [x] OTP for sign in 
-  - [x] OTP for change password
+  - [ ] OTP for change password (send first, then confirm upon password change)
   - [ ] Forgot Password
-  - [x] OTP for forgot password
+  - [ ] OTP for forgot password
   - [x] User creation verification
   - [x] User deletion verification
   - [ ] Budget shared? Users need a way to turn off this notification

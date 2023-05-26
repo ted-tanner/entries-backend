@@ -17,6 +17,7 @@ pub mod db;
 pub mod email;
 pub mod html;
 pub mod models;
+pub mod otp;
 pub mod request_io;
 pub mod schema;
 pub mod token;
