@@ -12,7 +12,7 @@ mod argon2_bindings;
 #[cfg(test)]
 mod test_env;
 
-pub mod argon2;
+pub mod argon2id;
 pub mod db;
 pub mod email;
 pub mod html;

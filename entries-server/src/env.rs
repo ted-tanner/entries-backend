@@ -47,8 +47,8 @@ pub struct RawDb {
 pub struct Hashing {
     pub hash_length: u32,
     pub hash_iterations: u32,
-    pub hash_mem_size_kib: u32,
-    pub hash_lanes: u32,
+    pub hash_mem_cost_kib: u32,
+    pub hash_threads: u32,
     pub salt_length_bytes: usize,
 }
 

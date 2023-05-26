@@ -498,7 +498,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-*argon2 -> argon2_bindings
+* Argon2 make struct with static methods
 * Clear expired OTPs out of `user_otps` table frequently (to avoid storing login data)
 * Make sure unverified `users` table records get removed in a timely manner (every 59 mins). This may require temporarily storing a user_created timestamp.
 * Endpoints for generating new recovery keys

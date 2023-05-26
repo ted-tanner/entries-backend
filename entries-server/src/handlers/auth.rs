@@ -8,7 +8,7 @@ use entries_utils::request_io::{
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::Token;
 use entries_utils::validators::Validity;
-use entries_utils::{argon2, db, validators};
+use entries_utils::{argon2id, db, validators};
 
 use actix_web::{web, HttpResponse};
 use rand::{Rng, SeedableRng};
@@ -155,7 +155,7 @@ pub async fn sign_in(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let does_auth_string_match_hash = argon2::verify_hash(
+        let does_auth_string_match_hash = argon2id::verify_hash(
             &credentials_ref.auth_string,
             &hash_and_status.auth_string_hash,
             &env::CONF.keys.hashing_key,
