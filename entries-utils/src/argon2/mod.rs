@@ -1,6 +1,817 @@
-#![allow(dead_code)]
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
+use rand::{rngs::OsRng, Fill};
+use std::ffi::CStr;
+use std::fmt;
+use std::mem::MaybeUninit;
 
-include!(concat!(env!("OUT_DIR"), "/argon2_bindings.rs"));
+use crate::argon2_bindings::{
+    argon2_error_message, argon2id_ctx, Argon2_Context, Argon2_ErrorCodes_ARGON2_OK,
+    Argon2_version_ARGON2_VERSION_13,
+};
+
+#[derive(Debug)]
+pub enum Argon2HasherError {
+    InvalidParameter(&'static str),
+    LibraryError(String),
+}
+
+impl std::error::Error for Argon2HasherError {}
+
+impl fmt::Display for Argon2HasherError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Argon2HasherError::InvalidParameter(msg) => write!(f, "InvalidParameter: {}", msg),
+            Argon2HasherError::LibraryError(msg) => write!(f, "LibraryError: {}", msg),
+        }
+    }
+}
+
+struct TokenizedHash {
+    pub v: u32,
+    pub memory_kib: u32,
+    pub iterations: u32,
+    pub lanes: u32,
+    pub b64_salt: String,
+    pub b64_hash: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct HashParams {
+    pub salt_len: usize,
+    pub hash_len: u32,
+    pub hash_iterations: u32,
+    pub hash_mem_size_kib: u32,
+    pub hash_lanes: u32,
+}
+
+pub struct BinaryHash {
+    pub v: u32,
+    pub memory_kib: u32,
+    pub iterations: u32,
+    pub lanes: u32,
+    pub salt: Vec<u8>,
+    pub hash: Vec<u8>,
+}
+
+impl TokenizedHash {
+    pub fn from_str(parameterized_hash: &str) -> Result<TokenizedHash, ()> {
+        enum HashStates {
+            Start,
+            HashTypeStart,
+            HashTypeA,
+            HashTypeAr,
+            HashTypeArg,
+            HashTypeArgo,
+            HashTypeArgon,
+            HashTypeArgon2,
+            HashTypeArgon2i,
+            HashTypeArgon2id,
+            HashTypeComplete,
+            VKey,
+            VEquals,
+            VValue,
+            VComplete,
+            MKey,
+            MEquals,
+            MValue,
+            MComplete,
+            TKey,
+            TEquals,
+            TValue,
+            TComplete,
+            PKey,
+            PEquals,
+            PValue,
+            PComplete,
+            Salt,
+            HashStart,
+            Hash,
+        }
+
+        let mut state = HashStates::Start;
+
+        let mut has_m = false;
+        let mut has_t = false;
+        let mut has_p = false;
+
+        let mut v = 0..0;
+        let mut m = 0..0;
+        let mut t = 0..0;
+        let mut p = 0..0;
+
+        let mut salt = String::with_capacity(22); // 16 bytes, base64-encoded (no padding)
+        let mut hash = String::with_capacity(43); // 32 bytes, base64-encoded (no padding)
+
+        for (i, c) in parameterized_hash.chars().enumerate() {
+            match state {
+                HashStates::Start => {
+                    state = match c {
+                        '$' => HashStates::HashTypeStart,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeStart => {
+                    state = match c {
+                        'a' => HashStates::HashTypeA,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeA => {
+                    state = match c {
+                        'r' => HashStates::HashTypeAr,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeAr => {
+                    state = match c {
+                        'g' => HashStates::HashTypeArg,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArg => {
+                    state = match c {
+                        'o' => HashStates::HashTypeArgo,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArgo => {
+                    state = match c {
+                        'n' => HashStates::HashTypeArgon,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArgon => {
+                    state = match c {
+                        '2' => HashStates::HashTypeArgon2,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArgon2 => {
+                    state = match c {
+                        'i' => HashStates::HashTypeArgon2i,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArgon2i => {
+                    state = match c {
+                        'd' => HashStates::HashTypeArgon2id,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeArgon2id => {
+                    state = match c {
+                        '$' => HashStates::HashTypeComplete,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::HashTypeComplete => {
+                    state = match c {
+                        'v' => HashStates::VKey,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::VKey => {
+                    state = match c {
+                        '=' => HashStates::VEquals,
+                        _ => return Err(()),
+                    };
+                }
+
+                HashStates::VEquals => {
+                    if c.is_ascii_digit() {
+                        v = i..(i + 1);
+                        state = HashStates::VValue;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::VValue => {
+                    if c == '$' {
+                        state = HashStates::VComplete;
+                    } else if c.is_ascii_digit() {
+                        v.end += 1;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::VComplete => {
+                    state = match c {
+                        'm' => HashStates::MKey,
+                        't' => HashStates::TKey,
+                        'p' => HashStates::PKey,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::MKey => {
+                    if has_m {
+                        return Err(());
+                    }
+
+                    state = match c {
+                        '=' => HashStates::MEquals,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::MEquals => {
+                    if c.is_ascii_digit() {
+                        m = i..(i + 1);
+                        state = HashStates::MValue;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::MValue => {
+                    if c == ',' {
+                        state = HashStates::MComplete;
+                    } else if c.is_ascii_digit() {
+                        m.end += 1;
+                    } else if c == '$' && has_t && has_p {
+                        state = HashStates::Salt;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::MComplete => {
+                    has_m = true;
+
+                    state = match c {
+                        't' => HashStates::TKey,
+                        'p' => HashStates::PKey,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::TKey => {
+                    if has_t {
+                        return Err(());
+                    }
+
+                    state = match c {
+                        '=' => HashStates::TEquals,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::TEquals => {
+                    if c.is_ascii_digit() {
+                        t = i..(i + 1);
+                        state = HashStates::TValue;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::TValue => {
+                    if c == ',' {
+                        state = HashStates::TComplete;
+                    } else if c.is_ascii_digit() {
+                        t.end += 1;
+                    } else if c == '$' && has_m && has_p {
+                        state = HashStates::Salt;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::TComplete => {
+                    has_t = true;
+
+                    state = match c {
+                        'm' => HashStates::MKey,
+                        'p' => HashStates::PKey,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::PKey => {
+                    if has_p {
+                        return Err(());
+                    }
+
+                    state = match c {
+                        '=' => HashStates::PEquals,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::PEquals => {
+                    if c.is_ascii_digit() {
+                        p = i..(i + 1);
+                        state = HashStates::PValue;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::PValue => {
+                    if c == ',' {
+                        state = HashStates::PComplete;
+                    } else if c.is_ascii_digit() {
+                        p.end += 1;
+                    } else if c == '$' && has_m && has_t {
+                        state = HashStates::Salt;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                HashStates::PComplete => {
+                    has_p = true;
+
+                    state = match c {
+                        'm' => HashStates::MKey,
+                        't' => HashStates::TKey,
+                        _ => return Err(()),
+                    }
+                }
+
+                HashStates::Salt => {
+                    if c == '$' {
+                        state = HashStates::HashStart;
+                    } else {
+                        salt.push(c);
+                    }
+                }
+
+                HashStates::HashStart => {
+                    if c == '$' {
+                        return Err(());
+                    }
+
+                    hash.push(c);
+                    state = HashStates::Hash;
+                }
+
+                HashStates::Hash => {
+                    if c == '$' {
+                        return Err(());
+                    }
+
+                    hash.push(c);
+                }
+            }
+        }
+
+        if std::mem::discriminant(&state) != std::mem::discriminant(&HashStates::Hash) {
+            return Err(());
+        }
+
+        salt.shrink_to_fit();
+        hash.shrink_to_fit();
+
+        unsafe {
+            Ok(TokenizedHash {
+                v: parameterized_hash[v].parse().unwrap_unchecked(),
+                memory_kib: parameterized_hash[m].parse().unwrap_unchecked(),
+                iterations: parameterized_hash[t].parse().unwrap_unchecked(),
+                lanes: parameterized_hash[p].parse().unwrap_unchecked(),
+                b64_salt: salt,
+                b64_hash: hash,
+            })
+        }
+    }
+}
+
+impl BinaryHash {
+    #[inline]
+    pub fn into_hash_string(self) -> String {
+        let b64_salt = base64::encode_config(self.salt, base64::STANDARD_NO_PAD);
+        let b64_hash = base64::encode_config(self.hash, base64::STANDARD_NO_PAD);
+        format!(
+            "$argon2id$v={}$m={},t={},p={}${}${}",
+            self.v, self.memory_kib, self.iterations, self.lanes, b64_salt, b64_hash,
+        )
+    }
+}
+
+#[inline]
+pub fn hash_auth_string(
+    auth_string: &str,
+    hash_params: &HashParams,
+    hashing_key: &[u8; 32],
+) -> Result<String, Argon2HasherError> {
+    let mut salt = MaybeUninit::new(Vec::with_capacity(hash_params.salt_len));
+    let salt = unsafe {
+        (*salt.as_mut_ptr()).set_len(hash_params.salt_len);
+        (*salt.as_mut_ptr())
+            .try_fill(&mut OsRng)
+            .expect("Failed to obtain random bytes");
+
+        salt.assume_init()
+    };
+
+    Ok(hash_argon2id(
+        auth_string,
+        hashing_key,
+        &salt[..],
+        hash_params.hash_len,
+        hash_params.hash_iterations,
+        hash_params.hash_mem_size_kib,
+        hash_params.hash_lanes,
+    )?
+    .into_hash_string())
+}
+
+#[inline]
+pub fn verify_hash(auth_string: &str, hash: &str, hashing_key: &[u8; 32]) -> bool {
+    verify_argon2id(auth_string, hash, hashing_key)
+}
+
+pub fn hash_argon2id(
+    auth_string: &str,
+    key: &[u8; 32],
+    salt: &[u8],
+    hash_len: u32,
+    iterations: u32,
+    memory_kib: u32,
+    lanes: u32,
+) -> Result<BinaryHash, Argon2HasherError> {
+    let hash_len_usize = match usize::try_from(hash_len) {
+        Ok(l) => l,
+        Err(_) => return Err(Argon2HasherError::InvalidParameter("hash_len is too big")),
+    };
+
+    let mut hash_buffer = MaybeUninit::new(Vec::with_capacity(hash_len_usize));
+    let mut hash_buffer = unsafe {
+        (*hash_buffer.as_mut_ptr()).set_len(hash_len_usize);
+        (*hash_buffer.as_mut_ptr())
+            .try_fill(&mut OsRng)
+            .expect("Failed to obtain random bytes");
+
+        hash_buffer.assume_init()
+    };
+
+    // Some buffers here are cast to *mut to pass to C. C will not modify these buffers
+    // so this is safe
+    let mut ctx = Argon2_Context {
+        out: hash_buffer.as_mut_ptr(),
+        // hash_len was originally converted from a u32 to a usize, so this is safe
+        outlen: unsafe { hash_buffer.len().try_into().unwrap_unchecked() },
+        pwd: auth_string.as_bytes() as *const _ as *mut _,
+        pwdlen: match auth_string.len().try_into() {
+            Ok(l) => l,
+            Err(_) => {
+                return Err(Argon2HasherError::InvalidParameter(
+                    "Auth string is too long",
+                ))
+            }
+        },
+        salt: salt.as_ptr() as *mut _,
+        saltlen: match salt.len().try_into() {
+            Ok(l) => l,
+            Err(_) => return Err(Argon2HasherError::InvalidParameter("Salt is too long")),
+        },
+        secret: key.as_ptr() as *mut _,
+        secretlen: match key.len().try_into() {
+            Ok(l) => l,
+            Err(_) => {
+                return Err(Argon2HasherError::InvalidParameter(
+                    "Secret hashing key is too long",
+                ))
+            }
+        },
+        ad: std::ptr::null_mut(),
+        adlen: 0,
+        t_cost: iterations,
+        m_cost: memory_kib,
+        lanes,
+        threads: lanes,
+        version: Argon2_version_ARGON2_VERSION_13,
+        allocate_cbk: None,
+        free_cbk: None,
+        flags: 0,
+    };
+
+    let result = unsafe { argon2id_ctx(&mut ctx as *mut Argon2_Context) };
+
+    if result != Argon2_ErrorCodes_ARGON2_OK {
+        let err_msg = String::from(unsafe {
+            std::str::from_utf8_unchecked(CStr::from_ptr(argon2_error_message(result)).to_bytes())
+        });
+
+        return Err(Argon2HasherError::LibraryError(err_msg));
+    }
+
+    Ok(BinaryHash {
+        v: 19,
+        memory_kib,
+        iterations,
+        lanes,
+        salt: Vec::from(salt),
+        hash: hash_buffer,
+    })
+}
+
+pub fn verify_argon2id(auth_string: &str, hash: &str, key: &[u8; 32]) -> bool {
+    let tokenized_hash = match TokenizedHash::from_str(hash) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+
+    let decoded_salt = match base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD)
+    {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let decoded_hash = match base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD)
+    {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+
+    let decoded_hash_len = match u32::try_from(decoded_hash.len()) {
+        Ok(l) => l,
+        Err(_) => return false,
+    };
+
+    let hashed_auth_string = match hash_argon2id(
+        auth_string,
+        key,
+        &decoded_salt[..],
+        decoded_hash_len,
+        tokenized_hash.iterations,
+        tokenized_hash.memory_kib,
+        tokenized_hash.lanes,
+    ) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    if hashed_auth_string.v != tokenized_hash.v {
+        return false;
+    }
+
+    let mut is_invalid = 0u8;
+
+    if decoded_hash.len() != hashed_auth_string.hash.len() || decoded_hash.is_empty() {
+        return false;
+    }
+
+    // Do bitwise comparison to prevent timing attacks (entire length of string must be
+    // compared)
+    for (i, decoded_hash_byte) in decoded_hash.iter().enumerate() {
+        is_invalid |= decoded_hash_byte ^ hashed_auth_string.hash[i];
+    }
+
+    is_invalid == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_binary_hash_into_hash_string() {
+        let hash = BinaryHash {
+            v: 19,
+            memory_kib: 128,
+            iterations: 3,
+            lanes: 2,
+            salt: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            hash: base64::decode_config(
+                "ypJ3pKxN4aWGkwMv0TOb08OIzwrfK1SZWy64vyTLKo8",
+                base64::STANDARD_NO_PAD,
+            )
+            .unwrap()
+            .to_vec(),
+        };
+
+        assert_eq!(hash.into_hash_string(),
+                   String::from(
+                       "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$ypJ3pKxN4aWGkwMv0TOb08OIzwrfK1SZWy64vyTLKo8"
+                   ));
+    }
+
+    #[test]
+    fn test_tokenized_hash_from_str() {
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        )
+        .unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(
+            tokenized_hash.b64_hash,
+            String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc")
+        );
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,m=128,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        )
+        .unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(
+            tokenized_hash.b64_hash,
+            String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc")
+        );
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$p=2,m=128,t=3$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        )
+        .unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(
+            tokenized_hash.b64_hash,
+            String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc")
+        );
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        )
+        .unwrap();
+
+        assert_eq!(tokenized_hash.v, 19);
+        assert_eq!(tokenized_hash.memory_kib, 128);
+        assert_eq!(tokenized_hash.iterations, 3);
+        assert_eq!(tokenized_hash.lanes, 2);
+        assert_eq!(tokenized_hash.b64_salt, String::from("AQIDBAUGBwg"));
+        assert_eq!(
+            tokenized_hash.b64_hash,
+            String::from("7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc")
+        );
+    }
+
+    #[test]
+    fn test_invalid_tokenized_hash_from_str() {
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2,$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=3,m=128,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc"
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2i$v=19$p=2m=128,t=3$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$t=3,p=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2i$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc$",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str("$argon2id$v=19$m=128,t=3,p=2$AQIDBAUGBwg$$");
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$m=128,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=2,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+
+        let tokenized_hash = TokenizedHash::from_str(
+            "$argon2id$v=19$t=2,m=128$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+        );
+
+        assert!(tokenized_hash.is_err());
+    }
+
+    #[test]
+    fn test_hash_auth_string() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+
+        let hash = hash_auth_string(auth_string, &hash_params, &[1u8; 32]).unwrap();
+
+        assert!(!hash.contains(auth_string));
+    }
+
+    #[test]
+    fn test_verify_hash() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
+
+        assert!(verify_hash(auth_string, &hash, &[0u8; 32],));
+    }
+
+    #[test]
+    fn test_verify_incorrect_auth_string() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
+
+        assert!(!verify_hash("@pa$$20rd-Test", &hash, &[0u8; 32],));
+    }
+
+    #[test]
+    fn test_verify_incorrect_key() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let hash_params = HashParams {
+            salt_len: 16,
+            hash_len: 32,
+            hash_iterations: 2,
+            hash_mem_size_kib: 128,
+            hash_lanes: 2,
+        };
+
+        let hash = hash_auth_string(auth_string, &hash_params, &[0u8; 32]).unwrap();
+
+        assert!(!verify_hash(auth_string, &hash, &[1u8; 32]));
+    }
+}

@@ -17,7 +17,7 @@ use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
 use entries_utils::validators::{self, Validity};
-use entries_utils::{argon2_hasher, db};
+use entries_utils::{argon2, db};
 
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
@@ -98,9 +98,9 @@ pub async fn create(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash = argon2_hasher::hash_auth_string(
+        let hash = argon2::hash_auth_string(
             &user_data_ref.auth_string,
-            &argon2_hasher::HashParams {
+            &argon2::HashParams {
                 salt_len: env::CONF.hashing.salt_length_bytes,
                 hash_len: env::CONF.hashing.hash_length,
                 hash_iterations: env::CONF.hashing.hash_iterations,
@@ -347,7 +347,7 @@ pub async fn change_password(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let does_current_auth_match = argon2_hasher::verify_hash(
+        let does_current_auth_match = argon2::verify_hash(
             &current_auth_string,
             &hash.auth_string_hash,
             &env::CONF.keys.hashing_key,
@@ -366,9 +366,9 @@ pub async fn change_password(
 
     web::block(move || {
         let _auth_string_hash = {
-            argon2_hasher::hash_auth_string(
+            argon2::hash_auth_string(
                 &new_password_data.new_auth_string,
-                &argon2_hasher::HashParams {
+                &argon2::HashParams {
                     salt_len: env::CONF.hashing.salt_length_bytes,
                     hash_len: env::CONF.hashing.hash_length,
                     hash_iterations: env::CONF.hashing.hash_iterations,
