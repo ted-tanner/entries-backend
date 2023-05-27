@@ -5,34 +5,41 @@ use std::mem::MaybeUninit;
 use std::{default::Default, str::FromStr};
 
 use crate::argon2_bindings::{
-    argon2_error_message, argon2id_ctx, Argon2_Context, Argon2_ErrorCodes_ARGON2_OK,
-    Argon2_version_ARGON2_VERSION_13,
+    argon2_error_message, argon2d_ctx, argon2i_ctx, argon2id_ctx, Argon2_Context,
+    Argon2_ErrorCodes_ARGON2_OK, Argon2_version_ARGON2_VERSION_13,
 };
 
 #[derive(Debug)]
-pub enum Argon2idError {
+pub enum Argon2Error {
     InvalidParameter(&'static str),
     InvalidHash(&'static str),
     CLibError(String),
 }
 
-impl std::error::Error for Argon2idError {}
+impl std::error::Error for Argon2Error {}
 
-impl fmt::Display for Argon2idError {
+impl fmt::Display for Argon2Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Argon2idError::InvalidParameter(msg) => {
-                write!(f, "Argon2idError: Invalid parameter: {}", msg)
+            Argon2Error::InvalidParameter(msg) => {
+                write!(f, "Argon2Error: Invalid parameter: {}", msg)
             }
-            Argon2idError::InvalidHash(msg) => write!(f, "Argon2idError: Invalid hash: {}", msg),
-            Argon2idError::CLibError(msg) => {
-                write!(f, "Argon2idError: Error from C library: {}", msg)
+            Argon2Error::InvalidHash(msg) => write!(f, "Argon2Error: Invalid hash: {}", msg),
+            Argon2Error::CLibError(msg) => {
+                write!(f, "Argon2Error: Error from C library: {}", msg)
             }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
+pub enum Algorithm {
+    Argon2d,
+    Argon2i,
+    Argon2id,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Secret<'a>(&'a [u8]);
 
 impl<'a> Secret<'a> {
@@ -43,6 +50,7 @@ impl<'a> Secret<'a> {
 
 #[derive(Debug)]
 pub struct Hasher<'a> {
+    alg: Algorithm,
     custom_salt: Option<&'a [u8]>,
     salt_len: u32,
     hash_len: u32,
@@ -55,6 +63,7 @@ pub struct Hasher<'a> {
 impl<'a> Default for Hasher<'a> {
     fn default() -> Self {
         Self {
+            alg: Algorithm::Argon2id,
             custom_salt: None,
             salt_len: 16,
             hash_len: 32,
@@ -67,6 +76,11 @@ impl<'a> Default for Hasher<'a> {
 }
 
 impl<'a> Hasher<'a> {
+    pub fn algorithm(mut self, alg: Algorithm) -> Self {
+        self.alg = alg;
+        self
+    }
+
     /// When left unspecified, a salt is generated using a cryptographically-secure random
     /// number generator. In most cases, a salt shouldn't be specified using this method. Only
     /// use this function if you are trying to generate a hash deterministically with a known
@@ -111,10 +125,10 @@ impl<'a> Hasher<'a> {
         self
     }
 
-    pub fn hash(self, password: &str) -> Result<Hash, Argon2idError> {
+    pub fn hash(self, password: &str) -> Result<Hash, Argon2Error> {
         let hash_len_usize = match usize::try_from(self.hash_len) {
             Ok(l) => l,
-            Err(_) => return Err(Argon2idError::InvalidParameter("Hash length is too big")),
+            Err(_) => return Err(Argon2Error::InvalidParameter("Hash length is too big")),
         };
 
         let mut hash_buffer = MaybeUninit::new(Vec::with_capacity(hash_len_usize));
@@ -130,14 +144,14 @@ impl<'a> Hasher<'a> {
         let (salt_len_u32, salt_len_usize) = if let Some(s) = self.custom_salt {
             let salt_len_u32 = match u32::try_from(s.len()) {
                 Ok(l) => l,
-                Err(_) => return Err(Argon2idError::InvalidParameter("Salt length is too big")),
+                Err(_) => return Err(Argon2Error::InvalidParameter("Salt length is too big")),
             };
 
             (salt_len_u32, s.len())
         } else {
             let salt_len_usize = match usize::try_from(self.salt_len) {
                 Ok(l) => l,
-                Err(_) => return Err(Argon2idError::InvalidParameter("Salt length is too big")),
+                Err(_) => return Err(Argon2Error::InvalidParameter("Salt length is too big")),
             };
 
             (self.salt_len, salt_len_usize)
@@ -164,7 +178,7 @@ impl<'a> Hasher<'a> {
             if let Some(s) = self.secret {
                 let length = match s.0.len().try_into() {
                     Ok(l) => l,
-                    Err(_) => return Err(Argon2idError::InvalidParameter("Secret is too long")),
+                    Err(_) => return Err(Argon2Error::InvalidParameter("Secret is too long")),
                 };
 
                 (s.0.as_ptr() as *mut _, length)
@@ -182,7 +196,7 @@ impl<'a> Hasher<'a> {
             pwd: password.as_bytes() as *const _ as *mut _,
             pwdlen: match password.len().try_into() {
                 Ok(l) => l,
-                Err(_) => return Err(Argon2idError::InvalidParameter("Password is too long")),
+                Err(_) => return Err(Argon2Error::InvalidParameter("Password is too long")),
             },
             salt: salt.as_ptr() as *mut _,
             // Careful not to use self.salt_len here; it may be overridden if a custom salt
@@ -202,17 +216,24 @@ impl<'a> Hasher<'a> {
             flags: 0,
         };
 
-        let result = unsafe { argon2id_ctx(&mut ctx as *mut _) };
+        let result = unsafe {
+            match self.alg {
+                Algorithm::Argon2d => argon2d_ctx(&mut ctx as *mut _),
+                Algorithm::Argon2i => argon2i_ctx(&mut ctx as *mut _),
+                Algorithm::Argon2id => argon2id_ctx(&mut ctx as *mut _),
+            }
+        };
 
         if result != Argon2_ErrorCodes_ARGON2_OK {
             let err_msg = String::from_utf8_lossy(unsafe {
                 CStr::from_ptr(argon2_error_message(result)).to_bytes()
             });
 
-            return Err(Argon2idError::CLibError(err_msg.into_owned()));
+            return Err(Argon2Error::CLibError(err_msg.into_owned()));
         }
 
         Ok(Hash {
+            alg: self.alg,
             mem_cost_kib: self.mem_cost_kib,
             iterations: self.iterations,
             threads: self.threads,
@@ -224,6 +245,7 @@ impl<'a> Hasher<'a> {
 
 #[derive(Clone, Debug)]
 pub struct Hash {
+    alg: Algorithm,
     mem_cost_kib: u32,
     iterations: u32,
     threads: u32,
@@ -236,8 +258,15 @@ impl ToString for Hash {
         let b64_salt = base64::encode_config(&self.salt, base64::STANDARD_NO_PAD);
         let b64_hash = base64::encode_config(&self.hash, base64::STANDARD_NO_PAD);
 
+        let alg = match self.alg {
+            Algorithm::Argon2d => "d",
+            Algorithm::Argon2i => "i",
+            Algorithm::Argon2id => "id",
+        };
+
         format!(
-            "$argon2id$v={}$m={},t={},p={}${}${}",
+            "$argon2{}$v={}$m={},t={},p={}${}${}",
+            alg,
             Argon2_version_ARGON2_VERSION_13,
             self.mem_cost_kib,
             self.iterations,
@@ -249,20 +278,20 @@ impl ToString for Hash {
 }
 
 impl FromStr for Hash {
-    type Err = Argon2idError;
+    type Err = Argon2Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let tokenized_hash = TokenizedHash::from_str(s)?;
 
         if tokenized_hash.v != Argon2_version_ARGON2_VERSION_13 {
-            return Err(Argon2idError::InvalidHash("Hash version is unsupported"));
+            return Err(Argon2Error::InvalidHash("Hash version is unsupported"));
         }
 
         let decoded_salt =
             match base64::decode_config(tokenized_hash.b64_salt, base64::STANDARD_NO_PAD) {
                 Ok(s) => s,
                 Err(_) => {
-                    return Err(Argon2idError::InvalidHash(
+                    return Err(Argon2Error::InvalidHash(
                         "Invalid character in base64-encoded salt",
                     ))
                 }
@@ -272,13 +301,14 @@ impl FromStr for Hash {
             match base64::decode_config(tokenized_hash.b64_hash, base64::STANDARD_NO_PAD) {
                 Ok(h) => h,
                 Err(_) => {
-                    return Err(Argon2idError::InvalidHash(
+                    return Err(Argon2Error::InvalidHash(
                         "Invalid character in base64-encoded hash",
                     ))
                 }
             };
 
         Ok(Self {
+            alg: tokenized_hash.alg,
             mem_cost_kib: tokenized_hash.mem_cost_kib,
             iterations: tokenized_hash.iterations,
             threads: tokenized_hash.threads,
@@ -314,6 +344,7 @@ impl Hash {
         };
 
         let mut hash_builder = Hasher::default()
+            .algorithm(self.alg)
             .custom_salt(&self.salt)
             .hash_length(hash_length)
             .iterations(self.iterations)
@@ -349,6 +380,7 @@ impl Hash {
 
 struct TokenizedHash {
     v: u32,
+    alg: Algorithm,
     mem_cost_kib: u32,
     iterations: u32,
     threads: u32,
@@ -357,7 +389,7 @@ struct TokenizedHash {
 }
 
 impl TokenizedHash {
-    fn from_str(parameterized_hash: &str) -> Result<TokenizedHash, Argon2idError> {
+    fn from_str(parameterized_hash: &str) -> Result<TokenizedHash, Argon2Error> {
         enum HashStates {
             Start,
             HashTypeStart,
@@ -367,6 +399,7 @@ impl TokenizedHash {
             HashTypeArgo,
             HashTypeArgon,
             HashTypeArgon2,
+            HashTypeArgon2d,
             HashTypeArgon2i,
             HashTypeArgon2id,
             HashTypeComplete,
@@ -405,89 +438,109 @@ impl TokenizedHash {
         let mut salt = String::with_capacity(22); // 16 bytes, base64-encoded (no padding)
         let mut hash = String::new();
 
+        let mut alg = Algorithm::Argon2id;
+
         for (i, c) in parameterized_hash.chars().enumerate() {
             match state {
                 HashStates::Start => {
                     state = match c {
                         '$' => HashStates::HashTypeStart,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeStart => {
                     state = match c {
                         'a' => HashStates::HashTypeA,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeA => {
                     state = match c {
                         'r' => HashStates::HashTypeAr,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeAr => {
                     state = match c {
                         'g' => HashStates::HashTypeArg,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeArg => {
                     state = match c {
                         'o' => HashStates::HashTypeArgo,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeArgo => {
                     state = match c {
                         'n' => HashStates::HashTypeArgon,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeArgon => {
                     state = match c {
                         '2' => HashStates::HashTypeArgon2,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeArgon2 => {
                     state = match c {
+                        'd' => HashStates::HashTypeArgon2d,
                         'i' => HashStates::HashTypeArgon2i,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
+                    };
+                }
+
+                HashStates::HashTypeArgon2d => {
+                    state = match c {
+                        '$' => {
+                            alg = Algorithm::Argon2d;
+                            HashStates::HashTypeComplete
+                        }
+                        _ => return Err(Argon2Error::InvalidHash("Missing '$' delimiter")),
                     };
                 }
 
                 HashStates::HashTypeArgon2i => {
                     state = match c {
                         'd' => HashStates::HashTypeArgon2id,
-                        _ => return Err(Argon2idError::InvalidHash("Must begin with $argon2id")),
+                        '$' => {
+                            alg = Algorithm::Argon2i;
+                            HashStates::HashTypeComplete
+                        }
+                        _ => return Err(Argon2Error::InvalidHash("Must begin with $argon2id")),
                     };
                 }
 
                 HashStates::HashTypeArgon2id => {
                     state = match c {
-                        '$' => HashStates::HashTypeComplete,
-                        _ => return Err(Argon2idError::InvalidHash("Missing '$' delimiter")),
+                        '$' => {
+                            alg = Algorithm::Argon2id;
+                            HashStates::HashTypeComplete
+                        }
+                        _ => return Err(Argon2Error::InvalidHash("Missing '$' delimiter")),
                     };
                 }
 
                 HashStates::HashTypeComplete => {
                     state = match c {
                         'v' => HashStates::VKey,
-                        _ => return Err(Argon2idError::InvalidHash("Missing algorithm version")),
+                        _ => return Err(Argon2Error::InvalidHash("Missing algorithm version")),
                     };
                 }
 
                 HashStates::VKey => {
                     state = match c {
                         '=' => HashStates::VEquals,
-                        _ => return Err(Argon2idError::InvalidHash("Missing algorithm version")),
+                        _ => return Err(Argon2Error::InvalidHash("Missing algorithm version")),
                     };
                 }
 
@@ -510,7 +563,7 @@ impl TokenizedHash {
                         't' => HashStates::TKey,
                         'p' => HashStates::PKey,
                         _ => {
-                            return Err(Argon2idError::InvalidHash(
+                            return Err(Argon2Error::InvalidHash(
                                 "Unrecognized or missing parameter",
                             ))
                         }
@@ -519,12 +572,12 @@ impl TokenizedHash {
 
                 HashStates::MKey => {
                     if has_m {
-                        return Err(Argon2idError::InvalidHash("Duplicate key 'm'"));
+                        return Err(Argon2Error::InvalidHash("Duplicate key 'm'"));
                     }
 
                     state = match c {
                         '=' => HashStates::MEquals,
-                        _ => return Err(Argon2idError::InvalidHash("Missing 'm' parameter")),
+                        _ => return Err(Argon2Error::InvalidHash("Missing 'm' parameter")),
                     }
                 }
 
@@ -550,7 +603,7 @@ impl TokenizedHash {
                         't' => HashStates::TKey,
                         'p' => HashStates::PKey,
                         _ => {
-                            return Err(Argon2idError::InvalidHash(
+                            return Err(Argon2Error::InvalidHash(
                                 "Unrecognized or missing parameter",
                             ))
                         }
@@ -559,12 +612,12 @@ impl TokenizedHash {
 
                 HashStates::TKey => {
                     if has_t {
-                        return Err(Argon2idError::InvalidHash("Duplicate key 't'"));
+                        return Err(Argon2Error::InvalidHash("Duplicate key 't'"));
                     }
 
                     state = match c {
                         '=' => HashStates::TEquals,
-                        _ => return Err(Argon2idError::InvalidHash("Missing 't' paramter")),
+                        _ => return Err(Argon2Error::InvalidHash("Missing 't' paramter")),
                     }
                 }
 
@@ -590,7 +643,7 @@ impl TokenizedHash {
                         'm' => HashStates::MKey,
                         'p' => HashStates::PKey,
                         _ => {
-                            return Err(Argon2idError::InvalidHash(
+                            return Err(Argon2Error::InvalidHash(
                                 "Unrecognized or missing paramter",
                             ))
                         }
@@ -599,12 +652,12 @@ impl TokenizedHash {
 
                 HashStates::PKey => {
                     if has_p {
-                        return Err(Argon2idError::InvalidHash("Duplicate key 'p'"));
+                        return Err(Argon2Error::InvalidHash("Duplicate key 'p'"));
                     }
 
                     state = match c {
                         '=' => HashStates::PEquals,
-                        _ => return Err(Argon2idError::InvalidHash("Missing 'p' paramter")),
+                        _ => return Err(Argon2Error::InvalidHash("Missing 'p' paramter")),
                     }
                 }
 
@@ -630,7 +683,7 @@ impl TokenizedHash {
                         'm' => HashStates::MKey,
                         't' => HashStates::TKey,
                         _ => {
-                            return Err(Argon2idError::InvalidHash(
+                            return Err(Argon2Error::InvalidHash(
                                 "Unrecognized or missing parameter",
                             ))
                         }
@@ -647,7 +700,7 @@ impl TokenizedHash {
 
                 HashStates::HashStart => {
                     if c == '$' {
-                        return Err(Argon2idError::InvalidHash("Missing hash after salt"));
+                        return Err(Argon2Error::InvalidHash("Missing hash after salt"));
                     }
 
                     hash = String::from(&parameterized_hash[i..]);
@@ -662,33 +715,34 @@ impl TokenizedHash {
         }
 
         if std::mem::discriminant(&state) != std::mem::discriminant(&HashStates::Hash) {
-            return Err(Argon2idError::InvalidHash("Hash is incomplete"));
+            return Err(Argon2Error::InvalidHash("Hash is incomplete"));
         }
 
         salt.shrink_to_fit();
 
         let v: u32 = match parameterized_hash[v].parse() {
             Ok(v) => v,
-            Err(_) => return Err(Argon2idError::InvalidHash("Invalid version")),
+            Err(_) => return Err(Argon2Error::InvalidHash("Invalid version")),
         };
 
         let mem_cost_kib: u32 = match parameterized_hash[m].parse() {
             Ok(m) => m,
-            Err(_) => return Err(Argon2idError::InvalidHash("Invalid m")),
+            Err(_) => return Err(Argon2Error::InvalidHash("Invalid m")),
         };
 
         let iterations: u32 = match parameterized_hash[t].parse() {
             Ok(t) => t,
-            Err(_) => return Err(Argon2idError::InvalidHash("Invalid t")),
+            Err(_) => return Err(Argon2Error::InvalidHash("Invalid t")),
         };
 
         let threads: u32 = match parameterized_hash[p].parse() {
             Ok(p) => p,
-            Err(_) => return Err(Argon2idError::InvalidHash("Invalid p")),
+            Err(_) => return Err(Argon2Error::InvalidHash("Invalid p")),
         };
 
         Ok(TokenizedHash {
             v,
+            alg,
             mem_cost_kib,
             iterations,
             threads,
@@ -705,6 +759,7 @@ mod tests {
     #[test]
     fn test_byte_hash_into_hash_string() {
         let hash = Hash {
+            alg: Algorithm::Argon2id,
             mem_cost_kib: 128,
             iterations: 3,
             threads: 2,
@@ -843,7 +898,7 @@ mod tests {
         assert!(hash.is_err());
 
         let hash = Hash::from_str(
-            "$argon2i$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
+            "$argon2$v=19$m=128,t=3,p=2$AQIDBAUGBwg$7OU7S/azjYpnXXySR52cFWeisxk1VVjNeXqtQ8ZM/Oc",
         );
 
         assert!(hash.is_err());
@@ -908,11 +963,12 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_auth_string() {
+    fn test_hash_auth_string_argon2d() {
         let auth_string = "@Pa$$20rd-Test";
 
         let key = [1u8; 32];
         let hash_builder = Hasher::default()
+            .algorithm(Algorithm::Argon2d)
             .salt_length(16)
             .hash_length(32)
             .iterations(2)
@@ -944,6 +1000,50 @@ mod tests {
 
         assert!(!hash.contains(auth_string));
         assert!(Hash::from_str(&hash).unwrap().verify(auth_string));
+    }
+
+    #[test]
+    fn test_hash_auth_string_argon2i() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let key = [1u8; 32];
+        let hash_builder = Hasher::default()
+            .algorithm(Algorithm::Argon2i)
+            .salt_length(16)
+            .hash_length(32)
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .secret(Secret::using_bytes(&key));
+
+        let hash = hash_builder.hash(auth_string).unwrap().to_string();
+
+        assert!(!hash.contains(auth_string));
+        assert!(Hash::from_str(&hash)
+            .unwrap()
+            .verify_with_secret(auth_string, Secret::using_bytes(&key)));
+    }
+
+    #[test]
+    fn test_hash_auth_string_argon2id() {
+        let auth_string = "@Pa$$20rd-Test";
+
+        let key = [1u8; 32];
+        let hash_builder = Hasher::default()
+            .algorithm(Algorithm::Argon2id)
+            .salt_length(16)
+            .hash_length(32)
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .secret(Secret::using_bytes(&key));
+
+        let hash = hash_builder.hash(auth_string).unwrap().to_string();
+
+        assert!(!hash.contains(auth_string));
+        assert!(Hash::from_str(&hash)
+            .unwrap()
+            .verify_with_secret(auth_string, Secret::using_bytes(&key)));
     }
 
     #[test]

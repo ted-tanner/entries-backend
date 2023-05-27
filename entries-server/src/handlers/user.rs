@@ -1,4 +1,4 @@
-use entries_utils::argon2id;
+use entries_utils::argon2;
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::templates::UserVerificationMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
@@ -99,13 +99,14 @@ pub async fn create(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash_result = argon2id::Hasher::default()
+        let hash_result = argon2::Hasher::default()
+            .algorithm(argon2::Algorithm::Argon2id)
             .salt_length(env::CONF.hashing.salt_length)
             .hash_length(env::CONF.hashing.hash_length)
             .iterations(env::CONF.hashing.hash_iterations)
             .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
             .threads(env::CONF.hashing.hash_threads)
-            .secret(argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .secret(argon2::Secret::using_bytes(&env::CONF.keys.hashing_key))
             .hash(&user_data_ref.auth_string);
 
         let hash = match hash_result {
@@ -357,7 +358,7 @@ pub async fn change_password(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash = match argon2id::Hash::from_str(&hash.auth_string_hash) {
+        let hash = match argon2::Hash::from_str(&hash.auth_string_hash) {
             Ok(h) => h,
             Err(e) => {
                 sender.send(Err(e)).expect("Sending to channel failed");
@@ -367,7 +368,7 @@ pub async fn change_password(
 
         let does_auth_string_match_hash = hash.verify_with_secret(
             &current_auth_string,
-            argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key),
+            argon2::Secret::using_bytes(&env::CONF.keys.hashing_key),
         );
 
         sender
@@ -396,13 +397,14 @@ pub async fn change_password(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash_result = argon2id::Hasher::default()
+        let hash_result = argon2::Hasher::default()
+            .algorithm(argon2::Algorithm::Argon2id)
             .salt_length(env::CONF.hashing.salt_length)
             .hash_length(env::CONF.hashing.hash_length)
             .iterations(env::CONF.hashing.hash_iterations)
             .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
             .threads(env::CONF.hashing.hash_threads)
-            .secret(argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .secret(argon2::Secret::using_bytes(&env::CONF.keys.hashing_key))
             .hash(&new_password_data_ref.new_auth_string);
 
         let hash = match hash_result {
