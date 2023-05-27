@@ -161,6 +161,12 @@ impl Dao {
 
     pub fn delete_otp(&mut self, user_id: Uuid) -> Result<(), DaoError> {
         dsl::delete(user_otps.find(user_id)).execute(&mut self.db_thread_pool.get()?)?;
+        Ok(())
+    }
+
+    pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {
+        dsl::delete(user_otps.filter(user_otp_fields::expiration.lt(SystemTime::now())))
+            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }

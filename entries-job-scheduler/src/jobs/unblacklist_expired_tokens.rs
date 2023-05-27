@@ -68,9 +68,7 @@ impl Job for UnblacklistExpiredTokensJob {
 
     async fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&self.db_thread_pool);
-
         tokio::task::spawn_blocking(move || dao.clear_all_expired_tokens()).await??;
-
         Ok(())
     }
 }
@@ -92,30 +90,30 @@ mod tests {
     };
     use diesel::{dsl, RunQueryDsl};
     use rand::Rng;
-    use std::thread;
+    use tokio::time;
 
     use crate::env;
 
-    #[test]
-    fn test_last_run_time() {
+    #[tokio::test]
+    async fn test_last_run_time() {
         let before = SystemTime::now();
 
-        thread::sleep(Duration::from_millis(1));
+        time::sleep(Duration::from_millis(1)).await;
         let mut job = UnblacklistExpiredTokensJob::new(
             Duration::from_millis(1),
             SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
-        thread::sleep(Duration::from_millis(1));
+        time::sleep(Duration::from_millis(1)).await;
 
         assert!(job.last_run_time() > before);
         assert!(job.last_run_time() < SystemTime::now());
 
         let before = SystemTime::now();
 
-        thread::sleep(Duration::from_millis(1));
+        time::sleep(Duration::from_millis(1)).await;
         job.set_last_run_time(SystemTime::now());
-        thread::sleep(Duration::from_millis(1));
+        time::sleep(Duration::from_millis(1)).await;
 
         assert!(job.last_run_time() > before);
         assert!(job.last_run_time() < SystemTime::now());

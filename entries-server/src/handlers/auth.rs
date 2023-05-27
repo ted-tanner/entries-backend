@@ -244,7 +244,6 @@ pub async fn sign_in(
     Ok(HttpResponse::Ok().json(signin_token))
 }
 
-// TODO
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
@@ -252,6 +251,7 @@ pub async fn verify_otp_for_signin(
     otp: web::Json<InputOtp>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    const WRONG_OR_EXPIRED_OTP_MSG: &'static str = "OTP was incorrect or has expired";
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
 
@@ -263,7 +263,9 @@ pub async fn verify_otp_for_signin(
     let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
         Ok(o) => o,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::IncorrectCredential("OTP has expired"));
+            return Err(HttpErrorResponse::IncorrectCredential(
+                WRONG_OR_EXPIRED_OTP_MSG,
+            ));
         }
         Err(e) => {
             log::error!("{e}");
@@ -274,11 +276,15 @@ pub async fn verify_otp_for_signin(
     let now = SystemTime::now();
 
     if now > saved_otp.expiration {
-        return Err(HttpErrorResponse::IncorrectCredential("OTP has expired"));
+        return Err(HttpErrorResponse::IncorrectCredential(
+            WRONG_OR_EXPIRED_OTP_MSG,
+        ));
     }
 
     if !Otp::are_equal(&otp.otp, &saved_otp.otp) {
-        return Err(HttpErrorResponse::IncorrectCredential("Incorrect OTP"));
+        return Err(HttpErrorResponse::IncorrectCredential(
+            WRONG_OR_EXPIRED_OTP_MSG,
+        ));
     }
 
     let user_id = claims.user_id;

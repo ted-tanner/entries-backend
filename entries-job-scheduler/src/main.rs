@@ -14,8 +14,8 @@ mod jobs;
 mod runner;
 
 use jobs::{
-    ClearExpiredBudgetInvitesJob, ClearOldUserDeletionRequestsJob, ClearThrottleTableJob,
-    ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
+    ClearExpiredBudgetInvitesJob, ClearExpiredOtpsJob, ClearOldUserDeletionRequestsJob,
+    ClearThrottleTableJob, ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
 };
 
 fn main() {
@@ -104,6 +104,12 @@ fn main() {
                         .job_frequency_secs,
                 ),
                 get_last_run_time(ClearExpiredBudgetInvitesJob::name(), &registry),
+                env::db::DB_THREAD_POOL.clone(),
+            )));
+
+            job_runner.register(Box::new(ClearExpiredOtpsJob::new(
+                Duration::from_secs(env::CONF.clear_expired_otps_job.job_frequency_secs),
+                get_last_run_time(ClearExpiredOtpsJob::name(), &registry),
                 env::db::DB_THREAD_POOL.clone(),
             )));
 

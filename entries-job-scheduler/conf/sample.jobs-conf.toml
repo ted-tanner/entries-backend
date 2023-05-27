@@ -2,7 +2,7 @@
 
 [connections]
 database_uri = "postgres://entriesdbuser:0Psrku4jzIRi5mD0ctOB@localhost/entries_test"
-max_db_connections = 8
+max_db_connections = 10
 
 [runner]
 update_frequency_secs = 5
@@ -11,6 +11,9 @@ max_blocking_threads = 60
 
 [clear_expired_budget_invites_job]
 job_frequency_secs = 43200
+
+[clear_expired_otps_job]
+job_frequency_secs = 900
 
 [clear_old_user_deletion_requests_job]
 job_frequency_secs = 3540
