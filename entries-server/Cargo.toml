@@ -8,6 +8,7 @@ edition.workspace = true
 entries_utils = { path = "../entries-utils" }
 actix-web = "4.2"
 aes-gcm = { version = "0.10", features = ["zeroize"] }
+argon2-kdf = "1.0"
 base64 = "0.13"
 diesel = { version = "2.0", features = ["postgres", "serde_json", "uuid", "r2d2"] }
 ed25519-dalek = { version = "2.0.0-rc.2", features = ["rand_core"] }

@@ -283,6 +283,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "argon2-kdf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e7318e46e9f5c7b12c2ffc35985231479141a36ce0d739eed1f3a31dd1aa9d5"
+dependencies = [
+ "base64 0.13.1",
+ "bindgen",
+ "cc",
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -852,6 +864,7 @@ dependencies = [
  "actix-rt",
  "actix-web",
  "aes-gcm",
+ "argon2-kdf",
  "base64 0.13.1",
  "diesel",
  "ed25519-dalek 2.0.0-rc.2",
@@ -882,8 +895,6 @@ dependencies = [
  "aes-gcm",
  "async-trait",
  "base64 0.13.1",
- "bindgen",
- "cc",
  "diesel",
  "ed25519-dalek 1.0.1",
  "hex",

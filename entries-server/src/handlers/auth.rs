@@ -1,4 +1,3 @@
-use entries_utils::argon2;
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::templates::OtpMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
@@ -156,7 +155,7 @@ pub async fn sign_in(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash = match argon2::Hash::from_str(&hash_and_status.auth_string_hash) {
+        let hash = match argon2_kdf::Hash::from_str(&hash_and_status.auth_string_hash) {
             Ok(h) => h,
             Err(e) => {
                 sender.send(Err(e)).expect("Sending to channel failed");
@@ -166,7 +165,7 @@ pub async fn sign_in(
 
         let does_auth_string_match_hash = hash.verify_with_secret(
             &credentials_ref.auth_string,
-            argon2::Secret::using_bytes(&env::CONF.keys.hashing_key),
+            argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
         );
 
         sender
