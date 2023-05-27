@@ -503,6 +503,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Make sure unverified `users` table records get removed in a timely manner (every 59 mins). This may require temporarily storing a user_created timestamp.
 * Endpoints for generating new recovery keys
 * Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
+* Endpoint for 2FA with recovery code
 * Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
 * Get email delivery set up (Amazon SES?)
   - [x] OTP for sign in 

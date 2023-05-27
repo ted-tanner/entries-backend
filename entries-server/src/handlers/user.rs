@@ -1,4 +1,5 @@
-use entries_utils::db::{DaoError, DbThreadPool};
+use entries_utils::argon2id;
+use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::templates::UserVerificationMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::html::templates::{
@@ -17,10 +18,10 @@ use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
 use entries_utils::validators::{self, Validity};
-use entries_utils::{argon2id, db};
 
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
@@ -98,19 +99,24 @@ pub async fn create(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let hash = argon2id::hash_auth_string(
-            &user_data_ref.auth_string,
-            &argon2id::HashParams {
-                salt_len: env::CONF.hashing.salt_length_bytes,
-                hash_len: env::CONF.hashing.hash_length,
-                hash_iterations: env::CONF.hashing.hash_iterations,
-                hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
-                hash_lanes: env::CONF.hashing.hash_lanes,
-            },
-            &env::CONF.keys.hashing_key,
-        );
+        let hash_result = argon2id::Hasher::default()
+            .salt_length(env::CONF.hashing.salt_length)
+            .hash_length(env::CONF.hashing.hash_length)
+            .iterations(env::CONF.hashing.hash_iterations)
+            .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
+            .threads(env::CONF.hashing.hash_threads)
+            .secret(argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .hash(&user_data_ref.auth_string);
 
-        sender.send(hash).expect("Sending to channel failed");
+        let hash = match hash_result {
+            Ok(h) => h,
+            Err(e) => {
+                sender.send(Err(e)).expect("Sending to channel failed");
+                return;
+            }
+        };
+
+        sender.send(Ok(hash)).expect("Sending to channel failed");
     });
 
     let auth_string_hash = match receiver.await? {
@@ -127,7 +133,11 @@ pub async fn create(
 
     let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data_ref.0, &app_version.0, &auth_string_hash)
+        user_dao.create_user(
+            &user_data_ref.0,
+            &app_version.0,
+            &auth_string_hash.to_string(),
+        )
     })
     .await?
     {
@@ -347,45 +357,83 @@ pub async fn change_password(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let does_current_auth_match = argon2id::verify_hash(
+        let hash = match argon2id::Hash::from_str(&hash.auth_string_hash) {
+            Ok(h) => h,
+            Err(e) => {
+                sender.send(Err(e)).expect("Sending to channel failed");
+                return;
+            }
+        };
+
+        let does_auth_string_match_hash = hash.verify_with_secret(
             &current_auth_string,
-            &hash.auth_string_hash,
-            &env::CONF.keys.hashing_key,
+            argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key),
         );
 
         sender
-            .send(does_current_auth_match)
+            .send(Ok(does_auth_string_match_hash))
             .expect("Sending to channel failed");
     });
 
-    if !receiver.await? {
-        return Err(HttpErrorResponse::IncorrectCredential(
-            "Current auth string was incorrect",
-        ));
-    }
+    match receiver.await? {
+        Ok(true) => (),
+        Ok(false) => {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                "Current auth string was incorrect",
+            ));
+        }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to validate auth string",
+            ));
+        }
+    };
 
-    web::block(move || {
-        let _auth_string_hash = {
-            argon2id::hash_auth_string(
-                &new_password_data.new_auth_string,
-                &argon2id::HashParams {
-                    salt_len: env::CONF.hashing.salt_length_bytes,
-                    hash_len: env::CONF.hashing.hash_length,
-                    hash_iterations: env::CONF.hashing.hash_iterations,
-                    hash_mem_size_kib: env::CONF.hashing.hash_mem_size_kib,
-                    hash_lanes: env::CONF.hashing.hash_lanes,
-                },
-                &env::CONF.keys.hashing_key,
-            )
+    let new_password_data = Arc::new(new_password_data.0);
+    let new_password_data_ref = Arc::clone(&new_password_data);
+
+    let (sender, receiver) = oneshot::channel();
+
+    rayon::spawn(move || {
+        let hash_result = argon2id::Hasher::default()
+            .salt_length(env::CONF.hashing.salt_length)
+            .hash_length(env::CONF.hashing.hash_length)
+            .iterations(env::CONF.hashing.hash_iterations)
+            .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
+            .threads(env::CONF.hashing.hash_threads)
+            .secret(argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .hash(&new_password_data_ref.new_auth_string);
+
+        let hash = match hash_result {
+            Ok(h) => h,
+            Err(e) => {
+                sender.send(Err(e)).expect("Sending to channel failed");
+                return;
+            }
         };
 
+        sender.send(Ok(hash)).expect("Sending to channel failed");
+    });
+
+    let auth_string_hash = match receiver.await? {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to hash auth atring",
+            ));
+        }
+    };
+
+    web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
             user_id,
-            &new_password_data.0.new_auth_string,
-            &new_password_data.0.auth_string_salt,
-            new_password_data.0.auth_string_iters,
-            &new_password_data.0.encrypted_encryption_key,
+            &auth_string_hash.to_string(),
+            &new_password_data.auth_string_salt,
+            new_password_data.auth_string_iters,
+            &new_password_data.encrypted_encryption_key,
         )
     })
     .await

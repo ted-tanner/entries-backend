@@ -1,4 +1,5 @@
-use entries_utils::db::{DaoError, DbThreadPool};
+use entries_utils::argon2id;
+use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::templates::OtpMessage;
 use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::otp::Otp;
@@ -7,13 +8,13 @@ use entries_utils::request_io::{
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::Token;
-use entries_utils::validators::Validity;
-use entries_utils::{argon2id, db, validators};
+use entries_utils::validators::{self, Validity};
 
 use actix_web::{web, HttpResponse};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -155,22 +156,38 @@ pub async fn sign_in(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let does_auth_string_match_hash = argon2id::verify_hash(
+        let hash = match argon2id::Hash::from_str(&hash_and_status.auth_string_hash) {
+            Ok(h) => h,
+            Err(e) => {
+                sender.send(Err(e)).expect("Sending to channel failed");
+                return;
+            }
+        };
+
+        let does_auth_string_match_hash = hash.verify_with_secret(
             &credentials_ref.auth_string,
-            &hash_and_status.auth_string_hash,
-            &env::CONF.keys.hashing_key,
+            argon2id::Secret::using_bytes(&env::CONF.keys.hashing_key),
         );
 
         sender
-            .send(does_auth_string_match_hash)
+            .send(Ok(does_auth_string_match_hash))
             .expect("Sending to channel failed");
     });
 
-    if !receiver.await? {
-        return Err(HttpErrorResponse::IncorrectCredential(
-            "Incorrect email or auth string",
-        ));
-    }
+    match receiver.await? {
+        Ok(true) => (),
+        Ok(false) => {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                "Incorrect email or auth string",
+            ));
+        }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to validate auth string",
+            ));
+        }
+    };
 
     let mut signin_token = AuthToken::new(
         user_id,

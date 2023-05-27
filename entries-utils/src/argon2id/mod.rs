@@ -32,6 +32,7 @@ impl fmt::Display for Argon2idError {
     }
 }
 
+#[derive(Debug)]
 pub struct Secret<'a>(&'a [u8]);
 
 impl<'a> Secret<'a> {
@@ -40,6 +41,7 @@ impl<'a> Secret<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Hasher<'a> {
     custom_salt: Option<&'a [u8]>,
     salt_len: u32,
@@ -220,6 +222,7 @@ impl<'a> Hasher<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Hash {
     mem_cost_kib: u32,
     iterations: u32,
