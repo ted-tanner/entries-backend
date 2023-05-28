@@ -57,38 +57,13 @@ mod tests {
     };
     use diesel::{dsl, RunQueryDsl};
     use rand::Rng;
-    use tokio::time;
+    use std::time::{Duration, SystemTime};
 
     use crate::env;
 
     #[tokio::test]
-    async fn test_last_run_time() {
-        let before = SystemTime::now();
-
-        time::sleep(Duration::from_millis(1)).await;
-        let mut job = UnblacklistExpiredTokensJob::new(
-            Duration::from_millis(1),
-            SystemTime::now(),
-            env::db::DB_THREAD_POOL.clone(),
-        );
-        time::sleep(Duration::from_millis(1)).await;
-
-        assert!(job.last_run_time() > before);
-        assert!(job.last_run_time() < SystemTime::now());
-
-        let before = SystemTime::now();
-
-        time::sleep(Duration::from_millis(1)).await;
-        job.set_last_run_time(SystemTime::now());
-        time::sleep(Duration::from_millis(1)).await;
-
-        assert!(job.last_run_time() > before);
-        assert!(job.last_run_time() < SystemTime::now());
-    }
-
-    #[tokio::test]
     #[ignore]
-    async fn test_run_handler_fun() {
+    async fn test_execute() {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
@@ -179,15 +154,11 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let mut job = UnblacklistExpiredTokensJob::new(
-            Duration::from_millis(1),
-            SystemTime::now(),
-            env::db::DB_THREAD_POOL.clone(),
-        );
+        let mut job = UnblacklistExpiredTokensJob::new(env::db::DB_THREAD_POOL.clone());
         job.execute().await.unwrap();
 
         assert!(!dao
-            .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0,)
+            .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0)
             .unwrap());
         assert!(dao
             .check_is_token_on_blacklist_and_blacklist(unexpired_token_signature, 0)

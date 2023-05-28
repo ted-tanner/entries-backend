@@ -251,7 +251,7 @@ pub async fn verify_otp_for_signin(
     otp: web::Json<InputOtp>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    const WRONG_OR_EXPIRED_OTP_MSG: &'static str = "OTP was incorrect or has expired";
+    const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
 

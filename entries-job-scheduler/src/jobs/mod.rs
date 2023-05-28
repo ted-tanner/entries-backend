@@ -64,27 +64,21 @@ pub trait Job: Send {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::env;
-
     use super::*;
 
     use async_trait::async_trait;
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, SystemTime};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     pub struct MockJob {
-        pub last_run_time: SystemTime,
         pub is_running: bool,
-        pub run_frequency: Duration,
         pub runs: Arc<Mutex<usize>>,
     }
 
     impl MockJob {
-        pub fn new(run_frequency: Duration) -> Self {
+        pub fn new() -> Self {
             Self {
-                last_run_time: SystemTime::now(),
                 is_running: false,
-                run_frequency,
                 runs: Arc::new(Mutex::new(0)),
             }
         }
@@ -96,72 +90,43 @@ pub mod tests {
             "Mock"
         }
 
-        fn run_frequency(&self) -> Duration {
-            self.run_frequency
+        fn is_ready(&self) -> bool {
+            !self.is_running
         }
 
-        fn last_run_time(&self) -> SystemTime {
-            self.last_run_time
-        }
-
-        fn set_last_run_time(&mut self, time: SystemTime) {
-            self.last_run_time = time;
-        }
-
-        fn is_running(&self) -> bool {
-            self.is_running
-        }
-
-        fn set_running_state_not_running(&mut self) {
-            self.is_running = false;
-        }
-
-        fn set_running_state_running(&mut self) {
+        async fn execute(&mut self) -> Result<(), JobError> {
             self.is_running = true;
-        }
 
-        fn get_db_thread_pool_ref(&self) -> &DbThreadPool {
-            &env::db::DB_THREAD_POOL
-        }
+            *self.runs.lock().await += 1;
 
-        async fn run_handler_func(&mut self) -> Result<(), JobError> {
-            *self.runs.lock().unwrap() += 1;
+            self.is_running = false;
             Ok(())
         }
     }
 
     #[test]
     fn test_job_ready() {
-        let mut job = MockJob::new(Duration::from_secs(10));
+        let mut job = MockJob::new();
 
-        job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
-        assert!(!job.ready());
+        assert!(job.is_ready());
 
-        job.set_last_run_time(SystemTime::now() - Duration::from_secs(25));
-        assert!(job.ready());
+        job.is_running = true;
 
-        job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
-        assert!(!job.ready());
+        assert!(!job.is_ready());
+
+        job.is_running = false;
+
+        assert!(job.is_ready());
     }
 
     #[tokio::test]
     async fn test_job_execute() {
-        let mut job = MockJob::new(Duration::from_millis(10));
+        let mut job = MockJob::new();
         let job_run_count = Arc::clone(&job.runs);
-        assert_eq!(*job_run_count.lock().unwrap(), 0);
+        assert_eq!(*job_run_count.lock().await, 0);
 
-        job.set_last_run_time(SystemTime::now() + Duration::from_secs(5));
-        assert!(
-            matches!(job.execute().await.unwrap_err(), JobError::NotReady),
-            "Job should not have been ready. Its last_run_time was in the future."
-        );
-
-        job.set_last_run_time(SystemTime::now() - Duration::from_secs(1));
         job.execute().await.unwrap();
 
-        assert_eq!(*job_run_count.lock().unwrap(), 1);
+        assert_eq!(*job_run_count.lock().await, 1);
     }
-
-    // TODO: Test record_run()
-    // TODO: Test get_db_thread_pool_ref()
 }

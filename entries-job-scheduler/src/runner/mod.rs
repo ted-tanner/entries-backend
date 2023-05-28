@@ -82,13 +82,18 @@ impl JobRunner {
 
                 if is_time_to_run && job.is_ready() {
                     let name_ref = job.name();
+
                     log::info!("Executing job \"{}\"", name_ref);
+
                     job_names.push(name_ref);
                     job_futures.push(job.execute());
 
+                    let current_time = SystemTime::now();
+                    job_container.last_run_time = current_time;
+
                     let mut dao = JobRegistryDao::new(&self.db_thread_pool);
                     let record_run_task = tokio::task::spawn_blocking(move || {
-                        dao.set_job_last_run_timestamp(name_ref, SystemTime::now())
+                        dao.set_job_last_run_timestamp(name_ref, current_time)
                     });
 
                     record_job_run_futures.push(record_run_task);
@@ -132,51 +137,64 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use crate::env;
     use crate::jobs::tests::MockJob;
 
-    #[test]
-    fn test_register() {
-        let mut job_runner = JobRunner::new(Duration::from_micros(200));
+    #[tokio::test]
+    async fn test_register() {
+        let mut job_runner =
+            JobRunner::new(Duration::from_micros(200), env::db::DB_THREAD_POOL.clone());
         assert_eq!(job_runner.update_frequency, Duration::from_micros(200));
         assert!(job_runner.jobs.is_empty());
 
-        let mock_job1 = MockJob::new(Duration::from_millis(1));
-        let mock_job2 = MockJob::new(Duration::from_millis(3));
+        let mock_job1 = MockJob::new();
+        let mock_job2 = MockJob::new();
 
-        job_runner.register(Box::new(mock_job1));
+        job_runner
+            .register(Box::new(mock_job1), Duration::from_millis(1))
+            .await;
         assert_eq!(job_runner.jobs.len(), 1);
 
-        job_runner.register(Box::new(mock_job2));
+        job_runner
+            .register(Box::new(mock_job2), Duration::from_millis(3))
+            .await;
         assert_eq!(job_runner.jobs.len(), 2);
     }
 
     #[tokio::test]
     async fn test_start() {
-        let mut job_runner = JobRunner::new(Duration::from_micros(500));
-        let job1 = MockJob::new(Duration::from_millis(10));
-        let job2 = MockJob::new(Duration::from_millis(15));
+        let mut job_runner =
+            JobRunner::new(Duration::from_micros(500), env::db::DB_THREAD_POOL.clone());
+        let job1 = MockJob::new();
+        let job2 = MockJob::new();
 
         let job1_run_count = Arc::clone(&job1.runs);
         let job2_run_count = Arc::clone(&job2.runs);
 
-        job_runner.register(Box::new(job1));
-        job_runner.register(Box::new(job2));
-
-        assert_eq!(*job1_run_count.lock().unwrap(), 0);
-        assert_eq!(*job2_run_count.lock().unwrap(), 0);
+        job_runner
+            .register(Box::new(job1), Duration::from_millis(10))
+            .await;
+        job_runner
+            .register(Box::new(job2), Duration::from_millis(15))
+            .await;
 
         tokio::task::spawn(async move { job_runner.start().await });
 
-        time::sleep(Duration::from_millis(12)).await;
-        assert_eq!(*job1_run_count.lock().unwrap(), 1);
-        assert_eq!(*job2_run_count.lock().unwrap(), 0);
+        time::sleep(Duration::from_millis(5)).await;
+
+        assert_eq!(*job1_run_count.lock().await, 1);
+        assert_eq!(*job2_run_count.lock().await, 1);
+
+        time::sleep(Duration::from_millis(7)).await;
+        assert_eq!(*job1_run_count.lock().await, 2);
+        assert_eq!(*job2_run_count.lock().await, 1);
 
         time::sleep(Duration::from_millis(5)).await;
-        assert_eq!(*job1_run_count.lock().unwrap(), 1);
-        assert_eq!(*job2_run_count.lock().unwrap(), 1);
+        assert_eq!(*job1_run_count.lock().await, 2);
+        assert_eq!(*job2_run_count.lock().await, 2);
 
         time::sleep(Duration::from_millis(5)).await;
-        assert_eq!(*job1_run_count.lock().unwrap(), 2);
-        assert_eq!(*job2_run_count.lock().unwrap(), 1);
+        assert_eq!(*job1_run_count.lock().await, 3);
+        assert_eq!(*job2_run_count.lock().await, 2);
     }
 }
