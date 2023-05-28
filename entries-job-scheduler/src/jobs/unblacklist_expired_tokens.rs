@@ -2,73 +2,40 @@ use entries_utils::db::auth::Dao as AuthDao;
 use entries_utils::db::DbThreadPool;
 
 use async_trait::async_trait;
-use std::time::{Duration, SystemTime};
 
 use crate::jobs::{Job, JobError};
 
 pub struct UnblacklistExpiredTokensJob {
-    pub job_frequency: Duration,
     db_thread_pool: DbThreadPool,
     is_running: bool,
-    last_run_time: SystemTime,
 }
 
 impl UnblacklistExpiredTokensJob {
-    pub fn new(
-        job_frequency: Duration,
-        last_run_time: SystemTime,
-        db_thread_pool: DbThreadPool,
-    ) -> Self {
+    pub fn new(db_thread_pool: DbThreadPool) -> Self {
         Self {
-            job_frequency,
             db_thread_pool,
             is_running: false,
-            last_run_time,
         }
-    }
-
-    pub fn name() -> &'static str {
-        "Unblacklist Expired Tokens"
     }
 }
 
 #[async_trait]
 impl Job for UnblacklistExpiredTokensJob {
     fn name(&self) -> &'static str {
-        Self::name()
+        "Unblacklist Expired Tokens"
     }
 
-    fn run_frequency(&self) -> Duration {
-        self.job_frequency
+    fn is_ready(&self) -> bool {
+        !self.is_running
     }
 
-    fn last_run_time(&self) -> SystemTime {
-        self.last_run_time
-    }
-
-    fn set_last_run_time(&mut self, time: SystemTime) {
-        self.last_run_time = time
-    }
-
-    fn is_running(&self) -> bool {
-        self.is_running
-    }
-
-    fn set_running_state_not_running(&mut self) {
-        self.is_running = false;
-    }
-
-    fn set_running_state_running(&mut self) {
+    async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
-    }
 
-    fn get_db_thread_pool_ref(&self) -> &DbThreadPool {
-        &self.db_thread_pool
-    }
-
-    async fn run_handler_func(&mut self) -> Result<(), JobError> {
         let mut dao = AuthDao::new(&self.db_thread_pool);
         tokio::task::spawn_blocking(move || dao.clear_all_expired_tokens()).await??;
+
+        self.is_running = false;
         Ok(())
     }
 }
@@ -217,7 +184,7 @@ mod tests {
             SystemTime::now(),
             env::db::DB_THREAD_POOL.clone(),
         );
-        job.run_handler_func().await.unwrap();
+        job.execute().await.unwrap();
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0,)

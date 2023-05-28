@@ -112,17 +112,3 @@ pub mod db {
         );
     }
 }
-
-pub mod runner {
-    use futures::lock::Mutex;
-    use std::time::Duration;
-
-    use super::*;
-    use crate::runner::JobRunner;
-
-    lazy_static! {
-        pub static ref JOB_RUNNER: Mutex<JobRunner> = Mutex::new(JobRunner::new(
-            Duration::from_secs(CONF.runner.update_frequency_secs)
-        ));
-    }
-}

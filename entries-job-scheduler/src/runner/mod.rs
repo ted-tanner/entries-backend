@@ -88,7 +88,7 @@ impl JobRunner {
 
                     let mut dao = JobRegistryDao::new(&self.db_thread_pool);
                     let record_run_task = tokio::task::spawn_blocking(move || {
-                        dao.set_job_last_run_timestamp(name_ref, SystemTime::now());
+                        dao.set_job_last_run_timestamp(name_ref, SystemTime::now())
                     });
 
                     record_job_run_futures.push(record_run_task);
@@ -109,7 +109,7 @@ impl JobRunner {
                 }
             }
 
-            for (i, result) in recording_results.into_iter().enumerate() {
+            for result in recording_results.into_iter() {
                 if let Err(e) = result {
                     log::error!("Error recording job run: {}", e);
                 }

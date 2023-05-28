@@ -24,7 +24,6 @@ use tokio::task::JoinError;
 pub enum JobError {
     DaoFailure(Option<DaoError>),
     ConcurrencyError(JoinError),
-    NotReady,
 }
 
 impl fmt::Display for JobError {
@@ -39,9 +38,6 @@ impl fmt::Display for JobError {
             }
             JobError::ConcurrencyError(e) => {
                 write!(f, "JobError: ConcurrencyError: {e}")
-            }
-            JobError::NotReady => {
-                write!(f, "JobError: Attempted execution before job was ready")
             }
         }
     }

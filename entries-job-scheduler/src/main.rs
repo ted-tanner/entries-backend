@@ -1,13 +1,11 @@
 #[macro_use]
 extern crate lazy_static;
 
-use entries_utils::db::job_registry::Dao as JobRegistryDao;
-
-use entries_utils::models::job_registry_item::JobRegistryItem;
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
 };
-use std::time::{Duration, SystemTime};
+use runner::JobRunner;
+use std::time::Duration;
 
 mod env;
 mod jobs;
@@ -78,11 +76,6 @@ fn main() {
         .start()
         .expect("Failed to starer");
 
-    let mut registry_dao = JobRegistryDao::new(&env::db::DB_THREAD_POOL);
-    let registry = registry_dao
-        .get_all_jobs()
-        .expect("Failed to obtain job registry");
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(
             env::CONF
@@ -95,58 +88,85 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
-            let mut job_runner = env::runner::JOB_RUNNER.lock().await;
-
-            job_runner.register(Box::new(ClearExpiredBudgetInvitesJob::new(
-                Duration::from_secs(
-                    env::CONF
-                        .clear_expired_budget_invites_job
-                        .job_frequency_secs,
-                ),
+            let mut job_runner = JobRunner::new(
+                Duration::from_secs(env::CONF.runner.update_frequency_secs),
                 env::db::DB_THREAD_POOL.clone(),
-            )));
+            );
 
-            job_runner.register(Box::new(ClearExpiredOtpsJob::new(
-                Duration::from_secs(env::CONF.clear_expired_otps_job.job_frequency_secs),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(ClearExpiredBudgetInvitesJob::new(
+                        env::db::DB_THREAD_POOL.clone(),
+                    )),
+                    Duration::from_secs(
+                        env::CONF
+                            .clear_expired_budget_invites_job
+                            .job_frequency_secs,
+                    ),
+                )
+                .await;
 
-            job_runner.register(Box::new(ClearOldUserDeletionRequestsJob::new(
-                Duration::from_secs(
-                    env::CONF
-                        .clear_old_user_deletion_requests_job
-                        .job_frequency_secs,
-                ),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(ClearExpiredOtpsJob::new(env::db::DB_THREAD_POOL.clone())),
+                    Duration::from_secs(env::CONF.clear_expired_otps_job.job_frequency_secs),
+                )
+                .await;
 
-            job_runner.register(Box::new(ClearThrottleTableJob::new(
-                Duration::from_secs(env::CONF.clear_throttle_table_job.job_frequency_secs),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(ClearOldUserDeletionRequestsJob::new(
+                        env::db::DB_THREAD_POOL.clone(),
+                    )),
+                    Duration::from_secs(
+                        env::CONF
+                            .clear_old_user_deletion_requests_job
+                            .job_frequency_secs,
+                    ),
+                )
+                .await;
 
-            job_runner.register(Box::new(ClearUnverifiedUsersJob::new(
-                Duration::from_secs(env::CONF.clear_unverified_users_job.job_frequency_secs),
-                Duration::from_secs(
-                    env::CONF
-                        .clear_unverified_users_job
-                        .max_unverified_user_age_days
-                        * 24
-                        * 60
-                        * 60,
-                ),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(ClearThrottleTableJob::new(env::db::DB_THREAD_POOL.clone())),
+                    Duration::from_secs(env::CONF.clear_throttle_table_job.job_frequency_secs),
+                )
+                .await;
 
-            job_runner.register(Box::new(DeleteUsersJob::new(
-                Duration::from_secs(env::CONF.delete_users_job.job_frequency_secs),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(ClearUnverifiedUsersJob::new(
+                        Duration::from_secs(
+                            env::CONF
+                                .clear_unverified_users_job
+                                .max_unverified_user_age_days
+                                * 24
+                                * 60
+                                * 60,
+                        ),
+                        env::db::DB_THREAD_POOL.clone(),
+                    )),
+                    Duration::from_secs(env::CONF.clear_unverified_users_job.job_frequency_secs),
+                )
+                .await;
 
-            job_runner.register(Box::new(UnblacklistExpiredTokensJob::new(
-                Duration::from_secs(env::CONF.unblacklist_expired_tokens_job.job_frequency_secs),
-                env::db::DB_THREAD_POOL.clone(),
-            )));
+            job_runner
+                .register(
+                    Box::new(DeleteUsersJob::new(env::db::DB_THREAD_POOL.clone())),
+                    Duration::from_secs(env::CONF.delete_users_job.job_frequency_secs),
+                )
+                .await;
+
+            job_runner
+                .register(
+                    Box::new(UnblacklistExpiredTokensJob::new(
+                        env::db::DB_THREAD_POOL.clone(),
+                    )),
+                    Duration::from_secs(
+                        env::CONF.unblacklist_expired_tokens_job.job_frequency_secs,
+                    ),
+                )
+                .await;
 
             job_runner.start().await;
         });

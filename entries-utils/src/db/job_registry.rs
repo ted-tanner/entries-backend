@@ -2,7 +2,7 @@ use diesel::{dsl, ExpressionMethods, RunQueryDsl, QueryDsl, OptionalExtension};
 use std::time::SystemTime;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::models::job_registry_item::{JobRegistryItem, NewJobRegistryItem};
+use crate::models::job_registry_item::NewJobRegistryItem;
 use crate::schema::job_registry as job_registry_fields;
 use crate::schema::job_registry::dsl::job_registry;
 
