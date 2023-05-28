@@ -1,4 +1,4 @@
-use diesel::{dsl, ExpressionMethods, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, RunQueryDsl, QueryDsl, OptionalExtension};
 use std::time::SystemTime;
 
 use crate::db::{DaoError, DbThreadPool};
@@ -17,8 +17,12 @@ impl Dao {
         }
     }
 
-    pub fn get_all_jobs(&mut self) -> Result<Vec<JobRegistryItem>, DaoError> {
-        Ok(job_registry.load::<JobRegistryItem>(&mut self.db_thread_pool.get()?)?)
+    pub fn get_job_last_run_timestamp(&mut self, name: &str) -> Result<Option<SystemTime>, DaoError> {
+        Ok(job_registry
+           .select(job_registry_fields::last_run_timestamp)
+           .find(name)
+           .get_result(&mut self.db_thread_pool.get()?)
+           .optional()?)
     }
 
     pub fn set_job_last_run_timestamp(

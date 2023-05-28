@@ -2,7 +2,7 @@
 
 [connections]
 database_uri = "postgres://entriesdbuser:0Psrku4jzIRi5mD0ctOB@localhost/entries_test"
-max_db_connections = 10
+max_db_connections = 20
 
 [runner]
 update_frequency_secs = 5

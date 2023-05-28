@@ -520,7 +520,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Simplify the `Job` trait in entries-job-scheduler. A lot of the tracking could be done by the `Runner` (for example, tracking the last run time, recording the runs, remembering how frequently jobs should be run, tracking what is currently running, etc.). The name of the job can be given to the runner upon job registration. The job should just need a thread pool reference (perhaps this could be passed into `run_handler_func`, which should be renamed to `run`).
+* Simplify the `Job` trait (and in `main.rs`) in entries-job-scheduler. A lot of the tracking could be done by the `Runner` (for example, tracking the last run time, recording the runs, remembering how frequently jobs should be run, tracking what is currently running, etc.). The name of the job can be given to the runner upon job registration. The job should just need a thread pool reference (perhaps this could be passed into `run_handler_func`, which should be renamed to `run`).
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.

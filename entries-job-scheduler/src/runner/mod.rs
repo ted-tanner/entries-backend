@@ -1,29 +1,67 @@
+use entries_utils::db::job_registry::Dao as JobRegistryDao;
+
+use entries_utils::db::DbThreadPool;
 use futures::future;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::time;
 
 use crate::jobs::Job;
 
+struct JobContainer {
+    job: Box<dyn Job>,
+    run_frequency: Duration,
+    last_run_time: SystemTime,
+}
+
 pub struct JobRunner {
-    jobs: Vec<Box<dyn Job>>,
+    jobs: Vec<JobContainer>,
     update_frequency: Duration,
+    db_thread_pool: DbThreadPool,
 }
 
 impl JobRunner {
-    pub fn new(update_frequency: Duration) -> Self {
+    pub fn new(update_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
         Self {
             jobs: Vec::new(),
             update_frequency,
+            db_thread_pool,
         }
     }
 
-    pub fn register(&mut self, job: Box<dyn Job>) {
+    pub async fn register(&mut self, job: Box<dyn Job>, run_frequency: Duration) {
+        let job_name_ref = job.name();
+
         log::info!(
             "Registered job \"{}\" to run every {} seconds",
-            job.name(),
-            job.run_frequency().as_secs()
+            job_name_ref,
+            run_frequency.as_secs()
         );
-        self.jobs.push(job);
+
+        let mut dao = JobRegistryDao::new(&self.db_thread_pool);
+        let last_run_time = tokio::task::spawn_blocking(move || {
+            dao.get_job_last_run_timestamp(job_name_ref)
+                .unwrap_or_else(|e| {
+                    log::error!(
+                        "Failed to get last run timestamp for job '{}': {}",
+                        job_name_ref,
+                        e
+                    );
+                    None
+                })
+        })
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("Failed to join Tokio task: {}", e);
+            None
+        });
+
+        let job_container = JobContainer {
+            job,
+            run_frequency,
+            last_run_time: last_run_time.unwrap_or(SystemTime::now()),
+        };
+
+        self.jobs.push(job_container);
     }
 
     pub async fn start(&mut self) -> ! {
@@ -32,22 +70,48 @@ impl JobRunner {
 
             let mut job_names = Vec::with_capacity(self.jobs.len());
             let mut job_futures = Vec::with_capacity(self.jobs.len());
+            let mut record_job_run_futures = Vec::with_capacity(self.jobs.len());
 
-            for job in &mut self.jobs {
-                if job.ready() {
-                    log::info!("Executing job \"{}\"", job.name());
-                    job_names.push(job.name());
+            for job_container in &mut self.jobs {
+                let job = &mut job_container.job;
+
+                let time_elapsed_since_last_run = SystemTime::now()
+                    .duration_since(job_container.last_run_time)
+                    .unwrap_or(Duration::from_nanos(0));
+                let is_time_to_run = time_elapsed_since_last_run >= job_container.run_frequency;
+
+                if is_time_to_run && job.is_ready() {
+                    let name_ref = job.name();
+                    log::info!("Executing job \"{}\"", name_ref);
+                    job_names.push(name_ref);
                     job_futures.push(job.execute());
+
+                    let mut dao = JobRegistryDao::new(&self.db_thread_pool);
+                    let record_run_task = tokio::task::spawn_blocking(move || {
+                        dao.set_job_last_run_timestamp(name_ref, SystemTime::now());
+                    });
+
+                    record_job_run_futures.push(record_run_task);
                 }
             }
 
-            let results = future::join_all(job_futures).await;
+            let (job_results, recording_results) = future::join(
+                future::join_all(job_futures),
+                future::join_all(record_job_run_futures),
+            )
+            .await;
 
-            for (i, result) in results.into_iter().enumerate() {
+            for (i, result) in job_results.into_iter().enumerate() {
                 if let Err(e) = result {
                     log::error!("{}", e);
                 } else {
                     log::info!("Job \"{}\" finished successfully", job_names[i]);
+                }
+            }
+
+            for (i, result) in recording_results.into_iter().enumerate() {
+                if let Err(e) = result {
+                    log::error!("Error recording job run: {}", e);
                 }
             }
 
