@@ -3,6 +3,173 @@ pub mod budget;
 pub mod index;
 pub mod user;
 
+pub mod verification {
+    use actix_web::web;
+    use entries_utils::db::{self, DaoError, DbThreadPool};
+    use entries_utils::email::{templates::OtpMessage, EmailMessage, EmailSender};
+    use entries_utils::otp::Otp;
+    use std::str::FromStr;
+    use std::sync::Arc;
+    use std::time::SystemTime;
+    use tokio::sync::oneshot;
+    use uuid::Uuid;
+
+    use super::error::HttpErrorResponse;
+    use crate::env;
+
+    pub async fn generate_and_email_otp(
+        user_id: Uuid,
+        user_email: &str,
+        db_thread_pool: &DbThreadPool,
+        smtp_thread_pool: &EmailSender,
+    ) -> Result<(), HttpErrorResponse> {
+        let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
+
+        let otp = Arc::new(Otp::generate());
+        let otp_ref = Arc::clone(&otp);
+
+        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+        match web::block(move || auth_dao.save_otp(otp_ref.as_ref(), user_id, otp_expiration))
+            .await?
+        {
+            Ok(a) => a,
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+                return Err(HttpErrorResponse::DoesNotExist("User not found"));
+            }
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError("Failed to save OTP"));
+            }
+        };
+
+        let message = EmailMessage {
+            body: OtpMessage::generate(&otp[..4], &otp[4..], env::CONF.lifetimes.otp_lifetime),
+            subject: "Your one-time passcode",
+            from: env::CONF.email.from_address.clone(),
+            reply_to: env::CONF.email.reply_to_address.clone(),
+            destination: user_email,
+            is_html: true,
+        };
+
+        match smtp_thread_pool.send(message).await {
+            Ok(_) => (),
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(
+                    "Failed to send OTP to user's email address",
+                ));
+            }
+        };
+
+        Ok(())
+    }
+
+    pub async fn verify_otp(
+        otp: &str,
+        user_id: Uuid,
+        db_thread_pool: &DbThreadPool,
+    ) -> Result<(), HttpErrorResponse> {
+        const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
+
+        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+        let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
+            Ok(o) => o,
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+                return Err(HttpErrorResponse::IncorrectCredential(
+                    WRONG_OR_EXPIRED_OTP_MSG,
+                ));
+            }
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
+            }
+        };
+
+        let now = SystemTime::now();
+
+        if now > saved_otp.expiration {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                WRONG_OR_EXPIRED_OTP_MSG,
+            ));
+        }
+
+        if !Otp::are_equal(otp, &saved_otp.otp) {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                WRONG_OR_EXPIRED_OTP_MSG,
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn verify_auth_string(
+        auth_string: &str,
+        user_email: &str,
+        db_thread_pool: &DbThreadPool,
+    ) -> Result<(), HttpErrorResponse> {
+        if auth_string.len() > 512 {
+            return Err(HttpErrorResponse::InputTooLong(
+                "Provided password is too long. Max: 512 bytes",
+            ));
+        }
+
+        let auth_string = String::from(auth_string);
+        let user_email = String::from(user_email);
+
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let hash =
+            match web::block(move || auth_dao.get_user_auth_string_hash_and_status(&user_email))
+                .await?
+            {
+                Ok(a) => a,
+                Err(e) => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError(
+                        "Failed to get user auth string",
+                    ));
+                }
+            };
+
+        let (sender, receiver) = oneshot::channel();
+
+        rayon::spawn(move || {
+            let hash = match argon2_kdf::Hash::from_str(&hash.auth_string_hash) {
+                Ok(h) => h,
+                Err(e) => {
+                    sender.send(Err(e)).expect("Sending to channel failed");
+                    return;
+                }
+            };
+
+            let does_auth_string_match_hash = hash.verify_with_secret(
+                &auth_string,
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
+            );
+
+            sender
+                .send(Ok(does_auth_string_match_hash))
+                .expect("Sending to channel failed");
+        });
+
+        match receiver.await? {
+            Ok(true) => (),
+            Ok(false) => {
+                return Err(HttpErrorResponse::IncorrectCredential(
+                    "Current auth string was incorrect",
+                ));
+            }
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(
+                    "Failed to validate auth string",
+                ));
+            }
+        };
+
+        Ok(())
+    }
+}
+
 pub mod error {
     use entries_utils::token::TokenError;
 

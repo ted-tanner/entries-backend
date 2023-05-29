@@ -1,7 +1,5 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
-use entries_utils::email::templates::OtpMessage;
-use entries_utils::email::{EmailMessage, EmailSender};
-use entries_utils::otp::Otp;
+use entries_utils::email::EmailSender;
 use entries_utils::request_io::{
     CredentialPair, InputEmail, InputOtp, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
@@ -19,7 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 
 use crate::env;
-use crate::handlers::error::HttpErrorResponse;
+use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::throttle::Throttle;
@@ -201,45 +199,13 @@ pub async fn sign_in(
         signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
     };
 
-    let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
-
-    let otp = Arc::new(Otp::generate());
-    let otp_ref = Arc::clone(&otp);
-
-    match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.save_otp(otp_ref.as_ref(), user_id, otp_expiration)
-    })
-    .await?
-    {
-        Ok(a) => a,
-        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::DoesNotExist("User not found"));
-        }
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Failed to save OTP"));
-        }
-    };
-
-    let message = EmailMessage {
-        body: OtpMessage::generate(&otp[..4], &otp[4..], env::CONF.lifetimes.otp_lifetime),
-        subject: "Your one-time passcode",
-        from: env::CONF.email.from_address.clone(),
-        reply_to: env::CONF.email.reply_to_address.clone(),
-        destination: &credentials.email,
-        is_html: true,
-    };
-
-    match smtp_thread_pool.send(message).await {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
-                "Failed to send OTP to user's email address",
-            ));
-        }
-    };
+    handlers::verification::generate_and_email_otp(
+        user_id,
+        &credentials.email,
+        db_thread_pool.as_ref(),
+        smtp_thread_pool.as_ref(),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(signin_token))
 }
@@ -251,7 +217,6 @@ pub async fn verify_otp_for_signin(
     otp: web::Json<InputOtp>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
 
@@ -259,33 +224,7 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-    let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
-        Ok(o) => o,
-        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::IncorrectCredential(
-                WRONG_OR_EXPIRED_OTP_MSG,
-            ));
-        }
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
-        }
-    };
-
-    let now = SystemTime::now();
-
-    if now > saved_otp.expiration {
-        return Err(HttpErrorResponse::IncorrectCredential(
-            WRONG_OR_EXPIRED_OTP_MSG,
-        ));
-    }
-
-    if !Otp::are_equal(&otp.otp, &saved_otp.otp) {
-        return Err(HttpErrorResponse::IncorrectCredential(
-            WRONG_OR_EXPIRED_OTP_MSG,
-        ));
-    }
+    handlers::verification::verify_otp(&otp.otp, user_id, &db_thread_pool).await?;
 
     let user_id = claims.user_id;
 
@@ -299,17 +238,17 @@ pub async fn verify_otp_for_signin(
         Err(e) => log::error!("{e}"),
     };
 
-    let user_id = claims.user_id;
+    let now = SystemTime::now();
 
     let mut refresh_token = AuthToken::new(
-        user_id,
+        claims.user_id,
         &claims.user_email,
         now + env::CONF.lifetimes.refresh_token_lifetime,
         AuthTokenType::Refresh,
     );
 
     let mut access_token = AuthToken::new(
-        user_id,
+        claims.user_id,
         &claims.user_email,
         now + env::CONF.lifetimes.access_token_lifetime,
         AuthTokenType::Access,
@@ -328,6 +267,29 @@ pub async fn verify_otp_for_signin(
     };
 
     Ok(HttpResponse::Ok().json(token_pair))
+}
+
+pub async fn obtain_otp(
+    db_thread_pool: web::Data<DbThreadPool>,
+    smtp_thread_pool: web::Data<EmailSender>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    throttle: Throttle<4, 10>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let user_id = user_access_token.0.user_id;
+
+    throttle
+        .enforce(&user_id, "sign_in", &db_thread_pool)
+        .await?;
+
+    handlers::verification::generate_and_email_otp(
+        user_id,
+        &user_access_token.0.user_email,
+        db_thread_pool.as_ref(),
+        smtp_thread_pool.as_ref(),
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 pub async fn refresh_tokens(

@@ -52,7 +52,6 @@ impl Dao {
     pub fn create_user(
         &mut self,
         user_data: &InputUser,
-        app_version: &str,
         auth_string_hash: &str,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -66,9 +65,6 @@ impl Dao {
             created_timestamp: current_time,
 
             public_key: &user_data.public_key,
-
-            last_token_refresh_timestamp: current_time,
-            last_token_refresh_request_app_version: app_version,
         };
 
         let new_user_security_data = NewUserSecurityData {
@@ -239,26 +235,13 @@ impl Dao {
             })
     }
 
-    pub fn set_last_token_refresh_now(
-        &mut self,
-        user_id: Uuid,
-        app_version: &str,
-    ) -> Result<(), DaoError> {
-        dsl::update(users.find(user_id))
-            .set((
-                user_fields::last_token_refresh_timestamp.eq(SystemTime::now()),
-                user_fields::last_token_refresh_request_app_version.eq(app_version),
-            ))
-            .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
     pub fn update_password(
         &mut self,
         user_id: Uuid,
         new_auth_string_hash: &str,
         new_auth_string_salt: &[u8],
+        new_auth_string_memory_cost_kib: i32,
+        new_auth_string_parallelism_factor: i32,
         new_auth_string_iters: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
@@ -266,8 +249,37 @@ impl Dao {
             .set((
                 user_security_data_fields::auth_string_hash.eq(new_auth_string_hash),
                 user_security_data_fields::auth_string_salt.eq(new_auth_string_salt),
+                user_security_data_fields::auth_string_memory_cost_kib
+                    .eq(new_auth_string_memory_cost_kib),
+                user_security_data_fields::auth_string_parallelism_factor
+                    .eq(new_auth_string_parallelism_factor),
                 user_security_data_fields::auth_string_iters.eq(new_auth_string_iters),
                 user_security_data_fields::encryption_key_encrypted_with_password
+                    .eq(encrypted_encryption_key),
+            ))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn update_recovery_key(
+        &mut self,
+        user_id: Uuid,
+        new_recovery_key_salt: &[u8],
+        new_recovery_key_memory_cost_kib: i32,
+        new_recovery_key_parallelism_factor: i32,
+        new_recovery_key_iters: i32,
+        encrypted_encryption_key: &[u8],
+    ) -> Result<(), DaoError> {
+        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+            .set((
+                user_security_data_fields::recovery_key_salt.eq(new_recovery_key_salt),
+                user_security_data_fields::recovery_key_memory_cost_kib
+                    .eq(new_recovery_key_memory_cost_kib),
+                user_security_data_fields::recovery_key_parallelism_factor
+                    .eq(new_recovery_key_parallelism_factor),
+                user_security_data_fields::recovery_key_iters.eq(new_recovery_key_iters),
+                user_security_data_fields::encryption_key_encrypted_with_recovery_key
                     .eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;

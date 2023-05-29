@@ -133,10 +133,7 @@ CREATE TABLE users (
 
     created_timestamp TIMESTAMP NOT NULL,
 
-    public_key BYTEA NOT NULL, -- RSA-4096
-
-    last_token_refresh_timestamp TIMESTAMP NOT NULL,
-    last_token_refresh_request_app_version VARCHAR(24) NOT NULL
+    public_key BYTEA NOT NULL
 );
 
 CREATE INDEX ON users USING HASH (email);

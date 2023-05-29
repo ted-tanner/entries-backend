@@ -498,8 +498,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Endpoints for generating new recovery keys
-* Change password via a token ("reset password"/"forgot password" in addition to the existing "change password")
+* Make argon2-kdf accept password as bytes and make auth_string bytes, not a string
+* Endpoints for generating new recovery key
+* Endpoints for USING recovery key
+* Change password via OTP ("reset password"/"forgot password" in addition to the existing "change password")
 * Endpoint for 2FA with recovery code
 * Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
 * Get email delivery set up (Amazon SES?)

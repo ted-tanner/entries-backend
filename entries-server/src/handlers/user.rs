@@ -10,8 +10,8 @@ use entries_utils::html::templates::{
 };
 use entries_utils::request_io::{
     InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputUser, OutputIsUserListedForDeletion,
-    OutputPublicKey, OutputVerificationEmailSent,
+    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputUser,
+    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -20,13 +20,12 @@ use entries_utils::validators::{self, Validity};
 
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
 
 use crate::env;
-use crate::handlers::error::HttpErrorResponse;
+use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
 use crate::middleware::throttle::Throttle;
@@ -74,7 +73,7 @@ pub async fn lookup_user_public_key(
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
-    app_version: AppVersion,
+    _app_version: AppVersion,
     user_data: web::Json<InputUser>,
     throttle: Throttle<5, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -133,11 +132,7 @@ pub async fn create(
 
     let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(
-            &user_data_ref.0,
-            &app_version.0,
-            &auth_string_hash.to_string(),
-        )
+        user_dao.create_user(&user_data_ref.0, &auth_string_hash.to_string())
     })
     .await?
     {
@@ -273,9 +268,6 @@ pub async fn edit_preferences(
             DaoError::OutOfDateHash => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
-            }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(
@@ -308,9 +300,6 @@ pub async fn edit_keystore(
             DaoError::OutOfDateHash => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
-            }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(
@@ -327,68 +316,29 @@ pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
+    throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
     let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
 
-    if new_password_data.current_auth_string.len() > 512
-        || new_password_data.new_auth_string.len() > 512
-    {
+    throttle
+        .enforce(&user_id, "change_password", &db_thread_pool)
+        .await?;
+
+    if new_password_data.new_auth_string.len() > 512 {
         return Err(HttpErrorResponse::InputTooLong(
             "Provided password is too long. Max: 512 bytes",
         ));
     }
 
-    let hash = match web::block(move || {
-        auth_dao.get_user_auth_string_hash_and_status(&user_access_token.0.user_email)
-    })
-    .await?
-    {
-        Ok(a) => a,
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
-                "Failed to get user auth string",
-            ));
-        }
-    };
+    handlers::verification::verify_auth_string(
+        &current_auth_string,
+        &user_access_token.0.user_email,
+        &db_thread_pool,
+    )
+    .await?;
 
-    let (sender, receiver) = oneshot::channel();
-
-    rayon::spawn(move || {
-        let hash = match argon2_kdf::Hash::from_str(&hash.auth_string_hash) {
-            Ok(h) => h,
-            Err(e) => {
-                sender.send(Err(e)).expect("Sending to channel failed");
-                return;
-            }
-        };
-
-        let does_auth_string_match_hash = hash.verify_with_secret(
-            &current_auth_string,
-            argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
-        );
-
-        sender
-            .send(Ok(does_auth_string_match_hash))
-            .expect("Sending to channel failed");
-    });
-
-    match receiver.await? {
-        Ok(true) => (),
-        Ok(false) => {
-            return Err(HttpErrorResponse::IncorrectCredential(
-                "Current auth string was incorrect",
-            ));
-        }
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
-                "Failed to validate auth string",
-            ));
-        }
-    };
+    handlers::verification::verify_otp(&new_password_data.otp, user_id, &db_thread_pool).await?;
 
     let new_password_data = Arc::new(new_password_data.0);
     let new_password_data_ref = Arc::clone(&new_password_data);
@@ -433,6 +383,8 @@ pub async fn change_password(
             user_id,
             &auth_string_hash.to_string(),
             &new_password_data.auth_string_salt,
+            new_password_data.auth_string_memory_cost_kib,
+            new_password_data.auth_string_parallelism_factor,
             new_password_data.auth_string_iters,
             &new_password_data.encrypted_encryption_key,
         )
@@ -445,6 +397,57 @@ pub async fn change_password(
     })
 }
 
+pub async fn change_recovery_key(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    new_recovery_key_data: web::Json<InputNewRecoveryKey>,
+    throttle: Throttle<8, 10>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let user_id = user_access_token.0.user_id;
+
+    throttle
+        .enforce(&user_id, "change_recovery_key", &db_thread_pool)
+        .await?;
+
+    handlers::verification::verify_auth_string(
+        &new_recovery_key_data.auth_string,
+        &user_access_token.0.user_email,
+        &db_thread_pool,
+    )
+    .await?;
+
+    handlers::verification::verify_otp(
+        &new_recovery_key_data.otp,
+        user_access_token.0.user_id,
+        &db_thread_pool,
+    )
+    .await?;
+
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.update_recovery_key(
+            user_id,
+            &new_recovery_key_data.recovery_key_salt,
+            new_recovery_key_data.recovery_key_memory_cost_kib,
+            new_recovery_key_data.recovery_key_parallelism_factor,
+            new_recovery_key_data.recovery_key_iters,
+            &new_recovery_key_data.encrypted_encryption_key,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to update recovery key data",
+            ));
+        }
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 // TODO: Initiate reset password by sending an email with a code ("forgot password")
 // TODO: This endpoint should be debounced and not send more than one email to a given address
 //       per minute
@@ -453,7 +456,7 @@ pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_tokens: web::Data<InputBudgetAccessTokenList>,
+    budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
 
@@ -661,9 +664,6 @@ pub async fn is_listed_for_deletion(
     {
         Ok(l) => l,
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
-            }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(
@@ -690,9 +690,6 @@ pub async fn cancel_delete(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist("No user with provided ID"));
-            }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(

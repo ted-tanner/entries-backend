@@ -162,8 +162,6 @@ diesel::table! {
         is_verified -> Bool,
         created_timestamp -> Timestamp,
         public_key -> Bytea,
-        last_token_refresh_timestamp -> Timestamp,
-        last_token_refresh_request_app_version -> Varchar,
     }
 }
 

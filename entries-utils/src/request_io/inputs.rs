@@ -109,13 +109,34 @@ pub struct InputOtp {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
+    pub otp: String,
     pub current_auth_string: String,
+
     pub new_auth_string: String,
 
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
 
+    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_parallelism_factor: i32,
     pub auth_string_iters: i32,
+
+    #[serde_as(as = "Base64")]
+    pub encrypted_encryption_key: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
+pub struct InputNewRecoveryKey {
+    pub otp: String,
+    pub auth_string: String,
+
+    #[serde_as(as = "Base64")]
+    pub recovery_key_salt: Vec<u8>,
+
+    pub recovery_key_memory_cost_kib: i32,
+    pub recovery_key_parallelism_factor: i32,
+    pub recovery_key_iters: i32,
 
     #[serde_as(as = "Base64")]
     pub encrypted_encryption_key: Vec<u8>,

@@ -232,7 +232,7 @@ pub async fn invite_user(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
     invitation_info: web::Json<UserInvitationToBudget>,
-    throttle: Throttle<15, 3>,
+    throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
         .enforce(&user_access_token.0.user_id, "invite_user", &db_thread_pool)
