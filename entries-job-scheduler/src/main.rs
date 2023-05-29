@@ -77,12 +77,7 @@ fn main() {
         .expect("Failed to starer");
 
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(
-            env::CONF
-                .runner
-                .worker_threads
-                .unwrap_or(num_cpus::get() + 1),
-        )
+        .worker_threads(env::CONF.runner.worker_threads.unwrap_or(num_cpus::get()))
         .max_blocking_threads(env::CONF.runner.max_blocking_threads.unwrap_or(512))
         .enable_all()
         .build()

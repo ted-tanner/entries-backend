@@ -12,7 +12,7 @@ hash_iterations = 2
 hash_length = 32
 hash_mem_cost_kib = 128
 hash_threads = 1
-salt_length_bytes = 16
+salt_length = 16
 
 [email]
 email_enabled = false

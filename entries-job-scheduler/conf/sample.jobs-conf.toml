@@ -22,7 +22,7 @@ job_frequency_secs = 3540
 job_frequency_secs = 86400
 
 [clear_unverified_users_job]
-job_frequency_secs = 86400
+job_frequency_secs = 7200
 max_unverified_user_age_days = 7
 
 [delete_users_job]
