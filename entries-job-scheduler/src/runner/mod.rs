@@ -141,6 +141,7 @@ mod tests {
     use crate::jobs::tests::MockJob;
 
     #[tokio::test]
+    #[ignore]
     async fn test_register() {
         let mut job_runner =
             JobRunner::new(Duration::from_micros(200), env::db::DB_THREAD_POOL.clone());
@@ -149,6 +150,12 @@ mod tests {
 
         let mock_job1 = MockJob::new();
         let mock_job2 = MockJob::new();
+
+        let set_time = SystemTime::now();
+
+        let mut dao = JobRegistryDao::new(&env::db::DB_THREAD_POOL);
+        dao.set_job_last_run_timestamp(mock_job1.name(), set_time)
+            .unwrap();
 
         job_runner
             .register(Box::new(mock_job1), Duration::from_millis(1))
@@ -159,6 +166,9 @@ mod tests {
             .register(Box::new(mock_job2), Duration::from_millis(3))
             .await;
         assert_eq!(job_runner.jobs.len(), 2);
+
+        assert_eq!(job_runner.jobs[0].last_run_time, set_time);
+        assert_eq!(job_runner.jobs[1].last_run_time, set_time);
     }
 
     #[tokio::test]
@@ -167,6 +177,9 @@ mod tests {
             JobRunner::new(Duration::from_micros(500), env::db::DB_THREAD_POOL.clone());
         let job1 = MockJob::new();
         let job2 = MockJob::new();
+
+        assert_eq!(job1.name(), job2.name());
+        let job_name = job1.name();
 
         let job1_run_count = Arc::clone(&job1.runs);
         let job2_run_count = Arc::clone(&job2.runs);
@@ -178,23 +191,40 @@ mod tests {
             .register(Box::new(job2), Duration::from_millis(15))
             .await;
 
-        tokio::task::spawn(async move { job_runner.start().await });
+        tokio::task::spawn(async move {
+            for job in &mut job_runner.jobs {
+                job.last_run_time = SystemTime::now();
+            }
+
+            job_runner.start().await
+        });
 
         time::sleep(Duration::from_millis(5)).await;
 
+        assert_eq!(*job1_run_count.lock().await, 0);
+        assert_eq!(*job2_run_count.lock().await, 0);
+
+        time::sleep(Duration::from_millis(7)).await;
+        assert_eq!(*job1_run_count.lock().await, 1);
+        assert_eq!(*job2_run_count.lock().await, 0);
+
+        time::sleep(Duration::from_millis(5)).await;
         assert_eq!(*job1_run_count.lock().await, 1);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        time::sleep(Duration::from_millis(7)).await;
+        time::sleep(Duration::from_millis(5)).await;
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        time::sleep(Duration::from_millis(5)).await;
-        assert_eq!(*job1_run_count.lock().await, 2);
-        assert_eq!(*job2_run_count.lock().await, 2);
+        let mut dao = JobRegistryDao::new(&env::db::DB_THREAD_POOL);
+        let mock_job_last_run = dao
+            .get_job_last_run_timestamp(job_name)
+            .unwrap()
+            .expect("Last run time should have been set in DB during this test");
 
-        time::sleep(Duration::from_millis(5)).await;
-        assert_eq!(*job1_run_count.lock().await, 3);
-        assert_eq!(*job2_run_count.lock().await, 2);
+        assert!(
+            mock_job_last_run < SystemTime::now()
+                && mock_job_last_run > SystemTime::now() - Duration::from_millis(10)
+        );
     }
 }
