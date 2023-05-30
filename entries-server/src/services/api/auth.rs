@@ -14,6 +14,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/verify_otp_for_signin",
                 web::post().to(handlers::auth::verify_otp_for_signin),
             )
+            .route(
+                "/use_backup_code_for_signin",
+                web::post().to(handlers::auth::use_backup_code_for_signin),
+            )
             .route("obtain_otp", web::get().to(handlers::auth::obtain_otp))
             .route(
                 "/refresh_tokens",

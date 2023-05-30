@@ -95,6 +95,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_backup_codes (user_id, code) {
+        user_id -> Uuid,
+        code -> Varchar,
+    }
+}
+
+diesel::table! {
     user_deletion_request_budget_keys (key_id) {
         key_id -> Uuid,
         user_id -> Uuid,
@@ -178,6 +185,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     job_registry,
     signin_nonces,
     throttleable_attempts,
+    user_backup_codes,
     user_deletion_request_budget_keys,
     user_deletion_requests,
     user_keystores,

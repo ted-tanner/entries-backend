@@ -1,7 +1,8 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
 use entries_utils::request_io::{
-    CredentialPair, InputEmail, InputOtp, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
+    CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputSigninNonceAndHashParams,
+    SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::Token;
@@ -226,8 +227,6 @@ pub async fn verify_otp_for_signin(
 
     handlers::verification::verify_otp(&otp.otp, user_id, &db_thread_pool).await?;
 
-    let user_id = claims.user_id;
-
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.delete_otp(user_id)
@@ -235,6 +234,66 @@ pub async fn verify_otp_for_signin(
     .await?
     {
         Ok(_) => (),
+        Err(e) => log::error!("{e}"),
+    };
+
+    let now = SystemTime::now();
+
+    let mut refresh_token = AuthToken::new(
+        claims.user_id,
+        &claims.user_email,
+        now + env::CONF.lifetimes.refresh_token_lifetime,
+        AuthTokenType::Refresh,
+    );
+
+    let mut access_token = AuthToken::new(
+        claims.user_id,
+        &claims.user_email,
+        now + env::CONF.lifetimes.access_token_lifetime,
+        AuthTokenType::Access,
+    );
+
+    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+
+    let token_pair = TokenPair {
+        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        server_time: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_millis(),
+    };
+
+    Ok(HttpResponse::Ok().json(token_pair))
+}
+
+pub async fn use_backup_code_for_signin(
+    db_thread_pool: web::Data<DbThreadPool>,
+    _app_version: AppVersion,
+    signin_token: UnverifiedToken<SignIn, FromHeader>,
+    code: web::Json<InputBackupCode>,
+    throttle: Throttle<5, 60>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let claims = signin_token.verify()?;
+    let user_id = claims.user_id;
+
+    throttle
+        .enforce(&user_id, "use_backup_code_for_signin", &db_thread_pool)
+        .await?;
+
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.delete_backup_code(&code.code, user_id)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                "Backup codes was incorrect",
+            ));
+        }
         Err(e) => log::error!("{e}"),
     };
 

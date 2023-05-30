@@ -71,7 +71,7 @@ mod tests {
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: String::new(),
+            auth_string: Vec::new(),
 
             auth_string_salt: Vec::new(),
             auth_string_memory_cost_kib: 1024,
@@ -101,7 +101,9 @@ mod tests {
 
         let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
 
-        let user_id = user_dao.create_user(&new_user, "Test").unwrap();
+        let user_id = user_dao
+            .create_user(&new_user, "Test", &Vec::new())
+            .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
         let mut pretend_expired_token = AuthToken::new(

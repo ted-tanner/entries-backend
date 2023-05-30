@@ -4,14 +4,15 @@ use entries_utils::email::{EmailMessage, EmailSender};
 use entries_utils::html::templates::{
     DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
     DeleteUserInternalErrorPage, DeleteUserInvalidLinkPage, DeleteUserLinkMissingTokenPage,
-    DeleteUserSuccessPage, VerifyUserAccountNotFoundPage, VerifyUserExpiredLinkPage,
-    VerifyUserInternalErrorPage, VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage,
-    VerifyUserSuccessPage,
+    DeleteUserSuccessPage, VerifyUserExpiredLinkPage, VerifyUserInternalErrorPage,
+    VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
+use entries_utils::otp::Otp;
 use entries_utils::request_io::{
     InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputUser,
-    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
+    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputReauth, InputUser,
+    OutputBackupCodes, OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion,
+    OutputPublicKey, OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -128,11 +129,18 @@ pub async fn create(
         }
     };
 
+    let backup_codes = Arc::new(Otp::generate_multiple(12, 6));
+    let backup_codes_ref = Arc::clone(&backup_codes);
+
     let user_data_ref = Arc::clone(&user_data);
 
     let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(&user_data_ref.0, &auth_string_hash.to_string())
+        user_dao.create_user(
+            &user_data_ref.0,
+            &auth_string_hash.to_string(),
+            &backup_codes_ref,
+        )
     })
     .await?
     {
@@ -187,11 +195,14 @@ pub async fn create(
         }
     };
 
-    Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
-        email_sent: true,
-        email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
-            / 3600,
-    }))
+    Ok(
+        HttpResponse::Created().json(OutputBackupCodesAndVerificationEmailSent {
+            email_sent: true,
+            email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
+                / 3600,
+            backup_codes: &backup_codes,
+        }),
+    )
 }
 
 pub async fn verify_creation(
@@ -224,23 +235,12 @@ pub async fn verify_creation(
     .await?
     {
         Ok(_) => (),
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                log::error!(
-                    "Failed to verify user after validating UserCreationToken: {}",
-                    e
-                );
-                return Ok(HttpResponse::BadRequest()
-                    .content_type("text/html")
-                    .body(VerifyUserAccountNotFoundPage::generate()));
-            }
-            _ => {
-                log::error!("{e}");
-                return Ok(HttpResponse::InternalServerError()
-                    .content_type("text/html")
-                    .body(VerifyUserInternalErrorPage::generate()));
-            }
-        },
+        Err(e) => {
+            log::error!("{e}");
+            return Ok(HttpResponse::InternalServerError()
+                .content_type("text/html")
+                .body(VerifyUserInternalErrorPage::generate()));
+        }
     };
 
     Ok(HttpResponse::Ok()
@@ -316,7 +316,7 @@ pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
-    throttle: Throttle<8, 10>,
+    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
@@ -401,7 +401,7 @@ pub async fn change_recovery_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: web::Json<InputNewRecoveryKey>,
-    throttle: Throttle<8, 10>,
+    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
 
@@ -446,6 +446,51 @@ pub async fn change_recovery_key(
     };
 
     Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn regenerate_backup_codes(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    reauth: web::Json<InputReauth>,
+    throttle: Throttle<6, 15>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let user_id = user_access_token.0.user_id;
+
+    throttle
+        .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
+        .await?;
+
+    handlers::verification::verify_auth_string(
+        &reauth.auth_string,
+        &user_access_token.0.user_email,
+        &db_thread_pool,
+    )
+    .await?;
+
+    handlers::verification::verify_otp(&reauth.otp, user_access_token.0.user_id, &db_thread_pool)
+        .await?;
+
+    let backup_codes = Arc::new(Otp::generate_multiple(12, 6));
+    let backup_codes_ref = Arc::clone(&backup_codes);
+
+    match web::block(move || {
+        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.replace_backup_codes(user_id, &backup_codes_ref)
+    })
+    .await?
+    {
+        Ok(id) => id,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to replace backup codes",
+            ));
+        }
+    };
+
+    Ok(HttpResponse::Ok().json(OutputBackupCodes {
+        backup_codes: &backup_codes,
+    }))
 }
 
 // TODO: Initiate reset password by sending an email with a code ("forgot password")
@@ -663,14 +708,12 @@ pub async fn is_listed_for_deletion(
     .await?
     {
         Ok(l) => l,
-        Err(e) => match e {
-            _ => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
-                    "Failed to cancel user deletion",
-                ));
-            }
-        },
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to cancel user deletion",
+            ));
+        }
     };
 
     Ok(HttpResponse::Ok().json(OutputIsUserListedForDeletion {
@@ -689,14 +732,12 @@ pub async fn cancel_delete(
     .await?
     {
         Ok(_) => (),
-        Err(e) => match e {
-            _ => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
-                    "Failed to cancel user deletion",
-                ));
-            }
-        },
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to cancel user deletion",
+            ));
+        }
     };
 
     Ok(HttpResponse::Ok().finish())

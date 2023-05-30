@@ -138,6 +138,13 @@ CREATE TABLE users (
 
 CREATE INDEX ON users USING HASH (email);
 
+CREATE TABLE user_backup_codes (
+    user_id UUID NOT NULL,
+    code VARCHAR(10) NOT NULL,
+
+    PRIMARY KEY (user_id, code)
+);
+
 CREATE TABLE user_deletion_requests (
     id UUID PRIMARY KEY,
     user_id UUID UNIQUE NOT NULL,
@@ -217,4 +224,5 @@ ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY
 ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_otps ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_backup_codes ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

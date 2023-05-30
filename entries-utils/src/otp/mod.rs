@@ -5,12 +5,21 @@ use rand::Rng;
 pub struct Otp {}
 
 impl Otp {
-    pub fn generate() -> String {
+    pub fn generate(length: usize) -> String {
         OsRng
             .sample_iter(&Alphanumeric)
-            .take(8)
+            .take(length)
             .map(|c| char::from(c).to_ascii_uppercase())
             .collect()
+    }
+
+    pub fn generate_multiple(length: usize, count: usize) -> Vec<String> {
+        let mut backup_codes = Vec::with_capacity(count);
+        for _ in 0..count {
+            backup_codes.push(Self::generate(length));
+        }
+
+        backup_codes
     }
 
     pub fn are_equal(given: &str, saved: &str) -> bool {

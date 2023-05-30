@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
+use crate::models::user_backup_code::NewUserBackupCode;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
@@ -18,6 +19,8 @@ use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
+use crate::schema::user_backup_codes as user_backup_code_fields;
+use crate::schema::user_backup_codes::dsl::user_backup_codes;
 use crate::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
 use crate::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
@@ -53,6 +56,7 @@ impl Dao {
         &mut self,
         user_data: &InputUser,
         auth_string_hash: &str,
+        backup_codes: &[String],
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let user_id = Uuid::new_v4();
@@ -116,6 +120,11 @@ impl Dao {
             nonce: OsRng.gen(),
         };
 
+        let backup_codes = backup_codes
+            .iter()
+            .map(|code| NewUserBackupCode { user_id, code })
+            .collect::<Vec<_>>();
+
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
@@ -137,6 +146,10 @@ impl Dao {
 
                 dsl::insert_into(signin_nonces)
                     .values(&new_signin_nonce)
+                    .execute(conn)?;
+
+                dsl::insert_into(user_backup_codes)
+                    .values(&backup_codes)
                     .execute(conn)?;
 
                 Ok(())
@@ -161,6 +174,43 @@ impl Dao {
             user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age),
         ))
         .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn replace_backup_codes(
+        &mut self,
+        user_id: Uuid,
+        codes: &[String],
+    ) -> Result<(), DaoError> {
+        let codes = codes
+            .iter()
+            .map(|code| NewUserBackupCode { user_id, code })
+            .collect::<Vec<_>>();
+
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                diesel::delete(
+                    user_backup_codes.filter(user_backup_code_fields::user_id.eq(user_id)),
+                )
+                .execute(conn)?;
+
+                dsl::insert_into(user_backup_codes)
+                    .values(&codes)
+                    .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
+    pub fn delete_backup_code(&mut self, code: &str, user_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(user_backup_codes.find((user_id, code)))
+            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
@@ -235,6 +285,7 @@ impl Dao {
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_password(
         &mut self,
         user_id: Uuid,

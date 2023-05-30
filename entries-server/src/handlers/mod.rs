@@ -25,7 +25,7 @@ pub mod verification {
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
 
-        let otp = Arc::new(Otp::generate());
+        let otp = Arc::new(Otp::generate(8));
         let otp_ref = Arc::clone(&otp);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
@@ -103,7 +103,7 @@ pub mod verification {
     }
 
     pub async fn verify_auth_string(
-        auth_string: &str,
+        auth_string: &[u8],
         user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
@@ -113,10 +113,10 @@ pub mod verification {
             ));
         }
 
-        let auth_string = String::from(auth_string);
+        let auth_string = Vec::from(auth_string);
         let user_email = String::from(user_email);
 
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
         let hash =
             match web::block(move || auth_dao.get_user_auth_string_hash_and_status(&user_email))
                 .await?

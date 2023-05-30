@@ -6,12 +6,12 @@ use std::time::SystemTime;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-// TODO: Sort these struct defs alphabetically
-
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct CredentialPair {
     pub email: String,
-    pub auth_string: String,
+    #[serde_as(as = "Base64")]
+    pub auth_string: Vec<u8>,
     pub nonce: i32,
 }
 
@@ -47,7 +47,8 @@ pub struct InputDateRange {
 pub struct InputUser {
     pub email: String,
 
-    pub auth_string: String,
+    #[serde_as(as = "Base64")]
+    pub auth_string: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
@@ -110,9 +111,11 @@ pub struct InputOtp {
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
     pub otp: String,
-    pub current_auth_string: String,
 
-    pub new_auth_string: String,
+    #[serde_as(as = "Base64")]
+    pub current_auth_string: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub new_auth_string: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
@@ -129,7 +132,8 @@ pub struct InputNewAuthStringAndEncryptedPassword {
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewRecoveryKey {
     pub otp: String,
-    pub auth_string: String,
+    #[serde_as(as = "Base64")]
+    pub auth_string: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub recovery_key_salt: Vec<u8>,
@@ -140,6 +144,14 @@ pub struct InputNewRecoveryKey {
 
     #[serde_as(as = "Base64")]
     pub encrypted_encryption_key: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputReauth {
+    pub otp: String,
+    #[serde_as(as = "Base64")]
+    pub auth_string: Vec<u8>,
 }
 
 // temp_id is an ID the client generates that allows the server to differentiate between
@@ -270,4 +282,9 @@ pub struct InputBudgetAccessTokenList {
 pub struct InputPublicKey {
     #[serde_as(as = "Base64")]
     pub public_key: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InputBackupCode {
+    pub code: String,
 }
