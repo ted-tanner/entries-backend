@@ -439,10 +439,6 @@ pub async fn change_recovery_key(
     Ok(HttpResponse::Ok().finish())
 }
 
-// TODO: Initiate reset password by sending an email with a code ("forgot password")
-// TODO: This endpoint should be debounced and not send more than one email to a given address
-//       per minute
-
 pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,

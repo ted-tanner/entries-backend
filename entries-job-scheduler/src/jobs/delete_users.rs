@@ -6,7 +6,6 @@ use futures::future;
 
 use crate::jobs::{Job, JobError};
 
-// TODO: Test
 pub struct DeleteUsersJob {
     db_thread_pool: DbThreadPool,
     is_running: bool,

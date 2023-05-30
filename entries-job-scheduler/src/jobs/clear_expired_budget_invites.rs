@@ -5,7 +5,6 @@ use async_trait::async_trait;
 
 use crate::jobs::{Job, JobError};
 
-// TODO: Test
 pub struct ClearExpiredBudgetInvitesJob {
     db_thread_pool: DbThreadPool,
     is_running: bool,
