@@ -15,4 +15,3 @@ pub mod user_deletion_request_budget_key;
 pub mod user_keystore;
 pub mod user_otp;
 pub mod user_preferences;
-pub mod user_security_data;

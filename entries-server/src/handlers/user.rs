@@ -76,7 +76,7 @@ pub async fn create(
     smtp_thread_pool: web::Data<EmailSender>,
     _app_version: AppVersion,
     user_data: web::Json<InputUser>,
-    throttle: Throttle<5, 5>,
+    throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
@@ -314,14 +314,15 @@ pub async fn edit_keystore(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let user_id = user_access_token.0.user_id;
-
     throttle
-        .enforce(&user_id, "change_password", &db_thread_pool)
+        .enforce(
+            &new_password_data.user_email,
+            "change_password",
+            &db_thread_pool,
+        )
         .await?;
 
     if new_password_data.new_auth_string.len() > 512 {
@@ -330,7 +331,12 @@ pub async fn change_password(
         ));
     }
 
-    handlers::verification::verify_otp(&new_password_data.otp, user_id, &db_thread_pool).await?;
+    handlers::verification::verify_otp(
+        &new_password_data.otp,
+        &new_password_data.user_email,
+        &db_thread_pool,
+    )
+    .await?;
 
     let new_password_data = Arc::new(new_password_data.0);
     let new_password_data_ref = Arc::clone(&new_password_data);
@@ -372,7 +378,7 @@ pub async fn change_password(
     web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
-            user_id,
+            &new_password_data.user_email,
             &auth_string_hash.to_string(),
             &new_password_data.auth_string_salt,
             new_password_data.auth_string_memory_cost_kib,
@@ -403,7 +409,7 @@ pub async fn change_recovery_key(
 
     handlers::verification::verify_otp(
         &new_recovery_key_data.otp,
-        user_access_token.0.user_id,
+        &user_access_token.0.user_email,
         &db_thread_pool,
     )
     .await?;

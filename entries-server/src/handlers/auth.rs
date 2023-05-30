@@ -90,12 +90,6 @@ pub async fn sign_in(
         .enforce(&credentials.email, "sign_in", &db_thread_pool)
         .await?;
 
-    if credentials.auth_string.len() > 512 {
-        return Err(HttpErrorResponse::InputTooLong(
-            "Provided password is too long. Max: 512 bytes",
-        ));
-    }
-
     let credentials = Arc::new(credentials);
     let credentials_ref = Arc::clone(&credentials);
 
@@ -170,7 +164,6 @@ pub async fn sign_in(
     };
 
     handlers::verification::generate_and_email_otp(
-        user_id,
         &credentials.email,
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
@@ -194,17 +187,7 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, user_id, &db_thread_pool).await?;
-
-    match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.delete_otp(user_id)
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(e) => log::error!("{e}"),
-    };
+    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool).await?;
 
     let now = SystemTime::now();
 
@@ -250,7 +233,6 @@ pub async fn obtain_otp(
         .await?;
 
     handlers::verification::generate_and_email_otp(
-        user_id,
         &user_access_token.0.user_email,
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
@@ -332,7 +314,7 @@ pub async fn regenerate_backup_codes(
         .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, user_access_token.0.user_id, &db_thread_pool)
+    handlers::verification::verify_otp(&otp.otp, &user_access_token.0.user_email, &db_thread_pool)
         .await?;
 
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));

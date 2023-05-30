@@ -14,7 +14,6 @@ ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT key_key;
 ALTER TABLE user_keystores DROP CONSTRAINT user_key;
 ALTER TABLE user_otps DROP CONSTRAINT user_key;
 ALTER TABLE user_preferences DROP CONSTRAINT user_key;
-ALTER TABLE user_security_data DROP CONSTRAINT user_key;
 
 DROP TABLE blacklisted_tokens;
 DROP TABLE budgets;
@@ -33,4 +32,3 @@ DROP TABLE user_deletion_request_budget_keys;
 DROP TABLE user_keystores;
 DROP TABLE user_otps;
 DROP TABLE user_preferences;
-DROP TABLE user_security_data;

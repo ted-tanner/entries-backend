@@ -110,6 +110,7 @@ pub struct InputOtp {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
+    pub user_email: String,
     pub otp: String,
 
     #[serde_as(as = "Base64")]

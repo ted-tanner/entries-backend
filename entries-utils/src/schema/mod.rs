@@ -126,8 +126,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_otps (user_id) {
-        user_id -> Uuid,
+    user_otps (user_email, otp) {
+        user_email -> Varchar,
         otp -> Varchar,
         expiration -> Timestamp,
     }
@@ -142,8 +142,12 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_security_data (user_id) {
-        user_id -> Uuid,
+    users (id) {
+        id -> Uuid,
+        email -> Varchar,
+        is_verified -> Bool,
+        public_key -> Bytea,
+        created_timestamp -> Timestamp,
         auth_string_hash -> Text,
         auth_string_salt -> Bytea,
         auth_string_memory_cost_kib -> Int4,
@@ -159,16 +163,6 @@ diesel::table! {
         recovery_key_iters -> Int4,
         encryption_key_encrypted_with_password -> Bytea,
         encryption_key_encrypted_with_recovery_key -> Bytea,
-    }
-}
-
-diesel::table! {
-    users (id) {
-        id -> Uuid,
-        email -> Varchar,
-        is_verified -> Bool,
-        created_timestamp -> Timestamp,
-        public_key -> Bytea,
     }
 }
 
@@ -191,6 +185,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_keystores,
     user_otps,
     user_preferences,
-    user_security_data,
     users,
 );

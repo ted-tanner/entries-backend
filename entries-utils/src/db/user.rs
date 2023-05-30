@@ -12,7 +12,6 @@ use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionR
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
-use crate::models::user_security_data::NewUserSecurityData;
 
 use crate::request_io::InputUser;
 use crate::schema::budget_access_keys as budget_access_key_fields;
@@ -28,8 +27,6 @@ use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
 use crate::schema::user_preferences as user_preferences_fields;
 use crate::schema::user_preferences::dsl::user_preferences;
-use crate::schema::user_security_data as user_security_data_fields;
-use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
@@ -68,10 +65,6 @@ impl Dao {
             created_timestamp: current_time,
 
             public_key: &user_data.public_key,
-        };
-
-        let new_user_security_data = NewUserSecurityData {
-            user_id,
 
             auth_string_hash,
             auth_string_salt: &user_data.auth_string_salt,
@@ -130,10 +123,6 @@ impl Dao {
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
                 dsl::insert_into(users).values(&new_user).execute(conn)?;
-
-                dsl::insert_into(user_security_data)
-                    .values(&new_user_security_data)
-                    .execute(conn)?;
 
                 dsl::insert_into(user_preferences)
                     .values(&new_user_preferences)
@@ -250,7 +239,7 @@ impl Dao {
     #[allow(clippy::too_many_arguments)]
     pub fn update_password(
         &mut self,
-        user_id: Uuid,
+        user_email: &str,
         new_auth_string_hash: &str,
         new_auth_string_salt: &[u8],
         new_auth_string_memory_cost_kib: i32,
@@ -258,17 +247,14 @@ impl Dao {
         new_auth_string_iters: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
-        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+        dsl::update(users.filter(user_fields::email.eq(user_email)))
             .set((
-                user_security_data_fields::auth_string_hash.eq(new_auth_string_hash),
-                user_security_data_fields::auth_string_salt.eq(new_auth_string_salt),
-                user_security_data_fields::auth_string_memory_cost_kib
-                    .eq(new_auth_string_memory_cost_kib),
-                user_security_data_fields::auth_string_parallelism_factor
-                    .eq(new_auth_string_parallelism_factor),
-                user_security_data_fields::auth_string_iters.eq(new_auth_string_iters),
-                user_security_data_fields::encryption_key_encrypted_with_password
-                    .eq(encrypted_encryption_key),
+                user_fields::auth_string_hash.eq(new_auth_string_hash),
+                user_fields::auth_string_salt.eq(new_auth_string_salt),
+                user_fields::auth_string_memory_cost_kib.eq(new_auth_string_memory_cost_kib),
+                user_fields::auth_string_parallelism_factor.eq(new_auth_string_parallelism_factor),
+                user_fields::auth_string_iters.eq(new_auth_string_iters),
+                user_fields::encryption_key_encrypted_with_password.eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;
 
@@ -284,15 +270,14 @@ impl Dao {
         new_recovery_key_iters: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
-        dsl::update(user_security_data.filter(user_security_data_fields::user_id.eq(user_id)))
+        dsl::update(users.find(user_id))
             .set((
-                user_security_data_fields::recovery_key_salt.eq(new_recovery_key_salt),
-                user_security_data_fields::recovery_key_memory_cost_kib
-                    .eq(new_recovery_key_memory_cost_kib),
-                user_security_data_fields::recovery_key_parallelism_factor
+                user_fields::recovery_key_salt.eq(new_recovery_key_salt),
+                user_fields::recovery_key_memory_cost_kib.eq(new_recovery_key_memory_cost_kib),
+                user_fields::recovery_key_parallelism_factor
                     .eq(new_recovery_key_parallelism_factor),
-                user_security_data_fields::recovery_key_iters.eq(new_recovery_key_iters),
-                user_security_data_fields::encryption_key_encrypted_with_recovery_key
+                user_fields::recovery_key_iters.eq(new_recovery_key_iters),
+                user_fields::encryption_key_encrypted_with_recovery_key
                     .eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;

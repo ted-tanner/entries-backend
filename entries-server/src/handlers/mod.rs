@@ -12,24 +12,26 @@ pub mod verification {
     use std::sync::Arc;
     use std::time::SystemTime;
     use tokio::sync::oneshot;
-    use uuid::Uuid;
+    use zeroize::Zeroize;
 
     use super::error::HttpErrorResponse;
     use crate::env;
 
     pub async fn generate_and_email_otp(
-        user_id: Uuid,
         user_email: &str,
         db_thread_pool: &DbThreadPool,
         smtp_thread_pool: &EmailSender,
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
 
-        let otp = Arc::new(Otp::generate(8));
-        let otp_ref = Arc::clone(&otp);
+        let user_email = Arc::new(String::from(user_email));
+        let user_email_ref = Arc::clone(&user_email);
+
+        let otp = Otp::generate(8);
+        let otp_clone = otp.clone();
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        match web::block(move || auth_dao.save_otp(otp_ref.as_ref(), user_id, otp_expiration))
+        match web::block(move || auth_dao.save_otp(&otp_clone, &user_email_ref, otp_expiration))
             .await?
         {
             Ok(a) => a,
@@ -47,7 +49,7 @@ pub mod verification {
             subject: "Your one-time passcode",
             from: env::CONF.email.from_address.clone(),
             reply_to: env::CONF.email.reply_to_address.clone(),
-            destination: user_email,
+            destination: &user_email,
             is_html: true,
         };
 
@@ -66,13 +68,22 @@ pub mod verification {
 
     pub async fn verify_otp(
         otp: &str,
-        user_id: Uuid,
+        user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
 
+        if user_email.len() > 255 || otp.len() > 8 {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                WRONG_OR_EXPIRED_OTP_MSG,
+            ));
+        }
+
+        let otp = String::from(user_email);
+        let user_email = String::from(user_email);
+
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        let saved_otp = match web::block(move || auth_dao.get_otp(user_id)).await? {
+        let saved_otp = match web::block(move || auth_dao.delete_otp(&otp, &user_email)).await? {
             Ok(o) => o,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 return Err(HttpErrorResponse::IncorrectCredential(
@@ -93,12 +104,6 @@ pub mod verification {
             ));
         }
 
-        if !Otp::are_equal(otp, &saved_otp.otp) {
-            return Err(HttpErrorResponse::IncorrectCredential(
-                WRONG_OR_EXPIRED_OTP_MSG,
-            ));
-        }
-
         Ok(())
     }
 
@@ -107,13 +112,13 @@ pub mod verification {
         user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
-        if auth_string.len() > 512 {
-            return Err(HttpErrorResponse::InputTooLong(
-                "Provided password is too long. Max: 512 bytes",
+        if user_email.len() > 255 || auth_string.len() > 512 {
+            return Err(HttpErrorResponse::IncorrectCredential(
+                "Auth string was incorrect",
             ));
         }
 
-        let auth_string = Vec::from(auth_string);
+        let mut auth_string = Vec::from(auth_string);
         let user_email = String::from(user_email);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
@@ -145,6 +150,8 @@ pub mod verification {
                 &auth_string,
                 argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
             );
+
+            auth_string.zeroize();
 
             sender
                 .send(Ok(does_auth_string_match_hash))

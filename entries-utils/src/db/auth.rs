@@ -16,8 +16,6 @@ use crate::schema::user_backup_codes as user_backup_code_fields;
 use crate::schema::user_backup_codes::dsl::user_backup_codes;
 use crate::schema::user_otps as user_otp_fields;
 use crate::schema::user_otps::dsl::user_otps;
-use crate::schema::user_security_data as user_security_data_fields;
-use crate::schema::user_security_data::dsl::user_security_data;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
 
@@ -42,46 +40,28 @@ impl Dao {
         &mut self,
         user_email: &str,
     ) -> Result<UserAuthStringHashAndStatus, DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+        let (user_id, is_user_verified, auth_string_hash) = users
+            .select((
+                user_fields::id,
+                user_fields::is_verified,
+                user_fields::auth_string_hash,
+            ))
+            .filter(user_fields::email.eq(user_email))
+            .get_result::<(Uuid, bool, String)>(&mut self.db_thread_pool.get()?)?;
 
-        let hash_and_status = db_connection
-            .build_transaction()
-            .run::<_, diesel::result::Error, _>(|conn| {
-                let (user_id, is_user_verified, auth_string_hash) = users
-                    .left_join(
-                        user_security_data
-                            .on(user_security_data_fields::user_id.eq(user_fields::id)),
-                    )
-                    .select((
-                        user_fields::id,
-                        user_fields::is_verified,
-                        user_security_data_fields::auth_string_hash.nullable(),
-                    ))
-                    .filter(user_fields::email.eq(user_email))
-                    .get_result::<(Uuid, bool, Option<String>)>(conn)?;
+        if !is_user_verified {
+            return Ok(UserAuthStringHashAndStatus {
+                user_id,
+                is_user_verified,
+                auth_string_hash: String::new(),
+            });
+        }
 
-                if !is_user_verified {
-                    return Ok(UserAuthStringHashAndStatus {
-                        user_id,
-                        is_user_verified,
-                        auth_string_hash: String::new(),
-                    });
-                }
-
-                let auth_string_hash = auth_string_hash.unwrap_or(String::new());
-
-                if auth_string_hash.is_empty() {
-                    return Err(diesel::result::Error::NotFound);
-                }
-
-                Ok(UserAuthStringHashAndStatus {
-                    user_id,
-                    is_user_verified,
-                    auth_string_hash,
-                })
-            })?;
-
-        Ok(hash_and_status)
+        Ok(UserAuthStringHashAndStatus {
+            user_id,
+            is_user_verified,
+            auth_string_hash,
+        })
     }
 
     pub fn blacklist_token(
@@ -131,27 +111,21 @@ impl Dao {
         }
     }
 
-    pub fn get_otp(&mut self, user_id: Uuid) -> Result<UserOtp, DaoError> {
-        Ok(user_otps
-            .find(user_id)
-            .get_result(&mut self.db_thread_pool.get()?)?)
-    }
-
     pub fn save_otp(
         &mut self,
         otp: &str,
-        user_id: Uuid,
+        user_email: &str,
         expiration: SystemTime,
     ) -> Result<(), DaoError> {
         let new_otp = NewUserOtp {
-            user_id,
+            user_email,
             otp,
             expiration,
         };
 
         dsl::insert_into(user_otps)
             .values(&new_otp)
-            .on_conflict(user_otp_fields::user_id)
+            .on_conflict(user_otp_fields::user_email)
             .do_update()
             .set((
                 user_otp_fields::otp.eq(otp),
@@ -162,9 +136,10 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_otp(&mut self, user_id: Uuid) -> Result<(), DaoError> {
-        dsl::delete(user_otps.find(user_id)).execute(&mut self.db_thread_pool.get()?)?;
-        Ok(())
+    pub fn delete_otp(&mut self, otp: &str, user_email: &str) -> Result<UserOtp, DaoError> {
+        Ok(diesel::delete(user_otps.find((user_email, otp)))
+            .returning(user_otp_fields::all_columns)
+            .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {
@@ -246,15 +221,14 @@ impl Dao {
         &mut self,
         user_email: &str,
     ) -> Result<OutputSigninNonceAndHashParams, DaoError> {
-        let (salt, mem_cost, parallel, iters, nonce) = user_security_data
-            .left_join(users.on(user_fields::id.eq(user_security_data_fields::user_id)))
+        let (salt, mem_cost, parallel, iters, nonce) = users
             .left_join(signin_nonces.on(signin_nonce_fields::user_email.eq(user_fields::email)))
             .filter(user_fields::email.eq(user_email))
             .select((
-                user_security_data_fields::auth_string_salt,
-                user_security_data_fields::auth_string_memory_cost_kib,
-                user_security_data_fields::auth_string_parallelism_factor,
-                user_security_data_fields::auth_string_iters,
+                user_fields::auth_string_salt,
+                user_fields::auth_string_memory_cost_kib,
+                user_fields::auth_string_parallelism_factor,
+                user_fields::auth_string_iters,
                 signin_nonce_fields::nonce.nullable(),
             ))
             .first::<(Vec<u8>, i32, i32, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;

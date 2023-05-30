@@ -131,9 +131,29 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     is_verified BOOLEAN NOT NULL,
 
+    public_key BYTEA NOT NULL,
+
     created_timestamp TIMESTAMP NOT NULL,
 
-    public_key BYTEA NOT NULL
+    auth_string_hash TEXT NOT NULL,
+
+    auth_string_salt BYTEA NOT NULL,
+    auth_string_memory_cost_kib INT NOT NULL,   
+    auth_string_parallelism_factor INT NOT NULL,
+    auth_string_iters INT NOT NULL,
+
+    password_encryption_salt BYTEA NOT NULL,
+    password_encryption_memory_cost_kib INT NOT NULL,
+    password_encryption_parallelism_factor INT NOT NULL,
+    password_encryption_iters INT NOT NULL,
+
+    recovery_key_salt BYTEA NOT NULL,
+    recovery_key_memory_cost_kib INT NOT NULL,
+    recovery_key_parallelism_factor INT NOT NULL,
+    recovery_key_iters INT NOT NULL,
+
+    encryption_key_encrypted_with_password BYTEA NOT NULL,
+    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL
 );
 
 CREATE INDEX ON users USING HASH (email);
@@ -174,39 +194,17 @@ CREATE TABLE user_keystores (
 );
 
 CREATE TABLE user_otps (
-    user_id UUID PRIMARY KEY,
+    user_email VARCHAR(255) NOT NULL,
     otp VARCHAR(8) NOT NULL,
-    expiration TIMESTAMP NOT NULL
+    expiration TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (user_email, otp)
 );
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
     encrypted_blob_sha1_hash BYTEA NOT NULL
-);
-
-CREATE TABLE user_security_data (
-    user_id UUID PRIMARY KEY,
-
-    auth_string_hash TEXT NOT NULL,
-
-    auth_string_salt BYTEA NOT NULL,
-    auth_string_memory_cost_kib INT NOT NULL,   
-    auth_string_parallelism_factor INT NOT NULL,
-    auth_string_iters INT NOT NULL,
-
-    password_encryption_salt BYTEA NOT NULL,
-    password_encryption_memory_cost_kib INT NOT NULL,
-    password_encryption_parallelism_factor INT NOT NULL,
-    password_encryption_iters INT NOT NULL,
-
-    recovery_key_salt BYTEA NOT NULL,
-    recovery_key_memory_cost_kib INT NOT NULL,
-    recovery_key_parallelism_factor INT NOT NULL,
-    recovery_key_iters INT NOT NULL,
-
-    encryption_key_encrypted_with_password BYTEA NOT NULL,
-    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL
 );
 
 -- Foreign keys
@@ -222,7 +220,6 @@ ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) 
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;
 ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_otps ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_otps ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE user_backup_codes ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_security_data ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;

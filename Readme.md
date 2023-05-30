@@ -498,16 +498,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Change password via OTP ("reset password"/"forgot password" in addition to the existing "change password")
-* Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
-* Get email delivery set up (Amazon SES?)
-  - [x] OTP for sign in 
-  - [ ] OTP for change password (send first, then confirm upon password change)
-  - [ ] Forgot Password
-  - [ ] OTP for forgot password
-  - [x] User creation verification
-  - [x] User deletion verification
-  - [ ] Budget shared? Users need a way to turn off this notification
 * Search through TODOs in code
 * Unit tests!
 * Update readme documentation
@@ -516,7 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Simplify the `Job` trait (and in `main.rs`) in entries-job-scheduler. A lot of the tracking could be done by the `Runner` (for example, tracking the last run time, recording the runs, remembering how frequently jobs should be run, tracking what is currently running, etc.). The name of the job can be given to the runner upon job registration. The job should just need a thread pool reference (perhaps this could be passed into `run_handler_func`, which should be renamed to `run`).
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
@@ -537,7 +526,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Budget comments, entry comments
   - Reactions to said comments
-* As an optimization, Daos shouldn't use `Rc<RefCell<DbConnection>>`. They should just pass `mut` pointers (which is safe because the Dao will only ever access one at a time).
 * Validation for `entries_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
 * Use lifetimes to reduce they copying of strings (e.g. TokenPair, TokenClaims, perhaps some of the OutputX structs, etc)
 * Budget user get request logic should be handled in a query to eliminate multiple queries
