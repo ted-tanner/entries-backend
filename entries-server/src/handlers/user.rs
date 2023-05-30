@@ -318,7 +318,6 @@ pub async fn change_password(
     new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let current_auth_string = new_password_data.current_auth_string.clone();
     let user_id = user_access_token.0.user_id;
 
     throttle
@@ -330,13 +329,6 @@ pub async fn change_password(
             "Provided password is too long. Max: 512 bytes",
         ));
     }
-
-    handlers::verification::verify_auth_string(
-        &current_auth_string,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
 
     handlers::verification::verify_otp(&new_password_data.otp, user_id, &db_thread_pool).await?;
 
@@ -408,13 +400,6 @@ pub async fn change_recovery_key(
     throttle
         .enforce(&user_id, "change_recovery_key", &db_thread_pool)
         .await?;
-
-    handlers::verification::verify_auth_string(
-        &new_recovery_key_data.auth_string,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
 
     handlers::verification::verify_otp(
         &new_recovery_key_data.otp,

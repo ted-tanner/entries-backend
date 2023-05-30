@@ -2,7 +2,7 @@ use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    CredentialPair, InputBackupCode, InputEmail, InputOtp, InputReauth, OutputBackupCodes,
+    CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputBackupCodes,
     OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
@@ -13,10 +13,8 @@ use actix_web::{web, HttpResponse};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::oneshot;
 
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
@@ -150,43 +148,13 @@ pub async fn sign_in(
     }
 
     let user_id = hash_and_status.user_id;
-    let credentials_ref = Arc::clone(&credentials);
 
-    let (sender, receiver) = oneshot::channel();
-
-    rayon::spawn(move || {
-        let hash = match argon2_kdf::Hash::from_str(&hash_and_status.auth_string_hash) {
-            Ok(h) => h,
-            Err(e) => {
-                sender.send(Err(e)).expect("Sending to channel failed");
-                return;
-            }
-        };
-
-        let does_auth_string_match_hash = hash.verify_with_secret(
-            &credentials_ref.auth_string,
-            argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
-        );
-
-        sender
-            .send(Ok(does_auth_string_match_hash))
-            .expect("Sending to channel failed");
-    });
-
-    match receiver.await? {
-        Ok(true) => (),
-        Ok(false) => {
-            return Err(HttpErrorResponse::IncorrectCredential(
-                "Incorrect email or auth string",
-            ));
-        }
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
-                "Failed to validate auth string",
-            ));
-        }
-    };
+    handlers::verification::verify_auth_string(
+        &credentials.auth_string,
+        &credentials.email,
+        &db_thread_pool,
+    )
+    .await?;
 
     let mut signin_token = AuthToken::new(
         user_id,
@@ -355,7 +323,7 @@ pub async fn use_backup_code_for_signin(
 pub async fn regenerate_backup_codes(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    reauth: web::Json<InputReauth>,
+    otp: web::Json<InputOtp>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
@@ -364,14 +332,7 @@ pub async fn regenerate_backup_codes(
         .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_auth_string(
-        &reauth.auth_string,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
-
-    handlers::verification::verify_otp(&reauth.otp, user_access_token.0.user_id, &db_thread_pool)
+    handlers::verification::verify_otp(&otp.otp, user_access_token.0.user_id, &db_thread_pool)
         .await?;
 
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));

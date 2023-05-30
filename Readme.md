@@ -498,7 +498,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Endpoints for USING recovery key
 * Change password via OTP ("reset password"/"forgot password" in addition to the existing "change password")
 * Throttle the "forgot password" endpoint (1 time every minute). If email address isn't found or endpoint is throttled, return a normal 200 response.
 * Get email delivery set up (Amazon SES?)

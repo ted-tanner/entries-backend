@@ -155,7 +155,7 @@ pub mod verification {
             Ok(true) => (),
             Ok(false) => {
                 return Err(HttpErrorResponse::IncorrectCredential(
-                    "Current auth string was incorrect",
+                    "Auth string was incorrect",
                 ));
             }
             Err(e) => {
