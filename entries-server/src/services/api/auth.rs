@@ -18,6 +18,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/use_backup_code_for_signin",
                 web::post().to(handlers::auth::use_backup_code_for_signin),
             )
+            .route(
+                "/regenerate_backup_codes",
+                web::put().to(handlers::auth::regenerate_backup_codes),
+            )
             .route("obtain_otp", web::get().to(handlers::auth::obtain_otp))
             .route(
                 "/refresh_tokens",

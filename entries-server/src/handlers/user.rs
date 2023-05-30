@@ -10,9 +10,9 @@ use entries_utils::html::templates::{
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
     InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputReauth, InputUser,
-    OutputBackupCodes, OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion,
-    OutputPublicKey, OutputVerificationEmailSent,
+    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputUser,
+    OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion, OutputPublicKey,
+    OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -129,7 +129,7 @@ pub async fn create(
         }
     };
 
-    let backup_codes = Arc::new(Otp::generate_multiple(12, 6));
+    let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
     let backup_codes_ref = Arc::clone(&backup_codes);
 
     let user_data_ref = Arc::clone(&user_data);
@@ -446,51 +446,6 @@ pub async fn change_recovery_key(
     };
 
     Ok(HttpResponse::Ok().finish())
-}
-
-pub async fn regenerate_backup_codes(
-    db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    reauth: web::Json<InputReauth>,
-    throttle: Throttle<6, 15>,
-) -> Result<HttpResponse, HttpErrorResponse> {
-    let user_id = user_access_token.0.user_id;
-
-    throttle
-        .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
-        .await?;
-
-    handlers::verification::verify_auth_string(
-        &reauth.auth_string,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
-
-    handlers::verification::verify_otp(&reauth.otp, user_access_token.0.user_id, &db_thread_pool)
-        .await?;
-
-    let backup_codes = Arc::new(Otp::generate_multiple(12, 6));
-    let backup_codes_ref = Arc::clone(&backup_codes);
-
-    match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.replace_backup_codes(user_id, &backup_codes_ref)
-    })
-    .await?
-    {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
-                "Failed to replace backup codes",
-            ));
-        }
-    };
-
-    Ok(HttpResponse::Ok().json(OutputBackupCodes {
-        backup_codes: &backup_codes,
-    }))
 }
 
 // TODO: Initiate reset password by sending an email with a code ("forgot password")

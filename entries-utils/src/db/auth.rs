@@ -5,12 +5,15 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::NewBlacklistedToken;
+use crate::models::user_backup_code::NewUserBackupCode;
 use crate::models::user_otp::{NewUserOtp, UserOtp};
 use crate::request_io::OutputSigninNonceAndHashParams;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::signin_nonces as signin_nonce_fields;
 use crate::schema::signin_nonces::dsl::signin_nonces;
+use crate::schema::user_backup_codes as user_backup_code_fields;
+use crate::schema::user_backup_codes::dsl::user_backup_codes;
 use crate::schema::user_otps as user_otp_fields;
 use crate::schema::user_otps::dsl::user_otps;
 use crate::schema::user_security_data as user_security_data_fields;
@@ -166,6 +169,43 @@ impl Dao {
 
     pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {
         dsl::delete(user_otps.filter(user_otp_fields::expiration.lt(SystemTime::now())))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn replace_backup_codes(
+        &mut self,
+        user_id: Uuid,
+        codes: &[String],
+    ) -> Result<(), DaoError> {
+        let codes = codes
+            .iter()
+            .map(|code| NewUserBackupCode { user_id, code })
+            .collect::<Vec<_>>();
+
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                diesel::delete(
+                    user_backup_codes.filter(user_backup_code_fields::user_id.eq(user_id)),
+                )
+                .execute(conn)?;
+
+                dsl::insert_into(user_backup_codes)
+                    .values(&codes)
+                    .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
+    pub fn delete_backup_code(&mut self, code: &str, user_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(user_backup_codes.find((user_id, code)))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())

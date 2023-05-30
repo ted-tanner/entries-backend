@@ -19,7 +19,6 @@ use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
-use crate::schema::user_backup_codes as user_backup_code_fields;
 use crate::schema::user_backup_codes::dsl::user_backup_codes;
 use crate::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
 use crate::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
@@ -174,43 +173,6 @@ impl Dao {
             user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age),
         ))
         .execute(&mut self.db_thread_pool.get()?)?;
-
-        Ok(())
-    }
-
-    pub fn replace_backup_codes(
-        &mut self,
-        user_id: Uuid,
-        codes: &[String],
-    ) -> Result<(), DaoError> {
-        let codes = codes
-            .iter()
-            .map(|code| NewUserBackupCode { user_id, code })
-            .collect::<Vec<_>>();
-
-        let mut db_connection = self.db_thread_pool.get()?;
-
-        db_connection
-            .build_transaction()
-            .run::<_, DaoError, _>(|conn| {
-                diesel::delete(
-                    user_backup_codes.filter(user_backup_code_fields::user_id.eq(user_id)),
-                )
-                .execute(conn)?;
-
-                dsl::insert_into(user_backup_codes)
-                    .values(&codes)
-                    .execute(conn)?;
-
-                Ok(())
-            })?;
-
-        Ok(())
-    }
-
-    pub fn delete_backup_code(&mut self, code: &str, user_id: Uuid) -> Result<(), DaoError> {
-        diesel::delete(user_backup_codes.find((user_id, code)))
-            .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }

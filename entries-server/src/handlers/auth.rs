@@ -1,8 +1,9 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
+use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputSigninNonceAndHashParams,
-    SigninToken, TokenPair,
+    CredentialPair, InputBackupCode, InputEmail, InputOtp, InputReauth, OutputBackupCodes,
+    OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 use entries_utils::token::Token;
@@ -268,6 +269,29 @@ pub async fn verify_otp_for_signin(
     Ok(HttpResponse::Ok().json(token_pair))
 }
 
+pub async fn obtain_otp(
+    db_thread_pool: web::Data<DbThreadPool>,
+    smtp_thread_pool: web::Data<EmailSender>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    throttle: Throttle<4, 10>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let user_id = user_access_token.0.user_id;
+
+    throttle
+        .enforce(&user_id, "sign_in", &db_thread_pool)
+        .await?;
+
+    handlers::verification::generate_and_email_otp(
+        user_id,
+        &user_access_token.0.user_email,
+        db_thread_pool.as_ref(),
+        smtp_thread_pool.as_ref(),
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 pub async fn use_backup_code_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
@@ -283,8 +307,8 @@ pub async fn use_backup_code_for_signin(
         .await?;
 
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.delete_backup_code(&code.code, user_id)
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.delete_backup_code(&code.code, user_id)
     })
     .await?
     {
@@ -328,27 +352,49 @@ pub async fn use_backup_code_for_signin(
     Ok(HttpResponse::Ok().json(token_pair))
 }
 
-pub async fn obtain_otp(
+pub async fn regenerate_backup_codes(
     db_thread_pool: web::Data<DbThreadPool>,
-    smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    throttle: Throttle<4, 10>,
+    reauth: web::Json<InputReauth>,
+    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
 
     throttle
-        .enforce(&user_id, "sign_in", &db_thread_pool)
+        .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::generate_and_email_otp(
-        user_id,
+    handlers::verification::verify_auth_string(
+        &reauth.auth_string,
         &user_access_token.0.user_email,
-        db_thread_pool.as_ref(),
-        smtp_thread_pool.as_ref(),
+        &db_thread_pool,
     )
     .await?;
 
-    Ok(HttpResponse::Ok().finish())
+    handlers::verification::verify_otp(&reauth.otp, user_access_token.0.user_id, &db_thread_pool)
+        .await?;
+
+    let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
+    let backup_codes_ref = Arc::clone(&backup_codes);
+
+    match web::block(move || {
+        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.replace_backup_codes(user_id, &backup_codes_ref)
+    })
+    .await?
+    {
+        Ok(id) => id,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to replace backup codes",
+            ));
+        }
+    };
+
+    Ok(HttpResponse::Ok().json(OutputBackupCodes {
+        backup_codes: &backup_codes,
+    }))
 }
 
 pub async fn refresh_tokens(
