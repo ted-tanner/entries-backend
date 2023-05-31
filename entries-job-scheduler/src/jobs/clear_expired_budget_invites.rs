@@ -180,25 +180,37 @@ mod tests {
 
         let mut job = ClearExpiredBudgetInvitesJob::new(env::db::DB_THREAD_POOL.clone());
 
-        assert!(budget_share_invites::table
-            .find(new_budget_share_invite_exp.id)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
-            .is_ok());
+        assert_eq!(
+            budget_share_invites::table
+                .find(new_budget_share_invite_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
 
-        assert!(budget_accept_keys::table
-            .find((new_budget_accept_key_exp.key_id, new_budget.id))
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
-            .is_ok());
+        assert_eq!(
+            budget_accept_keys::table
+                .find((new_budget_accept_key_exp.key_id, new_budget.id))
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
 
-        assert!(budget_share_invites::table
-            .find(new_budget_share_invite_not_exp.id)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
-            .is_ok());
+        assert_eq!(
+            budget_share_invites::table
+                .find(new_budget_share_invite_not_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
 
-        assert!(budget_accept_keys::table
-            .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
-            .is_ok());
+        assert_eq!(
+            budget_accept_keys::table
+                .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
 
         job.execute().await.unwrap();
 
