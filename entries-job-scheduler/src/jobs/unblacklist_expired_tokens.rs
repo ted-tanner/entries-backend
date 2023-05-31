@@ -64,8 +64,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_execute() {
-        let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
-
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
         let new_user = InputUser {
@@ -158,6 +156,8 @@ mod tests {
 
         let mut job = UnblacklistExpiredTokensJob::new(env::db::DB_THREAD_POOL.clone());
         job.execute().await.unwrap();
+
+        let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0)

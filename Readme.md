@@ -498,7 +498,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Search through TODOs in code
 * Unit tests!
 * Update readme documentation
   - Add a section for the job scheduler

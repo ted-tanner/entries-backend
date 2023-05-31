@@ -174,7 +174,7 @@ mod tests {
     #[tokio::test]
     async fn test_start() {
         let mut job_runner =
-            JobRunner::new(Duration::from_micros(500), env::db::DB_THREAD_POOL.clone());
+            JobRunner::new(Duration::from_millis(1), env::db::DB_THREAD_POOL.clone());
         let job1 = MockJob::new();
         let job2 = MockJob::new();
 
@@ -185,10 +185,10 @@ mod tests {
         let job2_run_count = Arc::clone(&job2.runs);
 
         job_runner
-            .register(Box::new(job1), Duration::from_millis(10))
+            .register(Box::new(job1), Duration::from_millis(40))
             .await;
         job_runner
-            .register(Box::new(job2), Duration::from_millis(15))
+            .register(Box::new(job2), Duration::from_millis(60))
             .await;
 
         tokio::task::spawn(async move {
@@ -199,20 +199,20 @@ mod tests {
             job_runner.start().await
         });
 
-        time::sleep(Duration::from_millis(5)).await;
+        time::sleep(Duration::from_millis(20)).await;
 
         assert_eq!(*job1_run_count.lock().await, 0);
         assert_eq!(*job2_run_count.lock().await, 0);
 
-        time::sleep(Duration::from_millis(7)).await;
+        time::sleep(Duration::from_millis(28)).await;
         assert_eq!(*job1_run_count.lock().await, 1);
         assert_eq!(*job2_run_count.lock().await, 0);
 
-        time::sleep(Duration::from_millis(5)).await;
+        time::sleep(Duration::from_millis(24)).await;
         assert_eq!(*job1_run_count.lock().await, 1);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        time::sleep(Duration::from_millis(5)).await;
+        time::sleep(Duration::from_millis(16)).await;
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
@@ -224,7 +224,7 @@ mod tests {
 
         assert!(
             mock_job_last_run < SystemTime::now()
-                && mock_job_last_run > SystemTime::now() - Duration::from_millis(10)
+                && mock_job_last_run > SystemTime::now() - Duration::from_millis(40)
         );
     }
 }
