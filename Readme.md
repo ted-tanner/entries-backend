@@ -499,7 +499,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Unit tests!
-  - [ ] Jobs
+  - [x] Jobs
   - [ ] Handlers!
   - [ ] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation
