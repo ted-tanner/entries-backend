@@ -39,3 +39,252 @@ impl Job for ClearOldUserDeletionRequestsJob {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use entries_utils::models::budget::NewBudget;
+    use entries_utils::models::budget_access_key::NewBudgetAccessKey;
+    use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
+    use entries_utils::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
+    use entries_utils::request_io::InputUser;
+    use entries_utils::schema::{budget_access_keys, budgets, user_deletion_request_budget_keys};
+    use entries_utils::{db::user, schema::user_deletion_requests};
+
+    use diesel::{QueryDsl, RunQueryDsl};
+    use rand::Rng;
+    use std::time::{Duration, SystemTime};
+    use uuid::Uuid;
+
+    use crate::env;
+
+    #[tokio::test]
+    async fn test_execute() {
+        let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let new_user1 = InputUser {
+            email: format!("test_user{}@test.com", &user1_number),
+
+            auth_string: Vec::new(),
+
+            auth_string_salt: Vec::new(),
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: Vec::new(),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 2,
+
+            recovery_key_salt: Vec::new(),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 2,
+
+            encryption_key_encrypted_with_password: Vec::new(),
+            encryption_key_encrypted_with_recovery_key: Vec::new(),
+
+            public_key: Vec::new(),
+
+            preferences_encrypted: Vec::new(),
+            user_keystore_encrypted: Vec::new(),
+
+            acknowledge_agreement: true,
+        };
+
+        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
+
+        let user1_id = user_dao
+            .create_user(&new_user1, "Test", &Vec::new())
+            .unwrap();
+        user_dao.verify_user_creation(user1_id).unwrap();
+
+        let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let new_user2 = InputUser {
+            email: format!("test_user{}@test.com", &user2_number),
+
+            auth_string: Vec::new(),
+
+            auth_string_salt: Vec::new(),
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: Vec::new(),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 2,
+
+            recovery_key_salt: Vec::new(),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 2,
+
+            encryption_key_encrypted_with_password: Vec::new(),
+            encryption_key_encrypted_with_recovery_key: Vec::new(),
+
+            public_key: Vec::new(),
+
+            preferences_encrypted: Vec::new(),
+            user_keystore_encrypted: Vec::new(),
+
+            acknowledge_agreement: true,
+        };
+
+        let user2_id = user_dao
+            .create_user(&new_user2, "Test", &Vec::new())
+            .unwrap();
+        user_dao.verify_user_creation(user2_id).unwrap();
+
+        let new_budget = NewBudget {
+            id: Uuid::new_v4(),
+            encrypted_blob: &[0; 4],
+            encrypted_blob_sha1_hash: &[0; 4],
+            modified_timestamp: SystemTime::now(),
+        };
+
+        diesel::insert_into(budgets::table)
+            .values(&new_budget)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_budget_access_key1 = NewBudgetAccessKey {
+            key_id: Uuid::new_v4(),
+            budget_id: new_budget.id,
+            public_key: &[0; 4],
+            read_only: false,
+        };
+
+        diesel::insert_into(budget_access_keys::table)
+            .values(&new_budget_access_key1)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_budget_access_key2 = NewBudgetAccessKey {
+            key_id: Uuid::new_v4(),
+            budget_id: new_budget.id,
+            public_key: &[0; 4],
+            read_only: false,
+        };
+
+        diesel::insert_into(budget_access_keys::table)
+            .values(&new_budget_access_key2)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_deletion_req_exp = NewUserDeletionRequest {
+            id: Uuid::new_v4(),
+            user_id: user1_id,
+            ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
+        };
+
+        diesel::insert_into(user_deletion_requests::table)
+            .values(&new_deletion_req_exp)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_deletion_req_key_exp = NewUserDeletionRequestBudgetKey {
+            key_id: new_budget_access_key1.key_id,
+            user_id: user1_id,
+            delete_me_time: SystemTime::now() - Duration::from_nanos(1),
+        };
+
+        diesel::insert_into(user_deletion_request_budget_keys::table)
+            .values(&new_deletion_req_key_exp)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_deletion_req_not_exp = NewUserDeletionRequest {
+            id: Uuid::new_v4(),
+            user_id: user2_id,
+            ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
+        };
+
+        diesel::insert_into(user_deletion_requests::table)
+            .values(&new_deletion_req_not_exp)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_deletion_req_key_not_exp = NewUserDeletionRequestBudgetKey {
+            key_id: new_budget_access_key2.key_id,
+            user_id: user2_id,
+            delete_me_time: SystemTime::now() + Duration::from_secs(10),
+        };
+
+        diesel::insert_into(user_deletion_request_budget_keys::table)
+            .values(&new_deletion_req_key_not_exp)
+            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let mut job = ClearOldUserDeletionRequestsJob::new(env::db::DB_THREAD_POOL.clone());
+
+        assert_eq!(
+            user_deletion_requests::table
+                .find(new_deletion_req_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            user_deletion_request_budget_keys::table
+                .find(new_deletion_req_key_exp.key_id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            user_deletion_requests::table
+                .find(new_deletion_req_not_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            user_deletion_request_budget_keys::table
+                .find(new_deletion_req_key_not_exp.key_id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+
+        job.execute().await.unwrap();
+
+        assert_eq!(
+            user_deletion_requests::table
+                .find(new_deletion_req_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0
+        );
+
+        assert_eq!(
+            user_deletion_request_budget_keys::table
+                .find(new_deletion_req_key_exp.key_id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0
+        );
+
+        assert_eq!(
+            user_deletion_requests::table
+                .find(new_deletion_req_not_exp.id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            user_deletion_request_budget_keys::table
+                .find(new_deletion_req_key_not_exp.key_id)
+                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1
+        );
+    }
+}

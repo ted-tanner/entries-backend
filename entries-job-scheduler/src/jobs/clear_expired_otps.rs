@@ -150,7 +150,7 @@ mod tests {
 
         let new_otp_not_exp = NewUserOtp {
             user_email: &new_user2.email,
-            otp: "ABC123",
+            otp: "ABC456",
             expiration: SystemTime::now() + Duration::from_secs(100),
         };
 
