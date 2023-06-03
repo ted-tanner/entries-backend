@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenError, TokenParts, TokenSignatureVerifier};
+use crate::token::{HmacSha256Verifier, Token, TokenError, TokenParts};
 
 use aes_gcm::{aead::Aead, Aes128Gcm};
 use hmac::{Hmac, Mac};
@@ -200,32 +200,6 @@ impl AuthToken {
     }
 }
 
-pub struct HmacSha256Verifier {}
-
-impl TokenSignatureVerifier for HmacSha256Verifier {
-    fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool {
-        let mut mac = Hmac::<Sha256>::new(key.into());
-        mac.update(json.as_bytes());
-
-        let correct_hash = mac.finalize().into_bytes();
-
-        let mut hashes_dont_match = 0u8;
-
-        if correct_hash.len() != signature.len() || signature.is_empty() {
-            return false;
-        }
-
-        // Do bitwise comparison to prevent timing attacks
-        for (i, correct_hash_byte) in correct_hash.iter().enumerate() {
-            unsafe {
-                hashes_dont_match |= correct_hash_byte ^ signature.get_unchecked(i);
-            }
-        }
-
-        hashes_dont_match == 0
-    }
-}
-
 impl<'a> Token<'a> for AuthToken {
     type Claims = AuthTokenClaims;
     type InternalClaims = AuthTokenEncryptedClaims;
@@ -265,3 +239,9 @@ impl<'a> Token<'a> for AuthToken {
         }
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     #[test]
+//     fn test_
+// }
