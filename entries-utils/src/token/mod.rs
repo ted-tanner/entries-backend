@@ -83,7 +83,7 @@ pub trait Token<'a> {
 
     fn verify(&'a self, key: &[u8]) -> bool {
         if self.expiration()
-            >= SystemTime::now()
+            <= SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
@@ -210,15 +210,15 @@ mod tests {
     impl TestToken {
         fn new(claims: TestClaims) -> Self {
             Self {
-                claims: claims,
+                claims,
                 parts: None,
             }
         }
 
-        fn sign_and_encode(&self) -> String {
+        fn sign_and_encode(&self, key: &[u8; 64]) -> String {
             let mut json_of_claims = serde_json::to_vec(&self.claims).unwrap();
 
-            let mut mac = Hmac::<Sha256>::new((&[0; 64]).into());
+            let mut mac = Hmac::<Sha256>::new(key.into());
             mac.update(&json_of_claims);
             let hash = hex::encode(mac.finalize().into_bytes());
 
@@ -237,7 +237,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let token = TestToken::new(TestClaims { id, exp });
-        let token = token.sign_and_encode();
+        let token = token.sign_and_encode(&[0; 64]);
 
         let token = TestToken::from_str(&token).unwrap();
         assert!(!token.parts.as_ref().unwrap().signature.is_empty());
@@ -245,5 +245,21 @@ mod tests {
         let claims = token.claims();
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
+    }
+
+    #[test]
+    fn test_verify() {
+        let id = Uuid::new_v4();
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let key = [0; 64];
+
+        let token = TestToken::new(TestClaims { id, exp });
+        let token = token.sign_and_encode(&key);
+
+        let token = TestToken::from_str(&token).unwrap();
+        assert!(token.verify(&key));
     }
 }
