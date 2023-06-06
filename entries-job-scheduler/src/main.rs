@@ -51,31 +51,6 @@ fn main() {
 
     env::initialize(&conf_file_path.unwrap_or(String::from("conf/jobs-conf.toml")));
 
-    Logger::with(LogSpecification::info())
-        .log_to_file(FileSpec::default().directory("./logs"))
-        .rotate(
-            Criterion::Age(Age::Day),
-            Naming::Timestamps,
-            Cleanup::KeepLogAndCompressedFiles(60, 365),
-        )
-        .cleanup_in_background_thread(true)
-        .duplicate_to_stdout(Duplicate::All)
-        .write_mode(WriteMode::BufferAndFlush)
-        .format(|writer, now, record| {
-            write!(
-                writer,
-                "{:5} | {} | {}:{} | {}",
-                record.level(),
-                now.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
-                record.module_path().unwrap_or("<unknown>"),
-                record.line().unwrap_or(0),
-                record.args()
-            )
-        })
-        .use_utc()
-        .start()
-        .expect("Failed to starer");
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(env::CONF.runner.worker_threads.unwrap_or(num_cpus::get()))
         .max_blocking_threads(env::CONF.runner.max_blocking_threads.unwrap_or(512))
@@ -83,6 +58,31 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
+            Logger::with(LogSpecification::info())
+                .log_to_file(FileSpec::default().directory("./logs"))
+                .rotate(
+                    Criterion::Age(Age::Day),
+                    Naming::Timestamps,
+                    Cleanup::KeepLogAndCompressedFiles(60, 365),
+                )
+                .cleanup_in_background_thread(true)
+                .duplicate_to_stdout(Duplicate::All)
+                .write_mode(WriteMode::BufferAndFlush)
+                .format(|writer, now, record| {
+                    write!(
+                        writer,
+                        "{:5} | {} | {}:{} | {}",
+                        record.level(),
+                        now.format("%Y-%m-%dT%H:%M:%S%.6fZ"),
+                        record.module_path().unwrap_or("<unknown>"),
+                        record.line().unwrap_or(0),
+                        record.args()
+                    )
+                })
+                .use_utc()
+                .start()
+                .expect("Failed to start logger");
+
             let mut job_runner = JobRunner::new(
                 Duration::from_secs(env::CONF.runner.update_frequency_secs),
                 env::db::DB_THREAD_POOL.clone(),
