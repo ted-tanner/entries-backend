@@ -49,7 +49,7 @@ pub trait Token<'a> {
     where
         Self: Sized,
     {
-        let decoded_token = match base64::decode_config(token.as_bytes(), base64::URL_SAFE_NO_PAD) {
+        let decoded_token = match base64::decode_config(token, base64::URL_SAFE_NO_PAD) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
         };

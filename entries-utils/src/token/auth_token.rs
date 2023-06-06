@@ -55,6 +55,7 @@ pub struct AuthTokenClaims {
     pub token_type: AuthTokenType,
 }
 
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthTokenEncryptedClaims {
     pub exp: u64,    // Expiration
@@ -269,13 +270,28 @@ mod tests {
 
         let t = token.sign_and_encode(&signing_key);
         assert!(String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
-
         assert!(token.verify(&signing_key));
 
-        let t = token.sign_and_encode(&signing_key);
-        assert!(String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&encryption_key);
 
-        assert!(token.verify(&signing_key));
+        let mut t =
+            base64::decode_config(token.sign_and_encode(&signing_key), base64::URL_SAFE_NO_PAD)
+                .unwrap();
+
+        // Make the signature invalid
+        let last_char = t.pop().unwrap();
+        if last_char == b'a' {
+            t.push(b'b');
+        } else {
+            t.push(b'a');
+        }
+
+        let t = base64::encode_config(t, base64::URL_SAFE_NO_PAD);
+
+        let mut token = AuthToken::from_str(&t).unwrap();
+        token.encrypt(&encryption_key);
+        assert!(!token.verify(&signing_key));
 
         let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
         token.encrypt(&encryption_key);
