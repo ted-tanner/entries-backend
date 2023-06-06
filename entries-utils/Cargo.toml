@@ -28,5 +28,5 @@ zeroize = { version = "1.5", features = ["zeroize_derive"] }
 [dev-dependencies]
 lazy_static = "1.4"
 num_cpus = "1.14"
-rand = "0.8"
+old_rand = { package = "rand", version = "0.7"}
 toml = "0.5"

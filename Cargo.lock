@@ -919,6 +919,7 @@ dependencies = [
  "log",
  "num_cpus",
  "r2d2",
+ "rand 0.7.3",
  "rand 0.8.5",
  "serde",
  "serde_json",

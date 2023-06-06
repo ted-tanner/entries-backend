@@ -162,7 +162,9 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 mod tests {
     use super::*;
 
+    use ed25519_dalek::{Keypair, Signer};
     use hmac::{Hmac, Mac};
+    use old_rand::rngs::OsRng;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
     use uuid::Uuid;
@@ -173,18 +175,18 @@ mod tests {
         exp: u64,
     }
 
-    struct TestToken {
+    struct TestTokenHmac {
         claims: TestClaims,
         parts: Option<TokenParts>,
     }
 
-    impl<'a> Token<'a> for TestToken {
+    impl<'a> Token<'a> for TestTokenHmac {
         type Claims = TestClaims;
         type InternalClaims = TestClaims;
         type Verifier = HmacSha256Verifier;
 
         fn token_name() -> &'static str {
-            "TestToken"
+            "TestTokenHmac"
         }
 
         fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
@@ -207,7 +209,7 @@ mod tests {
         }
     }
 
-    impl TestToken {
+    impl TestTokenHmac {
         fn new(claims: TestClaims) -> Self {
             Self {
                 claims,
@@ -227,6 +229,80 @@ mod tests {
 
             base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
         }
+
+        fn make_signature_invalid(&mut self) {
+            let signature = &mut self.parts.as_mut().unwrap().signature;
+
+            if signature.last().unwrap() == &b'a' {
+                *signature.last_mut().unwrap() = b'b';
+            } else {
+                *signature.last_mut().unwrap() = b'a';
+            }
+        }
+    }
+
+    struct TestTokenEd25519 {
+        claims: TestClaims,
+        parts: Option<TokenParts>,
+    }
+
+    impl<'a> Token<'a> for TestTokenEd25519 {
+        type Claims = TestClaims;
+        type InternalClaims = TestClaims;
+        type Verifier = Ed25519Verifier;
+
+        fn token_name() -> &'static str {
+            "TestTokenEd"
+        }
+
+        fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
+            Self {
+                claims,
+                parts: Some(parts),
+            }
+        }
+
+        fn expiration(&self) -> u64 {
+            self.claims.exp
+        }
+
+        fn parts(&'a self) -> &'a Option<TokenParts> {
+            &self.parts
+        }
+
+        fn claims(self) -> Self::Claims {
+            self.claims
+        }
+    }
+
+    impl TestTokenEd25519 {
+        fn new(claims: TestClaims) -> Self {
+            Self {
+                claims,
+                parts: None,
+            }
+        }
+
+        fn sign_and_encode(&self, keypair: &Keypair) -> String {
+            let mut json_of_claims = serde_json::to_vec(&self.claims).unwrap();
+
+            let hash = hex::encode(keypair.sign(&json_of_claims));
+
+            json_of_claims.push(124); // 124 is the ASCII value of the | character
+            json_of_claims.extend_from_slice(&hash.into_bytes());
+
+            base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
+        }
+
+        fn make_signature_invalid(&mut self) {
+            let signature = &mut self.parts.as_mut().unwrap().signature;
+
+            if signature.last().unwrap() == &b'a' {
+                *signature.last_mut().unwrap() = b'b';
+            } else {
+                *signature.last_mut().unwrap() = b'a';
+            }
+        }
     }
 
     #[test]
@@ -236,10 +312,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestToken::new(TestClaims { id, exp });
+        let token = TestTokenHmac::new(TestClaims { id, exp });
         let token = token.sign_and_encode(&[0; 64]);
 
-        let token = TestToken::from_str(&token).unwrap();
+        let token = TestTokenHmac::from_str(&token).unwrap();
         assert!(!token.parts.as_ref().unwrap().signature.is_empty());
 
         let claims = token.claims();
@@ -248,18 +324,61 @@ mod tests {
     }
 
     #[test]
-    fn test_verify() {
+    fn test_verify_hmac() {
         let id = Uuid::new_v4();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let key = [0; 64];
+        let key = [2; 64];
 
-        let token = TestToken::new(TestClaims { id, exp });
+        let token = TestTokenHmac::new(TestClaims { id, exp });
         let token = token.sign_and_encode(&key);
 
-        let token = TestToken::from_str(&token).unwrap();
+        let mut token = TestTokenHmac::from_str(&token).unwrap();
         assert!(token.verify(&key));
+
+        token.make_signature_invalid();
+        assert!(!token.verify(&key));
+
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let token = TestTokenHmac::new(TestClaims { id, exp });
+        let token = token.sign_and_encode(&key);
+
+        let token = TestTokenHmac::from_str(&token).unwrap();
+        assert!(!token.verify(&key));
+    }
+
+    #[test]
+    fn test_verify_ed25519() {
+        let id = Uuid::new_v4();
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let keypair = Keypair::generate(&mut OsRng {});
+        let pub_key = keypair.public.as_bytes();
+
+        let token = TestTokenEd25519::new(TestClaims { id, exp });
+        let token = token.sign_and_encode(&keypair);
+
+        let mut token = TestTokenEd25519::from_str(&token).unwrap();
+        assert!(token.verify(&pub_key[0..pub_key.len()]));
+
+        token.make_signature_invalid();
+        assert!(!token.verify(&pub_key[0..pub_key.len()]));
+
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let token = TestTokenEd25519::new(TestClaims { id, exp });
+        let token = token.sign_and_encode(&keypair);
+
+        let token = TestTokenEd25519::from_str(&token).unwrap();
+        assert!(!token.verify(&pub_key[0..pub_key.len()]));
     }
 }
