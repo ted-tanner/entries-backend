@@ -96,7 +96,10 @@ impl AuthToken {
             claims: AuthTokenClaimsState::Unencrypted(AuthTokenClaims {
                 user_id,
                 user_email: String::from(user_email),
-                expiration: expiration.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                expiration: expiration
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Unix timestamp could not be computed from expiration")
+                    .as_secs(),
                 token_type,
             }),
             parts: None,
@@ -240,8 +243,58 @@ impl<'a> Token<'a> for AuthToken {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #[test]
-//     fn test_
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use aes_gcm::{aead::KeyInit, Aes128Gcm};
+    use std::time::Duration;
+
+    #[test]
+    fn test_encrypt_decrypt_sign_verify() {
+        let user_id = Uuid::new_v4();
+        let user_email = "test1234@example.com";
+        let exp = SystemTime::now() + Duration::from_secs(10);
+        let encryption_key = Aes128Gcm::new(&[8; 16].into());
+        let signing_key = [9; 64];
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&encryption_key);
+
+        let t = token.sign_and_encode(&signing_key);
+        assert!(!String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
+
+        let mut token = AuthToken::from_str(&t).unwrap();
+        token.decrypt(&encryption_key).unwrap();
+
+        let t = token.sign_and_encode(&signing_key);
+        assert!(String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
+
+        assert!(token.verify(&signing_key));
+
+        let t = token.sign_and_encode(&signing_key);
+        assert!(String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
+
+        assert!(token.verify(&signing_key));
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&encryption_key);
+
+        let t = token.sign_and_encode(&signing_key);
+        let mut token = AuthToken::from_str(&t).unwrap();
+
+        token.decrypt(&encryption_key).unwrap();
+        assert!(token.verify(&signing_key));
+
+        let exp = SystemTime::now() - Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&encryption_key);
+
+        let t = token.sign_and_encode(&signing_key);
+        let mut token = AuthToken::from_str(&t).unwrap();
+        token.decrypt(&encryption_key).unwrap();
+
+        assert!(!token.verify(&signing_key));
+    }
+}
