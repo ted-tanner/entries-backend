@@ -198,3 +198,395 @@ fn verify_token(
 
     Ok(claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use actix_web::dev::Payload;
+    use actix_web::test::TestRequest;
+    use uuid::Uuid;
+
+    use entries_utils::token::auth_token::AuthToken;
+
+    use crate::middleware::{FromHeader, FromQuery};
+
+    #[tokio::test]
+    async fn test_verified_from_header() {
+        let user_id = Uuid::new_v4();
+        let user_email = "test1234@example.com";
+        let exp = SystemTime::now() + Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            VerifiedToken::<Refresh, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            VerifiedToken::<UserDeletion, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let req = TestRequest::default()
+            .insert_header(("RefreshToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let exp = SystemTime::now() - Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let req = TestRequest::default().to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verified_from_query() {
+        let user_id = Uuid::new_v4();
+        let user_email = "test1234@example.com";
+        let exp = SystemTime::now() + Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            VerifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            VerifiedToken::<Refresh, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            VerifiedToken::<UserDeletion, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?RefreshToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let exp = SystemTime::now() - Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let req = TestRequest::default().to_http_request();
+
+        assert!(
+            VerifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unverified_from_header() {
+        let user_id = Uuid::new_v4();
+        let user_email = "test1234@example.com";
+        let exp = SystemTime::now() + Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            UnverifiedToken::<Refresh, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(UnverifiedToken::<UserDeletion, FromHeader>::from_request(
+            &req,
+            &mut Payload::None
+        )
+        .await
+        .is_err());
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_err()
+        );
+
+        let req = TestRequest::default()
+            .insert_header(("RefreshToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let exp = SystemTime::now() - Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .insert_header(("AccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_err()
+        );
+
+        let req = TestRequest::default().to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unverified_from_query() {
+        let user_id = Uuid::new_v4();
+        let user_email = "test1234@example.com";
+        let exp = SystemTime::now() + Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromHeader>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            UnverifiedToken::<Refresh, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+        assert!(
+            UnverifiedToken::<UserDeletion, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_err()
+        );
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?RefreshToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+
+        let exp = SystemTime::now() - Duration::from_secs(10);
+
+        let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Access);
+        token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let token = token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?AccessToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .unwrap()
+                .verify()
+                .is_err()
+        );
+
+        let req = TestRequest::default().to_http_request();
+
+        assert!(
+            UnverifiedToken::<Access, FromQuery>::from_request(&req, &mut Payload::None)
+                .await
+                .is_err()
+        );
+    }
+}
