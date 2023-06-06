@@ -42,3 +42,32 @@ impl Otp {
         otps_dont_match == 0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_verify() {
+        let otp = Otp::generate(8);
+        assert!(Otp::are_equal(&otp, &otp));
+        assert!(!Otp::are_equal(&otp, "ABCDEFGH"));
+        assert!(!Otp::are_equal(&otp, &otp[..7]));
+
+        let mut longer_otp = String::from(&otp);
+        longer_otp.push('A');
+        assert!(!Otp::are_equal(&otp, &longer_otp));
+
+        let otps = Otp::generate_multiple(9, 5);
+
+        for otp in otps {
+            assert!(Otp::are_equal(&otp, &otp));
+            assert!(!Otp::are_equal(&otp, "ABCDEFGHI"));
+            assert!(!Otp::are_equal(&otp, &otp[..8]));
+
+            let mut longer_otp = String::from(&otp);
+            longer_otp.push('A');
+            assert!(!Otp::are_equal(&otp, &longer_otp));
+        }
+    }
+}
