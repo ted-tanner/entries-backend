@@ -698,7 +698,7 @@ pub mod tests {
     use rand::Rng;
 
     #[actix_web::test]
-    async fn test_throttle_works() {
+    async fn test_create_user() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
