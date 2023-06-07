@@ -13,10 +13,10 @@ pub struct BudgetAcceptTokenClaims {
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetAcceptTokenInternalClaims {
-    iid: Uuid, // Invitation ID
-    kid: Uuid, // Budget Share Key ID
-    bid: Uuid, // Budget ID
-    exp: u64,  // Expiration
+    pub iid: Uuid, // Invitation ID
+    pub kid: Uuid, // Budget Share Key ID
+    pub bid: Uuid, // Budget ID
+    pub exp: u64,  // Expiration
 }
 
 pub struct BudgetAcceptToken {

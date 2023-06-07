@@ -11,8 +11,8 @@ pub struct BudgetInviteSenderTokenClaims {
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetInviteSenderTokenInternalClaims {
-    iid: Uuid, // Invitation ID
-    exp: u64,  // Expiration
+    pub iid: Uuid, // Invitation ID
+    pub exp: u64,  // Expiration
 }
 
 pub struct BudgetInviteSenderToken {

@@ -45,3 +45,238 @@ where
         future::ok(SpecialAccessToken(decoded_token, PhantomData, PhantomData))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use actix_web::dev::Payload;
+    use actix_web::test::TestRequest;
+    use ed25519::Signer;
+    use ed25519_dalek as ed25519;
+    use rand::rngs::OsRng;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
+
+    use entries_utils::token::{
+        budget_access_token::{BudgetAccessToken, BudgetAccessTokenInternalClaims},
+        budget_invite_sender_token::{
+            BudgetInviteSenderToken, BudgetInviteSenderTokenInternalClaims,
+        },
+    };
+
+    use crate::middleware::{FromHeader, FromQuery};
+
+    #[tokio::test]
+    async fn test_from_header() {
+        let kid = Uuid::new_v4();
+        let bid = Uuid::new_v4();
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = serde_json::to_vec(&claims).unwrap();
+        let claims = String::from_utf8_lossy(&claims);
+
+        let access_key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let access_public_key = access_key_pair.verifying_key().to_bytes();
+        let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .insert_header(("BudgetAccessToken", token.as_str()))
+            .to_http_request();
+
+        assert!(
+            SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_ok()
+        );
+        assert!(
+            SpecialAccessToken::<BudgetInviteSenderToken, FromHeader>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            SpecialAccessToken::<BudgetAccessToken, FromQuery>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_err()
+        );
+
+        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(t.0.verify(&access_public_key));
+
+        let mut signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+
+        // Make the signature invalid
+        let last_char = signature.pop().unwrap();
+        if last_char == 'a' {
+            signature.push('b');
+        } else {
+            signature.push('a');
+        }
+
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .insert_header(("BudgetAccessToken", token.as_str()))
+            .to_http_request();
+
+        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!t.0.verify(&access_public_key));
+
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = serde_json::to_vec(&claims).unwrap();
+        let claims = String::from_utf8_lossy(&claims);
+
+        let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .insert_header(("BudgetAccessToken", token.as_str()))
+            .to_http_request();
+
+        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!t.0.verify(&access_public_key));
+    }
+
+    #[tokio::test]
+    async fn test_from_query() {
+        let iid = Uuid::new_v4();
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = serde_json::to_vec(&claims).unwrap();
+        let claims = String::from_utf8_lossy(&claims);
+
+        let invite_key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let invite_public_key = invite_key_pair.verifying_key().to_bytes();
+        let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .to_http_request();
+
+        assert!(
+            SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_ok()
+        );
+        assert!(
+            SpecialAccessToken::<BudgetAccessToken, FromQuery>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            SpecialAccessToken::<BudgetInviteSenderToken, FromHeader>::from_request(
+                &req,
+                &mut Payload::None
+            )
+            .await
+            .is_err()
+        );
+
+        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(t.0.verify(&invite_public_key));
+
+        let mut signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+
+        // Make the signature invalid
+        let last_char = signature.pop().unwrap();
+        if last_char == 'a' {
+            signature.push('b');
+        } else {
+            signature.push('a');
+        }
+
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .to_http_request();
+
+        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!t.0.verify(&invite_public_key));
+
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = serde_json::to_vec(&claims).unwrap();
+        let claims = String::from_utf8_lossy(&claims);
+
+        let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+
+        let req = TestRequest::default()
+            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .to_http_request();
+
+        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+            &req,
+            &mut Payload::None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!t.0.verify(&invite_public_key));
+    }
+}
