@@ -269,7 +269,7 @@ mod tests {
         token.decrypt(&encryption_key).unwrap();
 
         let t = token.sign_and_encode(&signing_key);
-        assert!(String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(user_email));
+        assert!(String::from_utf8_lossy(&base64::decode(t).unwrap()).contains(user_email));
         assert!(token.verify(&signing_key));
 
         let mut token = AuthToken::new(user_id, user_email, exp, AuthTokenType::Refresh);

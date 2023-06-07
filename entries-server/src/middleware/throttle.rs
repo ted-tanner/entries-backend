@@ -67,3 +67,56 @@ impl<const TRIES: i32, const MINS: u64> FromRequest for Throttle<TRIES, MINS> {
         future::ok(Self {})
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::env;
+
+    use super::*;
+
+    use actix_web::dev::Payload;
+    use actix_web::test::TestRequest;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use entries_utils::schema::throttleable_attempts;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn test_throttle_works() {
+        const TEST_ID: &str = "test";
+        const EXP_MINS: u64 = 1;
+
+        let req = TestRequest::default().to_http_request();
+        let throttle = Throttle::<3, EXP_MINS>::from_request(&req, &mut Payload::None)
+            .await
+            .unwrap();
+
+        let db = &env::testing::DB_THREAD_POOL;
+        let ident = Uuid::new_v4();
+
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_err());
+
+        let mut hasher = DefaultHasher::new();
+        ident.hash(&mut hasher);
+        let identifier_hash = Wrapping(hasher.finish());
+
+        let mut hasher = DefaultHasher::new();
+        TEST_ID.hash(&mut hasher);
+        let name_hash = Wrapping(hasher.finish());
+
+        let combined_hash = (identifier_hash << 1) + identifier_hash + name_hash;
+        let combined_hash = unsafe { std::mem::transmute::<_, i64>(combined_hash.0) };
+
+        dsl::update(throttleable_attempts::table.find(combined_hash))
+            .set(throttleable_attempts::expiration_timestamp.eq(SystemTime::now()))
+            .execute(&mut db.get().unwrap())
+            .unwrap();
+
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_ok());
+        assert!(throttle.enforce(&ident, TEST_ID, db).await.is_err());
+    }
+}

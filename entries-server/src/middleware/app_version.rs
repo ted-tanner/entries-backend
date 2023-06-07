@@ -29,3 +29,36 @@ impl FromRequest for AppVersion {
         future::ok(AppVersion(String::from(app_verion)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use actix_web::dev::Payload;
+    use actix_web::test::TestRequest;
+    use rand::{thread_rng, Rng};
+
+    #[tokio::test]
+    async fn test_app_version_required() {
+        let app_version = format!(
+            "{}.{}.{}",
+            thread_rng().gen::<u8>(),
+            thread_rng().gen::<u8>(),
+            thread_rng().gen::<u8>(),
+        );
+
+        let req = TestRequest::default()
+            .insert_header(("AppVersion", app_version.as_str()))
+            .to_http_request();
+
+        assert!(AppVersion::from_request(&req, &mut Payload::None)
+            .await
+            .is_ok());
+
+        let req = TestRequest::default().to_http_request();
+
+        assert!(AppVersion::from_request(&req, &mut Payload::None)
+            .await
+            .is_err());
+    }
+}

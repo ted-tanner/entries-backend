@@ -33,7 +33,7 @@ impl Dao {
         let attempt_count = db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let (attempt_count, expiration) = dsl::insert_into(throttleable_attempts)
+                let (attempt_count, curr_expiration) = dsl::insert_into(throttleable_attempts)
                     .values(&new_attempt)
                     .on_conflict(throttleable_attempt_fields::identifier_hash)
                     .do_update()
@@ -47,7 +47,7 @@ impl Dao {
                     ))
                     .get_result::<(i32, SystemTime)>(conn)?;
 
-                if expiration < SystemTime::now() {
+                if curr_expiration < SystemTime::now() {
                     dsl::update(throttleable_attempts.find(identifier_hash))
                         .set((
                             throttleable_attempt_fields::attempt_count.eq(1),
