@@ -684,3 +684,68 @@ pub async fn cancel_delete(
 
     Ok(HttpResponse::Ok().finish())
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    use entries_utils::request_io::InputUser;
+
+    use actix_web::http::StatusCode;
+    use actix_web::test::{self, TestRequest};
+    use actix_web::web::Data;
+    use actix_web::App;
+    use rand::Rng;
+
+    #[actix_web::test]
+    async fn test_throttle_works() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::new(),
+
+            auth_string_salt: Vec::new(),
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: Vec::new(),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: Vec::new(),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: Vec::new(),
+            encryption_key_encrypted_with_recovery_key: Vec::new(),
+
+            public_key: Vec::new(),
+
+            preferences_encrypted: Vec::new(),
+            user_keystore_encrypted: Vec::new(),
+
+            acknowledge_agreement: true,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user/create")
+            .set_json(&new_user)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        todo!();
+    }
+}

@@ -211,7 +211,7 @@ mod tests {
 
     use crate::middleware::{FromHeader, FromQuery};
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_verified_from_header() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
@@ -295,7 +295,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_verified_from_query() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
@@ -379,7 +379,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_unverified_from_header() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
@@ -485,7 +485,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_unverified_from_query() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";

@@ -80,7 +80,7 @@ mod tests {
     use entries_utils::schema::throttleable_attempts;
     use uuid::Uuid;
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_throttle_works() {
         const TEST_ID: &str = "test";
         const EXP_MINS: u64 = 1;

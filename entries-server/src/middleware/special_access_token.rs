@@ -67,7 +67,7 @@ mod tests {
 
     use crate::middleware::{FromHeader, FromQuery};
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_from_header() {
         let kid = Uuid::new_v4();
         let bid = Uuid::new_v4();
@@ -174,7 +174,7 @@ mod tests {
         assert!(!t.0.verify(&access_public_key));
     }
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_from_query() {
         let iid = Uuid::new_v4();
         let exp = (SystemTime::now() + Duration::from_secs(10))

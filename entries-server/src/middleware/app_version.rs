@@ -38,7 +38,7 @@ mod tests {
     use actix_web::test::TestRequest;
     use rand::{thread_rng, Rng};
 
-    #[tokio::test]
+    #[actix_web::test]
     async fn test_app_version_required() {
         let app_version = format!(
             "{}.{}.{}",
