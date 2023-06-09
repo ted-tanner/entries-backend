@@ -85,7 +85,8 @@ async fn main() -> std::io::Result<()> {
     let base_addr = format!("127.0.0.1:{}", &port);
     env::initialize(&conf_file_path.unwrap_or(String::from("conf/server-conf.toml")));
 
-    let _logger = Logger::with(LogSpecification::info())
+    let _logger = Logger::try_with_str("debug")
+        .unwrap()
         .log_to_file(FileSpec::default().directory("./logs"))
         .rotate(
             Criterion::Age(Age::Day),
@@ -144,7 +145,7 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    let smtp_thread_pool: Box<dyn SendEmail> = if env::CONF.email.email_enabled {
+    let smtp_thread_pool: Arc<Box<dyn SendEmail>> = if env::CONF.email.email_enabled {
         log::info!("Connecting to SMTP relay...");
 
         let max_smtp_connections = env::CONF.email.max_smtp_connections.unwrap_or(
@@ -173,18 +174,19 @@ async fn main() -> std::io::Result<()> {
 
         log::info!("Successfully connected to SMTP relay");
 
-        Box::new(smtp_thread_pool)
+        Arc::new(Box::new(smtp_thread_pool))
     } else {
         log::info!("Emails are disabled. Using mock SMTP thread pool.");
-        Box::new(MockSender::new())
+        Arc::new(Box::new(MockSender::new()))
     };
 
-    let smtp_thread_pool = Arc::new(smtp_thread_pool);
+    let db_thread_pool = Data::new(db_thread_pool);
+    let smtp_thread_pool = Data::from(smtp_thread_pool);
 
     HttpServer::new(move || {
         App::new()
-            .app_data(Data::new(db_thread_pool.clone()))
-            .app_data(Data::new(smtp_thread_pool.clone()))
+            .app_data(db_thread_pool.clone())
+            .app_data(smtp_thread_pool.clone())
             .configure(services::api::configure)
             .configure(services::web::configure)
             .wrap(actix_web::middleware::Logger::default())

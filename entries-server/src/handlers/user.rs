@@ -702,6 +702,7 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -741,10 +742,16 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/user/create")
+            .insert_header(("AppVersion", "0.1.0"))
             .set_json(&new_user)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        println!(
+            "body: {}",
+            String::from_utf8_lossy(&actix_web::test::try_read_body(resp).await.unwrap())
+        );
+        // assert_eq!(resp.status(), StatusCode::CREATED);
 
         todo!();
     }

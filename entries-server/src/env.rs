@@ -297,12 +297,18 @@ fn build_conf() -> Result<Conf, String> {
 #[cfg(test)]
 pub mod testing {
     use entries_utils::db::{create_db_thread_pool, DbThreadPool};
+    use entries_utils::email::senders::MockSender;
+    use entries_utils::email::SendEmail;
+
+    use std::sync::Arc;
 
     lazy_static! {
         pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
             crate::env::CONF.db.database_uri.as_str(),
             crate::env::CONF.db.max_db_connections,
         );
+        pub static ref SMTP_THREAD_POOL: Arc<Box<dyn SendEmail>> =
+            Arc::new(Box::new(MockSender::new()));
     }
 }
 
