@@ -689,13 +689,25 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
+    use entries_utils::models::user::User;
     use entries_utils::request_io::InputUser;
+    use entries_utils::schema::signin_nonces::dsl::signin_nonces;
+    use entries_utils::schema::user_backup_codes as user_backup_code_fields;
+    use entries_utils::schema::user_backup_codes::dsl::user_backup_codes;
+    use entries_utils::schema::user_keystores as user_keystore_fields;
+    use entries_utils::schema::user_keystores::dsl::user_keystores;
+    use entries_utils::schema::user_preferences as user_preferences_fields;
+    use entries_utils::schema::user_preferences::dsl::user_preferences;
+    use entries_utils::schema::users as user_fields;
+    use entries_utils::schema::users::dsl::users;
 
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
+    use std::str::FromStr;
 
     #[actix_web::test]
     async fn test_create_user() {
@@ -712,32 +724,30 @@ pub mod tests {
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: Vec::new(),
+            auth_string: vec![8; 10],
 
-            auth_string_salt: Vec::new(),
+            auth_string_salt: vec![8; 10],
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
 
-            password_encryption_salt: Vec::new(),
+            password_encryption_salt: vec![8; 10],
             password_encryption_memory_cost_kib: 1024,
             password_encryption_parallelism_factor: 1,
             password_encryption_iters: 1,
 
-            recovery_key_salt: Vec::new(),
+            recovery_key_salt: vec![8; 10],
             recovery_key_memory_cost_kib: 1024,
             recovery_key_parallelism_factor: 1,
             recovery_key_iters: 1,
 
-            encryption_key_encrypted_with_password: Vec::new(),
-            encryption_key_encrypted_with_recovery_key: Vec::new(),
+            encryption_key_encrypted_with_password: vec![8; 10],
+            encryption_key_encrypted_with_recovery_key: vec![8; 10],
 
-            public_key: Vec::new(),
+            public_key: vec![8; 10],
 
-            preferences_encrypted: Vec::new(),
-            user_keystore_encrypted: Vec::new(),
-
-            acknowledge_agreement: true,
+            preferences_encrypted: vec![8; 10],
+            user_keystore_encrypted: vec![8; 10],
         };
 
         let req = TestRequest::post()
@@ -747,12 +757,109 @@ pub mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
 
-        println!(
-            "body: {}",
-            String::from_utf8_lossy(&actix_web::test::try_read_body(resp).await.unwrap())
-        );
-        // assert_eq!(resp.status(), StatusCode::CREATED);
+        assert_eq!(resp.status(), StatusCode::CREATED);
 
-        todo!();
+        let resp_body = actix_web::test::try_read_body(resp).await.unwrap();
+        let resp_body = String::from_utf8_lossy(&resp_body);
+
+        let user = users
+            .filter(user_fields::email.eq(&new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(user.email, new_user.email);
+        assert_eq!(user.auth_string_salt, new_user.auth_string_salt);
+        assert_eq!(
+            user.auth_string_memory_cost_kib,
+            new_user.auth_string_memory_cost_kib
+        );
+        assert_eq!(
+            user.auth_string_parallelism_factor,
+            new_user.auth_string_parallelism_factor
+        );
+        assert_eq!(user.auth_string_iters, new_user.auth_string_iters);
+        assert_eq!(
+            user.password_encryption_salt,
+            new_user.password_encryption_salt
+        );
+        assert_eq!(
+            user.password_encryption_memory_cost_kib,
+            new_user.password_encryption_memory_cost_kib
+        );
+        assert_eq!(
+            user.password_encryption_parallelism_factor,
+            new_user.password_encryption_parallelism_factor
+        );
+        assert_eq!(
+            user.password_encryption_iters,
+            new_user.password_encryption_iters
+        );
+        assert_eq!(user.recovery_key_salt, new_user.recovery_key_salt);
+        assert_eq!(
+            user.recovery_key_memory_cost_kib,
+            new_user.recovery_key_memory_cost_kib
+        );
+        assert_eq!(
+            user.recovery_key_parallelism_factor,
+            new_user.recovery_key_parallelism_factor
+        );
+        assert_eq!(user.recovery_key_iters, new_user.recovery_key_iters);
+        assert_eq!(
+            user.encryption_key_encrypted_with_password,
+            new_user.encryption_key_encrypted_with_password
+        );
+        assert_eq!(
+            user.encryption_key_encrypted_with_recovery_key,
+            new_user.encryption_key_encrypted_with_recovery_key
+        );
+        assert_eq!(user.public_key, new_user.public_key);
+
+        assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
+            .unwrap()
+            .verify_with_secret(
+                &new_user.auth_string,
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
+            ),);
+
+        let codes_array_start = resp_body.find('[').unwrap() + 1;
+        let codes_array_end = resp_body.find(']').unwrap();
+        let backup_codes_array = resp_body[codes_array_start..codes_array_end].replace('"', "");
+        let codes = backup_codes_array.split(',');
+
+        let codes_from_db = user_backup_codes
+            .select(user_backup_code_fields::code)
+            .filter(user_backup_code_fields::user_id.eq(user.id))
+            .get_results::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let mut count = 0;
+        for code in codes {
+            assert!(codes_from_db.iter().any(|c| c == &code));
+            count += 1;
+        }
+
+        assert_eq!(count, codes_from_db.len());
+
+        let keystore = user_keystores
+            .select(user_keystore_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(keystore, new_user.preferences_encrypted);
+
+        let preferences = user_preferences
+            .select(user_preferences_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(preferences, new_user.preferences_encrypted);
+
+        assert!(
+            dsl::select(dsl::exists(signin_nonces.find(&new_user.email)))
+                .get_result::<bool>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+        );
     }
 }

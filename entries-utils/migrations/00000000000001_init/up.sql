@@ -160,7 +160,7 @@ CREATE INDEX ON users USING HASH (email);
 
 CREATE TABLE user_backup_codes (
     user_id UUID NOT NULL,
-    code VARCHAR(10) NOT NULL,
+    code VARCHAR(12) NOT NULL,
 
     PRIMARY KEY (user_id, code)
 );

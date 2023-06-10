@@ -13,6 +13,7 @@ pub struct Conf {
     pub clear_throttle_table_job: ClearThrottleTableJobConf,
     pub clear_unverified_users_job: ClearUnverifiedUsersJobConf,
     pub delete_users_job: DeleteUsersJobConf,
+    pub logging: Logging,
     pub unblacklist_expired_tokens_job: UnblacklistExpiredTokensJobConf,
 }
 
@@ -58,6 +59,11 @@ pub struct ClearUnverifiedUsersJobConf {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DeleteUsersJobConf {
     pub job_frequency_secs: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Logging {
+    pub log_level: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -46,6 +46,10 @@ user_creation_token_lifetime_days = 7
 user_deletion_token_lifetime_days = 3
 otp_lifetime_mins = 5
 
+[logging]
+# If omitted, defaults to "info"
+log_level = "info"
+
 [time_delays]
 user_deletion_delay_days = 7
 

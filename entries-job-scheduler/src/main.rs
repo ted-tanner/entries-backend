@@ -1,9 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
-use flexi_logger::{
-    Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
-};
+use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use runner::JobRunner;
 use std::time::Duration;
 
@@ -58,7 +56,8 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
-            Logger::with(LogSpecification::info())
+            Logger::try_with_str(&env::CONF.logging.log_level)
+                .expect("Invalid log level")
                 .log_to_file(FileSpec::default().directory("./logs"))
                 .rotate(
                     Criterion::Age(Age::Day),

@@ -14,6 +14,7 @@ pub struct Conf {
     pub endpoints: Endpoints,
     pub keys: Keys,
     pub lifetimes: Lifetimes,
+    pub logging: Logging,
     pub time_delays: TimeDelays,
     pub workers: Workers,
 }
@@ -26,6 +27,7 @@ pub struct RawConf {
     pub endpoints: Endpoints,
     pub keys: RawKeys,
     pub lifetimes: RawLifetimes,
+    pub logging: RawLogging,
     pub time_delays: TimeDelays,
     pub workers: Workers,
 }
@@ -114,6 +116,15 @@ pub struct RawLifetimes {
     pub user_creation_token_lifetime_days: u64,
     pub user_deletion_token_lifetime_days: u64,
     pub otp_lifetime_mins: u64,
+}
+
+pub struct Logging {
+    pub log_level: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct RawLogging {
+    pub log_level: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -288,6 +299,9 @@ fn build_conf() -> Result<Conf, String> {
                 raw_conf.lifetimes.user_deletion_token_lifetime_days * 3600 * 24,
             ),
             otp_lifetime: Duration::from_secs(raw_conf.lifetimes.otp_lifetime_mins * 60),
+        },
+        logging: Logging {
+            log_level: raw_conf.logging.log_level.unwrap_or(String::from("info")),
         },
         time_delays: raw_conf.time_delays,
         workers: raw_conf.workers,

@@ -8,9 +8,7 @@ use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
-use flexi_logger::{
-    Age, Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger, Naming, WriteMode,
-};
+use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -85,8 +83,8 @@ async fn main() -> std::io::Result<()> {
     let base_addr = format!("127.0.0.1:{}", &port);
     env::initialize(&conf_file_path.unwrap_or(String::from("conf/server-conf.toml")));
 
-    let _logger = Logger::try_with_str("debug")
-        .unwrap()
+    let _logger = Logger::try_with_str(&env::CONF.logging.log_level)
+        .expect("Invalid log level")
         .log_to_file(FileSpec::default().directory("./logs"))
         .rotate(
             Criterion::Age(Age::Day),
