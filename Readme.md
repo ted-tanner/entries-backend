@@ -498,11 +498,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Set log level in config for binary crates!
 * Unit tests!
   - [x] Jobs
   - [ ] Handlers!
-  - [ ] Tokens! (auth_token, budget_*_tokens)
+  - [x] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation
   - Add a section for the job scheduler
 * White paper

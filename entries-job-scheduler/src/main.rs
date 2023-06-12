@@ -57,7 +57,10 @@ fn main() {
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
             Logger::try_with_str(&env::CONF.logging.log_level)
-                .expect("Invalid log level")
+                .expect(
+                    "Invalid log level. Options: ERROR, WARN, INFO, DEBUG, TRACE. \
+                     Example: `info, my::critical::module=trace`",
+                )
                 .log_to_file(FileSpec::default().directory("./logs"))
                 .rotate(
                     Criterion::Age(Age::Day),

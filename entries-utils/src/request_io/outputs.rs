@@ -1,5 +1,5 @@
 use diesel::Queryable;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::time::SystemTime;
@@ -8,12 +8,12 @@ use uuid::Uuid;
 use crate::models::category::Category;
 use crate::models::entry::Entry;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SigninToken {
     pub signin_token: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
@@ -21,7 +21,7 @@ pub struct TokenPair {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudget {
     pub id: Uuid,
 
@@ -34,13 +34,13 @@ pub struct OutputBudget {
     pub entries: Vec<Entry>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudgetFrameCategory {
     pub temp_id: i32,
     pub real_id: Uuid,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudgetFrame {
     pub id: Uuid,
     pub categories: Vec<OutputBudgetFrameCategory>,
@@ -48,7 +48,7 @@ pub struct OutputBudgetFrame {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudgetIdAndEncryptionKey {
     pub budget_id: Uuid,
     pub budget_access_key_id: Uuid,
@@ -60,7 +60,7 @@ pub struct OutputBudgetIdAndEncryptionKey {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize, Queryable)]
+#[derive(Clone, Debug, Deserialize, Serialize, Queryable)]
 pub struct OutputBudgetShareInviteWithoutKey {
     #[serde_as(as = "Base64")]
     pub budget_accept_private_key_encrypted: Vec<u8>,
@@ -76,23 +76,23 @@ pub struct OutputBudgetShareInviteWithoutKey {
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputEntryIdAndCategoryId {
     pub entry_id: Uuid,
     pub category_id: Uuid,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputEntryId {
     pub entry_id: Uuid,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputCategoryId {
     pub category_id: Uuid,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputVerificationEmailSent {
     pub email_sent: bool,
     pub email_token_lifetime_hours: u64,
@@ -110,13 +110,13 @@ pub struct OutputBackupCodes<'a> {
     pub backup_codes: &'a [String],
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputIsUserListedForDeletion {
     pub is_listed_for_deletion: bool,
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputSigninNonceAndHashParams {
     #[serde_as(as = "Base64")]
     pub auth_string_salt: Vec<u8>,
@@ -127,13 +127,13 @@ pub struct OutputSigninNonceAndHashParams {
     pub nonce: i32,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputInvitationId {
     pub invitation_id: Uuid,
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputPublicKey {
     #[serde_as(as = "Base64")]
     pub public_key: Vec<u8>,

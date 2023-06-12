@@ -212,7 +212,7 @@ pub async fn verify_creation(
     let claims = match user_creation_token.verify() {
         Ok(c) => c,
         Err(TokenError::TokenExpired) => {
-            return Ok(HttpResponse::BadRequest()
+            return Ok(HttpResponse::Unauthorized()
                 .content_type("text/html")
                 .body(VerifyUserExpiredLinkPage::generate()));
         }
@@ -222,7 +222,7 @@ pub async fn verify_creation(
                 .body(VerifyUserLinkMissingTokenPage::generate()));
         }
         Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
-            return Ok(HttpResponse::BadRequest()
+            return Ok(HttpResponse::Unauthorized()
                 .content_type("text/html")
                 .body(VerifyUserInvalidLinkPage::generate()));
         }
@@ -707,7 +707,38 @@ pub mod tests {
     use actix_web::App;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
+    use sha1::{Digest, Sha1};
     use std::str::FromStr;
+
+    use crate::handlers::test_utils;
+
+    #[actix_web::test]
+    async fn test_lookup_user_public_key() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/lookup_user_public_key?email={}",
+                user.email
+            ))
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_public_key = test::read_body_json::<OutputPublicKey, _>(resp).await;
+        assert_eq!(user.public_key, resp_public_key.public_key);
+    }
 
     #[actix_web::test]
     async fn test_create_user() {
@@ -720,34 +751,38 @@ pub mod tests {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let gen = |r: std::ops::Range<u8>| {
+            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+                .collect()
+        };
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: vec![8; 10],
+            auth_string: gen(0..10),
 
-            auth_string_salt: vec![8; 10],
+            auth_string_salt: gen(0..10),
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
 
-            password_encryption_salt: vec![8; 10],
+            password_encryption_salt: gen(0..10),
             password_encryption_memory_cost_kib: 1024,
             password_encryption_parallelism_factor: 1,
             password_encryption_iters: 1,
 
-            recovery_key_salt: vec![8; 10],
+            recovery_key_salt: gen(0..10),
             recovery_key_memory_cost_kib: 1024,
             recovery_key_parallelism_factor: 1,
             recovery_key_iters: 1,
 
-            encryption_key_encrypted_with_password: vec![8; 10],
-            encryption_key_encrypted_with_recovery_key: vec![8; 10],
+            encryption_key_encrypted_with_password: gen(0..10),
+            encryption_key_encrypted_with_recovery_key: gen(0..10),
 
-            public_key: vec![8; 10],
+            public_key: gen(0..10),
 
-            preferences_encrypted: vec![8; 10],
-            user_keystore_encrypted: vec![8; 10],
+            preferences_encrypted: gen(0..10),
+            user_keystore_encrypted: gen(0..10),
         };
 
         let req = TestRequest::post()
@@ -759,7 +794,7 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let resp_body = actix_web::test::try_read_body(resp).await.unwrap();
+        let resp_body = test::try_read_body(resp).await.unwrap();
         let resp_body = String::from_utf8_lossy(&resp_body);
 
         let user = users
@@ -846,7 +881,7 @@ pub mod tests {
             .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(keystore, new_user.preferences_encrypted);
+        assert_eq!(keystore, new_user.user_keystore_encrypted);
 
         let preferences = user_preferences
             .select(user_preferences_fields::encrypted_blob)
@@ -861,5 +896,187 @@ pub mod tests {
                 .get_result::<bool>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
         );
+    }
+
+    #[actix_web::test]
+    async fn test_verify_creation() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: vec![8; 10],
+
+            auth_string_salt: vec![8; 10],
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: vec![8; 10],
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: vec![8; 10],
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: vec![8; 10],
+            encryption_key_encrypted_with_recovery_key: vec![8; 10],
+
+            public_key: vec![8; 10],
+
+            preferences_encrypted: vec![8; 10],
+            user_keystore_encrypted: vec![8; 10],
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user/create")
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&new_user)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let user = users
+            .filter(user_fields::email.eq(&new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert!(!user.is_verified);
+
+        let mut user_creation_token = AuthToken::new(
+            user.id,
+            &user.email,
+            SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
+            AuthTokenType::UserCreation,
+        );
+
+        user_creation_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let user_creation_token =
+            user_creation_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/verify_creation?UserCreationToken={}",
+                &user_creation_token[..(user_creation_token.len() - 1)],
+            ))
+            .set_json(&new_user)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let user = users
+            .filter(user_fields::email.eq(&new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert!(!user.is_verified);
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/verify_creation?UserCreationToken={}",
+                user_creation_token,
+            ))
+            .set_json(&new_user)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let user = users
+            .filter(user_fields::email.eq(&new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert!(user.is_verified);
+    }
+
+    #[actix_web::test]
+    async fn test_edit_preferences() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let updated_prefs_blob: Vec<_> = (0..32)
+            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .collect();
+
+        let updated_prefs = InputEditUserPrefs {
+            encrypted_blob: updated_prefs_blob.clone(),
+            expected_previous_data_hash: vec![200; 8],
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/edit_preferences")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&updated_prefs)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = test::try_read_body(resp).await.unwrap();
+        let resp_body = String::from_utf8_lossy(&resp_body);
+
+        println!("\n\n{}\n\n", &resp_body);
+        println!(
+            "\n\n{}\n\n",
+            serde_json::ser::to_string_pretty(&updated_prefs).unwrap()
+        );
+
+        assert!(resp_body.contains("\"error_code\":\"U2SLOW\""));
+
+        let stored_prefs_blob = user_preferences
+            .select(user_preferences_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_ne!(stored_prefs_blob, updated_prefs_blob);
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&stored_prefs_blob);
+
+        let updated_prefs = InputEditUserPrefs {
+            encrypted_blob: updated_prefs_blob,
+            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/edit_preferences")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&updated_prefs)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let stored_prefs_blob = user_preferences
+            .select(user_preferences_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
     }
 }

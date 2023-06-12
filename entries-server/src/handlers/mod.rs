@@ -362,3 +362,100 @@ pub mod error {
         )
     }
 }
+
+#[cfg(test)]
+pub mod test_utils {
+    use std::ops::Range;
+    use std::time::SystemTime;
+
+    use entries_utils::models::user::User;
+    use entries_utils::request_io::InputUser;
+    use entries_utils::schema::users as user_fields;
+    use entries_utils::schema::users::dsl::users;
+
+    use actix_web::http::StatusCode;
+    use actix_web::test::{self, TestRequest};
+    use actix_web::web::Data;
+    use actix_web::App;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+    use rand::Rng;
+
+    use crate::env;
+
+    pub async fn create_user() -> (User, String) {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let gen = |r: Range<u8>| {
+            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+                .collect()
+        };
+
+        let new_user = InputUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: gen(0..10),
+
+            auth_string_salt: gen(0..10),
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: gen(0..10),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: gen(0..10),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: gen(0..10),
+            encryption_key_encrypted_with_recovery_key: gen(0..10),
+
+            public_key: gen(0..10),
+
+            preferences_encrypted: gen(0..10),
+            user_keystore_encrypted: gen(0..10),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user/create")
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&new_user)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        dsl::update(users.filter(user_fields::email.eq(&new_user.email)))
+            .set(user_fields::is_verified.eq(true))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let user = users
+            .filter(user_fields::email.eq(&new_user.email))
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let mut access_token = AuthToken::new(
+            user.id,
+            &user.email,
+            SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            AuthTokenType::Access,
+        );
+
+        access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+        let access_token = access_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+
+        (user, access_token)
+    }
+}
