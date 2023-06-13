@@ -122,6 +122,13 @@ pub struct InputNewAuthStringAndEncryptedPassword {
     pub auth_string_iters: i32,
 
     #[serde_as(as = "Base64")]
+    pub password_encryption_salt: Vec<u8>,
+
+    pub password_encryption_memory_cost_kib: i32,
+    pub password_encryption_parallelism_factor: i32,
+    pub password_encryption_iters: i32,
+
+    #[serde_as(as = "Base64")]
     pub encrypted_encryption_key: Vec<u8>,
 }
 

@@ -123,7 +123,7 @@ CREATE TABLE throttleable_attempts (
     expiration_timestamp TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON budget_share_invites USING HASH (recipient_user_email);
+CREATE INDEX ON throttleable_attempts USING BTREE (expiration_timestamp);
 
 CREATE TABLE users (
     id UUID PRIMARY KEY,
@@ -194,12 +194,12 @@ CREATE TABLE user_keystores (
 );
 
 CREATE TABLE user_otps (
-    user_email VARCHAR(255) NOT NULL,
+    user_email VARCHAR(255) PRIMARY KEY,
     otp VARCHAR(8) NOT NULL,
-    expiration TIMESTAMP NOT NULL,
-
-    PRIMARY KEY (user_email, otp)
+    expiration TIMESTAMP NOT NULL
 );
+
+CREATE INDEX ON user_otps USING BTREE (user_email, otp);
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,

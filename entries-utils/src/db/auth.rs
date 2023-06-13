@@ -137,9 +137,13 @@ impl Dao {
     }
 
     pub fn delete_otp(&mut self, otp: &str, user_email: &str) -> Result<UserOtp, DaoError> {
-        Ok(diesel::delete(user_otps.find((user_email, otp)))
-            .returning(user_otp_fields::all_columns)
-            .get_result(&mut self.db_thread_pool.get()?)?)
+        Ok(diesel::delete(
+            user_otps
+                .find(user_email)
+                .filter(user_otp_fields::otp.eq(otp)),
+        )
+        .returning(user_otp_fields::all_columns)
+        .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {

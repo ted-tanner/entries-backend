@@ -245,6 +245,10 @@ impl Dao {
         new_auth_string_memory_cost_kib: i32,
         new_auth_string_parallelism_factor: i32,
         new_auth_string_iters: i32,
+        new_password_encryption_salt: &[u8],
+        new_password_encryption_memory_cost_kib: i32,
+        new_password_encryption_parallelism_factor: i32,
+        new_password_encryption_iters: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(users.filter(user_fields::email.eq(user_email)))
@@ -254,6 +258,12 @@ impl Dao {
                 user_fields::auth_string_memory_cost_kib.eq(new_auth_string_memory_cost_kib),
                 user_fields::auth_string_parallelism_factor.eq(new_auth_string_parallelism_factor),
                 user_fields::auth_string_iters.eq(new_auth_string_iters),
+                user_fields::password_encryption_salt.eq(new_password_encryption_salt),
+                user_fields::password_encryption_memory_cost_kib
+                    .eq(new_password_encryption_memory_cost_kib),
+                user_fields::password_encryption_parallelism_factor
+                    .eq(new_password_encryption_parallelism_factor),
+                user_fields::password_encryption_iters.eq(new_password_encryption_iters),
                 user_fields::encryption_key_encrypted_with_password.eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;

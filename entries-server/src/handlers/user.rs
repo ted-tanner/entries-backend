@@ -384,6 +384,10 @@ pub async fn change_password(
             new_password_data.auth_string_memory_cost_kib,
             new_password_data.auth_string_parallelism_factor,
             new_password_data.auth_string_iters,
+            &new_password_data.password_encryption_salt,
+            new_password_data.password_encryption_memory_cost_kib,
+            new_password_data.password_encryption_parallelism_factor,
+            new_password_data.password_encryption_iters,
             &new_password_data.encrypted_encryption_key,
         )
     })
@@ -696,6 +700,8 @@ pub mod tests {
     use entries_utils::schema::user_backup_codes::dsl::user_backup_codes;
     use entries_utils::schema::user_keystores as user_keystore_fields;
     use entries_utils::schema::user_keystores::dsl::user_keystores;
+    use entries_utils::schema::user_otps as user_otp_fields;
+    use entries_utils::schema::user_otps::dsl::user_otps;
     use entries_utils::schema::user_preferences as user_preferences_fields;
     use entries_utils::schema::user_preferences::dsl::user_preferences;
     use entries_utils::schema::users as user_fields;
@@ -1037,12 +1043,6 @@ pub mod tests {
         let resp_body = test::try_read_body(resp).await.unwrap();
         let resp_body = String::from_utf8_lossy(&resp_body);
 
-        println!("\n\n{}\n\n", &resp_body);
-        println!(
-            "\n\n{}\n\n",
-            serde_json::ser::to_string_pretty(&updated_prefs).unwrap()
-        );
-
         assert!(resp_body.contains("\"error_code\":\"U2SLOW\""));
 
         let stored_prefs_blob = user_preferences
@@ -1078,5 +1078,127 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
+    }
+
+    #[actix_web::test]
+    async fn test_change_password() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, _) = test_utils::create_user().await;
+        let otp = user_otps
+            .select(user_otp_fields::otp)
+            .find(&user.email)
+            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let gen = |r: std::ops::Range<u8>| {
+            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+                .collect()
+        };
+
+        let updated_auth_string: Vec<_> = gen(0..32);
+        let updated_auth_string_salt: Vec<_> = gen(0..16);
+        let updated_password_encryption_salt: Vec<_> = gen(0..16);
+        let updated_encrypted_encryption_key: Vec<_> = gen(0..48);
+
+        let mut edit_password = InputNewAuthStringAndEncryptedPassword {
+            user_email: user.email.clone(),
+            otp: String::from("ABCDEFGH"),
+
+            new_auth_string: updated_auth_string.clone(),
+
+            auth_string_salt: updated_auth_string_salt.clone(),
+
+            auth_string_memory_cost_kib: 11,
+            auth_string_parallelism_factor: 13,
+            auth_string_iters: 17,
+
+            password_encryption_salt: updated_password_encryption_salt.clone(),
+
+            password_encryption_memory_cost_kib: 13,
+            password_encryption_parallelism_factor: 17,
+            password_encryption_iters: 19,
+
+            encrypted_encryption_key: updated_encrypted_encryption_key,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/change_password")
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&edit_password)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = test::try_read_body(resp).await.unwrap();
+        let resp_body = String::from_utf8_lossy(&resp_body);
+
+        assert!(resp_body.contains("\"error_code\":\"DISNOU\""));
+
+        let stored_user = users
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert!(
+            !argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
+            .unwrap()
+            .verify_with_secret(
+                &edit_password.new_auth_string,
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.token_signing_key)
+            ),
+        );
+
+        assert_ne!(stored_user.auth_string_salt, edit_password.auth_string_salt);
+        assert_ne!(stored_user.auth_string_memory_cost_kib, edit_password.auth_string_memory_cost_kib);
+        assert_ne!(stored_user.auth_string_parallelism_factor, edit_password.auth_string_parallelism_factor);
+        assert_ne!(stored_user.auth_string_iters, edit_password.auth_string_iters);
+
+        assert_ne!(stored_user.password_encryption_salt, edit_password.password_encryption_salt);
+        assert_ne!(stored_user.password_encryption_memory_cost_kib, edit_password.password_encryption_memory_cost_kib);
+        assert_ne!(stored_user.password_encryption_parallelism_factor, edit_password.password_encryption_parallelism_factor);
+        assert_ne!(stored_user.password_encryption_iters, edit_password.password_encryption_iters);
+
+        assert_ne!(stored_user.encryption_key_encrypted_with_password, edit_password.encrypted_encryption_key);
+
+        edit_password.otp = otp;
+
+        let req = TestRequest::put()
+            .uri("/api/user/change_password")
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&edit_password)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        assert!(
+            argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
+            .unwrap()
+            .verify_with_secret(
+                &edit_password.new_auth_string,
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.token_signing_key)
+            ),
+        );
+
+        assert_eq!(stored_user.auth_string_salt, edit_password.auth_string_salt);
+        assert_eq!(stored_user.auth_string_memory_cost_kib, edit_password.auth_string_memory_cost_kib);
+        assert_eq!(stored_user.auth_string_parallelism_factor, edit_password.auth_string_parallelism_factor);
+        assert_eq!(stored_user.auth_string_iters, edit_password.auth_string_iters);
+
+        assert_eq!(stored_user.password_encryption_salt, edit_password.password_encryption_salt);
+        assert_eq!(stored_user.password_encryption_memory_cost_kib, edit_password.password_encryption_memory_cost_kib);
+        assert_eq!(stored_user.password_encryption_parallelism_factor, edit_password.password_encryption_parallelism_factor);
+        assert_eq!(stored_user.password_encryption_iters, edit_password.password_encryption_iters);
+
+        assert_eq!(stored_user.encryption_key_encrypted_with_password, edit_password.encrypted_encryption_key);
+
     }
 }

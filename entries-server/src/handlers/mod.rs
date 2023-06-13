@@ -365,9 +365,6 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
-    use std::ops::Range;
-    use std::time::SystemTime;
-
     use entries_utils::models::user::User;
     use entries_utils::request_io::InputUser;
     use entries_utils::schema::users as user_fields;
@@ -380,6 +377,7 @@ pub mod test_utils {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
     use rand::Rng;
+    use std::time::SystemTime;
 
     use crate::env;
 
@@ -393,7 +391,7 @@ pub mod test_utils {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let gen = |r: Range<u8>| {
+        let gen = |r: std::ops::Range<u8>| {
             r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
                 .collect()
         };

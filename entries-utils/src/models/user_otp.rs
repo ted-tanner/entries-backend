@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use crate::schema::user_otps;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Identifiable, Queryable)]
-#[diesel(table_name = user_otps, primary_key(user_email, otp))]
+#[diesel(table_name = user_otps, primary_key(user_email))]
 pub struct UserOtp {
     pub user_email: String,
     pub otp: String,
@@ -13,7 +13,7 @@ pub struct UserOtp {
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = user_otps, primary_key(user_email, otp))]
+#[diesel(table_name = user_otps, primary_key(user_email))]
 pub struct NewUserOtp<'a> {
     pub user_email: &'a str,
     pub otp: &'a str,

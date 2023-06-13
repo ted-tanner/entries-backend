@@ -126,7 +126,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_otps (user_email, otp) {
+    user_otps (user_email) {
         user_email -> Varchar,
         otp -> Varchar,
         expiration -> Timestamp,

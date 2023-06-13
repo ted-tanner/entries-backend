@@ -49,7 +49,7 @@ mod tests {
     use entries_utils::request_io::InputUser;
     use entries_utils::schema::user_otps;
 
-    use diesel::{QueryDsl, RunQueryDsl};
+    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
     use std::time::{Duration, SystemTime};
 
@@ -159,7 +159,8 @@ mod tests {
 
         assert_eq!(
             user_otps::table
-                .find((&new_user1.email, new_otp_exp.otp))
+                .find(&new_user1.email)
+                .filter(user_otps::otp.eq(&new_otp_exp.otp))
                 .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -167,7 +168,8 @@ mod tests {
 
         assert_eq!(
             user_otps::table
-                .find((&new_user2.email, new_otp_not_exp.otp))
+                .find(&new_user2.email)
+                .filter(user_otps::otp.eq(&new_otp_not_exp.otp))
                 .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -177,7 +179,8 @@ mod tests {
 
         assert_eq!(
             user_otps::table
-                .find((&new_user1.email, new_otp_exp.otp))
+                .find(&new_user1.email)
+                .filter(user_otps::otp.eq(&new_otp_exp.otp))
                 .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
@@ -185,7 +188,8 @@ mod tests {
 
         assert_eq!(
             user_otps::table
-                .find((&new_user2.email, new_otp_not_exp.otp))
+                .find(&new_user2.email)
+                .filter(user_otps::otp.eq(&new_otp_not_exp.otp))
                 .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1

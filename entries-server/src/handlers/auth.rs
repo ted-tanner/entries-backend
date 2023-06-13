@@ -36,7 +36,7 @@ pub async fn obtain_nonce_and_auth_string_params(
         / 86400;
     let mut rng = ChaCha20Rng::seed_from_u64(unix_day);
 
-    let random = rng.gen::<u64>();
+    let random: u64 = rng.gen();
 
     let mut hasher = Sha256::new();
     hasher.update(&email.email);
