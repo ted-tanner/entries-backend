@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::models::blacklisted_token::NewBlacklistedToken;
 use crate::models::user_backup_code::NewUserBackupCode;
-use crate::models::user_otp::{NewUserOtp, UserOtp};
+use crate::models::user_otp::NewUserOtp;
 use crate::request_io::OutputSigninNonceAndHashParams;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
@@ -136,14 +136,25 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_otp(&mut self, otp: &str, user_email: &str) -> Result<UserOtp, DaoError> {
-        Ok(diesel::delete(
+    pub fn check_unexpired_otp(&mut self, otp: &str, user_email: &str) -> Result<bool, DaoError> {
+        Ok(dsl::select(dsl::exists(
+            user_otps
+                .find(user_email)
+                .filter(user_otp_fields::otp.eq(otp))
+                .filter(user_otp_fields::expiration.gt(SystemTime::now())),
+        ))
+        .get_result(&mut self.db_thread_pool.get()?)?)
+    }
+
+    pub fn delete_otp(&mut self, otp: &str, user_email: &str) -> Result<(), DaoError> {
+        diesel::delete(
             user_otps
                 .find(user_email)
                 .filter(user_otp_fields::otp.eq(otp)),
         )
-        .returning(user_otp_fields::all_columns)
-        .get_result(&mut self.db_thread_pool.get()?)?)
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
     }
 
     pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {

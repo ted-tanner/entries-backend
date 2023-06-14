@@ -498,8 +498,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Don't delete OTP to test them
 * Unit tests!
   - [x] Jobs
+  - [ ] Handler utils in `handers/mod.rs`
   - [ ] Handlers!
   - [x] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation

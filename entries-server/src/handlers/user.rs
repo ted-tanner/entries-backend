@@ -860,8 +860,49 @@ pub mod tests {
             .verify_with_secret(
                 &new_user.auth_string,
                 argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
-            ),);
+            ));
 
+        // Test password was hashed with correct params
+        let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
+        let hash_len: u32 = base64::decode_config(
+            &user.auth_string_hash[hash_start_pos..],
+            base64::STANDARD_NO_PAD,
+        )
+        .unwrap()
+        .len()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(hash_len, env::CONF.hashing.hash_length);
+
+        let salt_start_pos = (&user.auth_string_hash[..(hash_start_pos - 1)])
+            .rfind('$')
+            .unwrap()
+            + 1;
+        let salt_end_pos = hash_start_pos - 1;
+        let salt_len: u32 = base64::decode_config(
+            &user.auth_string_hash[salt_start_pos..salt_end_pos],
+            base64::STANDARD_NO_PAD,
+        )
+        .unwrap()
+        .len()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(salt_len, env::CONF.hashing.salt_length);
+
+        assert!(user.auth_string_hash.contains("argon2id"));
+        assert!(user
+            .auth_string_hash
+            .contains(&format!("m={}", env::CONF.hashing.hash_mem_cost_kib)));
+        assert!(user
+            .auth_string_hash
+            .contains(&format!("t={}", env::CONF.hashing.hash_iterations)));
+        assert!(user
+            .auth_string_hash
+            .contains(&format!("p={}", env::CONF.hashing.hash_threads)));
+
+        // Get backup codes from response
         let codes_array_start = resp_body.find('[').unwrap() + 1;
         let codes_array_end = resp_body.find(']').unwrap();
         let backup_codes_array = resp_body[codes_array_start..codes_array_end].replace('"', "");
@@ -1090,7 +1131,16 @@ pub mod tests {
         )
         .await;
 
-        let (user, _) = test_utils::create_user().await;
+        let (user, access_token) = test_utils::create_user().await;
+
+        // Make sure an OTP is generated
+        let req = TestRequest::get()
+            .uri("/api/auth/obtain_otp")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        test::call_service(&app, req).await;
+
         let otp = user_otps
             .select(user_otp_fields::otp)
             .find(&user.email)
@@ -1147,26 +1197,48 @@ pub mod tests {
             .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert!(
-            !argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
+        assert!(!argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.token_signing_key)
-            ),
-        );
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key)
+            ));
 
         assert_ne!(stored_user.auth_string_salt, edit_password.auth_string_salt);
-        assert_ne!(stored_user.auth_string_memory_cost_kib, edit_password.auth_string_memory_cost_kib);
-        assert_ne!(stored_user.auth_string_parallelism_factor, edit_password.auth_string_parallelism_factor);
-        assert_ne!(stored_user.auth_string_iters, edit_password.auth_string_iters);
+        assert_ne!(
+            stored_user.auth_string_memory_cost_kib,
+            edit_password.auth_string_memory_cost_kib
+        );
+        assert_ne!(
+            stored_user.auth_string_parallelism_factor,
+            edit_password.auth_string_parallelism_factor
+        );
+        assert_ne!(
+            stored_user.auth_string_iters,
+            edit_password.auth_string_iters
+        );
 
-        assert_ne!(stored_user.password_encryption_salt, edit_password.password_encryption_salt);
-        assert_ne!(stored_user.password_encryption_memory_cost_kib, edit_password.password_encryption_memory_cost_kib);
-        assert_ne!(stored_user.password_encryption_parallelism_factor, edit_password.password_encryption_parallelism_factor);
-        assert_ne!(stored_user.password_encryption_iters, edit_password.password_encryption_iters);
+        assert_ne!(
+            stored_user.password_encryption_salt,
+            edit_password.password_encryption_salt
+        );
+        assert_ne!(
+            stored_user.password_encryption_memory_cost_kib,
+            edit_password.password_encryption_memory_cost_kib
+        );
+        assert_ne!(
+            stored_user.password_encryption_parallelism_factor,
+            edit_password.password_encryption_parallelism_factor
+        );
+        assert_ne!(
+            stored_user.password_encryption_iters,
+            edit_password.password_encryption_iters
+        );
 
-        assert_ne!(stored_user.encryption_key_encrypted_with_password, edit_password.encrypted_encryption_key);
+        assert_ne!(
+            stored_user.encryption_key_encrypted_with_password,
+            edit_password.encrypted_encryption_key
+        );
 
         edit_password.otp = otp;
 
@@ -1179,26 +1251,91 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        assert!(
-            argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
+        let stored_user = users
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert!(argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.token_signing_key)
-            ),
-        );
+                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key)
+            ));
 
         assert_eq!(stored_user.auth_string_salt, edit_password.auth_string_salt);
-        assert_eq!(stored_user.auth_string_memory_cost_kib, edit_password.auth_string_memory_cost_kib);
-        assert_eq!(stored_user.auth_string_parallelism_factor, edit_password.auth_string_parallelism_factor);
-        assert_eq!(stored_user.auth_string_iters, edit_password.auth_string_iters);
+        assert_eq!(
+            stored_user.auth_string_memory_cost_kib,
+            edit_password.auth_string_memory_cost_kib
+        );
+        assert_eq!(
+            stored_user.auth_string_parallelism_factor,
+            edit_password.auth_string_parallelism_factor
+        );
+        assert_eq!(
+            stored_user.auth_string_iters,
+            edit_password.auth_string_iters
+        );
 
-        assert_eq!(stored_user.password_encryption_salt, edit_password.password_encryption_salt);
-        assert_eq!(stored_user.password_encryption_memory_cost_kib, edit_password.password_encryption_memory_cost_kib);
-        assert_eq!(stored_user.password_encryption_parallelism_factor, edit_password.password_encryption_parallelism_factor);
-        assert_eq!(stored_user.password_encryption_iters, edit_password.password_encryption_iters);
+        assert_eq!(
+            stored_user.password_encryption_salt,
+            edit_password.password_encryption_salt
+        );
+        assert_eq!(
+            stored_user.password_encryption_memory_cost_kib,
+            edit_password.password_encryption_memory_cost_kib
+        );
+        assert_eq!(
+            stored_user.password_encryption_parallelism_factor,
+            edit_password.password_encryption_parallelism_factor
+        );
+        assert_eq!(
+            stored_user.password_encryption_iters,
+            edit_password.password_encryption_iters
+        );
 
-        assert_eq!(stored_user.encryption_key_encrypted_with_password, edit_password.encrypted_encryption_key);
+        assert_eq!(
+            stored_user.encryption_key_encrypted_with_password,
+            edit_password.encrypted_encryption_key
+        );
 
+        let hash_start_pos = stored_user.auth_string_hash.rfind('$').unwrap() + 1;
+        let hash_len: u32 = base64::decode_config(
+            &stored_user.auth_string_hash[hash_start_pos..],
+            base64::STANDARD_NO_PAD,
+        )
+        .unwrap()
+        .len()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(hash_len, env::CONF.hashing.hash_length);
+
+        let salt_start_pos = (&stored_user.auth_string_hash[..(hash_start_pos - 1)])
+            .rfind('$')
+            .unwrap()
+            + 1;
+        let salt_end_pos = hash_start_pos - 1;
+        let salt_len: u32 = base64::decode_config(
+            &stored_user.auth_string_hash[salt_start_pos..salt_end_pos],
+            base64::STANDARD_NO_PAD,
+        )
+        .unwrap()
+        .len()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(salt_len, env::CONF.hashing.salt_length);
+
+        assert!(stored_user.auth_string_hash.contains("argon2id"));
+        assert!(stored_user
+            .auth_string_hash
+            .contains(&format!("m={}", env::CONF.hashing.hash_mem_cost_kib)));
+        assert!(stored_user
+            .auth_string_hash
+            .contains(&format!("t={}", env::CONF.hashing.hash_iterations)));
+        assert!(stored_user
+            .auth_string_hash
+            .contains(&format!("p={}", env::CONF.hashing.hash_threads)));
     }
 }

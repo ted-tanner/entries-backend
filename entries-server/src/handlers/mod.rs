@@ -79,26 +79,33 @@ pub mod verification {
             ));
         }
 
-        let otp = String::from(user_email);
-        let user_email = String::from(user_email);
+        let otp = Arc::new(String::from(otp));
+        let user_email = Arc::new(String::from(user_email));
+
+        let otp_ref = Arc::clone(&otp);
+        let user_email_ref = Arc::clone(&user_email);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        let saved_otp = match web::block(move || auth_dao.delete_otp(&otp, &user_email)).await? {
-            Ok(o) => o,
-            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::IncorrectCredential(
-                    WRONG_OR_EXPIRED_OTP_MSG,
-                ));
-            }
-            Err(e) => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
-            }
-        };
+        let exists_unexpired_otp =
+            match web::block(move || auth_dao.check_unexpired_otp(&otp_ref, &user_email_ref))
+                .await?
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
+                }
+            };
 
-        let now = SystemTime::now();
-
-        if now > saved_otp.expiration {
+        if exists_unexpired_otp {
+            let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+            match web::block(move || auth_dao.delete_otp(&otp, &user_email)).await? {
+                Ok(_) => (),
+                Err(e) => {
+                    log::error!("{e}");
+                }
+            }
+        } else {
             return Err(HttpErrorResponse::IncorrectCredential(
                 WRONG_OR_EXPIRED_OTP_MSG,
             ));
