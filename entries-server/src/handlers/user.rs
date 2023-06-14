@@ -1338,4 +1338,146 @@ pub mod tests {
             .auth_string_hash
             .contains(&format!("p={}", env::CONF.hashing.hash_threads)));
     }
+
+    #[actix_web::test]
+    async fn test_change_recovery_key() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        // Make sure an OTP is generated
+        let req = TestRequest::get()
+            .uri("/api/auth/obtain_otp")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        test::call_service(&app, req).await;
+
+        let otp = user_otps
+            .select(user_otp_fields::otp)
+            .find(&user.email)
+            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let gen = |r: std::ops::Range<u8>| {
+            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+                .collect()
+        };
+
+        let updated_recovery_key_salt: Vec<_> = gen(0..16);
+        let updated_encrypted_encryption_key: Vec<_> = gen(0..48);
+
+        let mut edit_recovery_key = InputNewRecoveryKey {
+            otp: String::from("ABCDEFGH"),
+
+            recovery_key_salt: updated_recovery_key_salt.clone(),
+
+            recovery_key_memory_cost_kib: 11,
+            recovery_key_parallelism_factor: 13,
+            recovery_key_iters: 17,
+
+            encrypted_encryption_key: updated_encrypted_encryption_key,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/change_recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&edit_recovery_key)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = test::try_read_body(resp).await.unwrap();
+        let resp_body = String::from_utf8_lossy(&resp_body);
+
+        assert!(resp_body.contains("\"error_code\":\"DISNOU\""));
+
+        edit_recovery_key.otp = otp;
+
+        let req = TestRequest::put()
+            .uri("/api/user/change_recovery_key")
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&edit_recovery_key)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = test::try_read_body(resp).await.unwrap();
+        let resp_body = String::from_utf8_lossy(&resp_body);
+
+        println!("\n\n{:#?}\n\n", resp_body);
+
+        assert!(resp_body.contains("\"error_code\":\"UFORGT\""));
+
+        let stored_user = users
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_ne!(
+            stored_user.recovery_key_salt,
+            edit_recovery_key.recovery_key_salt
+        );
+        assert_ne!(
+            stored_user.recovery_key_memory_cost_kib,
+            edit_recovery_key.recovery_key_memory_cost_kib
+        );
+        assert_ne!(
+            stored_user.recovery_key_parallelism_factor,
+            edit_recovery_key.recovery_key_parallelism_factor
+        );
+        assert_ne!(
+            stored_user.recovery_key_iters,
+            edit_recovery_key.recovery_key_iters
+        );
+        assert_ne!(
+            stored_user.encryption_key_encrypted_with_recovery_key,
+            edit_recovery_key.encrypted_encryption_key
+        );
+
+        let req = TestRequest::put()
+            .uri("/api/user/change_recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&edit_recovery_key)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let stored_user = users
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(
+            stored_user.recovery_key_salt,
+            edit_recovery_key.recovery_key_salt
+        );
+        assert_eq!(
+            stored_user.recovery_key_memory_cost_kib,
+            edit_recovery_key.recovery_key_memory_cost_kib
+        );
+        assert_eq!(
+            stored_user.recovery_key_parallelism_factor,
+            edit_recovery_key.recovery_key_parallelism_factor
+        );
+        assert_eq!(
+            stored_user.recovery_key_iters,
+            edit_recovery_key.recovery_key_iters
+        );
+        assert_eq!(
+            stored_user.encryption_key_encrypted_with_recovery_key,
+            edit_recovery_key.encrypted_encryption_key
+        );
+    }
 }

@@ -9,6 +9,7 @@ use std::mem;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
+use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::{into_actix_error_res, TokenLocation};
 
 pub trait RequestAuthTokenType {
@@ -107,7 +108,7 @@ where
     T: RequestAuthTokenType,
     L: TokenLocation,
 {
-    type Error = actix_web::Error;
+    type Error = HttpErrorResponse;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
@@ -133,7 +134,7 @@ where
     T: RequestAuthTokenType,
     L: TokenLocation,
 {
-    type Error = actix_web::Error;
+    type Error = HttpErrorResponse;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {

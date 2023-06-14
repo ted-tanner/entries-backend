@@ -198,6 +198,7 @@ pub mod error {
         IncorrectlyFormed(&'static str),
         OutOfDate(&'static str),
         InvalidState(&'static str),
+        MissingHeader(&'static str),
         ConflictWithExisting(&'static str),
 
         // 401
@@ -236,6 +237,9 @@ pub mod error {
                 HttpErrorResponse::OutOfDate(msg) => format_err(f, "U2SLOW", "Out of date", msg),
                 HttpErrorResponse::InvalidState(msg) => {
                     format_err(f, "UTBETR", "Invalid state", msg)
+                }
+                HttpErrorResponse::MissingHeader(msg) => {
+                    format_err(f, "NOHEAD", "Missing header", msg)
                 }
                 HttpErrorResponse::ConflictWithExisting(msg) => {
                     format_err(f, "UNOWIN", "Conflict with existing data", msg)
@@ -305,6 +309,7 @@ pub mod error {
                 HttpErrorResponse::IncorrectlyFormed(_)
                 | HttpErrorResponse::OutOfDate(_)
                 | HttpErrorResponse::InvalidState(_)
+                | HttpErrorResponse::MissingHeader(_)
                 | HttpErrorResponse::ConflictWithExisting(_) => StatusCode::BAD_REQUEST,
                 HttpErrorResponse::IncorrectCredential(_)
                 | HttpErrorResponse::TokenExpired(_)

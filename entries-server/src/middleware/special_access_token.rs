@@ -5,6 +5,7 @@ use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::marker::PhantomData;
 
+use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::{into_actix_error_res, TokenLocation};
 
 pub struct SpecialAccessToken<T: for<'a> Token<'a>, L: TokenLocation>(
@@ -18,7 +19,7 @@ where
     T: for<'a> Token<'a>,
     L: TokenLocation,
 {
-    type Error = actix_web::error::Error;
+    type Error = HttpErrorResponse;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {

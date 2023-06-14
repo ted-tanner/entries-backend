@@ -5,8 +5,9 @@ pub mod throttle;
 
 use entries_utils::token::TokenError;
 
-use actix_web::error::ErrorUnauthorized;
 use actix_web::HttpRequest;
+
+use crate::handlers::error::HttpErrorResponse;
 
 pub trait TokenLocation {
     fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str>;
@@ -52,12 +53,16 @@ impl TokenLocation for FromHeader {
 }
 
 #[inline(always)]
-fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, actix_web::Error> {
+fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, HttpErrorResponse> {
     match result {
         Ok(t) => Ok(t),
-        Err(TokenError::TokenInvalid) => Err(ErrorUnauthorized("Token is invalid")),
-        Err(TokenError::TokenExpired) => Err(ErrorUnauthorized("Token is expired")),
-        Err(TokenError::TokenMissing) => Err(ErrorUnauthorized("Token is missing")),
-        Err(TokenError::WrongTokenType) => Err(ErrorUnauthorized("Incorrect token type")),
+        Err(TokenError::TokenInvalid) => {
+            Err(HttpErrorResponse::IncorrectCredential("Token is invalid"))
+        }
+        Err(TokenError::TokenExpired) => Err(HttpErrorResponse::TokenExpired("Token is expired")),
+        Err(TokenError::TokenMissing) => Err(HttpErrorResponse::TokenMissing("Token is missing")),
+        Err(TokenError::WrongTokenType) => {
+            Err(HttpErrorResponse::WrongTokenType("Incorrect token type"))
+        }
     }
 }

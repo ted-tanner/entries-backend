@@ -60,7 +60,7 @@ impl<const TRIES: i32, const MINS: u64> Throttle<TRIES, MINS> {
 }
 
 impl<const TRIES: i32, const MINS: u64> FromRequest for Throttle<TRIES, MINS> {
-    type Error = actix_web::error::Error;
+    type Error = HttpErrorResponse;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(_req: &HttpRequest, _payload: &mut Payload) -> Self::Future {

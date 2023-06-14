@@ -1,12 +1,14 @@
 use actix_web::dev::Payload;
-use actix_web::{error, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest};
 use futures::future;
+
+use crate::handlers::error::HttpErrorResponse;
 
 #[derive(Debug)]
 pub struct AppVersion(pub String);
 
 impl FromRequest for AppVersion {
-    type Error = error::Error;
+    type Error = HttpErrorResponse;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
@@ -14,16 +16,24 @@ impl FromRequest for AppVersion {
 
         let app_version = match req.headers().get("AppVersion") {
             Some(header) => header,
-            None => return future::err(error::ErrorBadRequest(NO_VERSION_HEADER_MESSAGE)),
+            None => {
+                return future::err(HttpErrorResponse::MissingHeader(NO_VERSION_HEADER_MESSAGE))
+            }
         };
 
         let app_verion = match app_version.to_str() {
             Ok(v) => v,
-            Err(_) => return future::err(error::ErrorBadRequest(NO_VERSION_HEADER_MESSAGE)),
+            Err(_) => {
+                return future::err(HttpErrorResponse::IncorrectlyFormed(
+                    NO_VERSION_HEADER_MESSAGE,
+                ))
+            }
         };
 
         if app_version.len() > 24 {
-            return future::err(error::ErrorBadRequest(NO_VERSION_HEADER_MESSAGE));
+            return future::err(HttpErrorResponse::IncorrectlyFormed(
+                NO_VERSION_HEADER_MESSAGE,
+            ));
         }
 
         future::ok(AppVersion(String::from(app_verion)))
