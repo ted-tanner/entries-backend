@@ -16,7 +16,7 @@ use ed25519_dalek as ed25519;
 use rand::rngs::OsRng;
 use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Encrypt, RsaPublicKey};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -157,6 +157,14 @@ pub async fn create(
             &db_thread_pool,
         )
         .await?;
+
+    let temp_id_set = HashSet::<i32>::from_iter(budget_data.categories.iter().map(|c| c.temp_id));
+
+    if temp_id_set.len() != budget_data.categories.len() {
+        return Err(HttpErrorResponse::InvalidState(
+            "Multiple categories with the same ID",
+        ));
+    }
 
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);

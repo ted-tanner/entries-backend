@@ -498,7 +498,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Don't delete OTP to test them
+* Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!
   - [x] Jobs
   - [ ] Handler utils in `handers/mod.rs`

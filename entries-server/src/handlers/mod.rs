@@ -377,21 +377,34 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
+    use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
-    use entries_utils::request_io::InputUser;
+    use entries_utils::request_io::{
+        InputBudget, InputCategoryWithTempId, InputUser, OutputBudgetFrame,
+    };
+    use entries_utils::schema::budgets::dsl::budgets;
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
+    use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
 
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-    use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+    use ed25519::SigningKey;
+    use ed25519_dalek as ed25519;
+    use rand::rngs::OsRng;
     use rand::Rng;
     use std::time::SystemTime;
 
     use crate::env;
+
+    pub fn gen_bytes(count: usize) -> Vec<u8> {
+        (0..count)
+            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .collect()
+    }
 
     pub async fn create_user() -> (User, String) {
         let app = test::init_service(
@@ -403,38 +416,34 @@ pub mod test_utils {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let gen = |r: std::ops::Range<u8>| {
-            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
-                .collect()
-        };
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: gen(0..10),
+            auth_string: gen_bytes(10),
 
-            auth_string_salt: gen(0..10),
+            auth_string_salt: gen_bytes(10),
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
 
-            password_encryption_salt: gen(0..10),
+            password_encryption_salt: gen_bytes(10),
             password_encryption_memory_cost_kib: 1024,
             password_encryption_parallelism_factor: 1,
             password_encryption_iters: 1,
 
-            recovery_key_salt: gen(0..10),
+            recovery_key_salt: gen_bytes(10),
             recovery_key_memory_cost_kib: 1024,
             recovery_key_parallelism_factor: 1,
             recovery_key_iters: 1,
 
-            encryption_key_encrypted_with_password: gen(0..10),
-            encryption_key_encrypted_with_recovery_key: gen(0..10),
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
-            public_key: gen(0..10),
+            public_key: gen_bytes(10),
 
-            preferences_encrypted: gen(0..10),
-            user_keystore_encrypted: gen(0..10),
+            preferences_encrypted: gen_bytes(10),
+            user_keystore_encrypted: gen_bytes(10),
         };
 
         let req = TestRequest::post()
@@ -467,5 +476,52 @@ pub mod test_utils {
         let access_token = access_token.sign_and_encode(&env::CONF.keys.token_signing_key);
 
         (user, access_token)
+    }
+
+    pub async fn create_budget(access_token: &str) -> (Budget, SigningKey) {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let public_key = key_pair.verifying_key().to_bytes();
+
+        let new_budget = InputBudget {
+            encrypted_blob: gen_bytes(32),
+            encryption_key_encrypted: gen_bytes(32),
+            categories: vec![
+                InputCategoryWithTempId {
+                    temp_id: 0,
+                    encrypted_blob: gen_bytes(40),
+                },
+                InputCategoryWithTempId {
+                    temp_id: 1,
+                    encrypted_blob: gen_bytes(60),
+                },
+            ],
+            user_public_budget_key: Vec::from(public_key),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/create")
+            .insert_header(("AccessToken", access_token))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&new_budget)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let budget_data = test::read_body_json::<OutputBudgetFrame, _>(resp).await;
+        let budget = budgets
+            .find(budget_data.id)
+            .get_result(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        (budget, key_pair)
     }
 }

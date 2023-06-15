@@ -716,7 +716,7 @@ pub mod tests {
     use sha1::{Digest, Sha1};
     use std::str::FromStr;
 
-    use crate::handlers::test_utils;
+    use crate::handlers::test_utils::{self, gen_bytes};
 
     #[actix_web::test]
     async fn test_lookup_user_public_key() {
@@ -757,38 +757,34 @@ pub mod tests {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let gen = |r: std::ops::Range<u8>| {
-            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
-                .collect()
-        };
 
         let new_user = InputUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: gen(0..10),
+            auth_string: gen_bytes(10),
 
-            auth_string_salt: gen(0..10),
+            auth_string_salt: gen_bytes(10),
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
 
-            password_encryption_salt: gen(0..10),
+            password_encryption_salt: gen_bytes(10),
             password_encryption_memory_cost_kib: 1024,
             password_encryption_parallelism_factor: 1,
             password_encryption_iters: 1,
 
-            recovery_key_salt: gen(0..10),
+            recovery_key_salt: gen_bytes(10),
             recovery_key_memory_cost_kib: 1024,
             recovery_key_parallelism_factor: 1,
             recovery_key_iters: 1,
 
-            encryption_key_encrypted_with_password: gen(0..10),
-            encryption_key_encrypted_with_recovery_key: gen(0..10),
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
-            public_key: gen(0..10),
+            public_key: gen_bytes(10),
 
-            preferences_encrypted: gen(0..10),
-            user_keystore_encrypted: gen(0..10),
+            preferences_encrypted: gen_bytes(10),
+            user_keystore_encrypted: gen_bytes(10),
         };
 
         let req = TestRequest::post()
@@ -1147,15 +1143,10 @@ pub mod tests {
             .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let gen = |r: std::ops::Range<u8>| {
-            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
-                .collect()
-        };
-
-        let updated_auth_string: Vec<_> = gen(0..32);
-        let updated_auth_string_salt: Vec<_> = gen(0..16);
-        let updated_password_encryption_salt: Vec<_> = gen(0..16);
-        let updated_encrypted_encryption_key: Vec<_> = gen(0..48);
+        let updated_auth_string: Vec<_> = gen_bytes(32);
+        let updated_auth_string_salt: Vec<_> = gen_bytes(16);
+        let updated_password_encryption_salt: Vec<_> = gen_bytes(16);
+        let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
         let mut edit_password = InputNewAuthStringAndEncryptedPassword {
             user_email: user.email.clone(),
@@ -1365,13 +1356,8 @@ pub mod tests {
             .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let gen = |r: std::ops::Range<u8>| {
-            r.map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
-                .collect()
-        };
-
-        let updated_recovery_key_salt: Vec<_> = gen(0..16);
-        let updated_encrypted_encryption_key: Vec<_> = gen(0..48);
+        let updated_recovery_key_salt: Vec<_> = gen_bytes(16);
+        let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
         let mut edit_recovery_key = InputNewRecoveryKey {
             otp: String::from("ABCDEFGH"),
@@ -1479,5 +1465,25 @@ pub mod tests {
             stored_user.encryption_key_encrypted_with_recovery_key,
             edit_recovery_key.encrypted_encryption_key
         );
+    }
+
+    #[actix_web::test]
+    async fn test_init_delete() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        // TODO: Test with 0 tokens
+        // TODO: Test with 2 tokens
+        // TODO: Test with a shared token (delete just one user, budget should survive)
+        // TODO: Test with a shared token (delete both users, budget should be deleted)
+
+        todo!();
     }
 }
