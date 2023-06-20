@@ -39,7 +39,7 @@ pub async fn obtain_nonce_and_auth_string_params(
     let random: u64 = rng.gen();
 
     let mut hasher = Sha256::new();
-    hasher.update(&email.email);
+    hasher.update(&*email.email);
     hasher.update(random.to_be_bytes());
     let hash = hasher.finalize();
 
@@ -145,7 +145,7 @@ pub async fn sign_in(
 
     handlers::verification::verify_auth_string(
         &credentials.auth_string,
-        &credentials.email,
+        Arc::clone(&credentials.email),
         &db_thread_pool,
     )
     .await?;
@@ -164,7 +164,7 @@ pub async fn sign_in(
     };
 
     handlers::verification::generate_and_email_otp(
-        &credentials.email,
+        Arc::clone(&credentials.email),
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -187,7 +187,12 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool).await?;
+    handlers::verification::verify_otp(
+        Arc::clone(&otp.otp),
+        (&*claims.user_email).into(),
+        &db_thread_pool,
+    )
+    .await?;
 
     let now = SystemTime::now();
 
@@ -233,7 +238,7 @@ pub async fn obtain_otp(
         .await?;
 
     handlers::verification::generate_and_email_otp(
-        &user_access_token.0.user_email,
+        user_access_token.0.user_email.into(),
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -314,8 +319,12 @@ pub async fn regenerate_backup_codes(
         .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, &user_access_token.0.user_email, &db_thread_pool)
-        .await?;
+    handlers::verification::verify_otp(
+        Arc::clone(&otp.otp),
+        user_access_token.0.user_email.into(),
+        &db_thread_pool,
+    )
+    .await?;
 
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
     let backup_codes_ref = Arc::clone(&backup_codes);

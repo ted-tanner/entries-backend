@@ -84,12 +84,12 @@ mod tests {
 
         let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
         let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
 
         let keypair = Keypair::generate(&mut OsRng {});
         let pub_key = keypair.public.as_bytes();
-        let signature = hex::encode(keypair.sign(claims.as_bytes()));
+        let signature = hex::encode(keypair.sign(&claims));
 
+        let claims = String::from_utf8_lossy(&claims);
         let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
 
         let token = BudgetAccessToken::from_str(&token).unwrap();

@@ -12,26 +12,25 @@ pub mod verification {
     use std::sync::Arc;
     use std::time::SystemTime;
     use tokio::sync::oneshot;
-    use zeroize::Zeroize;
+    use zeroize::Zeroizing;
 
     use super::error::HttpErrorResponse;
     use crate::env;
 
     pub async fn generate_and_email_otp(
-        user_email: &str,
+        user_email: Arc<str>,
         db_thread_pool: &DbThreadPool,
         smtp_thread_pool: &EmailSender,
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
 
-        let user_email = Arc::new(String::from(user_email));
         let user_email_ref = Arc::clone(&user_email);
 
-        let otp = Otp::generate(8);
-        let otp_clone = otp.clone();
+        let otp = Arc::new(Otp::generate(8));
+        let otp_ref = Arc::clone(&otp);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        match web::block(move || auth_dao.save_otp(&otp_clone, &user_email_ref, otp_expiration))
+        match web::block(move || auth_dao.save_otp(&otp_ref, &user_email_ref, otp_expiration))
             .await?
         {
             Ok(a) => a,
@@ -67,8 +66,8 @@ pub mod verification {
     }
 
     pub async fn verify_otp(
-        otp: &str,
-        user_email: &str,
+        otp: Arc<str>,
+        user_email: Arc<str>,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
@@ -78,9 +77,6 @@ pub mod verification {
                 WRONG_OR_EXPIRED_OTP_MSG,
             ));
         }
-
-        let otp = Arc::new(String::from(otp));
-        let user_email = Arc::new(String::from(user_email));
 
         let otp_ref = Arc::clone(&otp);
         let user_email_ref = Arc::clone(&user_email);
@@ -116,7 +112,7 @@ pub mod verification {
 
     pub async fn verify_auth_string(
         auth_string: &[u8],
-        user_email: &str,
+        user_email: Arc<str>,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         if user_email.len() > 255 || auth_string.len() > 512 {
@@ -125,8 +121,7 @@ pub mod verification {
             ));
         }
 
-        let mut auth_string = Vec::from(auth_string);
-        let user_email = String::from(user_email);
+        let auth_string = Zeroizing::new(Vec::from(auth_string));
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
         let hash =
@@ -157,8 +152,6 @@ pub mod verification {
                 &auth_string,
                 argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
             );
-
-            auth_string.zeroize();
 
             sender
                 .send(Ok(does_auth_string_match_hash))
@@ -380,23 +373,25 @@ pub mod test_utils {
     use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
     use entries_utils::request_io::{
-        InputBudget, InputCategoryWithTempId, InputUser, OutputBudgetFrame,
+        InputBudget, InputCategoryWithTempId, InputUser, OutputBudgetFrame, UserInvitationToBudget,
     };
     use entries_utils::schema::budgets::dsl::budgets;
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+    use entries_utils::token::budget_access_token::BudgetAccessTokenInternalClaims;
 
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-    use ed25519::SigningKey;
+    use ed25519::{Signer, SigningKey};
     use ed25519_dalek as ed25519;
     use rand::rngs::OsRng;
     use rand::Rng;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     use crate::env;
 
@@ -404,6 +399,25 @@ pub mod test_utils {
         (0..count)
             .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
             .collect()
+    }
+
+    pub fn gen_budget_token(budget_id: Uuid, key_id: Uuid) -> String {
+        let exp = SystemTime::now() + Duration::from_secs(10);
+        let exp = exp.duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+        let claims = BudgetAccessTokenInternalClaims {
+            kid: key_id,
+            bid: budget_id,
+            exp,
+        };
+
+        let claims = serde_json::to_vec(&claims).unwrap();
+
+        let key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let signature = hex::encode(&key_pair.sign(&claims).to_bytes());
+
+        let claims = String::from_utf8_lossy(&claims);
+        base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD)
     }
 
     pub async fn create_user() -> (User, String) {
@@ -478,7 +492,7 @@ pub mod test_utils {
         (user, access_token)
     }
 
-    pub async fn create_budget(access_token: &str) -> (Budget, SigningKey) {
+    pub async fn create_budget(access_token: &str) -> (Budget, SigningKey, Uuid) {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -523,5 +537,45 @@ pub mod test_utils {
             .unwrap();
 
         (budget, key_pair)
+    }
+
+    pub async fn share_budget(
+        budget_id: Uuid,
+        recipient_email: &str,
+        read_only: bool,
+        budget_access_token: &str,
+        user_access_token: &str,
+    ) {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let invite_info = UserInvitationToBudget {
+            recipient_user_email: String::from(recipient_email),
+            sender_public_key: gen_bytes(22),
+            encryption_key_encrypted: gen_bytes(44),
+            budget_info_encrypted: gen_bytes(20),
+            sender_info_encrypted: gen_bytes(30),
+            share_info_symmetric_key_encrypted: gen_bytes(35),
+            expiration: SystemTime::now() + Duration::from_secs(10),
+            read_only,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/invite_user")
+            .insert_header(("AccessToken", user_access_token))
+            .insert_header(("BudgetAccessToken", budget_access_token))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(&invite_info)
+            .to_request();
+        test::call_service(&app, req).await;
+
+        // TODO: Recipient gets all invites
+        // TODO: Recipient accepts invite
+        // TODO: Recipient
     }
 }

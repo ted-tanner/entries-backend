@@ -332,8 +332,8 @@ pub async fn change_password(
     }
 
     handlers::verification::verify_otp(
-        &new_password_data.otp,
-        &new_password_data.user_email,
+        Arc::clone(&new_password_data.otp),
+        Arc::clone(&new_password_data.user_email),
         &db_thread_pool,
     )
     .await?;
@@ -412,8 +412,8 @@ pub async fn change_recovery_key(
         .await?;
 
     handlers::verification::verify_otp(
-        &new_recovery_key_data.otp,
-        &user_access_token.0.user_email,
+        Arc::clone(&new_recovery_key_data.otp),
+        user_access_token.0.user_email.into(),
         &db_thread_pool,
     )
     .await?;
@@ -1478,6 +1478,7 @@ pub mod tests {
         .await;
 
         let (user, access_token) = test_utils::create_user().await;
+        let (budget, budget_key_pair) = test_utils::create_budget(&access_token).await;
 
         // TODO: Test with 0 tokens
         // TODO: Test with 2 tokens

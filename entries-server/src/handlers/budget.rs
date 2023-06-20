@@ -248,7 +248,7 @@ pub async fn invite_user(
 
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    if invitation_info.recipient_user_email == user_access_token.0.user_email {
+    if invitation_info.recipient_user_email == user_access_token.0.user_email.into() {
         return Err(HttpErrorResponse::InvalidState(
             "Inviter and recipient are the same",
         ));
