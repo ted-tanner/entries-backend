@@ -498,7 +498,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Enable serde `"rc"` feature and accept an `Arc<str>` (or perhaps `Rc<str>`) instead of a `String` for inputs (same with `Arc<[u8]>` instead of `Vec<u8>`)
 * Budget create endpoint needs to return access key id
 * Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!
@@ -514,6 +513,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate
+* Enable serde `"rc"` feature and accept an `Arc<str>` (or perhaps `Rc<str>`) instead of a `String` for inputs (same with `Arc<[u8]>` instead of `Vec<u8>`)
 * Endpoint for changing user's encryption key (must re-encrypt user data and budget keys and get a new recovery key.) This should also log all other devices out.
 * Once NIST comes out with an official recommendation for a quantum-resistant algorithm, add another key pair with the new algorithm and begin double-encrypting and signing with the new quantum-resistant algorithm
 * Rotate users' RSA keys. Keep the old one on hand (and the date it was retired) for decrypting keys from current budget invitations

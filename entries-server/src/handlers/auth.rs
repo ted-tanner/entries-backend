@@ -145,7 +145,7 @@ pub async fn sign_in(
 
     handlers::verification::verify_auth_string(
         &credentials.auth_string,
-        Arc::clone(&credentials.email),
+        &credentials.email,
         &db_thread_pool,
     )
     .await?;
@@ -164,7 +164,7 @@ pub async fn sign_in(
     };
 
     handlers::verification::generate_and_email_otp(
-        Arc::clone(&credentials.email),
+        &credentials.email,
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -187,12 +187,8 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(
-        Arc::clone(&otp.otp),
-        (&*claims.user_email).into(),
-        &db_thread_pool,
-    )
-    .await?;
+    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool)
+        .await?;
 
     let now = SystemTime::now();
 
@@ -238,7 +234,7 @@ pub async fn obtain_otp(
         .await?;
 
     handlers::verification::generate_and_email_otp(
-        user_access_token.0.user_email.into(),
+        &user_access_token.0.user_email,
         db_thread_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -320,8 +316,8 @@ pub async fn regenerate_backup_codes(
         .await?;
 
     handlers::verification::verify_otp(
-        Arc::clone(&otp.otp),
-        user_access_token.0.user_email.into(),
+        &otp.otp,
+        &user_access_token.0.user_email,
         &db_thread_pool,
     )
     .await?;

@@ -332,8 +332,8 @@ pub async fn change_password(
     }
 
     handlers::verification::verify_otp(
-        Arc::clone(&new_password_data.otp),
-        Arc::clone(&new_password_data.user_email),
+        &new_password_data.otp,
+        &new_password_data.user_email,
         &db_thread_pool,
     )
     .await?;
@@ -412,8 +412,8 @@ pub async fn change_recovery_key(
         .await?;
 
     handlers::verification::verify_otp(
-        Arc::clone(&new_recovery_key_data.otp),
-        user_access_token.0.user_email.into(),
+        &new_recovery_key_data.otp,
+        &user_access_token.0.user_email,
         &db_thread_pool,
     )
     .await?;

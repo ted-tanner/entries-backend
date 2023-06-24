@@ -18,19 +18,19 @@ pub mod verification {
     use crate::env;
 
     pub async fn generate_and_email_otp(
-        user_email: Arc<str>,
+        user_email: &str,
         db_thread_pool: &DbThreadPool,
         smtp_thread_pool: &EmailSender,
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
 
-        let user_email_ref = Arc::clone(&user_email);
+        let user_email_copy = String::from(user_email);
 
         let otp = Arc::new(Otp::generate(8));
         let otp_ref = Arc::clone(&otp);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        match web::block(move || auth_dao.save_otp(&otp_ref, &user_email_ref, otp_expiration))
+        match web::block(move || auth_dao.save_otp(&otp_ref, &user_email_copy, otp_expiration))
             .await?
         {
             Ok(a) => a,
@@ -66,8 +66,8 @@ pub mod verification {
     }
 
     pub async fn verify_otp(
-        otp: Arc<str>,
-        user_email: Arc<str>,
+        otp: &str,
+        user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
@@ -78,12 +78,14 @@ pub mod verification {
             ));
         }
 
-        let otp_ref = Arc::clone(&otp);
-        let user_email_ref = Arc::clone(&user_email);
+        let otp_copy = Arc::new(String::from(otp));
+        let otp_ref = Arc::new(String::from(otp));
+        let user_email_copy = Arc::new(String::from(user_email));
+        let user_email_ref = Arc::clone(&user_email_copy);
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
         let exists_unexpired_otp =
-            match web::block(move || auth_dao.check_unexpired_otp(&otp_ref, &user_email_ref))
+            match web::block(move || auth_dao.check_unexpired_otp(&otp_copy, &*user_email_copy))
                 .await?
             {
                 Ok(e) => e,
@@ -95,7 +97,7 @@ pub mod verification {
 
         if exists_unexpired_otp {
             let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-            match web::block(move || auth_dao.delete_otp(&otp, &user_email)).await? {
+            match web::block(move || auth_dao.delete_otp(&otp_ref, &user_email_ref)).await? {
                 Ok(_) => (),
                 Err(e) => {
                     log::error!("{e}");
@@ -112,7 +114,7 @@ pub mod verification {
 
     pub async fn verify_auth_string(
         auth_string: &[u8],
-        user_email: Arc<str>,
+        user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         if user_email.len() > 255 || auth_string.len() > 512 {
@@ -121,11 +123,12 @@ pub mod verification {
             ));
         }
 
+        let user_email_copy = String::from(user_email);
         let auth_string = Zeroizing::new(Vec::from(auth_string));
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
         let hash =
-            match web::block(move || auth_dao.get_user_auth_string_hash_and_status(&user_email))
+            match web::block(move || auth_dao.get_user_auth_string_hash_and_status(&user_email_copy))
                 .await?
             {
                 Ok(a) => a,
