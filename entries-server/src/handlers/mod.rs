@@ -48,7 +48,7 @@ pub mod verification {
             subject: "Your one-time passcode",
             from: env::CONF.email.from_address.clone(),
             reply_to: env::CONF.email.reply_to_address.clone(),
-            destination: &user_email,
+            destination: user_email,
             is_html: true,
         };
 
@@ -85,7 +85,7 @@ pub mod verification {
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
         let exists_unexpired_otp =
-            match web::block(move || auth_dao.check_unexpired_otp(&otp_copy, &*user_email_copy))
+            match web::block(move || auth_dao.check_unexpired_otp(&otp_copy, &user_email_copy))
                 .await?
             {
                 Ok(e) => e,
@@ -127,18 +127,19 @@ pub mod verification {
         let auth_string = Zeroizing::new(Vec::from(auth_string));
 
         let mut auth_dao = db::auth::Dao::new(db_thread_pool);
-        let hash =
-            match web::block(move || auth_dao.get_user_auth_string_hash_and_status(&user_email_copy))
-                .await?
-            {
-                Ok(a) => a,
-                Err(e) => {
-                    log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(
-                        "Failed to get user auth string",
-                    ));
-                }
-            };
+        let hash = match web::block(move || {
+            auth_dao.get_user_auth_string_hash_and_status(&user_email_copy)
+        })
+        .await?
+        {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(
+                    "Failed to get user auth string",
+                ));
+            }
+        };
 
         let (sender, receiver) = oneshot::channel();
 
@@ -495,7 +496,13 @@ pub mod test_utils {
         (user, access_token)
     }
 
-    pub async fn create_budget(access_token: &str) -> (Budget, SigningKey, Uuid) {
+    pub struct BudgetAndKey {
+        budget: Budget,
+        key_pair: SigningKey,
+        key_id: Uuid,
+    }
+
+    pub async fn create_budget(access_token: &str) -> BudgetAndKey {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -539,7 +546,11 @@ pub mod test_utils {
             .get_result(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        (budget, key_pair)
+        BudgetAndKey {
+            budget,
+            key_pair,
+            key_id,
+        }
     }
 
     pub async fn share_budget(

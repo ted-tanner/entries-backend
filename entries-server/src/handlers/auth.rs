@@ -187,8 +187,7 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool)
-        .await?;
+    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool).await?;
 
     let now = SystemTime::now();
 
@@ -315,12 +314,8 @@ pub async fn regenerate_backup_codes(
         .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(
-        &otp.otp,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
+    handlers::verification::verify_otp(&otp.otp, &user_access_token.0.user_email, &db_thread_pool)
+        .await?;
 
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
     let backup_codes_ref = Arc::clone(&backup_codes);
