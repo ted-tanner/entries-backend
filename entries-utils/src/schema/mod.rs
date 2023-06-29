@@ -29,6 +29,7 @@ diesel::table! {
 diesel::table! {
     budget_share_invites (id) {
         id -> Uuid,
+        #[max_length = 255]
         recipient_user_email -> Varchar,
         sender_public_key -> Bytea,
         encryption_key_encrypted -> Bytea,
@@ -74,6 +75,7 @@ diesel::table! {
 
 diesel::table! {
     job_registry (job_name) {
+        #[max_length = 255]
         job_name -> Varchar,
         last_run_timestamp -> Timestamp,
     }
@@ -81,6 +83,7 @@ diesel::table! {
 
 diesel::table! {
     signin_nonces (user_email) {
+        #[max_length = 255]
         user_email -> Varchar,
         nonce -> Int4,
     }
@@ -97,6 +100,7 @@ diesel::table! {
 diesel::table! {
     user_backup_codes (user_id, code) {
         user_id -> Uuid,
+        #[max_length = 12]
         code -> Varchar,
     }
 }
@@ -127,7 +131,9 @@ diesel::table! {
 
 diesel::table! {
     user_otps (user_email) {
+        #[max_length = 255]
         user_email -> Varchar,
+        #[max_length = 8]
         otp -> Varchar,
         expiration -> Timestamp,
     }
@@ -144,6 +150,7 @@ diesel::table! {
 diesel::table! {
     users (id) {
         id -> Uuid,
+        #[max_length = 255]
         email -> Varchar,
         is_verified -> Bool,
         public_key -> Bytea,
