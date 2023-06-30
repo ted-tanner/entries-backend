@@ -197,7 +197,7 @@ impl AuthToken {
         mac.update(&json_of_claims);
         let hash = hex::encode(mac.finalize().into_bytes());
 
-        json_of_claims.push(124); // 124 is the ASCII value of the | character
+        json_of_claims.push(b'|');
         json_of_claims.extend_from_slice(&hash.into_bytes());
 
         base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
