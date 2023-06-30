@@ -52,8 +52,8 @@ impl<'a> Token<'a> for BudgetAccessToken {
         self.claims.exp
     }
 
-    fn parts(&'a self) -> &'a Option<TokenParts> {
-        &self.parts
+    fn parts(&'a self) -> Option<&'a TokenParts> {
+        self.parts.as_ref()
     }
 
     fn claims(self) -> Self::Claims {

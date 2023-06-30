@@ -102,7 +102,7 @@ pub trait Token<'a> {
     fn token_name() -> &'static str;
     fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self;
     fn expiration(&self) -> u64;
-    fn parts(&'a self) -> &'a Option<TokenParts>;
+    fn parts(&'a self) -> Option<&'a TokenParts>;
     fn claims(self) -> Self::Claims;
 }
 
