@@ -1,67 +1,29 @@
-use crate::token::{Ed25519Verifier, Token, TokenParts};
+use crate::token::{Ed25519Verifier, Expiring, Token};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub struct BudgetAccessTokenClaims {
-    pub key_id: Uuid,
-    pub budget_id: Uuid,
-    pub expiration: u64,
-}
-
-#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BudgetAccessTokenInternalClaims {
+pub struct BudgetAccessTokenClaims {
     pub kid: Uuid, // Key ID
     pub bid: Uuid, // Budget ID
     pub exp: u64,  // Expiration
 }
 
-pub struct BudgetAccessToken {
-    claims: BudgetAccessTokenInternalClaims,
-    parts: Option<TokenParts>,
-}
-
-impl BudgetAccessToken {
-    pub fn key_id(&self) -> Uuid {
-        self.claims.kid
-    }
-
-    pub fn budget_id(&self) -> Uuid {
-        self.claims.bid
+impl Expiring for BudgetAccessTokenClaims {
+    fn expiration(&self) -> u64 {
+        self.exp
     }
 }
 
-impl<'a> Token<'a> for BudgetAccessToken {
+pub struct BudgetAccessToken {}
+
+impl Token for BudgetAccessToken {
     type Claims = BudgetAccessTokenClaims;
-    type InternalClaims = BudgetAccessTokenInternalClaims;
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
         "BudgetAccessToken"
-    }
-
-    fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
-        Self {
-            claims,
-            parts: Some(parts),
-        }
-    }
-
-    fn expiration(&self) -> u64 {
-        self.claims.exp
-    }
-
-    fn parts(&'a self) -> Option<&'a TokenParts> {
-        self.parts.as_ref()
-    }
-
-    fn claims(self) -> Self::Claims {
-        BudgetAccessTokenClaims {
-            key_id: self.claims.kid,
-            budget_id: self.claims.bid,
-            expiration: self.claims.exp,
-        }
     }
 }
 
@@ -82,18 +44,23 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims { kid, bid, exp };
         let claims = serde_json::to_vec(&claims).unwrap();
+        let claims = String::from_utf8_lossy(&claims);
 
         let keypair = Keypair::generate(&mut OsRng {});
         let pub_key = keypair.public.as_bytes();
-        let signature = hex::encode(keypair.sign(&claims));
+        let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
-        let claims = String::from_utf8_lossy(&claims);
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
+        let verified_claims = BudgetAccessToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .unwrap();
 
-        let token = BudgetAccessToken::from_str(&token).unwrap();
-        assert!(token.verify(pub_key));
+        assert_eq!(verified_claims.kid, kid);
+        assert_eq!(verified_claims.bid, bid);
+        assert_eq!(verified_claims.exp, exp);
 
         let mut token = format!("{claims}|{signature}");
 
@@ -105,25 +72,27 @@ mod tests {
             token.push('a');
         }
 
-        let token = base64::encode_config(&token, base64::URL_SAFE_NO_PAD);
-
-        let token = BudgetAccessToken::from_str(&token).unwrap();
-        assert!(!token.verify(pub_key));
+        let token = base64::encode_config(&token, base64::URL_SAFE);
+        assert!(BudgetAccessToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims { kid, bid, exp };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
         let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
-
-        let token = BudgetAccessToken::from_str(&token).unwrap();
-        assert!(!token.verify(pub_key));
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
+        assert!(BudgetAccessToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
     }
 }

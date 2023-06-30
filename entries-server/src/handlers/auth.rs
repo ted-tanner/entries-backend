@@ -5,7 +5,9 @@ use entries_utils::request_io::{
     CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputBackupCodes,
     OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
-use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+use entries_utils::token::auth_token::{
+    AuthToken, AuthTokenClaims, AuthTokenType, NewAuthTokenClaims,
+};
 use entries_utils::token::Token;
 use entries_utils::validators::{self, Validity};
 
@@ -150,18 +152,22 @@ pub async fn sign_in(
     )
     .await?;
 
-    let mut signin_token = AuthToken::new(
+    let auth_token_claims = NewAuthTokenClaims {
         user_id,
-        &credentials.email,
-        SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
-        AuthTokenType::SignIn,
+        user_email: &credentials.email,
+        expiration: (SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to fetch system time")
+            .as_secs(),
+        token_type: AuthTokenType::SignIn,
+    };
+
+    let signin_token = AuthToken::sign_new(
+        auth_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
     );
 
-    signin_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-
-    let signin_token = SigninToken {
-        signin_token: signin_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-    };
+    let signin_token = SigninToken { signin_token };
 
     handlers::verification::generate_and_email_otp(
         &credentials.email,

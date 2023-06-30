@@ -1,60 +1,28 @@
-use crate::token::{Ed25519Verifier, Token, TokenParts};
+use crate::token::{Ed25519Verifier, Expiring, Token};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub struct BudgetInviteSenderTokenClaims {
-    pub invitation_id: Uuid,
-    pub expiration: u64,
-}
-
-#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BudgetInviteSenderTokenInternalClaims {
+pub struct BudgetInviteSenderTokenClaims {
     pub iid: Uuid, // Invitation ID
     pub exp: u64,  // Expiration
 }
 
-pub struct BudgetInviteSenderToken {
-    claims: BudgetInviteSenderTokenInternalClaims,
-    parts: Option<TokenParts>,
-}
-
-impl BudgetInviteSenderToken {
-    pub fn invitation_id(&self) -> Uuid {
-        self.claims.iid
+impl Expiring for BudgetInviteSenderTokenClaims {
+    fn expiration(&self) -> u64 {
+        self.exp
     }
 }
 
-impl<'a> Token<'a> for BudgetInviteSenderToken {
+pub struct BudgetInviteSenderToken {}
+
+impl Token for BudgetInviteSenderToken {
     type Claims = BudgetInviteSenderTokenClaims;
-    type InternalClaims = BudgetInviteSenderTokenInternalClaims;
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
         "BudgetInviteSenderToken"
-    }
-
-    fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
-        Self {
-            claims,
-            parts: Some(parts),
-        }
-    }
-
-    fn expiration(&self) -> u64 {
-        self.claims.exp
-    }
-
-    fn parts(&'a self) -> Option<&'a TokenParts> {
-        self.parts.as_ref()
-    }
-
-    fn claims(self) -> Self::Claims {
-        BudgetInviteSenderTokenClaims {
-            invitation_id: self.claims.iid,
-            expiration: self.claims.exp,
-        }
     }
 }
 
@@ -74,7 +42,7 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims { iid, exp };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -82,10 +50,14 @@ mod tests {
         let pub_key = keypair.public.as_bytes();
         let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
+        let verified_claims = BudgetInviteSenderToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .unwrap();
 
-        let token = BudgetInviteSenderToken::from_str(&token).unwrap();
-        assert!(token.verify(pub_key));
+        assert_eq!(verified_claims.iid, iid);
+        assert_eq!(verified_claims.exp, exp);
 
         let mut token = format!("{claims}|{signature}");
 
@@ -97,25 +69,27 @@ mod tests {
             token.push('a');
         }
 
-        let token = base64::encode_config(&token, base64::URL_SAFE_NO_PAD);
-
-        let token = BudgetInviteSenderToken::from_str(&token).unwrap();
-        assert!(!token.verify(pub_key));
+        let token = base64::encode_config(&token, base64::URL_SAFE);
+        assert!(BudgetInviteSenderToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims { iid, exp };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
         let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
-
-        let token = BudgetInviteSenderToken::from_str(&token).unwrap();
-        assert!(!token.verify(pub_key));
+        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
+        assert!(BudgetInviteSenderToken::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
     }
 }

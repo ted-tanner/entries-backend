@@ -1,5 +1,7 @@
-use entries_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
-use entries_utils::token::{Token, TokenError};
+use entries_utils::token::auth_token::{
+    AuthToken, AuthTokenClaims, AuthTokenEncryptedClaims, AuthTokenType,
+};
+use entries_utils::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
@@ -84,8 +86,10 @@ impl RequestAuthTokenType for UserDeletion {
     }
 }
 
+type AuthDecodedToken = DecodedToken<<AuthToken as Token>::Claims, <AuthToken as Token>::Verifier>;
+
 pub struct UnverifiedToken<T: RequestAuthTokenType, L: TokenLocation>(
-    pub AuthToken,
+    pub AuthDecodedToken,
     PhantomData<T>,
     PhantomData<L>,
 )
@@ -153,7 +157,7 @@ where
 }
 
 #[inline]
-fn get_and_decode_token<T, L>(req: &HttpRequest) -> Result<AuthToken, TokenError>
+fn get_and_decode_token<T, L>(req: &HttpRequest) -> Result<AuthDecodedToken, TokenError>
 where
     T: RequestAuthTokenType,
     L: TokenLocation,
@@ -163,26 +167,16 @@ where
         None => return Err(TokenError::TokenMissing),
     };
 
-    AuthToken::from_str(token)
+    AuthToken::decode(token)
 }
 
 #[inline]
 fn verify_token(
-    mut decoded_token: AuthToken,
+    decoded_token: AuthDecodedToken,
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
-    if !decoded_token.verify(&env::CONF.keys.token_signing_key) {
-        return Err(TokenError::TokenInvalid);
-    }
-
-    if decoded_token
-        .decrypt(&env::CONF.keys.token_encryption_cipher)
-        .is_err()
-    {
-        return Err(TokenError::TokenInvalid);
-    }
-
-    let claims = decoded_token.claims();
+    let claims = decoded_token.verify(&env::CONF.keys.token_signing_key)?;
+    let claims = claims.decrypt(&env::CONF.keys.token_encryption_cipher)?;
 
     if mem::discriminant(&claims.token_type) != mem::discriminant(&expected_type) {
         return Err(TokenError::WrongTokenType);

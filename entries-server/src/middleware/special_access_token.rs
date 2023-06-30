@@ -1,4 +1,4 @@
-use entries_utils::token::{Token, TokenError};
+use entries_utils::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
@@ -8,15 +8,15 @@ use std::marker::PhantomData;
 use crate::handlers::error::HttpErrorResponse;
 use crate::middleware::{into_actix_error_res, TokenLocation};
 
-pub struct SpecialAccessToken<T: for<'a> Token<'a>, L: TokenLocation>(
-    pub T,
+pub struct SpecialAccessToken<T: Token, L: TokenLocation>(
+    pub DecodedToken<T::Claims, T::Verifier>,
     PhantomData<T>,
     PhantomData<L>,
 );
 
 impl<T, L> FromRequest for SpecialAccessToken<T, L>
 where
-    T: for<'a> Token<'a>,
+    T: Token,
     L: TokenLocation,
 {
     type Error = HttpErrorResponse;
@@ -33,10 +33,7 @@ where
             Err(e) => return future::err(e),
         };
 
-        let decoded_token = into_actix_error_res(match T::from_str(token) {
-            Ok(t) => Ok(t),
-            Err(_e) => Err(TokenError::TokenInvalid),
-        });
+        let decoded_token = into_actix_error_res(T::decode(token));
 
         let decoded_token = match decoded_token {
             Ok(t) => t,

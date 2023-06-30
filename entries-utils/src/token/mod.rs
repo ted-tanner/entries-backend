@@ -8,6 +8,7 @@ use hmac::{Hmac, Mac};
 use serde::de::DeserializeOwned;
 use sha2::Sha256;
 use std::fmt;
+use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
@@ -31,30 +32,63 @@ impl fmt::Display for TokenError {
     }
 }
 
-pub struct TokenParts {
-    pub json: String,
-    pub signature: Vec<u8>,
+pub trait Expiring {
+    fn expiration(&self) -> u64;
 }
 
 pub trait TokenSignatureVerifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool;
 }
 
-pub trait Token<'a> {
-    type Claims;
-    type InternalClaims: DeserializeOwned;
+pub struct DecodedToken<C: Expiring + DeserializeOwned, V: TokenSignatureVerifier> {
+    json: String,
+    signature: Vec<u8>,
+    phantom1: PhantomData<C>,
+    phantom2: PhantomData<V>,
+}
+
+impl<C, V> DecodedToken<C, V>
+where
+    C: Expiring + DeserializeOwned,
+    V: TokenSignatureVerifier,
+{
+    pub fn verify(&self, key: &[u8]) -> Result<C, TokenError> {
+        if !V::verify(&self.json, &self.signature, key) {
+            return Err(TokenError::TokenInvalid);
+        }
+
+        let claims = match serde_json::from_str::<C>(&self.json) {
+            Ok(c) => c,
+            Err(_) => return Err(TokenError::TokenInvalid),
+        };
+
+        if claims.expiration()
+            <= SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        {
+            return Err(TokenError::TokenExpired);
+        }
+
+        Ok(claims)
+    }
+}
+
+pub trait Token {
+    type Claims: Expiring + DeserializeOwned;
     type Verifier: TokenSignatureVerifier;
 
-    fn from_str(token: &str) -> Result<Self, TokenError>
-    where
-        Self: Sized,
-    {
-        let decoded_token = match base64::decode_config(token, base64::URL_SAFE_NO_PAD) {
+    fn token_name() -> &'static str;
+
+    fn decode(token: &str) -> Result<DecodedToken<Self::Claims, Self::Verifier>, TokenError> {
+        let decoded_token = match base64::decode_config(token, base64::URL_SAFE) {
             Ok(t) => t,
             Err(_) => return Err(TokenError::TokenInvalid),
         };
 
         let token_str = String::from_utf8_lossy(&decoded_token);
+
         let mut split_token = token_str.split('|');
 
         let signature_str = match split_token.next_back() {
@@ -68,42 +102,14 @@ pub trait Token<'a> {
         };
 
         let claims_json_string = split_token.collect::<String>();
-        let claims = match serde_json::from_str::<Self::InternalClaims>(&claims_json_string) {
-            Ok(c) => c,
-            Err(_) => return Err(TokenError::TokenInvalid),
-        };
 
-        let parts = TokenParts {
+        Ok(DecodedToken {
             json: claims_json_string,
             signature,
-        };
-
-        Ok(Self::from_pieces(claims, parts))
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+        })
     }
-
-    fn verify(&'a self, key: &[u8]) -> bool {
-        if self.expiration()
-            <= SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-        {
-            return false;
-        }
-
-        let parts = match self.parts() {
-            Some(p) => p,
-            None => return false,
-        };
-
-        Self::Verifier::verify(&parts.json, &parts.signature, key)
-    }
-
-    fn token_name() -> &'static str;
-    fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self;
-    fn expiration(&self) -> u64;
-    fn parts(&'a self) -> Option<&'a TokenParts>;
-    fn claims(self) -> Self::Claims;
 }
 
 pub struct Ed25519Verifier {}
@@ -175,134 +181,76 @@ mod tests {
         exp: u64,
     }
 
-    struct TestTokenHmac {
-        claims: TestClaims,
-        parts: Option<TokenParts>,
+    impl Expiring for TestClaims {
+        fn expiration(&self) -> u64 {
+            self.exp
+        }
     }
 
-    impl<'a> Token<'a> for TestTokenHmac {
+    struct TestTokenHmac {}
+
+    impl Token for TestTokenHmac {
         type Claims = TestClaims;
-        type InternalClaims = TestClaims;
         type Verifier = HmacSha256Verifier;
 
         fn token_name() -> &'static str {
             "TestTokenHmac"
         }
-
-        fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
-            Self {
-                claims,
-                parts: Some(parts),
-            }
-        }
-
-        fn expiration(&self) -> u64 {
-            self.claims.exp
-        }
-
-        fn parts(&'a self) -> &'a Option<TokenParts> {
-            &self.parts
-        }
-
-        fn claims(self) -> Self::Claims {
-            self.claims
-        }
     }
 
     impl TestTokenHmac {
-        fn new(claims: TestClaims) -> Self {
-            Self {
-                claims,
-                parts: None,
-            }
-        }
+        pub fn sign_new(claims: TestClaims, signing_key: &[u8; 64]) -> String {
+            let mut json_of_claims =
+                serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-        fn sign_and_encode(&self, key: &[u8; 64]) -> String {
-            let mut json_of_claims = serde_json::to_vec(&self.claims).unwrap();
-
-            let mut mac = Hmac::<Sha256>::new(key.into());
+            let mut mac = Hmac::<Sha256>::new(signing_key.into());
             mac.update(&json_of_claims);
             let hash = hex::encode(mac.finalize().into_bytes());
 
             json_of_claims.push(b'|');
             json_of_claims.extend_from_slice(&hash.into_bytes());
 
-            base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
-        }
-
-        fn make_signature_invalid(&mut self) {
-            let signature = &mut self.parts.as_mut().unwrap().signature;
-
-            if signature.last().unwrap() == &b'a' {
-                *signature.last_mut().unwrap() = b'b';
-            } else {
-                *signature.last_mut().unwrap() = b'a';
-            }
+            base64::encode_config(json_of_claims, base64::URL_SAFE)
         }
     }
 
-    struct TestTokenEd25519 {
-        claims: TestClaims,
-        parts: Option<TokenParts>,
-    }
+    struct TestTokenEd25519 {}
 
-    impl<'a> Token<'a> for TestTokenEd25519 {
+    impl Token for TestTokenEd25519 {
         type Claims = TestClaims;
-        type InternalClaims = TestClaims;
         type Verifier = Ed25519Verifier;
 
         fn token_name() -> &'static str {
-            "TestTokenEd"
-        }
-
-        fn from_pieces(claims: Self::InternalClaims, parts: TokenParts) -> Self {
-            Self {
-                claims,
-                parts: Some(parts),
-            }
-        }
-
-        fn expiration(&self) -> u64 {
-            self.claims.exp
-        }
-
-        fn parts(&'a self) -> &'a Option<TokenParts> {
-            &self.parts
-        }
-
-        fn claims(self) -> Self::Claims {
-            self.claims
+            "TestTokenEd25519"
         }
     }
 
     impl TestTokenEd25519 {
-        fn new(claims: TestClaims) -> Self {
-            Self {
-                claims,
-                parts: None,
-            }
-        }
-
-        fn sign_and_encode(&self, keypair: &Keypair) -> String {
-            let mut json_of_claims = serde_json::to_vec(&self.claims).unwrap();
+        pub fn sign_new(claims: TestClaims, keypair: &Keypair) -> String {
+            let mut json_of_claims =
+                serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
             let hash = hex::encode(keypair.sign(&json_of_claims));
 
             json_of_claims.push(b'|');
             json_of_claims.extend_from_slice(&hash.into_bytes());
 
-            base64::encode_config(json_of_claims, base64::URL_SAFE_NO_PAD)
+            base64::encode_config(json_of_claims, base64::URL_SAFE)
+        }
+    }
+
+    fn make_signature_invalid(signature: &mut String) {
+        let mut decoded = base64::decode_config(&signature, base64::URL_SAFE).unwrap();
+
+        if decoded.last().unwrap() == &b'a' {
+            decoded.pop();
+            decoded.push(b'b');
+        } else {
+            decoded.pop();
+            decoded.push(b'a');
         }
 
-        fn make_signature_invalid(&mut self) {
-            let signature = &mut self.parts.as_mut().unwrap().signature;
-
-            if signature.last().unwrap() == &b'a' {
-                *signature.last_mut().unwrap() = b'b';
-            } else {
-                *signature.last_mut().unwrap() = b'a';
-            }
-        }
+        *signature = base64::encode_config(decoded, base64::URL_SAFE);
     }
 
     #[test]
@@ -312,13 +260,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestTokenHmac::new(TestClaims { id, exp });
-        let token = token.sign_and_encode(&[0; 64]);
+        let token = TestTokenHmac::sign_new(TestClaims { id, exp }, &[10; 64]);
+        let claims = TestTokenHmac::decode(&token)
+            .unwrap()
+            .verify(&[10; 64])
+            .unwrap();
 
-        let token = TestTokenHmac::from_str(&token).unwrap();
-        assert!(!token.parts.as_ref().unwrap().signature.is_empty());
-
-        let claims = token.claims();
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
     }
@@ -332,24 +279,21 @@ mod tests {
             .as_secs();
         let key = [2; 64];
 
-        let token = TestTokenHmac::new(TestClaims { id, exp });
-        let token = token.sign_and_encode(&key);
+        let mut token = TestTokenHmac::sign_new(TestClaims { id, exp }, &key);
+        let claims = TestTokenHmac::decode(&token).unwrap().verify(&key).unwrap();
 
-        let mut token = TestTokenHmac::from_str(&token).unwrap();
-        assert!(token.verify(&key));
+        assert_eq!(claims.id, id);
+        assert_eq!(claims.exp, exp);
 
-        token.make_signature_invalid();
-        assert!(!token.verify(&key));
+        make_signature_invalid(&mut token);
+        assert!(TestTokenHmac::decode(&token).unwrap().verify(&key).is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestTokenHmac::new(TestClaims { id, exp });
-        let token = token.sign_and_encode(&key);
-
-        let token = TestTokenHmac::from_str(&token).unwrap();
-        assert!(!token.verify(&key));
+        let token = TestTokenHmac::sign_new(TestClaims { id, exp }, &key);
+        assert!(TestTokenHmac::decode(&token).unwrap().verify(&key).is_err());
     }
 
     #[test]
@@ -362,23 +306,29 @@ mod tests {
         let keypair = Keypair::generate(&mut OsRng {});
         let pub_key = keypair.public.as_bytes();
 
-        let token = TestTokenEd25519::new(TestClaims { id, exp });
-        let token = token.sign_and_encode(&keypair);
+        let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
+        let claims = TestTokenEd25519::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .unwrap();
 
-        let mut token = TestTokenEd25519::from_str(&token).unwrap();
-        assert!(token.verify(&pub_key[0..pub_key.len()]));
+        assert_eq!(claims.id, id);
+        assert_eq!(claims.exp, exp);
 
-        token.make_signature_invalid();
-        assert!(!token.verify(&pub_key[0..pub_key.len()]));
+        make_signature_invalid(&mut token);
+        assert!(TestTokenEd25519::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestTokenEd25519::new(TestClaims { id, exp });
-        let token = token.sign_and_encode(&keypair);
-
-        let token = TestTokenEd25519::from_str(&token).unwrap();
-        assert!(!token.verify(&pub_key[0..pub_key.len()]));
+        let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
+        assert!(TestTokenEd25519::decode(&token)
+            .unwrap()
+            .verify(&pub_key[..])
+            .is_err());
     }
 }
