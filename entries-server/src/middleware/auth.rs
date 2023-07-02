@@ -102,7 +102,7 @@ where
     T: RequestAuthTokenType,
     L: TokenLocation,
 {
-    pub fn verify(self) -> Result<AuthTokenClaims, TokenError> {
+    pub fn verify(&self) -> Result<AuthTokenClaims, TokenError> {
         verify_token(self.0, T::token_type())
     }
 }
@@ -147,7 +147,7 @@ where
             Err(e) => return future::err(e),
         };
 
-        let claims = match into_actix_error_res(verify_token(decoded_token, T::token_type())) {
+        let claims = match into_actix_error_res(verify_token(&decoded_token, T::token_type())) {
             Ok(c) => c,
             Err(e) => return future::err(e),
         };
@@ -172,7 +172,7 @@ where
 
 #[inline]
 fn verify_token(
-    decoded_token: AuthDecodedToken,
+    decoded_token: &AuthDecodedToken,
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
     let claims = decoded_token.verify(&env::CONF.keys.token_signing_key)?;

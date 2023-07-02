@@ -449,21 +449,24 @@ pub async fn init_delete(
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
+    const INVALID_ID_MSG: &str =
+        "One of the provided budget access tokens is invalid or has an incorrect ID";
 
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
     let mut budget_ids = Vec::new();
 
     for token in budget_access_tokens.budget_access_tokens.iter() {
-        let token = match BudgetAccessToken::from_str(token) {
-            Ok(t) => t,
-            Err(_) => return Err(HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG)),
-        };
+        let token = BudgetAccessToken::decode(token)
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
 
-        key_ids.push(token.key_id());
-        budget_ids.push(token.budget_id());
-        tokens.insert(token.key_id(), token);
+        let t = token
+            .get_unverified_claims()
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
+
+        key_ids.push(t.kid);
+        budget_ids.push(t.bid);
+        tokens.insert(t.kid, token);
     }
 
     let key_ids = Arc::new(key_ids);

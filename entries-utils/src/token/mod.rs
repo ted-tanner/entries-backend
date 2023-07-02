@@ -40,9 +40,13 @@ pub trait TokenSignatureVerifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool;
 }
 
-pub struct DecodedToken<C: Expiring + DeserializeOwned, V: TokenSignatureVerifier> {
-    json: String,
-    signature: Vec<u8>,
+pub struct DecodedToken<C, V>
+where
+    C: Expiring + DeserializeOwned,
+    V: TokenSignatureVerifier,
+{
+    pub json: String,
+    pub signature: Vec<u8>,
     phantom1: PhantomData<C>,
     phantom2: PhantomData<V>,
 }
@@ -57,10 +61,7 @@ where
             return Err(TokenError::TokenInvalid);
         }
 
-        let claims = match serde_json::from_str::<C>(&self.json) {
-            Ok(c) => c,
-            Err(_) => return Err(TokenError::TokenInvalid),
-        };
+        let claims = serde_json::from_str::<C>(&self.json).map_err(|_| TokenError::TokenInvalid)?;
 
         if claims.expiration()
             <= SystemTime::now()
@@ -73,6 +74,10 @@ where
 
         Ok(claims)
     }
+
+    pub fn get_unverified_claims(&self) -> Result<C, TokenError> {
+        serde_json::from_str::<C>(&self.json).map_err(|_| TokenError::TokenInvalid)
+    }
 }
 
 pub trait Token {
@@ -82,13 +87,9 @@ pub trait Token {
     fn token_name() -> &'static str;
 
     fn decode(token: &str) -> Result<DecodedToken<Self::Claims, Self::Verifier>, TokenError> {
-        let decoded_token = match base64::decode_config(token, base64::URL_SAFE) {
-            Ok(t) => t,
-            Err(_) => return Err(TokenError::TokenInvalid),
-        };
-
+        let decoded_token =
+            base64::decode_config(token, base64::URL_SAFE).map_err(|_| TokenError::TokenInvalid)?;
         let token_str = String::from_utf8_lossy(&decoded_token);
-
         let mut split_token = token_str.split('|');
 
         let signature_str = match split_token.next_back() {
@@ -96,11 +97,7 @@ pub trait Token {
             None => return Err(TokenError::TokenInvalid),
         };
 
-        let signature = match hex::decode(signature_str) {
-            Ok(h) => h,
-            Err(_) => return Err(TokenError::TokenInvalid),
-        };
-
+        let signature = hex::decode(signature_str).map_err(|_| TokenError::TokenInvalid)?;
         let claims_json_string = split_token.collect::<String>();
 
         Ok(DecodedToken {

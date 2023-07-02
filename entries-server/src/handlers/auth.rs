@@ -5,10 +5,7 @@ use entries_utils::request_io::{
     CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputBackupCodes,
     OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
-use entries_utils::token::auth_token::{
-    AuthToken, AuthTokenClaims, AuthTokenType, NewAuthTokenClaims,
-};
-use entries_utils::token::Token;
+use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
 
 use actix_web::{web, HttpResponse};
@@ -152,18 +149,15 @@ pub async fn sign_in(
     )
     .await?;
 
-    let auth_token_claims = NewAuthTokenClaims {
+    let signin_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &credentials.email,
-        expiration: (SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime)
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs(),
+        expiration: SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
         token_type: AuthTokenType::SignIn,
     };
 
     let signin_token = AuthToken::sign_new(
-        auth_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        signin_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
         &env::CONF.keys.token_signing_key,
     );
 
@@ -197,26 +191,33 @@ pub async fn verify_otp_for_signin(
 
     let now = SystemTime::now();
 
-    let mut refresh_token = AuthToken::new(
-        claims.user_id,
-        &claims.user_email,
-        now + env::CONF.lifetimes.refresh_token_lifetime,
-        AuthTokenType::Refresh,
+    let refresh_token_claims = NewAuthTokenClaims {
+        user_id,
+        user_email: &claims.user_email,
+        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        token_type: AuthTokenType::Refresh,
+    };
+
+    let refresh_token = AuthToken::sign_new(
+        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
     );
 
-    let mut access_token = AuthToken::new(
-        claims.user_id,
-        &claims.user_email,
-        now + env::CONF.lifetimes.access_token_lifetime,
-        AuthTokenType::Access,
-    );
+    let access_token_claims = NewAuthTokenClaims {
+        user_id,
+        user_email: &claims.user_email,
+        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        token_type: AuthTokenType::Access,
+    };
 
-    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+    let access_token = AuthToken::sign_new(
+        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
+    );
 
     let token_pair = TokenPair {
-        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        access_token,
+        refresh_token,
         server_time: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
@@ -279,26 +280,33 @@ pub async fn use_backup_code_for_signin(
 
     let now = SystemTime::now();
 
-    let mut refresh_token = AuthToken::new(
-        claims.user_id,
-        &claims.user_email,
-        now + env::CONF.lifetimes.refresh_token_lifetime,
-        AuthTokenType::Refresh,
+    let refresh_token_claims = NewAuthTokenClaims {
+        user_id: claims.user_id,
+        user_email: &claims.user_email,
+        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        token_type: AuthTokenType::Refresh,
+    };
+
+    let refresh_token = AuthToken::sign_new(
+        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
     );
 
-    let mut access_token = AuthToken::new(
-        claims.user_id,
-        &claims.user_email,
-        now + env::CONF.lifetimes.access_token_lifetime,
-        AuthTokenType::Access,
-    );
+    let access_token_claims = NewAuthTokenClaims {
+        user_id: claims.user_id,
+        user_email: &claims.user_email,
+        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        token_type: AuthTokenType::Access,
+    };
 
-    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+    let access_token = AuthToken::sign_new(
+        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
+    );
 
     let token_pair = TokenPair {
-        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        access_token,
+        refresh_token,
         server_time: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
@@ -351,19 +359,12 @@ pub async fn refresh_tokens(
     _app_version: AppVersion,
     token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let token_signature = match token.0.parts() {
-        Some(p) => p.signature.clone(),
-        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
-    };
-
     let token_claims = token.verify()?;
-
-    let user_id = token_claims.user_id;
     let token_expiration = token_claims.expiration;
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.check_is_token_on_blacklist_and_blacklist(&token_signature, token_expiration)
+        auth_dao.check_is_token_on_blacklist_and_blacklist(&token.0.signature, token_expiration)
     })
     .await?
     {
@@ -379,27 +380,33 @@ pub async fn refresh_tokens(
 
     let now = SystemTime::now();
 
-    let mut refresh_token = AuthToken::new(
-        user_id,
-        &token_claims.user_email,
-        now + env::CONF.lifetimes.refresh_token_lifetime,
-        AuthTokenType::Refresh,
+    let refresh_token_claims = NewAuthTokenClaims {
+        user_id: token_claims.user_id,
+        user_email: &token_claims.user_email,
+        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        token_type: AuthTokenType::Refresh,
+    };
+
+    let refresh_token = AuthToken::sign_new(
+        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
     );
 
-    refresh_token.encrypt(&env::CONF.keys.token_encryption_cipher);
+    let access_token_claims = NewAuthTokenClaims {
+        user_id: token_claims.user_id,
+        user_email: &token_claims.user_email,
+        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        token_type: AuthTokenType::Access,
+    };
 
-    let mut access_token = AuthToken::new(
-        user_id,
-        &token_claims.user_email,
-        now + env::CONF.lifetimes.access_token_lifetime,
-        AuthTokenType::Access,
+    let access_token = AuthToken::sign_new(
+        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
     );
-
-    access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
 
     let token_pair = TokenPair {
-        access_token: access_token.sign_and_encode(&env::CONF.keys.token_signing_key),
-        refresh_token: refresh_token.sign_and_encode(&env::CONF.keys.token_signing_key),
+        access_token,
+        refresh_token,
         server_time: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to fetch system time")
@@ -414,11 +421,6 @@ pub async fn logout(
     user_access_token: VerifiedToken<Access, FromHeader>,
     refresh_token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let refresh_token_signature = match refresh_token.0.parts() {
-        Some(p) => p.signature.clone(),
-        None => return Err(HttpErrorResponse::IncorrectCredential("Invalid token")),
-    };
-
     let refresh_token_claims = refresh_token.verify()?;
 
     if refresh_token_claims.user_id != user_access_token.0.user_id {
@@ -429,7 +431,7 @@ pub async fn logout(
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.blacklist_token(&refresh_token_signature, refresh_token_claims.expiration)
+        auth_dao.blacklist_token(&refresh_token.0.signature, refresh_token_claims.expiration)
     })
     .await?
     {
