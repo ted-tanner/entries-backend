@@ -14,7 +14,7 @@ use entries_utils::request_io::{
     OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion, OutputPublicKey,
     OutputVerificationEmailSent,
 };
-use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
 use entries_utils::validators::{self, Validity};
@@ -161,16 +161,17 @@ pub async fn create(
         },
     };
 
-    let mut user_creation_token = AuthToken::new(
+    let user_creation_token_claims = NewAuthTokenClaims {
         user_id,
-        &user_data.email,
-        SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
-        AuthTokenType::UserCreation,
-    );
+        user_email: &user_data.email,
+        expiration: SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
+        token_type: AuthTokenType::UserCreation,
+    };
 
-    user_creation_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-    let user_creation_token =
-        user_creation_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+    let user_creation_token = AuthToken::sign_new(
+        user_creation_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
+    );
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(
@@ -460,13 +461,9 @@ pub async fn init_delete(
         let token = BudgetAccessToken::decode(token)
             .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
 
-        let t = token
-            .get_unverified_claims()
-            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
-
-        key_ids.push(t.kid);
-        budget_ids.push(t.bid);
-        tokens.insert(t.kid, token);
+        key_ids.push(token.claims.key_id);
+        budget_ids.push(token.claims.budget_id);
+        tokens.insert(token.claims.key_id, token);
     }
 
     let key_ids = Arc::new(key_ids);
@@ -502,9 +499,7 @@ pub async fn init_delete(
             None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
         };
 
-        if !token.verify(&key.public_key) {
-            return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
-        }
+        token.verify(&key.public_key)?;
     }
 
     let deletion_token_expiration =
@@ -534,16 +529,17 @@ pub async fn init_delete(
         },
     }
 
-    let mut user_deletion_token = AuthToken::new(
-        user_access_token.0.user_id,
-        &user_access_token.0.user_email,
-        deletion_token_expiration,
-        AuthTokenType::UserDeletion,
-    );
+    let user_deletion_token_claims = NewAuthTokenClaims {
+        user_id: user_access_token.0.user_id,
+        user_email: &user_access_token.0.user_email,
+        expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+        token_type: AuthTokenType::UserDeletion,
+    };
 
-    user_deletion_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-    let user_deletion_token =
-        user_deletion_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+    let user_deletion_token = AuthToken::sign_new(
+        user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+        &env::CONF.keys.token_signing_key,
+    );
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(

@@ -37,7 +37,7 @@ pub async fn get(
 
     let budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_budget(budget_access_token.0.budget_id())
+        budget_dao.get_budget(budget_access_token.0.claims.budget_id)
     })
     .await?
     {
@@ -71,14 +71,12 @@ pub async fn get_multiple(
     let mut budget_ids = Vec::new();
 
     for token in budget_access_tokens.budget_access_tokens.iter() {
-        let token = match BudgetAccessToken::from_str(token) {
-            Ok(t) => t,
-            Err(_) => return Err(HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG)),
-        };
+        let token = BudgetAccessToken::decode(token)
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
 
-        key_ids.push(token.key_id());
-        budget_ids.push(token.budget_id());
-        tokens.insert(token.key_id(), token);
+        key_ids.push(token.claims.key_id);
+        budget_ids.push(token.claims.budget_id);
+        tokens.insert(token.claims.key_id, token);
     }
 
     let budget_ids = Arc::new(budget_ids);
@@ -114,9 +112,7 @@ pub async fn get_multiple(
             None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
         };
 
-        if !token.verify(&key.public_key) {
-            return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
-        }
+        token.verify(&key.public_key)?;
     }
 
     let budgets = match web::block(move || {
@@ -193,7 +189,7 @@ pub async fn edit(
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
             &budget_data.encrypted_blob,
             &budget_data.expected_previous_data_hash,
         )
@@ -348,7 +344,7 @@ pub async fn invite_user(
             &invitation_info.budget_info_encrypted,
             &invitation_info.sender_info_encrypted,
             &invitation_info.share_info_symmetric_key_encrypted,
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
             invitation_info.expiration,
             invitation_info.read_only,
             accept_key_data.key_id,
@@ -382,7 +378,7 @@ pub async fn retract_invitation(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     invite_sender_token: SpecialAccessToken<BudgetInviteSenderToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let invitation_id = invite_sender_token.0.invitation_id();
+    let invitation_id = invite_sender_token.0.claims.invite_id;
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let invite_sender_public_key =
@@ -405,15 +401,11 @@ pub async fn retract_invitation(
             },
         };
 
-    if !invite_sender_token.0.verify(&invite_sender_public_key) {
-        return Err(HttpErrorResponse::DoesNotExist(
-            "No invite with ID matching token",
-        ));
-    }
+    invite_sender_token.0.verify(&invite_sender_public_key)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invite_sender_token.0.invitation_id())
+        budget_dao.delete_invitation(invite_sender_token.0.claims.invite_id)
     })
     .await?
     {
@@ -442,8 +434,8 @@ pub async fn accept_invitation(
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
     budget_user_public_key: web::Json<InputPublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let key_id = accept_token.0.key_id();
-    let budget_id = accept_token.0.budget_id();
+    let key_id = accept_token.0.claims.key_id;
+    let budget_id = accept_token.0.claims.budget_id;
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
@@ -469,11 +461,7 @@ pub async fn accept_invitation(
         return Err(HttpErrorResponse::OutOfDate("Invitation has expired"));
     }
 
-    if !accept_token.0.verify(&budget_accept_key.public_key) {
-        return Err(HttpErrorResponse::DoesNotExist(
-            "No invite with ID matching token",
-        ));
-    }
+    accept_token.0.verify(&budget_accept_key.public_key)?;
 
     let budget_keys = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -481,7 +469,7 @@ pub async fn accept_invitation(
             budget_accept_key.key_id,
             budget_accept_key.budget_id,
             budget_accept_key.read_only,
-            accept_token.0.claims().invitation_id,
+            accept_token.0.claims.invite_id,
             &user_access_token.0.user_email,
             &budget_user_public_key.0.public_key,
         )
@@ -512,8 +500,8 @@ pub async fn decline_invitation(
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let key_id = accept_token.0.key_id();
-    let budget_id = accept_token.0.budget_id();
+    let key_id = accept_token.0.claims.key_id;
+    let budget_id = accept_token.0.claims.budget_id;
 
     let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
@@ -535,19 +523,13 @@ pub async fn decline_invitation(
             },
         };
 
-    if !accept_token.0.verify(&budget_accept_key.public_key) {
-        return Err(HttpErrorResponse::DoesNotExist(
-            "No invite with ID matching token",
-        ));
-    }
-
-    let accept_token_claims = accept_token.0.claims();
+    accept_token.0.verify(&budget_accept_key.public_key)?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.reject_invitation(
-            accept_token_claims.invitation_id,
-            accept_token_claims.key_id,
+            accept_token.0.claims.invite_id,
+            accept_token.0.claims.key_id,
             &user_access_token.0.user_email,
         )
     })
@@ -606,11 +588,12 @@ pub async fn leave_budget(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
-    let claims = budget_access_token.0.claims();
-
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.leave_budget(claims.budget_id, claims.key_id)
+        budget_dao.leave_budget(
+            budget_access_token.0.claims.budget_id,
+            budget_access_token.0.claims.key_id,
+        )
     })
     .await?
     {
@@ -646,7 +629,7 @@ pub async fn create_entry(
         budget_dao.create_entry(
             &entry_data.0.encrypted_blob,
             entry_data.0.category_id,
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
         )
     })
     .await?
@@ -686,8 +669,10 @@ pub async fn create_entry_and_category(
 
     let entry_and_category_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao
-            .create_entry_and_category(entry_and_category_data.0, budget_access_token.0.budget_id())
+        budget_dao.create_entry_and_category(
+            entry_and_category_data.0,
+            budget_access_token.0.claims.budget_id,
+        )
     })
     .await?
     {
@@ -723,7 +708,7 @@ pub async fn edit_entry(
             &entry_data.encrypted_blob,
             &entry_data.expected_previous_data_hash,
             entry_data.0.category_id,
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
         )
     })
     .await?
@@ -766,7 +751,7 @@ pub async fn delete_entry(
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id.0.entry_id, budget_access_token.0.budget_id())
+        budget_dao.delete_entry(entry_id.0.entry_id, budget_access_token.0.claims.budget_id)
     })
     .await?
     {
@@ -799,7 +784,7 @@ pub async fn create_category(
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_category(
             &category_data.0.encrypted_blob,
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
         )
     })
     .await?
@@ -837,7 +822,7 @@ pub async fn edit_category(
             category_data.category_id,
             &category_data.encrypted_blob,
             &category_data.expected_previous_data_hash,
-            budget_access_token.0.budget_id(),
+            budget_access_token.0.claims.budget_id,
         )
     })
     .await?
@@ -874,7 +859,10 @@ pub async fn delete_category(
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id.0.category_id, budget_access_token.0.budget_id())
+        budget_dao.delete_category(
+            category_id.0.category_id,
+            budget_access_token.0.claims.budget_id,
+        )
     })
     .await?
     {
@@ -927,15 +915,9 @@ async fn verify_read_write_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
     db_thread_pool: &DbThreadPool,
 ) -> Result<(), HttpErrorResponse> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(HttpErrorResponse::DoesNotExist(
-            "No budget with ID matching token",
-        ));
-    }
+    let claims = &budget_access_token.0.claims;
+    let public_key = obtain_public_key(claims.key_id, claims.budget_id, db_thread_pool).await?;
+    budget_access_token.0.verify(&public_key.public_key)?;
 
     if public_key.read_only {
         return Err(HttpErrorResponse::ReadOnlyAccess(
@@ -950,15 +932,9 @@ async fn verify_read_access<F: TokenLocation>(
     budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
     db_thread_pool: &DbThreadPool,
 ) -> Result<(), HttpErrorResponse> {
-    let budget_id = budget_access_token.0.budget_id();
-    let key_id = budget_access_token.0.key_id();
-    let public_key = obtain_public_key(key_id, budget_id, db_thread_pool).await?;
-
-    if !budget_access_token.0.verify(&public_key.public_key) {
-        return Err(HttpErrorResponse::DoesNotExist(
-            "No budget with ID matching token",
-        ));
-    }
+    let claims = &budget_access_token.0.claims;
+    let public_key = obtain_public_key(claims.key_id, claims.budget_id, db_thread_pool).await?;
+    budget_access_token.0.verify(&public_key.public_key)?;
 
     Ok(())
 }

@@ -498,6 +498,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Pass conf into handlers?
 * Budget create endpoint needs to return access key id
 * Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!

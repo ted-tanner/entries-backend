@@ -47,6 +47,7 @@ where
 {
     pub json: String,
     pub signature: Vec<u8>,
+    pub claims: C,
     phantom1: PhantomData<C>,
     phantom2: PhantomData<V>,
 }
@@ -56,14 +57,12 @@ where
     C: Expiring + DeserializeOwned,
     V: TokenSignatureVerifier,
 {
-    pub fn verify(&self, key: &[u8]) -> Result<C, TokenError> {
+    pub fn verify(&self, key: &[u8]) -> Result<&C, TokenError> {
         if !V::verify(&self.json, &self.signature, key) {
             return Err(TokenError::TokenInvalid);
         }
 
-        let claims = serde_json::from_str::<C>(&self.json).map_err(|_| TokenError::TokenInvalid)?;
-
-        if claims.expiration()
+        if self.claims.expiration()
             <= SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -72,11 +71,7 @@ where
             return Err(TokenError::TokenExpired);
         }
 
-        Ok(claims)
-    }
-
-    pub fn get_unverified_claims(&self) -> Result<C, TokenError> {
-        serde_json::from_str::<C>(&self.json).map_err(|_| TokenError::TokenInvalid)
+        Ok(&self.claims)
     }
 }
 
@@ -99,10 +94,13 @@ pub trait Token {
 
         let signature = hex::decode(signature_str).map_err(|_| TokenError::TokenInvalid)?;
         let claims_json_string = split_token.collect::<String>();
+        let claims = serde_json::from_str::<Self::Claims>(&claims_json_string)
+            .map_err(|_| TokenError::TokenInvalid)?;
 
         Ok(DecodedToken {
             json: claims_json_string,
             signature,
+            claims,
             phantom1: PhantomData,
             phantom2: PhantomData,
         })

@@ -49,14 +49,14 @@ impl std::convert::From<AuthTokenType> for u8 {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct PrivateAuthTokenClaims {
-    uid: Uuid,
-    eml: String,
+    user_id: Uuid,
+    email: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct NewPrivateAuthTokenClaims<'a> {
-    uid: Uuid,
-    eml: &'a str,
+    user_id: Uuid,
+    email: &'a str,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -78,8 +78,8 @@ pub struct NewAuthTokenClaims<'a> {
 impl<'a> NewAuthTokenClaims<'a> {
     pub fn encrypt(&self, cipher: &Aes128Gcm) -> AuthTokenEncryptedClaims {
         let private_claims = NewPrivateAuthTokenClaims {
-            uid: self.user_id,
-            eml: self.user_email,
+            user_id: self.user_id,
+            email: self.user_email,
         };
 
         let private_claims_json = serde_json::to_vec(&private_claims)
@@ -141,8 +141,8 @@ impl AuthTokenEncryptedClaims {
         let token_type = self.typ.try_into().map_err(|_| TokenError::TokenInvalid)?;
 
         let claims = AuthTokenClaims {
-            user_id: decrypted_self.uid,
-            user_email: decrypted_self.eml,
+            user_id: decrypted_self.user_id,
+            user_email: decrypted_self.email,
             expiration: self.exp,
             token_type,
         };

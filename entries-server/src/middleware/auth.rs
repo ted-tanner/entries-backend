@@ -1,6 +1,4 @@
-use entries_utils::token::auth_token::{
-    AuthToken, AuthTokenClaims, AuthTokenEncryptedClaims, AuthTokenType,
-};
+use entries_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
 use entries_utils::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
@@ -103,7 +101,7 @@ where
     L: TokenLocation,
 {
     pub fn verify(&self) -> Result<AuthTokenClaims, TokenError> {
-        verify_token(self.0, T::token_type())
+        verify_token(&self.0, T::token_type())
     }
 }
 

@@ -5,14 +5,14 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetAccessTokenClaims {
-    pub kid: Uuid, // Key ID
-    pub bid: Uuid, // Budget ID
-    pub exp: u64,  // Expiration
+    pub key_id: Uuid, // Budget Access Key ID
+    pub budget_id: Uuid,
+    pub expiration: u64,
 }
 
 impl Expiring for BudgetAccessTokenClaims {
     fn expiration(&self) -> u64 {
-        self.exp
+        self.expiration
     }
 }
 
@@ -44,7 +44,11 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims {
+            key_id: kid,
+            budget_id: bid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -58,9 +62,9 @@ mod tests {
             .verify(&pub_key[..])
             .unwrap();
 
-        assert_eq!(verified_claims.kid, kid);
-        assert_eq!(verified_claims.bid, bid);
-        assert_eq!(verified_claims.exp, exp);
+        assert_eq!(verified_claims.key_id, kid);
+        assert_eq!(verified_claims.budget_id, bid);
+        assert_eq!(verified_claims.expiration, exp);
 
         let mut token = format!("{claims}|{signature}");
 
@@ -83,7 +87,11 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims {
+            key_id: kid,
+            budget_id: bid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 

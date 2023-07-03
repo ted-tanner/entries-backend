@@ -5,13 +5,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetInviteSenderTokenClaims {
-    pub iid: Uuid, // Invitation ID
-    pub exp: u64,  // Expiration
+    pub invite_id: Uuid,
+    pub expiration: u64,
 }
 
 impl Expiring for BudgetInviteSenderTokenClaims {
     fn expiration(&self) -> u64 {
-        self.exp
+        self.expiration
     }
 }
 
@@ -42,7 +42,10 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims {
+            invite_id: iid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -56,8 +59,8 @@ mod tests {
             .verify(&pub_key[..])
             .unwrap();
 
-        assert_eq!(verified_claims.iid, iid);
-        assert_eq!(verified_claims.exp, exp);
+        assert_eq!(verified_claims.invite_id, iid);
+        assert_eq!(verified_claims.expiration, exp);
 
         let mut token = format!("{claims}|{signature}");
 
@@ -80,7 +83,10 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims {
+            invite_id: iid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
