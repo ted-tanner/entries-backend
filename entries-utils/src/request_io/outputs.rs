@@ -42,6 +42,7 @@ pub struct OutputBudgetFrameCategory {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudgetFrame {
+    pub access_key_id: Uuid,
     pub id: Uuid,
     pub categories: Vec<OutputBudgetFrameCategory>,
     pub modified_timestamp: SystemTime,

@@ -997,21 +997,22 @@ pub mod tests {
 
         assert!(!user.is_verified);
 
-        let mut user_creation_token = AuthToken::new(
-            user.id,
-            &user.email,
-            SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
-            AuthTokenType::UserCreation,
-        );
+        let user_creation_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            token_type: AuthTokenType::UserCreation,
+        };
 
-        user_creation_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-        let user_creation_token =
-            user_creation_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+        let user_creation_token = AuthToken::sign_new(
+            user_creation_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+            &env::CONF.keys.token_signing_key,
+        );
 
         let req = TestRequest::get()
             .uri(&format!(
                 "/api/user/verify_creation?UserCreationToken={}",
-                &user_creation_token[..(user_creation_token.len() - 1)],
+                &user_creation_token[..(user_creation_token.len() - 4)],
             ))
             .set_json(&new_user)
             .to_request();
@@ -1477,7 +1478,7 @@ pub mod tests {
         .await;
 
         let (user, access_token) = test_utils::create_user().await;
-        let (budget, budget_key_pair) = test_utils::create_budget(&access_token).await;
+        let budget_data = test_utils::create_budget(&access_token).await;
 
         // TODO: Test with 0 tokens
         // TODO: Test with 2 tokens

@@ -157,6 +157,7 @@ impl Dao {
     ) -> Result<OutputBudgetFrame, DaoError> {
         let current_time = SystemTime::now();
         let budget_id = Uuid::new_v4();
+        let key_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&budget_data.encrypted_blob);
@@ -169,7 +170,7 @@ impl Dao {
         };
 
         let new_budget_access_key = NewBudgetAccessKey {
-            key_id: Uuid::new_v4(),
+            key_id,
             budget_id,
             public_key: &budget_data.user_public_budget_key,
             read_only: false,
@@ -201,6 +202,7 @@ impl Dao {
         }
 
         let mut output_budget = OutputBudgetFrame {
+            access_key_id: key_id,
             id: budget_id,
             categories: Vec::with_capacity(budget_categories.len()),
             modified_timestamp: current_time,

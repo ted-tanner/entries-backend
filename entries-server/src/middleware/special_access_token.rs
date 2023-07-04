@@ -57,10 +57,8 @@ mod tests {
     use uuid::Uuid;
 
     use entries_utils::token::{
-        budget_access_token::{BudgetAccessToken, BudgetAccessTokenInternalClaims},
-        budget_invite_sender_token::{
-            BudgetInviteSenderToken, BudgetInviteSenderTokenInternalClaims,
-        },
+        budget_access_token::{BudgetAccessToken, BudgetAccessTokenClaims},
+        budget_invite_sender_token::{BudgetInviteSenderToken, BudgetInviteSenderTokenClaims},
     };
 
     use crate::middleware::{FromHeader, FromQuery};
@@ -74,7 +72,11 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims {
+            key_id: kid,
+            budget_id: bid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -119,7 +121,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(t.0.verify(&access_public_key));
+        let c = t.0.verify(&access_public_key).unwrap();
+
+        assert_eq!(c.key_id, kid);
+        assert_eq!(c.budget_id, bid);
+        assert_eq!(c.expiration, exp);
 
         let mut signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
 
@@ -144,14 +150,18 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!t.0.verify(&access_public_key));
+        assert!(t.0.verify(&access_public_key).is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenInternalClaims { kid, bid, exp };
+        let claims = BudgetAccessTokenClaims {
+            key_id: kid,
+            budget_id: bid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -169,7 +179,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!t.0.verify(&access_public_key));
+        assert!(t.0.verify(&access_public_key).is_err());
     }
 
     #[actix_web::test]
@@ -180,7 +190,10 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims {
+            invite_id: iid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -225,7 +238,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(t.0.verify(&invite_public_key));
+        assert!(t.0.verify(&invite_public_key).is_ok());
 
         let mut signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
 
@@ -250,14 +263,17 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!t.0.verify(&invite_public_key));
+        assert!(t.0.verify(&invite_public_key).is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenInternalClaims { iid, exp };
+        let claims = BudgetInviteSenderTokenClaims {
+            invite_id: iid,
+            expiration: exp,
+        };
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
@@ -275,6 +291,6 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!t.0.verify(&invite_public_key));
+        assert!(t.0.verify(&invite_public_key).is_err());
     }
 }

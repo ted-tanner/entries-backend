@@ -382,8 +382,7 @@ pub mod test_utils {
     use entries_utils::schema::budgets::dsl::budgets;
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
-    use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
-    use entries_utils::token::budget_access_token::BudgetAccessTokenInternalClaims;
+    use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
@@ -392,6 +391,7 @@ pub mod test_utils {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519::{Signer, SigningKey};
     use ed25519_dalek as ed25519;
+    use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
     use rand::rngs::OsRng;
     use rand::Rng;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -406,13 +406,13 @@ pub mod test_utils {
     }
 
     pub fn gen_budget_token(budget_id: Uuid, key_id: Uuid) -> String {
-        let exp = SystemTime::now() + Duration::from_secs(10);
-        let exp = exp.duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let expiration = SystemTime::now() + Duration::from_secs(10);
+        let expiration = expiration.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-        let claims = BudgetAccessTokenInternalClaims {
-            kid: key_id,
-            bid: budget_id,
-            exp,
+        let claims = BudgetAccessTokenClaims {
+            key_id,
+            budget_id,
+            expiration,
         };
 
         let claims = serde_json::to_vec(&claims).unwrap();
@@ -483,15 +483,17 @@ pub mod test_utils {
             .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut access_token = AuthToken::new(
-            user.id,
-            &user.email,
-            SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
-            AuthTokenType::Access,
-        );
+        let access_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            token_type: AuthTokenType::Access,
+        };
 
-        access_token.encrypt(&env::CONF.keys.token_encryption_cipher);
-        let access_token = access_token.sign_and_encode(&env::CONF.keys.token_signing_key);
+        let access_token = AuthToken::sign_new(
+            access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+            &env::CONF.keys.token_signing_key,
+        );
 
         (user, access_token)
     }
@@ -549,7 +551,7 @@ pub mod test_utils {
         BudgetAndKey {
             budget,
             key_pair,
-            key_id,
+            key_id: budget_data.access_key_id,
         }
     }
 
