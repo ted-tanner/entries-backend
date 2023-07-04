@@ -28,5 +28,8 @@ max_unverified_user_age_days = 7
 [delete_users_job]
 job_frequency_secs = 86400
 
+[logging]
+log_level = "INFO"
+
 [unblacklist_expired_tokens_job]
 job_frequency_secs = 172800

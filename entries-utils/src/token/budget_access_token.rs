@@ -57,10 +57,13 @@ mod tests {
         let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
         let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
-        let verified_claims = BudgetAccessToken::decode(&token)
-            .unwrap()
-            .verify(&pub_key[..])
-            .unwrap();
+        let t = BudgetAccessToken::decode(&token).unwrap();
+
+        assert_eq!(t.claims.key_id, kid);
+        assert_eq!(t.claims.budget_id, bid);
+        assert_eq!(t.claims.expiration, exp);
+
+        let verified_claims = t.verify(&pub_key[..]).unwrap();
 
         assert_eq!(verified_claims.key_id, kid);
         assert_eq!(verified_claims.budget_id, bid);

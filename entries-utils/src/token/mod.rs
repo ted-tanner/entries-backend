@@ -256,10 +256,27 @@ mod tests {
             .unwrap()
             .as_secs();
         let token = TestTokenHmac::sign_new(TestClaims { id, exp }, &[10; 64]);
-        let claims = TestTokenHmac::decode(&token)
+        let t = TestTokenHmac::decode(&token).unwrap();
+        let claims = t.verify(&[10; 64]).unwrap();
+
+        assert_eq!(claims.id, id);
+        assert_eq!(claims.exp, exp);
+    }
+
+    #[test]
+    fn test_decode() {
+        let id = Uuid::new_v4();
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
             .unwrap()
-            .verify(&[10; 64])
-            .unwrap();
+            .as_secs();
+        let token = TestTokenHmac::sign_new(TestClaims { id, exp }, &[10; 64]);
+        let t = TestTokenHmac::decode(&token).unwrap();
+
+        assert_eq!(t.claims.id, id);
+        assert_eq!(t.claims.exp, exp);
+
+        let claims = t.verify(&[10; 64]).unwrap();
 
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
@@ -275,7 +292,8 @@ mod tests {
         let key = [2; 64];
 
         let mut token = TestTokenHmac::sign_new(TestClaims { id, exp }, &key);
-        let claims = TestTokenHmac::decode(&token).unwrap().verify(&key).unwrap();
+        let t = TestTokenHmac::decode(&token).unwrap();
+        let claims = t.verify(&key).unwrap();
 
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
@@ -302,10 +320,8 @@ mod tests {
         let pub_key = keypair.public.as_bytes();
 
         let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
-        let claims = TestTokenEd25519::decode(&token)
-            .unwrap()
-            .verify(&pub_key[..])
-            .unwrap();
+        let t = TestTokenEd25519::decode(&token).unwrap();
+        let claims = t.verify(pub_key).unwrap();
 
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);

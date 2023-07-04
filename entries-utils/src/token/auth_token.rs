@@ -108,7 +108,7 @@ impl<'a> NewAuthTokenClaims<'a> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthTokenEncryptedClaims {
     pub exp: u64,    // Expiration
     pub nnc: String, // Nonce
@@ -203,10 +203,8 @@ mod tests {
         let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
         assert!(!String::from_utf8_lossy(&base64::decode(&token).unwrap()).contains(user_email));
 
-        let claims = AuthToken::decode(&token)
-            .unwrap()
-            .verify(&signing_key)
-            .unwrap();
+        let t = AuthToken::decode(&token).unwrap();
+        let claims = t.verify(&signing_key).unwrap();
         let decrypted_claims = claims.decrypt(&encryption_key).unwrap();
 
         assert_eq!(decrypted_claims.user_id, user_id);
@@ -224,17 +222,29 @@ mod tests {
             token_type: decrypted_claims.token_type,
         };
 
-        let t = AuthToken::sign_new(decrypted_claims.encrypt(&encryption_key), &signing_key);
+        let encrypted_claims = decrypted_claims.encrypt(&encryption_key);
+        let t = AuthToken::sign_new(encrypted_claims.clone(), &signing_key);
+
         assert!(
-            String::from_utf8_lossy(&base64::decode(t).unwrap()).contains(&format!(
+            String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(&format!(
                 "{}",
                 exp.duration_since(UNIX_EPOCH).unwrap().as_secs()
             ))
         );
-        AuthToken::decode(&token)
-            .unwrap()
-            .verify(&signing_key)
-            .unwrap();
+
+        let t = AuthToken::decode(&t.clone()).unwrap();
+
+        assert_eq!(t.claims.enc, encrypted_claims.enc);
+        assert_eq!(t.claims.exp, encrypted_claims.exp);
+        assert_eq!(t.claims.nnc, encrypted_claims.nnc);
+        assert_eq!(t.claims.typ, encrypted_claims.typ);
+
+        let claims = t.verify(&signing_key).unwrap();
+
+        assert_eq!(claims.enc, encrypted_claims.enc);
+        assert_eq!(claims.exp, encrypted_claims.exp);
+        assert_eq!(claims.nnc, encrypted_claims.nnc);
+        assert_eq!(claims.typ, encrypted_claims.typ);
 
         let claims = NewAuthTokenClaims {
             user_id,

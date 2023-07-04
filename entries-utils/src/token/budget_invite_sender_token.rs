@@ -54,10 +54,12 @@ mod tests {
         let signature = hex::encode(keypair.sign(claims.as_bytes()));
 
         let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE);
-        let verified_claims = BudgetInviteSenderToken::decode(&token)
-            .unwrap()
-            .verify(&pub_key[..])
-            .unwrap();
+        let t = BudgetInviteSenderToken::decode(&token).unwrap();
+
+        assert_eq!(t.claims.invite_id, iid);
+        assert_eq!(t.claims.expiration, exp);
+
+        let verified_claims = t.verify(&pub_key[..]).unwrap();
 
         assert_eq!(verified_claims.invite_id, iid);
         assert_eq!(verified_claims.expiration, exp);

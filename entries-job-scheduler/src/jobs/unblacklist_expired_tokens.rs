@@ -48,7 +48,7 @@ mod tests {
     use entries_utils::models::blacklisted_token::NewBlacklistedToken;
     use entries_utils::request_io::InputUser;
     use entries_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-    use entries_utils::token::auth_token::{AuthToken, AuthTokenType};
+    use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
     use entries_utils::token::Token;
 
     use aes_gcm::{
@@ -102,43 +102,39 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
-        let mut pretend_expired_token = AuthToken::new(
-            user_id,
-            &new_user.email,
-            SystemTime::now() - Duration::from_secs(3600),
-            AuthTokenType::Refresh,
-        );
-
         let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
-        pretend_expired_token.encrypt(&cipher);
 
-        let mut unexpired_token = AuthToken::new(
+        let pretend_expired_token_claims = NewAuthTokenClaims {
             user_id,
-            &new_user.email,
-            SystemTime::now() + Duration::from_secs(3600),
-            AuthTokenType::Refresh,
-        );
+            user_email: &new_user.email,
+            expiration: SystemTime::now() - Duration::from_secs(3600),
+            token_type: AuthTokenType::Refresh,
+        };
 
-        unexpired_token.encrypt(&cipher);
+        let pretend_expired_token =
+            AuthToken::sign_new(pretend_expired_token_claims.encrypt(&cipher), &[0; 64]);
 
-        let pretend_expired_token = pretend_expired_token.sign_and_encode(&[0; 64]);
-        let pretend_expired_token = AuthToken::from_str(&pretend_expired_token).unwrap();
-        let pretend_expired_token_parts = pretend_expired_token.parts();
-        let pretend_expired_token_signature =
-            &pretend_expired_token_parts.as_ref().unwrap().signature;
+        let unexpired_token_claims = NewAuthTokenClaims {
+            user_id,
+            user_email: &new_user.email,
+            expiration: SystemTime::now() + Duration::from_secs(3600),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let unexpired_token =
+            AuthToken::sign_new(unexpired_token_claims.encrypt(&cipher), &[0; 64]);
+
+        let pretend_expired_token = AuthToken::decode(&pretend_expired_token).unwrap();
 
         let expired_blacklisted = NewBlacklistedToken {
-            token_signature: pretend_expired_token_signature,
+            token_signature: &pretend_expired_token.signature,
             token_expiration: SystemTime::now() - Duration::from_secs(3600),
         };
 
-        let unexpired_token = unexpired_token.sign_and_encode(&[0; 64]);
-        let unexpired_token = AuthToken::from_str(&unexpired_token).unwrap();
-        let unexpired_token_parts = unexpired_token.parts();
-        let unexpired_token_signature = &unexpired_token_parts.as_ref().unwrap().signature;
+        let unexpired_token = AuthToken::decode(&unexpired_token).unwrap();
 
         let unexpired_blacklisted = NewBlacklistedToken {
-            token_signature: unexpired_token_signature,
+            token_signature: &unexpired_token.signature,
             token_expiration: SystemTime::now() + Duration::from_secs(3600),
         };
 
@@ -158,10 +154,10 @@ mod tests {
         let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
 
         assert!(!dao
-            .check_is_token_on_blacklist_and_blacklist(pretend_expired_token_signature, 0)
+            .check_is_token_on_blacklist_and_blacklist(&pretend_expired_token.signature, 0)
             .unwrap());
         assert!(dao
-            .check_is_token_on_blacklist_and_blacklist(unexpired_token_signature, 0)
+            .check_is_token_on_blacklist_and_blacklist(&unexpired_token.signature, 0)
             .unwrap());
     }
 }
