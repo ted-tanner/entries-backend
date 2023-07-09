@@ -89,9 +89,8 @@ pub trait Token {
         let token_str = String::from_utf8_lossy(&decoded_token);
         let mut split_token = token_str.split('|');
 
-        let signature_str = match split_token.next_back() {
-            Some(h) => h,
-            None => return Err(TokenError::TokenInvalid),
+        let Some(signature_str) = split_token.next_back() else {
+            return Err(TokenError::TokenInvalid);
         };
 
         let signature = hex::decode(signature_str).map_err(|_| TokenError::TokenInvalid)?;
@@ -121,10 +120,7 @@ impl TokenSignatureVerifier for Ed25519Verifier {
             Err(_) => return false,
         });
 
-        let key = match key {
-            Ok(k) => k,
-            Err(_) => return false,
-        };
+        let Ok(key) = key else { return false; };
 
         let signature = Signature::from_bytes(match signature.try_into() {
             Ok(s) => s,
