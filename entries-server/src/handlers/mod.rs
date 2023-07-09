@@ -388,6 +388,8 @@ pub mod test_utils {
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as b64_urlsafe_nopad;
+    use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519::{Signer, SigningKey};
     use ed25519_dalek as ed25519;
@@ -421,7 +423,7 @@ pub mod test_utils {
         let signature = hex::encode(&key_pair.sign(&claims).to_bytes());
 
         let claims = String::from_utf8_lossy(&claims);
-        base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD)
+        b64_urlsafe_nopad.encode(format!("{claims}|{signature}"))
     }
 
     pub async fn create_user() -> (User, String) {

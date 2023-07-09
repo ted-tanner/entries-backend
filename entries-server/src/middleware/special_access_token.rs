@@ -10,7 +10,6 @@ use crate::middleware::{into_actix_error_res, TokenLocation};
 
 pub struct SpecialAccessToken<T: Token, L: TokenLocation>(
     pub DecodedToken<T::Claims, T::Verifier>,
-    PhantomData<T>,
     PhantomData<L>,
 );
 
@@ -40,7 +39,7 @@ where
             Err(e) => return future::err(e),
         };
 
-        future::ok(SpecialAccessToken(decoded_token, PhantomData, PhantomData))
+        future::ok(SpecialAccessToken(decoded_token, PhantomData))
     }
 }
 
@@ -50,6 +49,8 @@ mod tests {
 
     use actix_web::dev::Payload;
     use actix_web::test::TestRequest;
+    use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
+    use base64::Engine;
     use ed25519::Signer;
     use ed25519_dalek as ed25519;
     use rand::rngs::OsRng;
@@ -83,7 +84,7 @@ mod tests {
         let access_key_pair = ed25519::SigningKey::generate(&mut OsRng);
         let access_public_key = access_key_pair.verifying_key().to_bytes();
         let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -137,7 +138,7 @@ mod tests {
             signature.push('a');
         }
 
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -166,7 +167,7 @@ mod tests {
         let claims = String::from_utf8_lossy(&claims);
 
         let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -200,7 +201,7 @@ mod tests {
         let invite_key_pair = ed25519::SigningKey::generate(&mut OsRng);
         let invite_public_key = invite_key_pair.verifying_key().to_bytes();
         let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
@@ -250,7 +251,7 @@ mod tests {
             signature.push('a');
         }
 
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
@@ -278,7 +279,7 @@ mod tests {
         let claims = String::from_utf8_lossy(&claims);
 
         let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
-        let token = base64::encode_config(format!("{claims}|{signature}"), base64::URL_SAFE_NO_PAD);
+        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))

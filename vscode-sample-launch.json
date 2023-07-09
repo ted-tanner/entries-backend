@@ -1,0 +1,53 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (Server)",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin",
+                    "entries_server",
+                    "--no-run"
+                ]
+            },
+            "args": ["--test-threads=1", "--include-ignored"],
+            "cwd": "${workspaceFolder}/entries-server"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (Utils)",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--lib",
+                    "entries_utils",
+                    "--no-run"
+                ]
+            },
+            "args": ["--test-threads=1", "--include-ignored"],
+            "cwd": "${workspaceFolder}/entries-utils"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (Job Scheduler)",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--bin",
+                    "entries_job_scheduler",
+                    "--no-run"
+                ]
+            },
+            "args": ["--test-threads=1", "--include-ignored"],
+            "cwd": "${workspaceFolder}/entries-job-scheduler"
+        }
+    ]
+}

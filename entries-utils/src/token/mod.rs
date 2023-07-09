@@ -3,7 +3,9 @@ pub mod budget_accept_token;
 pub mod budget_access_token;
 pub mod budget_invite_sender_token;
 
-use ed25519_dalek::{PublicKey, Signature, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
+use base64::Engine;
+use ed25519_dalek::{Signature, VerifyingKey, SIGNATURE_LENGTH};
 use hmac::{Hmac, Mac};
 use serde::de::DeserializeOwned;
 use sha2::Sha256;
@@ -48,8 +50,7 @@ where
     pub json: String,
     pub signature: Vec<u8>,
     pub claims: C,
-    phantom1: PhantomData<C>,
-    phantom2: PhantomData<V>,
+    phantom: PhantomData<V>,
 }
 
 impl<C, V> DecodedToken<C, V>
@@ -82,8 +83,9 @@ pub trait Token {
     fn token_name() -> &'static str;
 
     fn decode(token: &str) -> Result<DecodedToken<Self::Claims, Self::Verifier>, TokenError> {
-        let decoded_token =
-            base64::decode_config(token, base64::URL_SAFE).map_err(|_| TokenError::TokenInvalid)?;
+        let decoded_token = b64_urlsafe
+            .decode(token)
+            .map_err(|_| TokenError::TokenInvalid)?;
         let token_str = String::from_utf8_lossy(&decoded_token);
         let mut split_token = token_str.split('|');
 
@@ -101,8 +103,7 @@ pub trait Token {
             json: claims_json_string,
             signature,
             claims,
-            phantom1: PhantomData,
-            phantom2: PhantomData,
+            phantom: PhantomData,
         })
     }
 }
@@ -115,19 +116,20 @@ impl TokenSignatureVerifier for Ed25519Verifier {
             return false;
         }
 
-        if key.len() != PUBLIC_KEY_LENGTH {
-            return false;
-        }
+        let key = VerifyingKey::from_bytes(match key.try_into() {
+            Ok(k) => k,
+            Err(_) => return false,
+        });
 
-        let key = match PublicKey::from_bytes(key) {
+        let key = match key {
             Ok(k) => k,
             Err(_) => return false,
         };
 
-        let signature = match Signature::from_bytes(signature) {
+        let signature = Signature::from_bytes(match signature.try_into() {
             Ok(s) => s,
             Err(_) => return false,
-        };
+        });
 
         key.verify_strict(json.as_bytes(), &signature).is_ok()
     }
@@ -163,9 +165,9 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 mod tests {
     use super::*;
 
-    use ed25519_dalek::{Keypair, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
     use hmac::{Hmac, Mac};
-    use old_rand::rngs::OsRng;
+    use rand::rngs::OsRng;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
     use uuid::Uuid;
@@ -205,7 +207,7 @@ mod tests {
             json_of_claims.push(b'|');
             json_of_claims.extend_from_slice(&hash.into_bytes());
 
-            base64::encode_config(json_of_claims, base64::URL_SAFE)
+            b64_urlsafe.encode(json_of_claims)
         }
     }
 
@@ -221,21 +223,21 @@ mod tests {
     }
 
     impl TestTokenEd25519 {
-        pub fn sign_new(claims: TestClaims, keypair: &Keypair) -> String {
+        pub fn sign_new(claims: TestClaims, keypair: &SigningKey) -> String {
             let mut json_of_claims =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-            let hash = hex::encode(keypair.sign(&json_of_claims));
+            let hash = hex::encode(keypair.sign(&json_of_claims).to_bytes());
 
             json_of_claims.push(b'|');
             json_of_claims.extend_from_slice(&hash.into_bytes());
 
-            base64::encode_config(json_of_claims, base64::URL_SAFE)
+            b64_urlsafe.encode(json_of_claims)
         }
     }
 
     fn make_signature_invalid(signature: &mut String) {
-        let mut decoded = base64::decode_config(&signature, base64::URL_SAFE).unwrap();
+        let mut decoded = b64_urlsafe.decode(&signature).unwrap();
 
         if decoded.last().unwrap() == &b'a' {
             decoded.pop();
@@ -245,7 +247,7 @@ mod tests {
             decoded.push(b'a');
         }
 
-        *signature = base64::encode_config(decoded, base64::URL_SAFE);
+        *signature = b64_urlsafe.encode(decoded);
     }
 
     #[test]
@@ -316,12 +318,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let keypair = Keypair::generate(&mut OsRng {});
-        let pub_key = keypair.public.as_bytes();
+        let keypair = SigningKey::generate(&mut OsRng);
+        let pub_key = keypair.verifying_key();
 
         let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
         let t = TestTokenEd25519::decode(&token).unwrap();
-        let claims = t.verify(pub_key).unwrap();
+        let claims = t.verify(pub_key.as_bytes()).unwrap();
 
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
@@ -329,7 +331,7 @@ mod tests {
         make_signature_invalid(&mut token);
         assert!(TestTokenEd25519::decode(&token)
             .unwrap()
-            .verify(&pub_key[..])
+            .verify(pub_key.as_bytes())
             .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
@@ -339,7 +341,7 @@ mod tests {
         let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
         assert!(TestTokenEd25519::decode(&token)
             .unwrap()
-            .verify(&pub_key[..])
+            .verify(pub_key.as_bytes())
             .is_err());
     }
 }

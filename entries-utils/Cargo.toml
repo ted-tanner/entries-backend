@@ -7,9 +7,9 @@ edition.workspace = true
 [dependencies]
 aes-gcm = { version = "0.10", features = ["zeroize"] }
 async-trait = "0.1"
-base64 = "0.13"
+base64 = "0.21"
 diesel = { version = "2.1", features = ["postgres", "uuid", "r2d2"] }
-ed25519-dalek = "1.0"
+ed25519-dalek = { version = "2.0.0-rc.3", features = ["rand_core", "zeroize"] }
 hex = "0.4"
 hmac = "0.12"
 lettre = { version = "0.10", features = ["tokio1-native-tls"] }
@@ -27,5 +27,4 @@ zeroize = { version = "1.6", features = ["zeroize_derive"] }
 
 [dev-dependencies]
 lazy_static = "1.4"
-old_rand = { package = "rand", version = "0.7"}
-toml = "0.5"
+toml = "0.7"

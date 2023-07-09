@@ -710,6 +710,8 @@ pub mod tests {
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
+    use base64::engine::general_purpose::STANDARD_NO_PAD as b64_nopad;
+    use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
     use sha1::{Digest, Sha1};
@@ -859,14 +861,12 @@ pub mod tests {
 
         // Test password was hashed with correct params
         let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
-        let hash_len: u32 = base64::decode_config(
-            &user.auth_string_hash[hash_start_pos..],
-            base64::STANDARD_NO_PAD,
-        )
-        .unwrap()
-        .len()
-        .try_into()
-        .unwrap();
+        let hash_len: u32 = b64_nopad
+            .decode(&user.auth_string_hash[hash_start_pos..])
+            .unwrap()
+            .len()
+            .try_into()
+            .unwrap();
 
         assert_eq!(hash_len, env::CONF.hashing.hash_length);
 
@@ -875,14 +875,12 @@ pub mod tests {
             .unwrap()
             + 1;
         let salt_end_pos = hash_start_pos - 1;
-        let salt_len: u32 = base64::decode_config(
-            &user.auth_string_hash[salt_start_pos..salt_end_pos],
-            base64::STANDARD_NO_PAD,
-        )
-        .unwrap()
-        .len()
-        .try_into()
-        .unwrap();
+        let salt_len: u32 = b64_nopad
+            .decode(&user.auth_string_hash[salt_start_pos..salt_end_pos])
+            .unwrap()
+            .len()
+            .try_into()
+            .unwrap();
 
         assert_eq!(salt_len, env::CONF.hashing.salt_length);
 
@@ -1291,14 +1289,12 @@ pub mod tests {
         );
 
         let hash_start_pos = stored_user.auth_string_hash.rfind('$').unwrap() + 1;
-        let hash_len: u32 = base64::decode_config(
-            &stored_user.auth_string_hash[hash_start_pos..],
-            base64::STANDARD_NO_PAD,
-        )
-        .unwrap()
-        .len()
-        .try_into()
-        .unwrap();
+        let hash_len: u32 = b64_nopad
+            .decode(&stored_user.auth_string_hash[hash_start_pos..])
+            .unwrap()
+            .len()
+            .try_into()
+            .unwrap();
 
         assert_eq!(hash_len, env::CONF.hashing.hash_length);
 
@@ -1307,14 +1303,12 @@ pub mod tests {
             .unwrap()
             + 1;
         let salt_end_pos = hash_start_pos - 1;
-        let salt_len: u32 = base64::decode_config(
-            &stored_user.auth_string_hash[salt_start_pos..salt_end_pos],
-            base64::STANDARD_NO_PAD,
-        )
-        .unwrap()
-        .len()
-        .try_into()
-        .unwrap();
+        let salt_len: u32 = b64_nopad
+            .decode(&stored_user.auth_string_hash[salt_start_pos..salt_end_pos])
+            .unwrap() //
+            .len()
+            .try_into()
+            .unwrap();
 
         assert_eq!(salt_len, env::CONF.hashing.salt_length);
 

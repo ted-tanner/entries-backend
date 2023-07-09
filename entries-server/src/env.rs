@@ -1,4 +1,6 @@
 use aes_gcm::{aead::KeyInit, Aes128Gcm};
+use base64::engine::general_purpose::STANDARD as b64;
+use base64::Engine;
 use lettre::message::Mailbox;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -199,7 +201,7 @@ fn build_conf() -> Result<Conf, String> {
         .map(Duration::from_secs);
 
     const HASHING_KEY_SIZE: usize = 32;
-    let hashing_key = match base64::decode(&raw_conf.keys.hashing_key_b64) {
+    let hashing_key = match b64.decode(&raw_conf.keys.hashing_key_b64) {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
@@ -218,7 +220,7 @@ fn build_conf() -> Result<Conf, String> {
     };
 
     const TOKEN_SIGNING_KEY_SIZE: usize = 64;
-    let token_signing_key = match base64::decode(&raw_conf.keys.token_signing_key_b64) {
+    let token_signing_key = match b64.decode(&raw_conf.keys.token_signing_key_b64) {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
@@ -237,7 +239,7 @@ fn build_conf() -> Result<Conf, String> {
     };
 
     const TOKEN_ENCRYPTION_KEY_SIZE: usize = 16;
-    let token_encryption_key = match base64::decode(&raw_conf.keys.token_encryption_key_b64) {
+    let token_encryption_key = match b64.decode(&raw_conf.keys.token_encryption_key_b64) {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(

@@ -9,9 +9,9 @@ entries_utils = { path = "../entries-utils" }
 actix-web = "4.3"
 aes-gcm = { version = "0.10", features = ["zeroize"] }
 argon2-kdf = "1.1"
-base64 = "0.13"
+base64 = "0.21"
 diesel = { version = "2.1", features = ["postgres", "uuid", "r2d2"] }
-ed25519-dalek = { version = "2.0.0-rc.2", features = ["rand_core"] }
+ed25519-dalek = { version = "2.0.0-rc.3", features = ["rand_core", "zeroize"] }
 flexi_logger = { version = "0.25", features = ["async", "compress"], default_features = false }
 futures = "0.3"
 lazy_static = "1.4"

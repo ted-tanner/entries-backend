@@ -222,12 +222,12 @@ impl Dao {
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                dsl::insert_into(budget_access_keys)
-                    .values(&new_budget_access_key)
-                    .execute(conn)?;
-
                 dsl::insert_into(budgets)
                     .values(&new_budget)
+                    .execute(conn)?;
+
+                dsl::insert_into(budget_access_keys)
+                    .values(&new_budget_access_key)
                     .execute(conn)?;
 
                 dsl::insert_into(categories)

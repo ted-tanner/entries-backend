@@ -1,6 +1,8 @@
 use crate::token::{Expiring, HmacSha256Verifier, Token, TokenError};
 
 use aes_gcm::{aead::Aead, Aes128Gcm};
+use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
+use base64::Engine;
 use hmac::{Hmac, Mac};
 use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -100,8 +102,8 @@ impl<'a> NewAuthTokenClaims<'a> {
         AuthTokenEncryptedClaims {
             exp,
 
-            nnc: base64::encode(nonce),
-            enc: base64::encode(encrypted_private_claims),
+            nnc: b64_urlsafe.encode(nonce),
+            enc: b64_urlsafe.encode(encrypted_private_claims),
 
             typ: self.token_type.into(),
         }
@@ -124,8 +126,12 @@ impl Expiring for AuthTokenEncryptedClaims {
 
 impl AuthTokenEncryptedClaims {
     pub fn decrypt(&self, cipher: &Aes128Gcm) -> Result<AuthTokenClaims, TokenError> {
-        let nonce = base64::decode(&self.nnc).map_err(|_| TokenError::TokenInvalid)?;
-        let private_claims = base64::decode(&self.enc).map_err(|_| TokenError::TokenInvalid)?;
+        let nonce = b64_urlsafe
+            .decode(&self.nnc)
+            .map_err(|_| TokenError::TokenInvalid)?;
+        let private_claims = b64_urlsafe
+            .decode(&self.enc)
+            .map_err(|_| TokenError::TokenInvalid)?;
 
         let decrypted_self_bytes = cipher
             .decrypt((&*nonce).into(), private_claims.as_ref())
@@ -165,7 +171,7 @@ impl AuthToken {
         json_of_claims.push(b'|');
         json_of_claims.extend_from_slice(&hash.into_bytes());
 
-        base64::encode_config(json_of_claims, base64::URL_SAFE)
+        b64_urlsafe.encode(json_of_claims)
     }
 }
 
@@ -201,7 +207,9 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
-        assert!(!String::from_utf8_lossy(&base64::decode(&token).unwrap()).contains(user_email));
+        assert!(
+            !String::from_utf8_lossy(&b64_urlsafe.decode(&token).unwrap()).contains(user_email)
+        );
 
         let t = AuthToken::decode(&token).unwrap();
         let claims = t.verify(&signing_key).unwrap();
@@ -226,7 +234,7 @@ mod tests {
         let t = AuthToken::sign_new(encrypted_claims.clone(), &signing_key);
 
         assert!(
-            String::from_utf8_lossy(&base64::decode(&t).unwrap()).contains(&format!(
+            String::from_utf8_lossy(&b64_urlsafe.decode(&t).unwrap()).contains(&format!(
                 "{}",
                 exp.duration_since(UNIX_EPOCH).unwrap().as_secs()
             ))
@@ -254,7 +262,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
-        let mut t = base64::decode_config(token, base64::URL_SAFE).unwrap();
+        let mut t = b64_urlsafe.decode(token).unwrap();
 
         // Make the signature invalid
         let last_char = t.pop().unwrap();
@@ -264,7 +272,7 @@ mod tests {
             t.push(b'a');
         }
 
-        let t = base64::encode_config(t, base64::URL_SAFE);
+        let t = b64_urlsafe.encode(t);
 
         assert!(AuthToken::decode(&t).unwrap().verify(&signing_key).is_err());
 
