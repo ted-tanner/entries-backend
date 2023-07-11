@@ -62,9 +62,12 @@ pub struct OutputBudgetIdAndEncryptionKey {
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Queryable)]
-pub struct OutputBudgetShareInviteWithoutKey {
+pub struct OutputBudgetShareInvite {
+    pub invite_id: Uuid,
+
     #[serde_as(as = "Base64")]
     pub budget_accept_private_key_encrypted: Vec<u8>,
+    pub budget_accept_private_key_id: Vec<u8>,
 
     #[serde_as(as = "Base64")]
     pub budget_info_encrypted: Vec<u8>,

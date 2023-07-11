@@ -2,8 +2,8 @@ use entries_utils::models::budget_access_key::BudgetAccessKey;
 use entries_utils::request_io::{
     InputBudget, InputBudgetAccessTokenList, InputCategoryId, InputEditBudget, InputEditCategory,
     InputEditEntry, InputEncryptedBlob, InputEncryptedBlobAndCategoryId, InputEntryAndCategory,
-    InputEntryId, InputPublicKey, OutputBudgetShareInviteWithoutKey, OutputCategoryId,
-    OutputEntryId, UserInvitationToBudget,
+    InputEntryId, InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
+    UserInvitationToBudget,
 };
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -217,7 +217,7 @@ pub async fn edit(
 }
 
 #[derive(Debug)]
-struct AcceptKey {
+pub struct AcceptKey {
     key_id: Uuid,
     key_id_encrypted: Vec<u8>,
     public_key: Vec<u8>,
@@ -226,7 +226,7 @@ struct AcceptKey {
 }
 
 #[derive(Debug, Serialize)]
-struct AcceptKeyInfo {
+pub struct AcceptKeyInfo {
     read_only: bool,
     expiration: u64,
 }
@@ -298,9 +298,17 @@ pub async fn invite_user(
             }
         };
 
-        let private_key_encrypted = recipient_public_key
+        let Ok(private_key_encrypted) = recipient_public_key
             .encrypt(&mut OsRng, Pkcs1v15Encrypt, &accept_private_key[..])
-            .expect("Failed to encrypt using recipient's public key");
+        else {
+            sender
+                .send(Err(HttpErrorResponse::IncorrectlyFormed(
+                    "Recipient user's public key is incorrectly formatted",
+                )))
+                .expect("Sending to channel failed");
+
+            return;
+        };
 
         let key_id = Uuid::new_v4();
 
@@ -554,20 +562,20 @@ pub async fn decline_invitation(
     Ok(HttpResponse::Ok().finish())
 }
 
-pub async fn get_all_pending_invitations_for_user(
+pub async fn get_all_pending_invitations(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invites = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations_for_user(&user_access_token.0.user_email)
+        budget_dao.get_all_pending_invitations(&user_access_token.0.user_email)
     })
     .await?
     {
         Ok(invites) => invites,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInviteWithoutKey>::new()));
+                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInvite>::new()));
             }
             _ => {
                 log::error!("{e}");

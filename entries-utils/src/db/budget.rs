@@ -15,7 +15,7 @@ use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::request_io::{
     InputBudget, InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
-    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInviteWithoutKey, OutputEntryIdAndCategoryId,
+    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInvite, OutputEntryIdAndCategoryId,
     OutputInvitationId,
 };
 use crate::schema::budget_accept_keys as budget_accept_key_fields;
@@ -352,7 +352,7 @@ impl Dao {
         read_only: bool,
         invitation_id: Uuid,
         recipient_user_email: &str,
-        recipient_budget_user_public_key: &[u8],
+        recipient_budget_user_access_public_key: &[u8],
     ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
@@ -362,7 +362,7 @@ impl Dao {
                 let new_budget_access_key = NewBudgetAccessKey {
                     key_id: Uuid::new_v4(),
                     budget_id,
-                    public_key: recipient_budget_user_public_key,
+                    public_key: recipient_budget_user_access_public_key,
                     read_only,
                 };
 
@@ -460,20 +460,22 @@ impl Dao {
         Ok(())
     }
 
-    pub fn get_all_pending_invitations_for_user(
+    pub fn get_all_pending_invitations(
         &mut self,
         user_email: &str,
-    ) -> Result<Vec<OutputBudgetShareInviteWithoutKey>, DaoError> {
+    ) -> Result<Vec<OutputBudgetShareInvite>, DaoError> {
         Ok(budget_share_invites
             .select((
+                budget_share_invite_fields::id,
                 budget_share_invite_fields::budget_accept_private_key_encrypted,
+                budget_share_invite_fields::budget_accept_key_id_encrypted,
                 budget_share_invite_fields::budget_info_encrypted,
                 budget_share_invite_fields::sender_info_encrypted,
                 budget_share_invite_fields::budget_accept_key_info_encrypted,
                 budget_share_invite_fields::share_info_symmetric_key_encrypted,
             ))
             .filter(budget_share_invite_fields::recipient_user_email.eq(user_email))
-            .load::<OutputBudgetShareInviteWithoutKey>(&mut self.db_thread_pool.get()?)?)
+            .load::<OutputBudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
     }
 
     pub fn leave_budget(&mut self, budget_id: Uuid, key_id: Uuid) -> Result<(), DaoError> {

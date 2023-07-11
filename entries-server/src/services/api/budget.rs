@@ -29,8 +29,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::put().to(handlers::budget::decline_invitation),
             )
             .route(
-                "/get_all_pending_invitations_for_user",
-                web::get().to(handlers::budget::get_all_pending_invitations_for_user),
+                "/get_all_pending_invitations",
+                web::get().to(handlers::budget::get_all_pending_invitations),
             )
             .route(
                 "/leave_budget",

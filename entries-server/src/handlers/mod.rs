@@ -377,7 +377,8 @@ pub mod test_utils {
     use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
     use entries_utils::request_io::{
-        InputBudget, InputCategoryWithTempId, InputUser, OutputBudgetFrame, UserInvitationToBudget,
+        InputBudget, InputCategoryWithTempId, InputPublicKey, InputUser, OutputBudgetFrame,
+        OutputBudgetIdAndEncryptionKey, OutputBudgetShareInvite, UserInvitationToBudget,
     };
     use entries_utils::schema::budgets::dsl::budgets;
     use entries_utils::schema::users as user_fields;
@@ -388,14 +389,18 @@ pub mod test_utils {
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD as b64_urlsafe_nopad;
+    use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519::{Signer, SigningKey};
     use ed25519_dalek as ed25519;
+    use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
     use rand::rngs::OsRng;
     use rand::Rng;
+    use rsa::pkcs8::DecodePrivateKey;
+    use rsa::Pkcs1v15Encrypt;
+    use rsa::RsaPrivateKey;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
@@ -423,7 +428,7 @@ pub mod test_utils {
         let signature = hex::encode(&key_pair.sign(&claims).to_bytes());
 
         let claims = String::from_utf8_lossy(&claims);
-        b64_urlsafe_nopad.encode(format!("{claims}|{signature}"))
+        b64_urlsafe.encode(format!("{claims}|{signature}"))
     }
 
     pub async fn create_user() -> (User, String) {
@@ -560,10 +565,11 @@ pub mod test_utils {
     pub async fn share_budget(
         budget_id: Uuid,
         recipient_email: &str,
+        recipient_private_key: &[u8],
         read_only: bool,
         budget_access_token: &str,
-        user_access_token: &str,
-    ) {
+        sender_access_token: &str,
+    ) -> String {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -585,15 +591,114 @@ pub mod test_utils {
 
         let req = TestRequest::put()
             .uri("/api/budget/invite_user")
-            .insert_header(("AccessToken", user_access_token))
+            .insert_header(("AccessToken", sender_access_token))
             .insert_header(("BudgetAccessToken", budget_access_token))
             .insert_header(("AppVersion", "0.1.0"))
             .set_json(&invite_info)
             .to_request();
-        test::call_service(&app, req).await;
+        let resp = test::call_service(&app, req).await;
 
-        // TODO: Recipient gets all invites
-        // TODO: Recipient accepts invite
-        // TODO: Recipient
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let recipient = users
+            .filter(user_fields::email.eq(recipient_email))
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let recipient_access_token_claims = NewAuthTokenClaims {
+            user_id: recipient.id,
+            user_email: recipient_email,
+            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            token_type: AuthTokenType::Access,
+        };
+        let recipient_access_token = AuthToken::sign_new(
+            recipient_access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
+            &env::CONF.keys.token_signing_key,
+        );
+
+        let req = TestRequest::get()
+            .uri("/api/budget/get_all_pending_invitations")
+            .insert_header(("AccessToken", recipient_access_token.clone()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let invites = test::read_body_json::<Vec<OutputBudgetShareInvite>, _>(resp).await;
+
+        let recipient_private_key = RsaPrivateKey::from_pkcs8_der(recipient_private_key).unwrap();
+
+        let accept_private_key = recipient_private_key
+            .decrypt(
+                Pkcs1v15Encrypt,
+                &invites[0].budget_accept_private_key_encrypted,
+            )
+            .unwrap();
+        let accept_private_key_id = recipient_private_key
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_private_key_id)
+            .unwrap();
+        let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
+
+        let accept_token_claims = BudgetAcceptTokenClaims {
+            invite_id: invites[0].invite_id,
+            key_id: accept_private_key_id,
+            budget_id,
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
+        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
+        let accept_private_key = SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let signature = hex::encode(
+            accept_private_key
+                .sign(accept_token_claims.as_bytes())
+                .to_bytes(),
+        );
+        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
+
+        let access_private_key = ed25519::SigningKey::generate(&mut OsRng);
+        let access_public_key = access_private_key.verifying_key();
+        let access_public_key = InputPublicKey {
+            public_key: access_public_key.as_bytes().to_vec(),
+        };
+
+        let req = TestRequest::get()
+            .uri("/api/budget/accept_invitation")
+            .insert_header(("BudgetAcceptToken", accept_token))
+            .insert_header(("AccessToken", recipient_access_token))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(access_public_key)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let access_key_id = test::read_body_json::<OutputBudgetIdAndEncryptionKey, _>(resp).await;
+        let access_key_id = access_key_id.budget_access_key_id;
+
+        let budget_access_token_claims = BudgetAccessTokenClaims {
+            key_id: access_key_id,
+            budget_id,
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let budget_access_token_claims = serde_json::to_vec(&budget_access_token_claims).unwrap();
+        let budget_access_token_claims = String::from_utf8_lossy(&budget_access_token_claims);
+        let signature = hex::encode(
+            access_private_key
+                .sign(budget_access_token_claims.as_bytes())
+                .to_bytes(),
+        );
+        let budget_access_token =
+            b64_urlsafe.encode(format!("{budget_access_token_claims}|{signature}"));
+
+        budget_access_token
     }
 }
