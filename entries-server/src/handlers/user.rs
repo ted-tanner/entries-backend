@@ -564,7 +564,7 @@ pub async fn init_delete(
         }
     };
 
-    Ok(HttpResponse::Created().json(OutputVerificationEmailSent {
+    Ok(HttpResponse::Ok().json(OutputVerificationEmailSent {
         email_sent: true,
         email_token_lifetime_hours: env::CONF.lifetimes.user_deletion_token_lifetime.as_secs()
             / 3600,
@@ -693,10 +693,15 @@ pub mod tests {
     use super::*;
 
     use entries_utils::models::user::User;
+    use entries_utils::models::user_deletion_request::UserDeletionRequest;
     use entries_utils::request_io::InputUser;
     use entries_utils::schema::signin_nonces::dsl::signin_nonces;
     use entries_utils::schema::user_backup_codes as user_backup_code_fields;
     use entries_utils::schema::user_backup_codes::dsl::user_backup_codes;
+    use entries_utils::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
+    use entries_utils::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
+    use entries_utils::schema::user_deletion_requests as user_deletion_request_fields;
+    use entries_utils::schema::user_deletion_requests::dsl::user_deletion_requests;
     use entries_utils::schema::user_keystores as user_keystore_fields;
     use entries_utils::schema::user_keystores::dsl::user_keystores;
     use entries_utils::schema::user_otps as user_otp_fields;
@@ -1472,12 +1477,38 @@ pub mod tests {
         .await;
 
         let (user, access_token) = test_utils::create_user().await;
+        let user_rsa_key = test_utils::gen_new_user_rsa_key(&user.email);
         let budget_data = test_utils::create_budget(&access_token).await;
+
+        let budget_access_tokens = InputBudgetAccessTokenList {
+            budget_access_tokens: Vec::new(),
+        };
+
+        let req = TestRequest::delete()
+            .uri("/api/user/init_delete")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .set_json(budget_access_tokens)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = test::read_body_json::<OutputVerificationEmailSent, _>(resp).await;
+        assert!(resp_body.email_sent);
+
+        let deletion_request_budget_key_count = user_deletion_request_budget_keys
+            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_request_budget_key_count, 0);
 
         // TODO: Test with 0 tokens
         // TODO: Test with 2 tokens
         // TODO: Test with a shared token (delete just one user, budget should survive)
         // TODO: Test with a shared token (delete both users, budget should be deleted)
+        // TODO: Test wrong token causes a 403
 
         todo!();
     }

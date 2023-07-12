@@ -30,7 +30,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/change_recovery_key",
                 web::put().to(handlers::user::change_recovery_key),
             )
-            .route("/init_delete", web::put().to(handlers::user::init_delete))
+            .route(
+                "/init_delete",
+                web::delete().to(handlers::user::init_delete),
+            )
             .route("/delete", web::get().to(handlers::user::delete))
             .route(
                 "/is_listed_for_deletion",

@@ -175,10 +175,11 @@ CREATE INDEX ON user_deletion_requests USING HASH (user_id);
 
 CREATE TABLE user_deletion_request_budget_keys (
     key_id UUID PRIMARY KEY,
-    -- Using a users table key rather than user_deletion_requests table key so that this table
-    -- may be queried using data available in an auth token, like the user_id. This table can
-    -- be related to the user_deletion_requests table indirectly by joining on user_id for
-    -- both tables.
+    -- Using a users table key rather than user_deletion_requests table key so that these
+    -- records may be created before the deletion request (the deletion request doesn't get
+    -- created until a user verifies via a link sent to their email). This table may be queried
+    -- using data available in an auth token, like the user_id. This table can be related to
+    -- the user_deletion_requests table indirectly by joining on user_id for both tables.
     user_id UUID NOT NULL,
     -- This record should be deleted after this time
     delete_me_time TIMESTAMP NOT NULL

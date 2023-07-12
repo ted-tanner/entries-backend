@@ -398,7 +398,7 @@ pub mod test_utils {
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
     use rand::rngs::OsRng;
     use rand::Rng;
-    use rsa::pkcs8::DecodePrivateKey;
+    use rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
     use rsa::Pkcs1v15Encrypt;
     use rsa::RsaPrivateKey;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -503,6 +503,18 @@ pub mod test_utils {
         );
 
         (user, access_token)
+    }
+
+    pub fn gen_new_user_rsa_key(user_email: &str) -> RsaPrivateKey {
+        let keypair = RsaPrivateKey::new(&mut OsRng, 128).unwrap();
+        let public_key = keypair.to_public_key().to_public_key_der().unwrap();
+
+        dsl::update(users.filter(user_fields::email.eq(user_email)))
+            .set(user_fields::public_key.eq(public_key.as_bytes()))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        keypair
     }
 
     pub struct BudgetAndKey {
@@ -618,7 +630,7 @@ pub mod test_utils {
 
         let req = TestRequest::get()
             .uri("/api/budget/get_all_pending_invitations")
-            .insert_header(("AccessToken", recipient_access_token.clone()))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -669,7 +681,7 @@ pub mod test_utils {
         let req = TestRequest::get()
             .uri("/api/budget/accept_invitation")
             .insert_header(("BudgetAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .set_json(access_public_key)
             .to_request();
@@ -680,25 +692,6 @@ pub mod test_utils {
         let access_key_id = test::read_body_json::<OutputBudgetIdAndEncryptionKey, _>(resp).await;
         let access_key_id = access_key_id.budget_access_key_id;
 
-        let budget_access_token_claims = BudgetAccessTokenClaims {
-            key_id: access_key_id,
-            budget_id,
-            expiration: (SystemTime::now() + Duration::from_secs(10))
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
-
-        let budget_access_token_claims = serde_json::to_vec(&budget_access_token_claims).unwrap();
-        let budget_access_token_claims = String::from_utf8_lossy(&budget_access_token_claims);
-        let signature = hex::encode(
-            access_private_key
-                .sign(budget_access_token_claims.as_bytes())
-                .to_bytes(),
-        );
-        let budget_access_token =
-            b64_urlsafe.encode(format!("{budget_access_token_claims}|{signature}"));
-
-        budget_access_token
+        gen_budget_token(budget_id, access_key_id)
     }
 }
