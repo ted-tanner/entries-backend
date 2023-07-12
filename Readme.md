@@ -498,8 +498,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Pass conf into handlers?
-* Budget create endpoint needs to return access key id
 * Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!
   - [x] Jobs
@@ -508,6 +506,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - [x] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation
   - Add a section for the job scheduler
+  - Create a deployment checklist!
 * White paper
 
 ### Do it later
