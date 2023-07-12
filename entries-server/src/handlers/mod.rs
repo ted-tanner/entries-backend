@@ -412,7 +412,7 @@ pub mod test_utils {
             .collect()
     }
 
-    pub fn gen_budget_token(budget_id: Uuid, key_id: Uuid) -> String {
+    pub fn gen_budget_token(budget_id: Uuid, key_id: Uuid, signing_key: &SigningKey) -> String {
         let expiration = SystemTime::now() + Duration::from_secs(10);
         let expiration = expiration.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
@@ -423,9 +423,7 @@ pub mod test_utils {
         };
 
         let claims = serde_json::to_vec(&claims).unwrap();
-
-        let key_pair = ed25519::SigningKey::generate(&mut OsRng);
-        let signature = hex::encode(&key_pair.sign(&claims).to_bytes());
+        let signature = hex::encode(&signing_key.sign(&claims).to_bytes());
 
         let claims = String::from_utf8_lossy(&claims);
         b64_urlsafe.encode(format!("{claims}|{signature}"))
@@ -517,13 +515,7 @@ pub mod test_utils {
         keypair
     }
 
-    pub struct BudgetAndKey {
-        budget: Budget,
-        key_pair: SigningKey,
-        key_id: Uuid,
-    }
-
-    pub async fn create_budget(access_token: &str) -> BudgetAndKey {
+    pub async fn create_budget(access_token: &str) -> (Budget, String) {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -564,14 +556,12 @@ pub mod test_utils {
         let budget_data = test::read_body_json::<OutputBudgetFrame, _>(resp).await;
         let budget = budgets
             .find(budget_data.id)
-            .get_result(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        BudgetAndKey {
-            budget,
-            key_pair,
-            key_id: budget_data.access_key_id,
-        }
+        let budget_access_token = gen_budget_token(budget.id, budget_data.access_key_id, &key_pair);
+
+        (budget, budget_access_token)
     }
 
     pub async fn share_budget(
@@ -692,6 +682,6 @@ pub mod test_utils {
         let access_key_id = test::read_body_json::<OutputBudgetIdAndEncryptionKey, _>(resp).await;
         let access_key_id = access_key_id.budget_access_key_id;
 
-        gen_budget_token(budget_id, access_key_id)
+        gen_budget_token(budget_id, access_key_id, &accept_private_key)
     }
 }

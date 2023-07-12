@@ -34,7 +34,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/init_delete",
                 web::delete().to(handlers::user::init_delete),
             )
-            .route("/delete", web::get().to(handlers::user::delete))
+            .route("/verify_deletion", web::get().to(handlers::user::delete))
             .route(
                 "/is_listed_for_deletion",
                 web::get().to(handlers::user::is_listed_for_deletion),

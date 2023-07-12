@@ -48,8 +48,7 @@ mod tests {
             invite_id: iid,
             expiration: exp,
         };
-        let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
+        let claims = serde_json::to_string(&claims).unwrap();
 
         let keypair = SigningKey::generate(&mut OsRng);
         let pub_key = keypair.verifying_key();
@@ -91,8 +90,7 @@ mod tests {
             invite_id: iid,
             expiration: exp,
         };
-        let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
+        let claims = serde_json::to_string(&claims).unwrap();
 
         let signature = hex::encode(keypair.sign(claims.as_bytes()).to_bytes());
 
