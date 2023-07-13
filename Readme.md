@@ -498,6 +498,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* argon2-kdf:
+  - Use `AsRef<[u8]>` instead of bytes
+  - Update dependencies (including base64)
 * Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!
   - [x] Jobs

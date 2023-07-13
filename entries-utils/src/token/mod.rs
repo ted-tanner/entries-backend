@@ -9,7 +9,6 @@ use ed25519_dalek::{Signature, VerifyingKey, SIGNATURE_LENGTH};
 use hmac::{Hmac, Mac};
 use serde::de::DeserializeOwned;
 use sha2::Sha256;
-use std::fmt;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,8 +22,8 @@ pub enum TokenError {
 
 impl std::error::Error for TokenError {}
 
-impl fmt::Display for TokenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for TokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenError::TokenInvalid => write!(f, "TokenInvalid"),
             TokenError::TokenExpired => write!(f, "TokenExpired"),
@@ -86,20 +85,21 @@ pub trait Token {
         let decoded_token = b64_urlsafe
             .decode(token)
             .map_err(|_| TokenError::TokenInvalid)?;
-        let token_str = String::from_utf8_lossy(&decoded_token);
-        let mut split_token = token_str.split('|');
 
-        let Some(signature_str) = split_token.next_back() else {
+        let Ok(token_str) = std::str::from_utf8(&decoded_token) else {
             return Err(TokenError::TokenInvalid);
         };
 
-        let signature = hex::decode(signature_str).map_err(|_| TokenError::TokenInvalid)?;
-        let claims_json_string = split_token.collect::<String>();
-        let claims = serde_json::from_str::<Self::Claims>(&claims_json_string)
+        let Some((claims_json, signature)) = token_str.rsplit_once('|') else {
+            return Err(TokenError::TokenInvalid);
+        };
+
+        let signature = hex::decode(signature).map_err(|_| TokenError::TokenInvalid)?;
+        let claims = serde_json::from_str::<Self::Claims>(claims_json)
             .map_err(|_| TokenError::TokenInvalid)?;
 
         Ok(DecodedToken {
-            json: claims_json_string,
+            json: String::from(claims_json),
             signature,
             claims,
             phantom: PhantomData,
