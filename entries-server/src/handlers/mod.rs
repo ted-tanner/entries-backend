@@ -152,10 +152,8 @@ pub mod verification {
                 }
             };
 
-            let does_auth_string_match_hash = hash.verify_with_secret(
-                &auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
-            );
+            let does_auth_string_match_hash =
+                hash.verify_with_secret(&auth_string, (&env::CONF.keys.hashing_key).into());
 
             sender
                 .send(Ok(does_auth_string_match_hash))

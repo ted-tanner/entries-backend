@@ -498,6 +498,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Protobufs
+* `#[diesel(check_for_backend(diesel::pg::Pg))]` on all models
+* Any `New*` models that are the same as the original can be aliased with `pub type` (derive Insertable)
 * argon2-kdf:
   - Use `AsRef<[u8]>` instead of bytes
   - Update dependencies (including base64)
@@ -514,6 +517,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Once this is done, use it in `Token::decode()` https://github.com/rust-lang/rust/pull/112818
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate
 * Enable serde `"rc"` feature and accept an `Arc<str>` (or perhaps `Rc<str>`) instead of a `String` for inputs (same with `Arc<[u8]>` instead of `Vec<u8>`)

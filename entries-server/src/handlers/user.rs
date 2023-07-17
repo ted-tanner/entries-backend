@@ -105,7 +105,7 @@ pub async fn create(
             .iterations(env::CONF.hashing.hash_iterations)
             .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
             .threads(env::CONF.hashing.hash_threads)
-            .secret(argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .secret((&env::CONF.keys.hashing_key).into())
             .hash(&user_data_ref.auth_string);
 
         let hash = match hash_result {
@@ -352,7 +352,7 @@ pub async fn change_password(
             .iterations(env::CONF.hashing.hash_iterations)
             .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
             .threads(env::CONF.hashing.hash_threads)
-            .secret(argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key))
+            .secret((&env::CONF.keys.hashing_key).into())
             .hash(&new_password_data_ref.new_auth_string);
 
         let hash = match hash_result {
@@ -866,10 +866,7 @@ pub mod tests {
 
         assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
             .unwrap()
-            .verify_with_secret(
-                &new_user.auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key),
-            ));
+            .verify_with_secret(&new_user.auth_string, (&env::CONF.keys.hashing_key).into(),));
 
         // Test password was hashed with correct params
         let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
@@ -1202,7 +1199,7 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key)
+                (&env::CONF.keys.hashing_key).into()
             ));
 
         assert_ne!(stored_user.auth_string_salt, edit_password.auth_string_salt);
@@ -1261,7 +1258,7 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                argon2_kdf::Secret::using_bytes(&env::CONF.keys.hashing_key)
+                (&env::CONF.keys.hashing_key).into()
             ));
 
         assert_eq!(stored_user.auth_string_salt, edit_password.auth_string_salt);
