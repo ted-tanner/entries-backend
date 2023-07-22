@@ -866,7 +866,7 @@ pub mod tests {
 
         assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
             .unwrap()
-            .verify_with_secret(&new_user.auth_string, (&env::CONF.keys.hashing_key).into(),));
+            .verify_with_secret(&new_user.auth_string, (&env::CONF.keys.hashing_key).into()));
 
         // Test password was hashed with correct params
         let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
