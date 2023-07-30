@@ -424,6 +424,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
+* When sending bytes, consider endianness
+* Before user leaves budget, check if user is the only user with write priviledges. If so, suggest to user that they give someone write priviledges before leaving the budget
 * Follow password guidelines from NIST (perhaps require more characters given that user data is encrypted using the given password)
 * The client needs to make sure the UNIX timestamp it receives from the server when refreshing token is within a minute of the client's UNIX timestamp
 * Currency should be specified on each budget, default currency in user_preferences
@@ -498,7 +500,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Protobufs
+* Protobuf
+  - Max size in config
+* Config as env vars, not as file
 * `#[diesel(check_for_backend(diesel::pg::Pg))]` on all models
 * Any `New*` models that are the same as the original can be aliased with `pub type` (derive Insertable)
 * argon2-kdf:

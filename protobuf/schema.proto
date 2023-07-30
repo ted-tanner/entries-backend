@@ -1,0 +1,267 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+// Messages used only to compose other messages
+
+message Uuid {
+    bytes value = 1;
+}
+
+message Category {
+    Uuid id = 1;
+    Uuid budget_id = 2;
+    bytes encrypted_blob = 3;
+    bytes encrypted_blob_sha1_hash = 4;
+    google.protobuf.Timestamp modified_timestamp = 5;
+}
+
+message Entry {
+    Uuid id = 1;
+    Uuid budget_id = 2;
+    optional Uuid category_id = 3;
+    bytes encrypted_blob = 4;
+    bytes encrypted_blob_sha1_hash = 5;
+    google.protobuf.Timestamp modified_timestamp = 6;
+}
+
+// Server Inputs
+
+message AuthStringAndEncryptedPasswordUpdate {
+    string user_email = 1;
+    string otp = 2;
+
+    bytes new_auth_string = 3;
+
+    bytes auth_string_salt = 4;
+    int32 auth_string_memory_cost_kib = 5;
+    int32 auth_string_parallelism_factor = 6;
+    int32 auth_string_iters = 7;
+
+    bytes password_encryption_salt = 8;
+    int32 password_encryption_memory_cost_kib = 9;
+    int32 password_encryption_parallelism_factor = 10;
+    int32 password_encryption_iters = 11;
+
+    bytes encrypted_encryption_key = 12;
+}
+
+message BackupCode {
+    string value = 1;
+}
+
+message BudgetAccessTokenList {
+    repeated string token = 1;
+}
+
+message CategoryId {
+    Uuid value = 1;
+}
+
+message CategoryUpdate {
+    Uuid category_id = 1;
+    bytes encrypted_blob = 2;
+    bytes expected_previous_data_hash = 3;
+}
+
+message CategoryWithTempId {
+    int32 temp_id = 1;
+    bytes encrypted_blob = 2;
+}
+
+message CredentialPair {
+    string email = 1;
+    bytes auth_string = 2;
+    int32 nonce = 3;
+}
+
+message Email {
+    string value = 1;
+}
+
+message EncryptedBlobAndCategoryId {
+    bytes encrypted_blob = 1;
+    optional Uuid category_id = 2;
+}
+
+message EncryptedBlobUpdate {
+    bytes encrypted_blob = 1;
+    bytes expected_previous_data_hash = 2;
+}
+
+message EntryAndCategory {
+    bytes entry_encrypted_blob = 1;
+    bytes category_encrypted_blob = 2;
+}
+
+message EntryId {
+    Uuid value = 1;
+}
+
+message EntryUpdate {
+    Uuid entry_id = 1;
+    bytes encrypted_blob = 2;
+    bytes expected_previous_data_hash = 3;
+    optional Uuid category_id = 4;
+}
+
+message NewBudget {
+    bytes encrypted_blob = 1;
+    bytes encryption_key_encrypted = 2;
+    CategoryWithTempId categories = 3;
+    bytes user_public_budget_key = 4;
+}
+
+message NewEncryptedBlob {
+    bytes value = 1;
+}
+
+message NewUser {
+    string email = 1;
+
+    bytes auth_string = 2;
+
+    bytes auth_string_salt = 3;
+    int32 auth_string_memory_cost_kib = 4;
+    int32 auth_string_parallelism_factor = 5;
+    int32 auth_string_iters = 6;
+
+    bytes password_encryption_salt = 7;
+    int32 password_encryption_memory_cost_kib = 8;
+    int32 password_encryption_parallelism_factor = 9;
+    int32 password_encryption_iters = 10;
+
+    bytes recovery_key_salt = 11;
+    int32 recovery_key_memory_cost_kib = 12;
+    int32 recovery_key_parallelism_factor = 13;
+    int32 recovery_key_iters = 14;
+
+    bytes encryption_key_encrypted_with_password = 15;
+    bytes encryption_key_encrypted_with_recovery_key = 16;
+
+    bytes public_key = 17;
+
+    bytes preferences_encrypted = 18;
+    bytes user_keystore_encrypted = 19;
+}
+
+message Otp {
+    string value = 1;
+}
+
+message PublicKey {
+    bytes value = 1;
+}
+
+message RecoveryKeyUpdate {
+    string otp = 1;
+
+    bytes recovery_key_salt = 2;
+    int32 recovery_key_memory_cost_kib = 3;
+    int32 recovery_key_parallelism_factor = 4;
+    int32 recovery_key_iters = 5;
+
+    bytes encrypted_encryption_key = 6;
+}
+
+message UserInvitationToBudget {
+    string recipient_user_email = 1;
+    bytes sender_public_key = 2;
+
+    bytes encryption_key_encrypted = 3;
+
+    bytes budget_info_encrypted = 4;
+    bytes sender_info_encrypted = 5;
+    bytes share_info_symmetric_key_encrypted = 6;
+
+    google.protobuf.Timestamp expiration = 7;
+    bool read_only = 8;
+}
+
+// Server outputs
+
+message BackupCodesAndVerificationEmailSent {
+    bool email_sent = 1;
+    uint64 email_token_lifetime_hours = 2;
+    repeated string backup_code = 3;
+}
+
+message BackupCodeList {
+    repeated string backup_code = 1;
+}
+
+message Budget {
+    Uuid id = 1;
+    bytes encrypted_blob = 2;
+    google.protobuf.Timestamp modified_timestamp = 3;
+    repeated Category category = 4;
+    repeated Entry entry = 5;
+}
+
+message BudgetFrame {
+    Uuid access_key_id = 1;
+    Uuid id = 2;
+    repeated BudgetFrameCategory category_id = 3;
+    google.protobuf.Timestamp modified_timestamp = 4;    
+}
+
+message BudgetFrameCategory {
+    int32 temp_id = 1;
+    Uuid real_id = 2;
+}
+
+message BudgetIdAndEncryptionKey {
+    Uuid budget_id = 1;
+    Uuid budget_access_key_id = 2;
+    bytes encryption_key_encrypted = 3;
+    bool read_only = 4;
+}
+
+message BudgetShareInvite {
+    Uuid invite_id = 1;
+
+    bytes budget_accept_private_key_encrypted = 2;
+    bytes budget_accept_private_key_id = 3;
+    bytes budget_info_encrypted = 4;
+    bytes sender_info_encrypted = 5;
+    bytes budget_accept_private_key_info_encrypted = 6;
+
+    bytes share_info_symmetric_key_encrypted = 7;
+}
+
+message EntryIdAndCategoryId {
+    Uuid entry_id = 1;
+    Uuid category_id = 2;
+}
+
+message InvitationId {
+    Uuid value = 1;
+}
+
+message IsUserListedForDeletion {
+    bool is_listed_for_deletion = 1;
+}
+
+message SigninNonceAndHashParams {
+    bytes auth_string_salt = 1;
+    int32 auth_string_memory_cost_kib = 2;
+    int32 auth_string_parallelism_factor = 3;
+    int32 auth_string_iters = 4;
+
+    int32 nonce = 5;
+}
+
+message SigninToken {
+    string value = 1;
+}
+
+message TokenPair {
+    string access_token = 1;
+    string refresh_token = 2;
+    google.protobuf.Timestamp server_time = 3;
+}
+
+message VerificationEmailSent {
+    bool email_sent = 1;
+    uint64 email_token_lifetime_hours = 2;
+}

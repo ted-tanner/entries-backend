@@ -501,11 +501,11 @@ pub mod test_utils {
         (user, access_token)
     }
 
-    pub fn gen_new_user_rsa_key(user_email: &str) -> RsaPrivateKey {
+    pub fn gen_new_user_rsa_key(user_id: Uuid) -> RsaPrivateKey {
         let keypair = RsaPrivateKey::new(&mut OsRng, 128).unwrap();
         let public_key = keypair.to_public_key().to_public_key_der().unwrap();
 
-        dsl::update(users.filter(user_fields::email.eq(user_email)))
+        dsl::update(users.find(user_id))
             .set(user_fields::public_key.eq(public_key.as_bytes()))
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();

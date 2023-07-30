@@ -218,10 +218,7 @@ pub async fn verify_otp_for_signin(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_millis(),
+        server_time: SystemTime::now(),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))
@@ -307,10 +304,7 @@ pub async fn use_backup_code_for_signin(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_millis(),
+        server_time: SystemTime::now(),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))
@@ -407,10 +401,7 @@ pub async fn refresh_tokens(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_millis(),
+        server_time: SystemTime::now(),
     };
 
     Ok(HttpResponse::Ok().json(token_pair))

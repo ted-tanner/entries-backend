@@ -17,7 +17,7 @@ pub struct SigninToken {
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
-    pub server_time: u128,
+    pub server_time: SystemTime,
 }
 
 #[serde_as]
@@ -86,11 +86,13 @@ pub struct OutputEntryIdAndCategoryId {
     pub category_id: Uuid,
 }
 
+// TODO: Same as input EntryId
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputEntryId {
     pub entry_id: Uuid,
 }
 
+// TODO: Same as input CategoryId
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputCategoryId {
     pub category_id: Uuid,
@@ -109,6 +111,7 @@ pub struct OutputBackupCodesAndVerificationEmailSent<'a> {
     pub backup_codes: &'a [String],
 }
 
+// TODO: BackupCodeList
 #[derive(Clone, Debug, Serialize)]
 pub struct OutputBackupCodes<'a> {
     pub backup_codes: &'a [String],
@@ -136,6 +139,7 @@ pub struct OutputInvitationId {
     pub invitation_id: Uuid,
 }
 
+// TODO: Same as PublicKey from inputs
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputPublicKey {

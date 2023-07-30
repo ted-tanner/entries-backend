@@ -21,28 +21,7 @@ pub struct InputEmail {
     pub email: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBudgetId {
-    pub budget_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputShareInviteId {
-    pub share_invite_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBudgetShareInviteId {
-    pub share_invite_id: Uuid,
-    pub budget_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputDateRange {
-    pub start_date: u64,
-    pub end_date: u64,
-}
-
+// TODO: NewUser
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
 pub struct InputUser {
@@ -83,6 +62,7 @@ pub struct InputUser {
     pub user_keystore_encrypted: Vec<u8>,
 }
 
+// TODO: EncryptedBlobUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUserPrefs {
@@ -92,6 +72,7 @@ pub struct InputEditUserPrefs {
     pub expected_previous_data_hash: Vec<u8>,
 }
 
+// TODO: EncryptedBlobUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditUserKeystore {
@@ -106,6 +87,7 @@ pub struct InputOtp {
     pub otp: String,
 }
 
+// TODO: AuthStringAndEncryptedPasswordUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
 pub struct InputNewAuthStringAndEncryptedPassword {
@@ -131,6 +113,7 @@ pub struct InputNewAuthStringAndEncryptedPassword {
     pub encrypted_encryption_key: Vec<u8>,
 }
 
+// TODO: RecoveryKeyUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
 pub struct InputNewRecoveryKey {
@@ -158,6 +141,7 @@ pub struct InputCategoryWithTempId {
     pub encrypted_blob: Vec<u8>,
 }
 
+// TODO: NewBudget
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudget {
@@ -172,6 +156,7 @@ pub struct InputBudget {
     pub user_public_budget_key: Vec<u8>,
 }
 
+// TODO: EncryptedBlobUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditBudget {
@@ -207,6 +192,7 @@ pub struct InputEntryId {
     pub entry_id: Uuid,
 }
 
+// TODO: NewEncryptedBlob
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEncryptedBlob {
@@ -242,6 +228,7 @@ pub struct InputEditEntry {
     pub category_id: Option<Uuid>,
 }
 
+// TODO: Just Uuid
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputCategoryId {
     pub category_id: Uuid,
@@ -256,11 +243,6 @@ pub struct InputEditCategory {
     pub encrypted_blob: Vec<u8>,
     #[serde_as(as = "Hex")]
     pub expected_previous_data_hash: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputTime {
-    pub time: SystemTime,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
