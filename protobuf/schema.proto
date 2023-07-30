@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+package entries.serverschema;
+
 import "google/protobuf/timestamp.proto";
 
 // Messages used only to compose other messages
