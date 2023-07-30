@@ -62,12 +62,11 @@ where
             return Err(TokenError::TokenInvalid);
         }
 
-        if self.claims.expiration()
-            <= SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-        {
+        let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+            return Err(TokenError::TokenInvalid);
+        };
+
+        if self.claims.expiration() <= now.as_secs() {
             return Err(TokenError::TokenExpired);
         }
 

@@ -6,22 +6,22 @@ import "google/protobuf/timestamp.proto";
 
 // Messages used only to compose other messages
 
-message Uuid {
+message UuidV4 {
     bytes value = 1;
 }
 
 message Category {
-    Uuid id = 1;
-    Uuid budget_id = 2;
+    UuidV4 id = 1;
+    UuidV4 budget_id = 2;
     bytes encrypted_blob = 3;
     bytes encrypted_blob_sha1_hash = 4;
     google.protobuf.Timestamp modified_timestamp = 5;
 }
 
 message Entry {
-    Uuid id = 1;
-    Uuid budget_id = 2;
-    optional Uuid category_id = 3;
+    UuidV4 id = 1;
+    UuidV4 budget_id = 2;
+    optional UuidV4 category_id = 3;
     bytes encrypted_blob = 4;
     bytes encrypted_blob_sha1_hash = 5;
     google.protobuf.Timestamp modified_timestamp = 6;
@@ -57,11 +57,11 @@ message BudgetAccessTokenList {
 }
 
 message CategoryId {
-    Uuid value = 1;
+    UuidV4 value = 1;
 }
 
 message CategoryUpdate {
-    Uuid category_id = 1;
+    UuidV4 category_id = 1;
     bytes encrypted_blob = 2;
     bytes expected_previous_data_hash = 3;
 }
@@ -83,7 +83,7 @@ message Email {
 
 message EncryptedBlobAndCategoryId {
     bytes encrypted_blob = 1;
-    optional Uuid category_id = 2;
+    optional UuidV4 category_id = 2;
 }
 
 message EncryptedBlobUpdate {
@@ -97,14 +97,14 @@ message EntryAndCategory {
 }
 
 message EntryId {
-    Uuid value = 1;
+    UuidV4 value = 1;
 }
 
 message EntryUpdate {
-    Uuid entry_id = 1;
+    UuidV4 entry_id = 1;
     bytes encrypted_blob = 2;
     bytes expected_previous_data_hash = 3;
-    optional Uuid category_id = 4;
+    optional UuidV4 category_id = 4;
 }
 
 message NewBudget {
@@ -193,7 +193,7 @@ message BackupCodeList {
 }
 
 message Budget {
-    Uuid id = 1;
+    UuidV4 id = 1;
     bytes encrypted_blob = 2;
     google.protobuf.Timestamp modified_timestamp = 3;
     repeated Category category = 4;
@@ -201,26 +201,26 @@ message Budget {
 }
 
 message BudgetFrame {
-    Uuid access_key_id = 1;
-    Uuid id = 2;
+    UuidV4 access_key_id = 1;
+    UuidV4 id = 2;
     repeated BudgetFrameCategory category_id = 3;
     google.protobuf.Timestamp modified_timestamp = 4;    
 }
 
 message BudgetFrameCategory {
     int32 temp_id = 1;
-    Uuid real_id = 2;
+    UuidV4 real_id = 2;
 }
 
 message BudgetIdAndEncryptionKey {
-    Uuid budget_id = 1;
-    Uuid budget_access_key_id = 2;
+    UuidV4 budget_id = 1;
+    UuidV4 budget_access_key_id = 2;
     bytes encryption_key_encrypted = 3;
     bool read_only = 4;
 }
 
 message BudgetShareInvite {
-    Uuid invite_id = 1;
+    UuidV4 invite_id = 1;
 
     bytes budget_accept_private_key_encrypted = 2;
     bytes budget_accept_private_key_id = 3;
@@ -232,12 +232,12 @@ message BudgetShareInvite {
 }
 
 message EntryIdAndCategoryId {
-    Uuid entry_id = 1;
-    Uuid category_id = 2;
+    UuidV4 entry_id = 1;
+    UuidV4 category_id = 2;
 }
 
 message InvitationId {
-    Uuid value = 1;
+    UuidV4 value = 1;
 }
 
 message IsUserListedForDeletion {
