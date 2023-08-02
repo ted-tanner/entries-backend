@@ -7,10 +7,12 @@ use entries_utils::html::templates::{
     DeleteUserSuccessPage, VerifyUserExpiredLinkPage, VerifyUserInternalErrorPage,
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
-use entries_utils::messages::{AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList};
+use entries_utils::messages::{
+    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery,
+};
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputEditUserKeystore, InputEditUserPrefs, InputEmail, InputNewRecoveryKey, InputUser,
+    InputEditUserKeystore, InputEditUserPrefs, InputNewRecoveryKey, InputUser,
     OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion, OutputPublicKey,
     OutputVerificationEmailSent,
 };
@@ -36,7 +38,7 @@ use crate::middleware::{FromHeader, FromQuery};
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    user_email: web::Query<InputEmail>,
+    user_email: web::Query<EmailQuery>,
     throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle

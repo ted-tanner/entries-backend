@@ -1,9 +1,9 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
-use entries_utils::messages::{BackupCode, CredentialPair};
+use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery};
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputEmail, InputOtp, OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
+    InputOtp, OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
@@ -25,7 +25,7 @@ use crate::middleware::FromHeader;
 
 pub async fn obtain_nonce_and_auth_string_params(
     db_thread_pool: web::Data<DbThreadPool>,
-    email: web::Query<InputEmail>,
+    email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     // Disguise that the user doesn't exist by returning random data that only changes
     // once per day. Do this even for valid requests to prevent timing attacks

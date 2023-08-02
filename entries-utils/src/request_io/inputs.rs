@@ -6,11 +6,6 @@ use std::time::SystemTime;
 use uuid::Uuid;
 use zeroize::ZeroizeOnDrop;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEmail {
-    pub email: String,
-}
-
 // TODO: NewUser
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]

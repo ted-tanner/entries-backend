@@ -1,11 +1,12 @@
 use entries_utils::messages::{
-    uuid_from_msg, BudgetAccessTokenList, CategoryId, CategoryUpdate, NewBudget,
+    uuid_from_msg, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
+    NewBudget,
 };
 use entries_utils::models::budget_access_key::BudgetAccessKey;
 use entries_utils::request_io::{
-    InputEditBudget, InputEditEntry, InputEncryptedBlob, InputEncryptedBlobAndCategoryId,
-    InputEntryAndCategory, InputEntryId, InputPublicKey, OutputBudgetShareInvite, OutputCategoryId,
-    OutputEntryId, UserInvitationToBudget,
+    InputEditBudget, InputEditEntry, InputEncryptedBlob, InputEntryAndCategory, InputEntryId,
+    InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
+    UserInvitationToBudget,
 };
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -638,15 +639,22 @@ pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    entry_data: web::Json<InputEncryptedBlobAndCategoryId>,
+    entry_data: ProtoBuf<EncryptedBlobAndCategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+
+    // Actually optional
+    let category_id = entry_data
+        .category_id
+        .as_ref()
+        .map(Uuid::try_from)
+        .transpose()?;
 
     let entry_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry(
             &entry_data.0.encrypted_blob,
-            entry_data.0.category_id,
+            category_id,
             budget_access_token.0.claims.budget_id,
         )
     })

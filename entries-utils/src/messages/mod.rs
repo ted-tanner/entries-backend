@@ -1,6 +1,8 @@
 mod protobuf;
+mod query;
 
 pub use protobuf::*;
+pub use query::*;
 
 use uuid::Uuid;
 
@@ -40,6 +42,19 @@ impl TryFrom<UuidV4> for Uuid {
     fn try_from(uuid: UuidV4) -> Result<Self, Self::Error> {
         Ok(Uuid::from_bytes(
             uuid.value
+                .try_into()
+                .map_err(|_| MessageError::InvalidUuid)?,
+        ))
+    }
+}
+
+impl TryFrom<&UuidV4> for Uuid {
+    type Error = MessageError;
+
+    fn try_from(uuid: &UuidV4) -> Result<Self, Self::Error> {
+        Ok(Uuid::from_bytes(
+            uuid.value
+                .as_slice()
                 .try_into()
                 .map_err(|_| MessageError::InvalidUuid)?,
         ))

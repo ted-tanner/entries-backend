@@ -77,10 +77,6 @@ message CredentialPair {
     int32 nonce = 3;
 }
 
-message Email {
-    string value = 1;
-}
-
 message EncryptedBlobAndCategoryId {
     bytes encrypted_blob = 1;
     optional UuidV4 category_id = 2;
