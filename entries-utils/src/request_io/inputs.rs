@@ -6,16 +6,6 @@ use std::time::SystemTime;
 use uuid::Uuid;
 use zeroize::ZeroizeOnDrop;
 
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
-pub struct CredentialPair {
-    pub email: String,
-
-    #[serde_as(as = "Base64")]
-    pub auth_string: Vec<u8>,
-    pub nonce: i32,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEmail {
     pub email: String,
@@ -87,32 +77,6 @@ pub struct InputOtp {
     pub otp: String,
 }
 
-// TODO: AuthStringAndEncryptedPasswordUpdate
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
-pub struct InputNewAuthStringAndEncryptedPassword {
-    pub user_email: String,
-    pub otp: String,
-
-    #[serde_as(as = "Base64")]
-    pub new_auth_string: Vec<u8>,
-
-    #[serde_as(as = "Base64")]
-    pub auth_string_salt: Vec<u8>,
-    pub auth_string_memory_cost_kib: i32,
-    pub auth_string_parallelism_factor: i32,
-    pub auth_string_iters: i32,
-
-    #[serde_as(as = "Base64")]
-    pub password_encryption_salt: Vec<u8>,
-    pub password_encryption_memory_cost_kib: i32,
-    pub password_encryption_parallelism_factor: i32,
-    pub password_encryption_iters: i32,
-
-    #[serde_as(as = "Base64")]
-    pub encrypted_encryption_key: Vec<u8>,
-}
-
 // TODO: RecoveryKeyUpdate
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, ZeroizeOnDrop)]
@@ -127,33 +91,6 @@ pub struct InputNewRecoveryKey {
 
     #[serde_as(as = "Base64")]
     pub encrypted_encryption_key: Vec<u8>,
-}
-
-// temp_id is an ID the client generates that allows the server to differentiate between
-// categories when multiple are sent to the server simultaneously. The server doesn't have any
-// other way of differentiating them because they are encrypted.
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputCategoryWithTempId {
-    pub temp_id: i32,
-
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-}
-
-// TODO: NewBudget
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBudget {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-
-    #[serde_as(as = "Base64")]
-    pub encryption_key_encrypted: Vec<u8>,
-    pub categories: Vec<InputCategoryWithTempId>,
-
-    #[serde_as(as = "Base64")]
-    pub user_public_budget_key: Vec<u8>,
 }
 
 // TODO: EncryptedBlobUpdate
@@ -234,17 +171,6 @@ pub struct InputCategoryId {
     pub category_id: Uuid,
 }
 
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEditCategory {
-    pub category_id: Uuid,
-
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-    #[serde_as(as = "Hex")]
-    pub expected_previous_data_hash: Vec<u8>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputBudgetAccessTokenList {
     pub budget_access_tokens: Vec<String>,
@@ -255,9 +181,4 @@ pub struct InputBudgetAccessTokenList {
 pub struct InputPublicKey {
     #[serde_as(as = "Base64")]
     pub public_key: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputBackupCode {
-    pub code: String,
 }

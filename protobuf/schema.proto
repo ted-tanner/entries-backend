@@ -53,7 +53,7 @@ message BackupCode {
 }
 
 message BudgetAccessTokenList {
-    repeated string token = 1;
+    repeated string tokens = 1;
 }
 
 message CategoryId {
@@ -109,9 +109,8 @@ message EntryUpdate {
 
 message NewBudget {
     bytes encrypted_blob = 1;
-    bytes encryption_key_encrypted = 2;
-    CategoryWithTempId categories = 3;
-    bytes user_public_budget_key = 4;
+    repeated CategoryWithTempId categories = 2;
+    bytes user_public_budget_key = 3;
 }
 
 message NewEncryptedBlob {
@@ -185,25 +184,25 @@ message UserInvitationToBudget {
 message BackupCodesAndVerificationEmailSent {
     bool email_sent = 1;
     uint64 email_token_lifetime_hours = 2;
-    repeated string backup_code = 3;
+    repeated string backup_codes = 3;
 }
 
 message BackupCodeList {
-    repeated string backup_code = 1;
+    repeated string backup_codes = 1;
 }
 
 message Budget {
     UuidV4 id = 1;
     bytes encrypted_blob = 2;
     google.protobuf.Timestamp modified_timestamp = 3;
-    repeated Category category = 4;
-    repeated Entry entry = 5;
+    repeated Category categories = 4;
+    repeated Entry entries = 5;
 }
 
 message BudgetFrame {
     UuidV4 access_key_id = 1;
     UuidV4 id = 2;
-    repeated BudgetFrameCategory category_id = 3;
+    repeated BudgetFrameCategory category_ids = 3;
     google.protobuf.Timestamp modified_timestamp = 4;    
 }
 

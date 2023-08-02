@@ -7,10 +7,10 @@ use entries_utils::html::templates::{
     DeleteUserSuccessPage, VerifyUserExpiredLinkPage, VerifyUserInternalErrorPage,
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
+use entries_utils::messages::{AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList};
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputBudgetAccessTokenList, InputEditUserKeystore, InputEditUserPrefs, InputEmail,
-    InputNewAuthStringAndEncryptedPassword, InputNewRecoveryKey, InputUser,
+    InputEditUserKeystore, InputEditUserPrefs, InputEmail, InputNewRecoveryKey, InputUser,
     OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion, OutputPublicKey,
     OutputVerificationEmailSent,
 };
@@ -19,6 +19,7 @@ use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
 use entries_utils::validators::{self, Validity};
 
+use actix_protobuf::ProtoBuf;
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -315,7 +316,7 @@ pub async fn edit_keystore(
 
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
-    new_password_data: web::Json<InputNewAuthStringAndEncryptedPassword>,
+    new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
@@ -448,7 +449,7 @@ pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
+    budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str =
         "One of the provided budget access tokens is invalid or has an incorrect ID";
@@ -457,7 +458,7 @@ pub async fn init_delete(
     let mut key_ids = Vec::new();
     let mut budget_ids = Vec::new();
 
-    for token in budget_access_tokens.budget_access_tokens.iter() {
+    for token in budget_access_tokens.tokens.iter() {
         let token = BudgetAccessToken::decode(token)
             .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
 
@@ -1156,7 +1157,7 @@ pub mod tests {
         let updated_password_encryption_salt: Vec<_> = gen_bytes(16);
         let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
-        let mut edit_password = InputNewAuthStringAndEncryptedPassword {
+        let mut edit_password = AuthStringAndEncryptedPasswordUpdate {
             user_email: user.email.clone(),
             otp: String::from("ABCDEFGH"),
 

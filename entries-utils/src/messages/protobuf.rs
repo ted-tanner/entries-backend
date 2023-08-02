@@ -72,7 +72,7 @@ pub struct BackupCode {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetAccessTokenList {
     #[prost(string, repeated, tag = "1")]
-    pub token: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -161,11 +161,9 @@ pub struct EntryUpdate {
 pub struct NewBudget {
     #[prost(bytes = "vec", tag = "1")]
     pub encrypted_blob: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub encryption_key_encrypted: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "3")]
-    pub categories: ::core::option::Option<CategoryWithTempId>,
-    #[prost(bytes = "vec", tag = "4")]
+    #[prost(message, repeated, tag = "2")]
+    pub categories: ::prost::alloc::vec::Vec<CategoryWithTempId>,
+    #[prost(bytes = "vec", tag = "3")]
     pub user_public_budget_key: ::prost::alloc::vec::Vec<u8>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -272,13 +270,13 @@ pub struct BackupCodesAndVerificationEmailSent {
     #[prost(uint64, tag = "2")]
     pub email_token_lifetime_hours: u64,
     #[prost(string, repeated, tag = "3")]
-    pub backup_code: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub backup_codes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BackupCodeList {
     #[prost(string, repeated, tag = "1")]
-    pub backup_code: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub backup_codes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -290,9 +288,9 @@ pub struct Budget {
     #[prost(message, optional, tag = "3")]
     pub modified_timestamp: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, repeated, tag = "4")]
-    pub category: ::prost::alloc::vec::Vec<Category>,
+    pub categories: ::prost::alloc::vec::Vec<Category>,
     #[prost(message, repeated, tag = "5")]
-    pub entry: ::prost::alloc::vec::Vec<Entry>,
+    pub entries: ::prost::alloc::vec::Vec<Entry>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -302,7 +300,7 @@ pub struct BudgetFrame {
     #[prost(message, optional, tag = "2")]
     pub id: ::core::option::Option<UuidV4>,
     #[prost(message, repeated, tag = "3")]
-    pub category_id: ::prost::alloc::vec::Vec<BudgetFrameCategory>,
+    pub category_ids: ::prost::alloc::vec::Vec<BudgetFrameCategory>,
     #[prost(message, optional, tag = "4")]
     pub modified_timestamp: ::core::option::Option<::prost_types::Timestamp>,
 }

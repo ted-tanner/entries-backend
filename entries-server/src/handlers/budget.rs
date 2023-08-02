@@ -1,9 +1,11 @@
+use entries_utils::messages::{
+    uuid_from_msg, BudgetAccessTokenList, CategoryId, CategoryUpdate, NewBudget,
+};
 use entries_utils::models::budget_access_key::BudgetAccessKey;
 use entries_utils::request_io::{
-    InputBudget, InputBudgetAccessTokenList, InputCategoryId, InputEditBudget, InputEditCategory,
-    InputEditEntry, InputEncryptedBlob, InputEncryptedBlobAndCategoryId, InputEntryAndCategory,
-    InputEntryId, InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
-    UserInvitationToBudget,
+    InputEditBudget, InputEditEntry, InputEncryptedBlob, InputEncryptedBlobAndCategoryId,
+    InputEntryAndCategory, InputEntryId, InputPublicKey, OutputBudgetShareInvite, OutputCategoryId,
+    OutputEntryId, UserInvitationToBudget,
 };
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -11,6 +13,7 @@ use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderToken;
 use entries_utils::token::Token;
 use entries_utils::{db, db::DaoError, db::DbThreadPool};
 
+use actix_protobuf::ProtoBuf;
 use actix_web::{web, HttpResponse};
 use ed25519_dalek as ed25519;
 use rand::rngs::OsRng;
@@ -63,14 +66,14 @@ pub async fn get(
 pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_tokens: web::Json<InputBudgetAccessTokenList>,
+    budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
     let mut budget_ids = Vec::new();
 
-    for token in budget_access_tokens.budget_access_tokens.iter() {
+    for token in budget_access_tokens.tokens.iter() {
         let token = BudgetAccessToken::decode(token)
             .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
 
@@ -142,7 +145,7 @@ pub async fn get_multiple(
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
-    budget_data: web::Json<InputBudget>,
+    budget_data: ProtoBuf<NewBudget>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -154,6 +157,9 @@ pub async fn create(
         )
         .await?;
 
+    // temp_id is an ID the client generates that allows the server to differentiate between
+    // categories when multiple are sent to the server simultaneously. The server doesn't have any
+    // other way of differentiating them because they are encrypted.
     let temp_id_set = HashSet::<i32>::from_iter(budget_data.categories.iter().map(|c| c.temp_id));
 
     if temp_id_set.len() != budget_data.categories.len() {
@@ -164,7 +170,11 @@ pub async fn create(
 
     let new_budget = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_budget(budget_data.0)
+        budget_dao.create_budget(
+            &budget_data.encrypted_blob,
+            &budget_data.categories,
+            &budget_data.user_public_budget_key,
+        )
     })
     .await?
     {
@@ -820,14 +830,16 @@ pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    category_data: web::Json<InputEditCategory>,
+    category_data: ProtoBuf<CategoryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+
+    let category_id = uuid_from_msg(category_data.category_id.clone())?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_category(
-            category_data.category_id,
+            category_id,
             &category_data.encrypted_blob,
             &category_data.expected_previous_data_hash,
             budget_access_token.0.claims.budget_id,
@@ -861,16 +873,15 @@ pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    category_id: web::Query<InputCategoryId>,
+    category_id: ProtoBuf<CategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
+    let category_id = uuid_from_msg(category_id.0.value)?;
+
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(
-            category_id.0.category_id,
-            budget_access_token.0.claims.budget_id,
-        )
+        budget_dao.delete_category(category_id, budget_access_token.0.claims.budget_id)
     })
     .await?
     {

@@ -180,6 +180,7 @@ pub mod verification {
 }
 
 pub mod error {
+    use entries_utils::messages::MessageError;
     use entries_utils::token::TokenError;
 
     use actix_web::http::{header, StatusCode};
@@ -190,6 +191,7 @@ pub mod error {
     #[derive(Debug)]
     pub enum HttpErrorResponse {
         // 400
+        InvalidMessage(MessageError),
         IncorrectlyFormed(&'static str),
         OutOfDate(&'static str),
         InvalidState(&'static str),
@@ -226,6 +228,9 @@ pub mod error {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 // 400
+                HttpErrorResponse::InvalidMessage(e) => {
+                    format_err(f, "UWEIRD", "Invalid message", &e.to_string())
+                }
                 HttpErrorResponse::IncorrectlyFormed(msg) => {
                     format_err(f, "WHATHE", "Incorrectly formed request", msg)
                 }
@@ -302,6 +307,7 @@ pub mod error {
         fn status_code(&self) -> StatusCode {
             match *self {
                 HttpErrorResponse::IncorrectlyFormed(_)
+                | HttpErrorResponse::InvalidMessage(_)
                 | HttpErrorResponse::OutOfDate(_)
                 | HttpErrorResponse::InvalidState(_)
                 | HttpErrorResponse::MissingHeader(_)
@@ -341,6 +347,12 @@ pub mod error {
                 Ok(_) => HttpErrorResponse::InternalError("Unknown error"),
                 Err(e) => e,
             }
+        }
+    }
+
+    impl From<MessageError> for HttpErrorResponse {
+        fn from(result: MessageError) -> Self {
+            HttpErrorResponse::InvalidMessage(result)
         }
     }
 

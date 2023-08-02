@@ -1,13 +1,14 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
+use entries_utils::messages::{BackupCode, CredentialPair};
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    CredentialPair, InputBackupCode, InputEmail, InputOtp, OutputBackupCodes,
-    OutputSigninNonceAndHashParams, SigninToken, TokenPair,
+    InputEmail, InputOtp, OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
 
+use actix_protobuf::ProtoBuf;
 use actix_web::{web, HttpResponse};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -78,7 +79,7 @@ pub async fn obtain_nonce_and_auth_string_params(
 pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
-    credentials: web::Json<CredentialPair>,
+    credentials: ProtoBuf<CredentialPair>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
@@ -250,7 +251,7 @@ pub async fn use_backup_code_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
-    code: web::Json<InputBackupCode>,
+    code: ProtoBuf<BackupCode>,
     throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
@@ -262,7 +263,7 @@ pub async fn use_backup_code_for_signin(
 
     match web::block(move || {
         let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.delete_backup_code(&code.code, user_id)
+        auth_dao.delete_backup_code(&code.value, user_id)
     })
     .await?
     {

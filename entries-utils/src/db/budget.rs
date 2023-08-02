@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
+use crate::messages::CategoryWithTempId;
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::budget_accept_key::{BudgetAcceptKey, NewBudgetAcceptKey};
 use crate::models::budget_access_key::{BudgetAccessKey, NewBudgetAccessKey};
@@ -14,7 +15,7 @@ use crate::models::budget_share_invite::NewBudgetShareInvite;
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::request_io::{
-    InputBudget, InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
+    InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
     OutputBudgetIdAndEncryptionKey, OutputBudgetShareInvite, OutputEntryIdAndCategoryId,
     OutputInvitationId,
 };
@@ -153,18 +154,20 @@ impl Dao {
 
     pub fn create_budget(
         &mut self,
-        budget_data: InputBudget,
+        encrypted_blob: &[u8],
+        budget_categories: &[CategoryWithTempId],
+        user_public_budget_key: &[u8],
     ) -> Result<OutputBudgetFrame, DaoError> {
         let current_time = SystemTime::now();
         let budget_id = Uuid::new_v4();
         let key_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&budget_data.encrypted_blob);
+        sha1_hasher.update(&encrypted_blob);
 
         let new_budget = NewBudget {
             id: budget_id,
-            encrypted_blob: &budget_data.encrypted_blob,
+            encrypted_blob: &encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
@@ -172,23 +175,23 @@ impl Dao {
         let new_budget_access_key = NewBudgetAccessKey {
             key_id,
             budget_id,
-            public_key: &budget_data.user_public_budget_key,
+            public_key: &user_public_budget_key,
             read_only: false,
         };
 
         let mut category_hashes = Vec::new();
 
-        for category in &budget_data.categories {
+        for category in budget_categories.iter() {
             let mut sha1_hasher = Sha1::new();
             sha1_hasher.update(&category.encrypted_blob);
 
             category_hashes.push(sha1_hasher.finalize());
         }
 
-        let mut budget_categories = Vec::new();
-        let mut budget_category_temp_ids = Vec::new();
+        let mut new_categories = Vec::new();
+        let mut new_category_temp_ids = Vec::new();
 
-        for (i, category) in budget_data.categories.iter().enumerate() {
+        for (i, category) in budget_categories.iter().enumerate() {
             let new_category = NewCategory {
                 budget_id,
                 id: Uuid::new_v4(),
@@ -197,8 +200,8 @@ impl Dao {
                 modified_timestamp: current_time,
             };
 
-            budget_categories.push(new_category);
-            budget_category_temp_ids.push(category.temp_id);
+            new_categories.push(new_category);
+            new_category_temp_ids.push(category.temp_id);
         }
 
         let mut output_budget = OutputBudgetFrame {
@@ -210,8 +213,8 @@ impl Dao {
 
         for i in 0..budget_categories.len() {
             let category_frame = OutputBudgetFrameCategory {
-                temp_id: budget_category_temp_ids[i],
-                real_id: budget_categories[i].id,
+                temp_id: new_category_temp_ids[i],
+                real_id: new_categories[i].id,
             };
 
             output_budget.categories.push(category_frame);
@@ -231,7 +234,7 @@ impl Dao {
                     .execute(conn)?;
 
                 dsl::insert_into(categories)
-                    .values(budget_categories)
+                    .values(new_categories)
                     .execute(conn)
             })?;
 
