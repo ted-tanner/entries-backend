@@ -15,9 +15,8 @@ use crate::models::budget_share_invite::NewBudgetShareInvite;
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
 use crate::request_io::{
-    InputEntryAndCategory, OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory,
-    OutputBudgetIdAndEncryptionKey, OutputBudgetShareInvite, OutputEntryIdAndCategoryId,
-    OutputInvitationId,
+    OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory, OutputBudgetIdAndEncryptionKey,
+    OutputBudgetShareInvite, OutputEntryIdAndCategoryId, OutputInvitationId,
 };
 use crate::schema::budget_accept_keys as budget_accept_key_fields;
 use crate::schema::budget_accept_keys::dsl::budget_accept_keys;
@@ -534,7 +533,8 @@ impl Dao {
 
     pub fn create_entry_and_category(
         &mut self,
-        entry_and_category_data: InputEntryAndCategory,
+        entry_encrypted_blob: &[u8],
+        category_encrypted_blob: &[u8],
         budget_id: Uuid,
     ) -> Result<OutputEntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
@@ -542,24 +542,24 @@ impl Dao {
         let entry_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&entry_and_category_data.category_encrypted_blob);
+        sha1_hasher.update(category_encrypted_blob);
 
         let new_category = NewCategory {
             id: category_id,
             budget_id,
-            encrypted_blob: &entry_and_category_data.category_encrypted_blob,
+            encrypted_blob: category_encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&entry_and_category_data.entry_encrypted_blob);
+        sha1_hasher.update(entry_encrypted_blob);
 
         let new_entry = NewEntry {
             id: entry_id,
             budget_id,
             category_id: Some(category_id),
-            encrypted_blob: &entry_and_category_data.entry_encrypted_blob,
+            encrypted_blob: entry_encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };

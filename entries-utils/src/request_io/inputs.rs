@@ -47,26 +47,6 @@ pub struct InputUser {
     pub user_keystore_encrypted: Vec<u8>,
 }
 
-// TODO: EncryptedBlobUpdate
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEditUserPrefs {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-    #[serde_as(as = "Hex")]
-    pub expected_previous_data_hash: Vec<u8>,
-}
-
-// TODO: EncryptedBlobUpdate
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEditUserKeystore {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-    #[serde_as(as = "Hex")]
-    pub expected_previous_data_hash: Vec<u8>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputOtp {
     pub otp: String,
@@ -86,16 +66,6 @@ pub struct InputNewRecoveryKey {
 
     #[serde_as(as = "Base64")]
     pub encrypted_encryption_key: Vec<u8>,
-}
-
-// TODO: EncryptedBlobUpdate
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEditBudget {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-    #[serde_as(as = "Hex")]
-    pub expected_previous_data_hash: Vec<u8>,
 }
 
 #[serde_as]
@@ -119,34 +89,12 @@ pub struct UserInvitationToBudget {
     pub read_only: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEntryId {
-    pub entry_id: Uuid,
-}
-
 // TODO: NewEncryptedBlob
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEncryptedBlob {
     #[serde_as(as = "Base64")]
     pub encrypted_blob: Vec<u8>,
-}
-
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEncryptedBlobAndCategoryId {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-    pub category_id: Option<Uuid>,
-}
-
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEntryAndCategory {
-    #[serde_as(as = "Base64")]
-    pub entry_encrypted_blob: Vec<u8>,
-    #[serde_as(as = "Base64")]
-    pub category_encrypted_blob: Vec<u8>,
 }
 
 #[serde_as]

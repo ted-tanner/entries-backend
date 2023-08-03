@@ -502,7 +502,81 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Protobuf
   - Max size in config
+  - Use proto2 and set `required` fields. In place of a timestamp, use a uint64
 * Config as env vars, not as file
+
+``` rust
+use std::fmt;
+use std::str::FromStr;
+use zeroize::ZeroizeOnDrop;
+
+#[derive(Debug, ZeroizeOnDrop)]
+pub struct Config {
+    pub db_hostname: String,
+    pub db_port: u32,
+    pub db_name: String,
+    pub db_username: String,
+    pub db_password: String,
+
+    pub stripe_api_url: String,
+    pub stripe_secret_key: String,
+
+    pub retailer_default_payment_delay_hours: u64,
+    pub brand_default_payment_delay_hours: u64,
+}
+
+fn env_var<T: FromStr>(key: &'static str) -> Result<T, ConfigError> {
+    let var = std::env::var(key).map_err(|_| ConfigError::missing(key))?;
+    let var: T = var.parse().map_err(|_| ConfigError::invalid(key))?;
+    Ok(var)
+}
+
+impl Config {
+    pub fn obtain_from_env() -> Result<Self, ConfigError> {
+        Ok(Self {
+            db_hostname: env_var("DB_HOSTNAME")?,
+            db_port: env_var("DB_PORT")?,
+            db_name: env_var("DB_NAME")?,
+            db_username: env_var("DB_USERNAME")?,
+            db_password: env_var("DB_PASSWORD")?,
+
+            stripe_api_url: env_var("STRIPE_API_URL")?,
+            stripe_secret_key: env_var("STRIPE_SECRET_KEY")?,
+
+            retailer_default_payment_delay_hours: env_var("RETAILER_DEFAULT_PAYMENT_DELAY_HOURS")?,
+            brand_default_payment_delay_hours: env_var("BRAND_DEFAULT_PAYMENT_DELAY_HOURS")?,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ConfigError {
+    MissingVar(&'static str),
+    InvalidVar(&'static str),
+}
+
+impl ConfigError {
+    fn missing(var_name: &'static str) -> Self {
+        Self::MissingVar(var_name)
+    }
+
+    fn invalid(var_name: &'static str) -> Self {
+        Self::InvalidVar(var_name)
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingVar(key) => write!(f, "Missing environment variable '{}'", key),
+            Self::InvalidVar(key) => write!(f, "Environment variable '{}' is invalid", key),
+        }
+    }
+}
+```
+
 * `#[diesel(check_for_backend(diesel::pg::Pg))]` on all models
 * Any `New*` models that are the same as the original can be aliased with `pub type` (derive Insertable)
 * argon2-kdf:

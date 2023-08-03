@@ -8,13 +8,12 @@ use entries_utils::html::templates::{
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
 use entries_utils::messages::{
-    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery,
+    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate,
 };
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputEditUserKeystore, InputEditUserPrefs, InputNewRecoveryKey, InputUser,
-    OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion, OutputPublicKey,
-    OutputVerificationEmailSent,
+    InputNewRecoveryKey, InputUser, OutputBackupCodesAndVerificationEmailSent,
+    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -255,7 +254,7 @@ pub async fn verify_creation(
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    new_prefs: web::Json<InputEditUserPrefs>,
+    new_prefs: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -287,7 +286,7 @@ pub async fn edit_preferences(
 pub async fn edit_keystore(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    new_keystore: web::Json<InputEditUserKeystore>,
+    new_keystore: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
