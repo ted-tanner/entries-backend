@@ -89,14 +89,6 @@ pub struct UserInvitationToBudget {
     pub read_only: bool,
 }
 
-// TODO: NewEncryptedBlob
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InputEncryptedBlob {
-    #[serde_as(as = "Base64")]
-    pub encrypted_blob: Vec<u8>,
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InputEditEntry {

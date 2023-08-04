@@ -117,7 +117,7 @@ pub mod verification {
         user_email: &str,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
-        if user_email.len() > 255 || auth_string.len() > 512 {
+        if user_email.len() > 255 || auth_string.len() > 1024 {
             return Err(HttpErrorResponse::IncorrectCredential(
                 "Auth string was incorrect",
             ));
@@ -180,7 +180,8 @@ pub mod verification {
 }
 
 pub mod error {
-    use entries_utils::messages::MessageError;
+    use actix_protobuf::ProtoBufResponseBuilder;
+    use entries_utils::messages::{ErrorType, MessageError, ServerErrorResponse};
     use entries_utils::token::TokenError;
 
     use actix_web::http::{header, StatusCode};
@@ -191,8 +192,8 @@ pub mod error {
     #[derive(Debug)]
     pub enum HttpErrorResponse {
         // 400
-        InvalidMessage(MessageError),
         IncorrectlyFormed(&'static str),
+        InvalidMessage(MessageError),
         OutOfDate(&'static str),
         InvalidState(&'static str),
         MissingHeader(&'static str),
@@ -216,7 +217,7 @@ pub mod error {
         ForeignKeyDoesNotExist(&'static str),
 
         // 418
-        InputTooLong(&'static str),
+        InputTooLarge(&'static str),
 
         // 500
         InternalError(&'static str),
@@ -226,73 +227,107 @@ pub mod error {
 
     impl fmt::Display for HttpErrorResponse {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
+            let server_error: ServerErrorResponse = self.into();
+            write!(f, "{:?}", server_error)
+        }
+    }
+
+    impl From<HttpErrorResponse> for ServerErrorResponse {
+        fn from(resp: HttpErrorResponse) -> Self {
+            (&resp).into()
+        }
+    }
+
+    impl From<&HttpErrorResponse> for ServerErrorResponse {
+        fn from(resp: &HttpErrorResponse) -> Self {
+            match resp {
                 // 400
-                HttpErrorResponse::InvalidMessage(e) => {
-                    format_err(f, "UWEIRD", "Invalid message", &e.to_string())
-                }
-                HttpErrorResponse::IncorrectlyFormed(msg) => {
-                    format_err(f, "WHATHE", "Incorrectly formed request", msg)
-                }
-                HttpErrorResponse::OutOfDate(msg) => format_err(f, "U2SLOW", "Out of date", msg),
-                HttpErrorResponse::InvalidState(msg) => {
-                    format_err(f, "UTBETR", "Invalid state", msg)
-                }
-                HttpErrorResponse::MissingHeader(msg) => {
-                    format_err(f, "NOHEAD", "Missing header", msg)
-                }
-                HttpErrorResponse::ConflictWithExisting(msg) => {
-                    format_err(f, "UNOWIN", "Conflict with existing data", msg)
-                }
+                HttpErrorResponse::IncorrectlyFormed(msg) => ServerErrorResponse {
+                    err_type: ErrorType::IncorrectlyFormed.into(),
+                    err_message: format!("Incorrectly formed request: {msg}"),
+                },
+                HttpErrorResponse::InvalidMessage(e) => ServerErrorResponse {
+                    err_type: ErrorType::InvalidMessage.into(),
+                    err_message: format!("Invalid message: {e}"),
+                },
+                HttpErrorResponse::OutOfDate(msg) => ServerErrorResponse {
+                    err_type: ErrorType::OutOfDate.into(),
+                    err_message: format!("Out of date: {msg}"),
+                },
+                HttpErrorResponse::InvalidState(msg) => ServerErrorResponse {
+                    err_type: ErrorType::InvalidState.into(),
+                    err_message: format!("Invalid state: {msg}"),
+                },
+                HttpErrorResponse::MissingHeader(msg) => ServerErrorResponse {
+                    err_type: ErrorType::MissingHeader.into(),
+                    err_message: format!("Missing header: {msg}"),
+                },
+                HttpErrorResponse::ConflictWithExisting(msg) => ServerErrorResponse {
+                    err_type: ErrorType::ConflictWithExisting.into(),
+                    err_message: format!("Conflict with existing data: {msg}"),
+                },
 
                 // 401
-                HttpErrorResponse::IncorrectCredential(msg) => {
-                    format_err(f, "DISNOU", "Incorrect credential", msg)
-                }
-                HttpErrorResponse::TokenExpired(msg) => {
-                    format_err(f, "I2FAST", "Token expired", msg)
-                }
-                HttpErrorResponse::TokenMissing(msg) => {
-                    format_err(f, "UFORGT", "Token missing", msg)
-                }
-                HttpErrorResponse::WrongTokenType(msg) => {
-                    format_err(f, "WHYDIS", "Wrong token type", msg)
-                }
+                HttpErrorResponse::IncorrectCredential(msg) => ServerErrorResponse {
+                    err_type: ErrorType::IncorrectCredential.into(),
+                    err_message: format!("Incorrect credential: {msg}"),
+                },
+                HttpErrorResponse::TokenExpired(msg) => ServerErrorResponse {
+                    err_type: ErrorType::TokenExpired.into(),
+                    err_message: format!("Token expired: {msg}"),
+                },
+                HttpErrorResponse::TokenMissing(msg) => ServerErrorResponse {
+                    err_type: ErrorType::TokenMissing.into(),
+                    err_message: format!("Token missing: {msg}"),
+                },
+                HttpErrorResponse::WrongTokenType(msg) => ServerErrorResponse {
+                    err_type: ErrorType::WrongTokenType.into(),
+                    err_message: format!("Wrong token type: {msg}"),
+                },
 
                 // 403
-                HttpErrorResponse::UserDisallowed(msg) => {
-                    format_err(f, "NICTRY", "User disallowed", msg)
-                }
-                HttpErrorResponse::PendingAction(msg) => {
-                    format_err(f, "NOSOUP", "Pending user action", msg)
-                }
-                HttpErrorResponse::IncorrectNonce(msg) => {
-                    format_err(f, "BIGNPE", "Incorrect nonce", msg)
-                }
-                HttpErrorResponse::TooManyAttempts(msg) => {
-                    format_err(f, "COOLIT", "Too many attempts", msg)
-                }
-                HttpErrorResponse::ReadOnlyAccess(msg) => {
-                    format_err(f, "U2COOL", "Read-only access", msg)
-                }
+                HttpErrorResponse::UserDisallowed(msg) => ServerErrorResponse {
+                    err_type: ErrorType::UserDisallowed.into(),
+                    err_message: format!("User disallowed: {msg}"),
+                },
+                HttpErrorResponse::PendingAction(msg) => ServerErrorResponse {
+                    err_type: ErrorType::PendingAction.into(),
+                    err_message: format!("Pending user action: {msg}"),
+                },
+                HttpErrorResponse::IncorrectNonce(msg) => ServerErrorResponse {
+                    err_type: ErrorType::IncorrectNonce.into(),
+                    err_message: format!("Incorrect nonce: {msg}"),
+                },
+                HttpErrorResponse::TooManyAttempts(msg) => ServerErrorResponse {
+                    err_type: ErrorType::TooManyAttempts.into(),
+                    err_message: format!("Too many attempts: {msg}"),
+                },
+                HttpErrorResponse::ReadOnlyAccess(msg) => ServerErrorResponse {
+                    err_type: ErrorType::ReadOnlyAccess.into(),
+                    err_message: format!("Read-only access: {msg}"),
+                },
 
                 // 404
-                HttpErrorResponse::DoesNotExist(msg) => {
-                    format_err(f, "ITGONE", "Does not exist", msg)
-                }
-                HttpErrorResponse::ForeignKeyDoesNotExist(msg) => {
-                    format_err(f, "IHIDIT", "Foreign key does not exist", msg)
-                }
+                HttpErrorResponse::DoesNotExist(msg) => ServerErrorResponse {
+                    err_type: ErrorType::DoesNotExist.into(),
+                    err_message: format!("Does not exist: {msg}"),
+                },
+                HttpErrorResponse::ForeignKeyDoesNotExist(msg) => ServerErrorResponse {
+                    err_type: ErrorType::ForeignKeyDoesNotExist.into(),
+                    err_message: format!("Foreign key does not exist: {msg}"),
+                },
 
                 // 418
-                HttpErrorResponse::InputTooLong(msg) => {
-                    format_err(f, "UCRAZY", "Input is too long", msg)
-                }
+                HttpErrorResponse::InputTooLarge(msg) => ServerErrorResponse {
+                    err_type: ErrorType::InputTooLarge.into(),
+                    err_message: format!("Input is too long: {msg}"),
+                },
 
                 // 500
-                HttpErrorResponse::InternalError(msg) => {
-                    format_err(f, "OOPSIE", "Internal error", msg)
-                }
+                HttpErrorResponse::InternalError(msg) => ServerErrorResponse {
+                    err_type: ErrorType::InternalError.into(),
+                    err_message: format!("Internal error: {msg}"),
+                },
             }
         }
     }
@@ -300,8 +335,9 @@ pub mod error {
     impl actix_web::error::ResponseError for HttpErrorResponse {
         fn error_response(&self) -> HttpResponse {
             HttpResponseBuilder::new(self.status_code())
-                .insert_header((header::CONTENT_TYPE, "application/json; charset=utf-8"))
-                .body(self.to_string())
+                .insert_header((header::CONTENT_TYPE, "application/protobuf"))
+                .protobuf::<ServerErrorResponse>(self.into())
+                .expect("HttpErrorResponse failed to serialize to protobuf")
         }
 
         fn status_code(&self) -> StatusCode {
@@ -323,7 +359,7 @@ pub mod error {
                 | HttpErrorResponse::ReadOnlyAccess(_) => StatusCode::FORBIDDEN,
                 HttpErrorResponse::DoesNotExist(_)
                 | HttpErrorResponse::ForeignKeyDoesNotExist(_) => StatusCode::NOT_FOUND,
-                HttpErrorResponse::InputTooLong(_) => StatusCode::IM_A_TEAPOT,
+                HttpErrorResponse::InputTooLarge(_) => StatusCode::IM_A_TEAPOT,
                 HttpErrorResponse::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }
@@ -365,20 +401,6 @@ pub mod error {
                 TokenError::WrongTokenType => HttpErrorResponse::WrongTokenType("Wrong token type"),
             }
         }
-    }
-
-    // Take a code
-    fn format_err(
-        f: &mut fmt::Formatter<'_>,
-        error_code: &str,
-        error_txt: &str,
-        msg: &str,
-    ) -> fmt::Result {
-        write!(
-            f,
-            "{{\"error_code\":\"{}\",\"error_msg\":\"{}: {}\"}}",
-            error_code, error_txt, msg,
-        )
     }
 }
 

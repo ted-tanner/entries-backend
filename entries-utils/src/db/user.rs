@@ -13,7 +13,6 @@ use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudge
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
 
-use crate::request_io::InputUser;
 use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
@@ -48,67 +47,84 @@ impl Dao {
             .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_user(
         &mut self,
-        user_data: &InputUser,
+        email: &str,
         auth_string_hash: &str,
+        auth_string_salt: &[u8],
+        auth_string_memory_cost_kib: i32,
+        auth_string_parallelism_factor: i32,
+        auth_string_iters: i32,
+        password_encryption_salt: &[u8],
+        password_encryption_memory_cost_kib: i32,
+        password_encryption_parallelism_factor: i32,
+        password_encryption_iters: i32,
+        recovery_key_salt: &[u8],
+        recovery_key_memory_cost_kib: i32,
+        recovery_key_parallelism_factor: i32,
+        recovery_key_iters: i32,
+        encryption_key_encrypted_with_password: &[u8],
+        encryption_key_encrypted_with_recovery_key: &[u8],
+        public_key: &[u8],
+        preferences_encrypted: &[u8],
+        user_keystore_encrypted: &[u8],
         backup_codes: &[String],
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let user_id = Uuid::new_v4();
 
+        let email_lowercase = email.to_lowercase();
+
         let new_user = NewUser {
             id: user_id,
-            email: &user_data.email.to_lowercase(),
+            email: &email_lowercase,
             is_verified: false,
 
             created_timestamp: current_time,
 
-            public_key: &user_data.public_key,
+            public_key,
 
             auth_string_hash,
-            auth_string_salt: &user_data.auth_string_salt,
-            auth_string_memory_cost_kib: user_data.auth_string_memory_cost_kib,
-            auth_string_parallelism_factor: user_data.auth_string_parallelism_factor,
-            auth_string_iters: user_data.auth_string_iters,
+            auth_string_salt,
+            auth_string_memory_cost_kib,
+            auth_string_parallelism_factor,
+            auth_string_iters,
 
-            password_encryption_salt: &user_data.password_encryption_salt,
-            password_encryption_memory_cost_kib: user_data.password_encryption_memory_cost_kib,
-            password_encryption_parallelism_factor: user_data
-                .password_encryption_parallelism_factor,
-            password_encryption_iters: user_data.password_encryption_iters,
+            password_encryption_salt,
+            password_encryption_memory_cost_kib,
+            password_encryption_parallelism_factor,
+            password_encryption_iters,
 
-            recovery_key_salt: &user_data.recovery_key_salt,
-            recovery_key_memory_cost_kib: user_data.recovery_key_memory_cost_kib,
-            recovery_key_parallelism_factor: user_data.recovery_key_parallelism_factor,
-            recovery_key_iters: user_data.recovery_key_iters,
+            recovery_key_salt,
+            recovery_key_memory_cost_kib,
+            recovery_key_parallelism_factor,
+            recovery_key_iters,
 
-            encryption_key_encrypted_with_password: &user_data
-                .encryption_key_encrypted_with_password,
-            encryption_key_encrypted_with_recovery_key: &user_data
-                .encryption_key_encrypted_with_recovery_key,
+            encryption_key_encrypted_with_password,
+            encryption_key_encrypted_with_recovery_key,
         };
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&user_data.preferences_encrypted);
+        sha1_hasher.update(preferences_encrypted);
 
         let new_user_preferences = NewUserPreferences {
             user_id,
-            encrypted_blob: &user_data.preferences_encrypted,
+            encrypted_blob: preferences_encrypted,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
         };
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&user_data.user_keystore_encrypted);
+        sha1_hasher.update(user_keystore_encrypted);
 
         let new_user_keystore = NewUserKeystore {
             user_id,
-            encrypted_blob: &user_data.user_keystore_encrypted,
+            encrypted_blob: user_keystore_encrypted,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
         };
 
         let new_signin_nonce = NewSigninNonce {
-            user_email: &user_data.email.to_lowercase(),
+            user_email: &email_lowercase,
             nonce: OsRng.gen(),
         };
 

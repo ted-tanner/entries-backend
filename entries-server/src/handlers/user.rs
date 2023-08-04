@@ -9,11 +9,12 @@ use entries_utils::html::templates::{
 };
 use entries_utils::messages::{
     AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate,
+    NewUser,
 };
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputNewRecoveryKey, InputUser, OutputBackupCodesAndVerificationEmailSent,
-    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
+    InputNewRecoveryKey, OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion,
+    OutputPublicKey, OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
@@ -77,16 +78,16 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     _app_version: AppVersion,
-    user_data: web::Json<InputUser>,
+    user_data: ProtoBuf<NewUser>,
     throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
 
-    if user_data.auth_string.len() > 512 {
-        return Err(HttpErrorResponse::InputTooLong(
-            "Provided password is too long. Max: 512 bytes",
+    if user_data.auth_string.len() > 1024 {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Provided auth string is too long. Max: 1024 bytes",
         ));
     }
 
@@ -139,8 +140,25 @@ pub async fn create(
     let user_id = match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.create_user(
-            &user_data_ref.0,
+            &user_data_ref.email,
             &auth_string_hash.to_string(),
+            &user_data_ref.auth_string_salt,
+            user_data_ref.auth_string_memory_cost_kib,
+            user_data_ref.auth_string_parallelism_factor,
+            user_data_ref.auth_string_iters,
+            &user_data_ref.password_encryption_salt,
+            user_data_ref.password_encryption_memory_cost_kib,
+            user_data_ref.password_encryption_parallelism_factor,
+            user_data_ref.password_encryption_iters,
+            &user_data_ref.recovery_key_salt,
+            user_data_ref.recovery_key_memory_cost_kib,
+            user_data_ref.recovery_key_parallelism_factor,
+            user_data_ref.recovery_key_iters,
+            &user_data_ref.encryption_key_encrypted_with_password,
+            &user_data_ref.encryption_key_encrypted_with_recovery_key,
+            &user_data_ref.public_key,
+            &user_data_ref.preferences_encrypted,
+            &user_data_ref.user_keystore_encrypted,
             &backup_codes_ref,
         )
     })
@@ -328,9 +346,9 @@ pub async fn change_password(
         )
         .await?;
 
-    if new_password_data.new_auth_string.len() > 512 {
-        return Err(HttpErrorResponse::InputTooLong(
-            "Provided password is too long. Max: 512 bytes",
+    if new_password_data.new_auth_string.len() > 1024 {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Provided auth string is too long. Max: 1024 bytes",
         ));
     }
 

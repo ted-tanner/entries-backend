@@ -502,8 +502,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Protobuf
   - Max size in config
-  - Use proto2 and set `required` fields. In place of a timestamp, use a uint64
-* Config as env vars, not as file
+  - Use proto2 and set `required` fields. In place of a timestamp, use a uint64x
+* Errors should return as protobuf (use protobuf enum in place of error code)
+* Config as env vars (server AND job-scheduler), not as file
 
 ``` rust
 use std::fmt;
@@ -523,6 +524,10 @@ pub struct Config {
 
     pub retailer_default_payment_delay_hours: u64,
     pub brand_default_payment_delay_hours: u64,
+}
+
+fn env_var_or_default<T: FromStr>(key: &'static str, default: T) -> Result<T, ConfigError> {
+    // TODO
 }
 
 fn env_var<T: FromStr>(key: &'static str) -> Result<T, ConfigError> {

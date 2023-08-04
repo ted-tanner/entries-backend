@@ -162,11 +162,11 @@ impl Dao {
         let key_id = Uuid::new_v4();
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&encrypted_blob);
+        sha1_hasher.update(encrypted_blob);
 
         let new_budget = NewBudget {
             id: budget_id,
-            encrypted_blob: &encrypted_blob,
+            encrypted_blob,
             encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
@@ -174,7 +174,7 @@ impl Dao {
         let new_budget_access_key = NewBudgetAccessKey {
             key_id,
             budget_id,
-            public_key: &user_public_budget_key,
+            public_key: user_public_budget_key,
             read_only: false,
         };
 

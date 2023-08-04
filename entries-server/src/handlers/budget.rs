@@ -1,10 +1,10 @@
 use entries_utils::messages::{
-    uuid_from_msg, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
-    EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget,
+    BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
+    EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
 };
 use entries_utils::models::budget_access_key::BudgetAccessKey;
 use entries_utils::request_io::{
-    InputEncryptedBlob, InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
+    InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
     UserInvitationToBudget,
 };
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
@@ -733,7 +733,7 @@ pub async fn edit_entry(
         .map(Uuid::try_from)
         .transpose()?;
 
-    let entry_id = uuid_from_msg(entry_data.0.entry_id.clone())?;
+    let entry_id = (&entry_data.entry_id).try_into()?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -783,7 +783,7 @@ pub async fn delete_entry(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    let entry_id = uuid_from_msg(entry_id.0.value)?;
+    let entry_id = (&entry_id.value).try_into()?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -812,16 +812,13 @@ pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    category_data: web::Json<InputEncryptedBlob>,
+    category_data: ProtoBuf<NewEncryptedBlob>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let category_id = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(
-            &category_data.0.encrypted_blob,
-            budget_access_token.0.claims.budget_id,
-        )
+        budget_dao.create_category(&category_data.value, budget_access_token.0.claims.budget_id)
     })
     .await?
     {
@@ -852,7 +849,7 @@ pub async fn edit_category(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    let category_id = uuid_from_msg(category_data.category_id.clone())?;
+    let category_id = (&category_data.category_id).try_into()?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -895,7 +892,7 @@ pub async fn delete_category(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    let category_id = uuid_from_msg(category_id.0.value)?;
+    let category_id = (&category_id.value).try_into()?;
 
     match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
