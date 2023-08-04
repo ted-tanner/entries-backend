@@ -1,14 +1,13 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
-use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery, Otp as OtpMessage};
+use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery, SigninToken};
+use entries_utils::messages::{Otp as OtpMessage, TokenPair};
 use entries_utils::otp::Otp;
-use entries_utils::request_io::{
-    OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
-};
+use entries_utils::request_io::{OutputBackupCodes, OutputSigninNonceAndHashParams};
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
 
-use actix_protobuf::ProtoBuf;
+use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -162,7 +161,9 @@ pub async fn sign_in(
         &env::CONF.keys.token_signing_key,
     );
 
-    let signin_token = SigninToken { signin_token };
+    let signin_token = SigninToken {
+        value: signin_token,
+    };
 
     handlers::verification::generate_and_email_otp(
         &credentials.email,
@@ -171,7 +172,7 @@ pub async fn sign_in(
     )
     .await?;
 
-    Ok(HttpResponse::Ok().json(signin_token))
+    Ok(HttpResponse::Ok().protobuf(signin_token)?)
 }
 
 pub async fn verify_otp_for_signin(
@@ -219,10 +220,10 @@ pub async fn verify_otp_for_signin(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now(),
+        server_time: SystemTime::now().try_into()?,
     };
 
-    Ok(HttpResponse::Ok().json(token_pair))
+    Ok(HttpResponse::Ok().protobuf(token_pair)?)
 }
 
 pub async fn obtain_otp(
@@ -305,10 +306,10 @@ pub async fn use_backup_code_for_signin(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now(),
+        server_time: SystemTime::now().try_into()?,
     };
 
-    Ok(HttpResponse::Ok().json(token_pair))
+    Ok(HttpResponse::Ok().protobuf(token_pair)?)
 }
 
 pub async fn regenerate_backup_codes(
@@ -406,10 +407,10 @@ pub async fn refresh_tokens(
     let token_pair = TokenPair {
         access_token,
         refresh_token,
-        server_time: SystemTime::now(),
+        server_time: SystemTime::now().try_into()?,
     };
 
-    Ok(HttpResponse::Ok().json(token_pair))
+    Ok(HttpResponse::Ok().protobuf(token_pair)?)
 }
 
 pub async fn logout(

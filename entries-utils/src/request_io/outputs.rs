@@ -8,18 +8,6 @@ use uuid::Uuid;
 use crate::models::category::Category;
 use crate::models::entry::Entry;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct SigninToken {
-    pub signin_token: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TokenPair {
-    pub access_token: String,
-    pub refresh_token: String,
-    pub server_time: SystemTime,
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutputBudget {
