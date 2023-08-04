@@ -337,7 +337,7 @@ pub mod error {
             HttpResponseBuilder::new(self.status_code())
                 .insert_header((header::CONTENT_TYPE, "application/protobuf"))
                 .protobuf::<ServerErrorResponse>(self.into())
-                .expect("HttpErrorResponse failed to serialize to protobuf")
+                .expect("HttpErrorResponse failed to serialize to ProtoBuf")
         }
 
         fn status_code(&self) -> StatusCode {
@@ -365,36 +365,33 @@ pub mod error {
         }
     }
 
+    impl From<actix_web::Error> for HttpErrorResponse {
+        fn from(_err: actix_web::Error) -> Self {
+            HttpErrorResponse::InternalError("Failed to serialize ProtoBuf response")
+        }
+    }
+
     impl From<actix_web::error::BlockingError> for HttpErrorResponse {
-        fn from(_result: actix_web::error::BlockingError) -> Self {
+        fn from(_err: actix_web::error::BlockingError) -> Self {
             HttpErrorResponse::InternalError("Actix thread pool failure")
         }
     }
 
     impl From<oneshot::error::RecvError> for HttpErrorResponse {
-        fn from(_result: oneshot::error::RecvError) -> Self {
+        fn from(_err: oneshot::error::RecvError) -> Self {
             HttpErrorResponse::InternalError("Rayon thread pool failure")
         }
     }
 
-    impl From<std::result::Result<HttpResponse, HttpErrorResponse>> for HttpErrorResponse {
-        fn from(result: std::result::Result<HttpResponse, HttpErrorResponse>) -> Self {
-            match result {
-                Ok(_) => HttpErrorResponse::InternalError("Unknown error"),
-                Err(e) => e,
-            }
-        }
-    }
-
     impl From<MessageError> for HttpErrorResponse {
-        fn from(result: MessageError) -> Self {
-            HttpErrorResponse::InvalidMessage(result)
+        fn from(err: MessageError) -> Self {
+            HttpErrorResponse::InvalidMessage(err)
         }
     }
 
     impl From<TokenError> for HttpErrorResponse {
-        fn from(result: TokenError) -> Self {
-            match result {
+        fn from(err: TokenError) -> Self {
+            match err {
                 TokenError::TokenInvalid => HttpErrorResponse::IncorrectlyFormed("Invalid token"),
                 TokenError::TokenExpired => HttpErrorResponse::TokenExpired("Token expired"),
                 TokenError::TokenMissing => HttpErrorResponse::TokenMissing("Missing token"),

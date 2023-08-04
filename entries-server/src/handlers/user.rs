@@ -8,20 +8,19 @@ use entries_utils::html::templates::{
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
 use entries_utils::messages::{
-    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate,
-    NewUser,
+    AuthStringAndEncryptedPasswordUpdate, BackupCodesAndVerificationEmailSent,
+    BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, NewUser, RecoveryKeyUpdate,
 };
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputNewRecoveryKey, OutputBackupCodesAndVerificationEmailSent, OutputIsUserListedForDeletion,
-    OutputPublicKey, OutputVerificationEmailSent,
+    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
 use entries_utils::validators::{self, Validity};
 
-use actix_protobuf::ProtoBuf;
+use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -216,14 +215,17 @@ pub async fn create(
         }
     };
 
-    Ok(
-        HttpResponse::Created().json(OutputBackupCodesAndVerificationEmailSent {
-            email_sent: true,
-            email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
-                / 3600,
-            backup_codes: &backup_codes,
-        }),
-    )
+    let backup_codes = Arc::into_inner(backup_codes)
+        .expect("Multiple references exist to data that should only have one reference");
+
+    let resp = HttpResponse::Created().protobuf(BackupCodesAndVerificationEmailSent {
+        email_sent: true,
+        email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
+            / 3600,
+        backup_codes,
+    })?;
+
+    Ok(resp)
 }
 
 pub async fn verify_creation(
@@ -423,7 +425,7 @@ pub async fn change_password(
 pub async fn change_recovery_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    new_recovery_key_data: web::Json<InputNewRecoveryKey>,
+    new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;

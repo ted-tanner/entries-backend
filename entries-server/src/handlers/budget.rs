@@ -1,12 +1,10 @@
 use entries_utils::messages::{
     BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
     EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
+    PublicKey, UserInvitationToBudget,
 };
 use entries_utils::models::budget_access_key::BudgetAccessKey;
-use entries_utils::request_io::{
-    InputPublicKey, OutputBudgetShareInvite, OutputCategoryId, OutputEntryId,
-    UserInvitationToBudget,
-};
+use entries_utils::request_io::{OutputBudgetShareInvite, OutputCategoryId, OutputEntryId};
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderToken;
@@ -245,7 +243,7 @@ pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    invitation_info: web::Json<UserInvitationToBudget>,
+    invitation_info: ProtoBuf<UserInvitationToBudget>,
     throttle: Throttle<15, 5>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
@@ -261,7 +259,7 @@ pub async fn invite_user(
     }
 
     let read_only = invitation_info.read_only;
-    let expiration = invitation_info.expiration;
+    let expiration: SystemTime = (&invitation_info.expiration).into();
 
     let invitation_info = Arc::new(invitation_info.0);
     let invitation_info_ref = Arc::clone(&invitation_info);
@@ -363,7 +361,7 @@ pub async fn invite_user(
             &invitation_info.sender_info_encrypted,
             &invitation_info.share_info_symmetric_key_encrypted,
             budget_access_token.0.claims.budget_id,
-            invitation_info.expiration,
+            expiration,
             invitation_info.read_only,
             accept_key_data.key_id,
             &accept_key_data.key_id_encrypted,
@@ -450,7 +448,7 @@ pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
-    budget_user_public_key: web::Json<InputPublicKey>,
+    budget_user_public_key: ProtoBuf<PublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.claims.key_id;
     let budget_id = accept_token.0.claims.budget_id;
@@ -489,7 +487,7 @@ pub async fn accept_invitation(
             budget_accept_key.read_only,
             accept_token.0.claims.invite_id,
             &user_access_token.0.user_email,
-            &budget_user_public_key.0.public_key,
+            &budget_user_public_key.value,
         )
     })
     .await?

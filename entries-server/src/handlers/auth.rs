@@ -1,9 +1,9 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
-use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery};
+use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery, Otp as OtpMessage};
 use entries_utils::otp::Otp;
 use entries_utils::request_io::{
-    InputOtp, OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
+    OutputBackupCodes, OutputSigninNonceAndHashParams, SigninToken, TokenPair,
 };
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
@@ -178,7 +178,7 @@ pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
-    otp: web::Json<InputOtp>,
+    otp: ProtoBuf<OtpMessage>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
@@ -188,7 +188,7 @@ pub async fn verify_otp_for_signin(
         .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, &claims.user_email, &db_thread_pool).await?;
+    handlers::verification::verify_otp(&otp.value, &claims.user_email, &db_thread_pool).await?;
 
     let now = SystemTime::now();
 
@@ -314,7 +314,7 @@ pub async fn use_backup_code_for_signin(
 pub async fn regenerate_backup_codes(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    otp: web::Json<InputOtp>,
+    otp: ProtoBuf<OtpMessage>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
@@ -323,8 +323,12 @@ pub async fn regenerate_backup_codes(
         .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
         .await?;
 
-    handlers::verification::verify_otp(&otp.otp, &user_access_token.0.user_email, &db_thread_pool)
-        .await?;
+    handlers::verification::verify_otp(
+        &otp.value,
+        &user_access_token.0.user_email,
+        &db_thread_pool,
+    )
+    .await?;
 
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
     let backup_codes_ref = Arc::clone(&backup_codes);

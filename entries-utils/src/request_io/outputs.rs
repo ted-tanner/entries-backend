@@ -104,13 +104,6 @@ pub struct OutputVerificationEmailSent {
     pub email_token_lifetime_hours: u64,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct OutputBackupCodesAndVerificationEmailSent<'a> {
-    pub email_sent: bool,
-    pub email_token_lifetime_hours: u64,
-    pub backup_codes: &'a [String],
-}
-
 // TODO: BackupCodeList
 #[derive(Clone, Debug, Serialize)]
 pub struct OutputBackupCodes<'a> {
