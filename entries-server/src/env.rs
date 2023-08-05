@@ -243,7 +243,13 @@ impl Config {
     /// all threads have been joined.
     pub unsafe fn zeroize(&self) {
         unsafe {
-            (*self.inner.get()).zeroize();
+            let inner = self.inner.get();
+            (*inner).zeroize();
+
+            // With the zeroize feature on the aes_gcm crate, Aes128Gcm is zeroized when
+            // dropped. By replacing the cipher, we ensure the old cipher is dropped and
+            // zeroized.
+            (*inner).token_encryption_cipher = Aes128Gcm::new(&[0u8; 16].into());
         }
     }
 }
