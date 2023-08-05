@@ -15,7 +15,6 @@ diesel = { version = "2.1.*", features = ["postgres", "uuid", "r2d2"] }
 ed25519-dalek = { version = "2.0.0-rc.3", features = ["rand_core", "zeroize"] }
 flexi_logger = { version = "0.25.*", features = ["async", "compress"], default_features = false }
 futures = "0.3.*"
-lazy_static = "1.4.*"
 lettre = "0.10.*"
 log = "0.4.*"
 num_cpus = "1.16.*"
@@ -35,4 +34,5 @@ zeroize = { version = "1.6.*", features = ["zeroize_derive"] }
 actix-http = "3.3.*"
 actix-rt = "2.8.*"
 hex = "0.4.*"
+lazy_static = "1.4.*"
 sha1 = "0.10.*"

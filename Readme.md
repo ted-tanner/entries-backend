@@ -501,8 +501,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Protobuf
-  - Max size in config
-  - Use proto2 and set `required` fields. In place of a timestamp, use a uint64x
+  - Max size in config!
+  - Fix tests!
 * Errors should return as protobuf (use protobuf enum in place of error code)
 * Config as env vars (server AND job-scheduler), not as file
 
@@ -582,6 +582,7 @@ impl fmt::Display for ConfigError {
 }
 ```
 
+* Check for unused dependencies
 * `#[diesel(check_for_backend(diesel::pg::Pg))]` on all models
 * Any `New*` models that are the same as the original can be aliased with `pub type` (derive Insertable)
 * argon2-kdf:
