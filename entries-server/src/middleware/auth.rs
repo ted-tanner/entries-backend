@@ -32,7 +32,7 @@ impl RequestAuthTokenType for Access {
         AuthTokenType::Access
     }
     fn token_lifetime() -> Duration {
-        env::CONF.lifetimes.access_token_lifetime
+        env::CONF.access_token_lifetime
     }
 }
 
@@ -44,7 +44,7 @@ impl RequestAuthTokenType for Refresh {
         AuthTokenType::Refresh
     }
     fn token_lifetime() -> Duration {
-        env::CONF.lifetimes.refresh_token_lifetime
+        env::CONF.refresh_token_lifetime
     }
 }
 
@@ -56,7 +56,7 @@ impl RequestAuthTokenType for SignIn {
         AuthTokenType::SignIn
     }
     fn token_lifetime() -> Duration {
-        env::CONF.lifetimes.signin_token_lifetime
+        env::CONF.signin_token_lifetime
     }
 }
 
@@ -68,7 +68,7 @@ impl RequestAuthTokenType for UserCreation {
         AuthTokenType::UserCreation
     }
     fn token_lifetime() -> Duration {
-        env::CONF.lifetimes.user_creation_token_lifetime
+        env::CONF.user_creation_token_lifetime
     }
 }
 
@@ -80,7 +80,7 @@ impl RequestAuthTokenType for UserDeletion {
         AuthTokenType::UserDeletion
     }
     fn token_lifetime() -> Duration {
-        env::CONF.lifetimes.user_deletion_token_lifetime
+        env::CONF.user_deletion_token_lifetime
     }
 }
 
@@ -173,8 +173,8 @@ fn verify_token(
     decoded_token: &AuthDecodedToken,
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
-    let claims = decoded_token.verify(&env::CONF.keys.token_signing_key)?;
-    let claims = claims.decrypt(&env::CONF.keys.token_encryption_cipher)?;
+    let claims = decoded_token.verify(&env::CONF.token_signing_key)?;
+    let claims = claims.decrypt(&env::CONF.token_encryption_cipher)?;
 
     if mem::discriminant(&claims.token_type) != mem::discriminant(&expected_type) {
         return Err(TokenError::WrongTokenType);

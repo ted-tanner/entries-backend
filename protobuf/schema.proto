@@ -213,6 +213,11 @@ message UserInvitationToBudget {
 
 // Server outputs
 
+message AcceptKeyInfo {
+    required bool read_only = 1;
+    required uint64 expiration = 2;
+}
+
 message BackupCodesAndVerificationEmailSent {
     required bool email_sent = 1;
     required uint64 email_token_lifetime_hours = 2;

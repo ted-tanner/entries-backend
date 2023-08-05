@@ -392,6 +392,12 @@ To make a release build with -O3 optimizations, run:
 cargo build --release
 ```
 
+When building for a production server with an x86_64 architecture, run the following to enable AES-NI instructions for AES encryption:
+
+```
+RUSTFLAGS="-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3" cargo build --release
+```
+
 ## Checking your Code
 
 Rust takes a freakishly long time to compile. Here's my recommendation: don't. Instead of using `cargo run` or `cargo build`, use the following:
@@ -505,6 +511,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Fix tests!
 * Errors should return as protobuf (use protobuf enum in place of error code)
 * Config as env vars (server AND job-scheduler), not as file
+  - Create .env and .env.sample files
+  - Rename `env` module to `config`
+  - Try to use `Box::from_raw()` to zeroize memory
 
 ``` rust
 use std::fmt;

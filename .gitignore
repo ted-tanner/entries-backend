@@ -17,3 +17,6 @@ dump.rdb
 **/#*
 **/.#*
 **/*~
+
+# .env Files
+.env

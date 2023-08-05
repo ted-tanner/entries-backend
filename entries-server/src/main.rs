@@ -1,17 +1,14 @@
-#[macro_use]
-extern crate lazy_static;
-
-use actix_protobuf::ProtoBufConfig;
 use entries_utils::email::senders::{AmazonSes, MockSender};
 use entries_utils::email::SendEmail;
 
+use actix_protobuf::ProtoBufConfig;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::sync::Arc;
-use std::time::Duration;
+use zeroize::Zeroizing;
 
 mod env;
 mod handlers;
@@ -21,7 +18,6 @@ mod services;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mut port = 9000u16;
-    let mut conf_file_path: Option<String> = None;
 
     let mut args = std::env::args();
 
@@ -57,23 +53,6 @@ async fn main() -> std::io::Result<()> {
 
                 continue;
             }
-            "--config" => {
-                conf_file_path = {
-                    let next_arg = args.next();
-
-                    match next_arg {
-                        Some(p) => Some(p),
-                        None => {
-                            eprintln!(
-                                "ERROR: --config option specified but no config file path was given",
-                            );
-                            std::process::exit(1);
-                        }
-                    }
-                };
-
-                continue;
-            }
             a => {
                 eprintln!("ERROR: Invalid argument: {}", &a);
                 std::process::exit(1);
@@ -82,9 +61,8 @@ async fn main() -> std::io::Result<()> {
     }
 
     let base_addr = format!("127.0.0.1:{}", &port);
-    env::initialize(&conf_file_path.unwrap_or(String::from("conf/server-conf.toml")));
 
-    let _logger = Logger::try_with_str(&env::CONF.logging.log_level)
+    let _logger = Logger::try_with_str(&env::CONF.log_level)
         .expect(
             "Invalid log level. Options: ERROR, WARN, INFO, DEBUG, TRACE. \
              Example: `info, my::critical::module=trace`",
@@ -113,29 +91,21 @@ async fn main() -> std::io::Result<()> {
         .start()
         .expect("Failed to start logger");
 
-    let cpu_count = num_cpus::get();
-
-    let actix_workers = env::CONF.workers.actix_workers.unwrap_or(cpu_count);
-    let db_max_connections = env::CONF
-        .db
-        .max_db_connections
-        .unwrap_or(cpu_count as u32 * 4);
-
     log::info!("Connecting to database...");
 
-    // To prevent resource starvation, max connections must be at least as large as the number of
-    // actix workers,
-    let db_max_connections = if actix_workers > db_max_connections as usize {
-        actix_workers as u32
-    } else {
-        db_max_connections
-    };
+    let db_uri = Zeroizing::new(format!(
+        "postgres://{}:{}@{}:{}/{}",
+        env::CONF.db_username,
+        env::CONF.db_password,
+        env::CONF.db_hostname,
+        env::CONF.db_port,
+        env::CONF.db_name,
+    ));
 
-    let db_connection_manager =
-        ConnectionManager::<PgConnection>::new(env::CONF.db.database_uri.as_str());
+    let db_connection_manager = ConnectionManager::<PgConnection>::new(db_uri.as_str());
     let db_thread_pool = match r2d2::Pool::builder()
-        .max_size(db_max_connections)
-        .idle_timeout(env::CONF.db.db_idle_timeout_secs)
+        .max_size(env::CONF.db_max_connections)
+        .idle_timeout(Some(env::CONF.db_idle_timeout_secs))
         .build(db_connection_manager)
     {
         Ok(c) => c,
@@ -147,24 +117,15 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Successfully connected to database");
 
-    let smtp_thread_pool: Arc<Box<dyn SendEmail>> = if env::CONF.email.email_enabled {
+    let smtp_thread_pool: Arc<Box<dyn SendEmail>> = if env::CONF.email_enabled {
         log::info!("Connecting to SMTP relay...");
 
-        let max_smtp_connections = env::CONF.email.max_smtp_connections.unwrap_or(
-            (2 * cpu_count)
-                .try_into()
-                .expect("max_smtp_connections is too large"),
-        );
-
         let smtp_thread_pool = AmazonSes::with_credentials(
-            &env::CONF.keys.amazon_ses_username,
-            &env::CONF.keys.amazon_ses_key,
-            &env::CONF.email.smtp_address,
-            max_smtp_connections,
-            env::CONF
-                .email
-                .smtp_idle_timeout_secs
-                .unwrap_or(Duration::from_secs(25)),
+            &env::CONF.amazon_ses_username,
+            &env::CONF.amazon_ses_key,
+            &env::CONF.smtp_address,
+            env::CONF.max_smtp_connections,
+            env::CONF.smtp_idle_timeout_secs,
         )
         .expect("Failed to connect to SMTP relay");
 
@@ -198,10 +159,14 @@ async fn main() -> std::io::Result<()> {
             .configure(services::web::configure)
             .wrap(actix_web::middleware::Logger::default())
     })
-    .workers(actix_workers)
+    .workers(env::CONF.actix_worker_count)
     .bind(base_addr)?
     .run()
     .await?;
+
+    unsafe {
+        env::CONF.zeroize();
+    }
 
     Ok(())
 }

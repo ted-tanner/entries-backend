@@ -1,5 +1,5 @@
 use entries_utils::messages::{
-    BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
+    AcceptKeyInfo, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
     EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
     PublicKey, UserInvitationToBudget,
 };
@@ -13,9 +13,9 @@ use entries_utils::{db, db::DaoError, db::DbThreadPool};
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use ed25519_dalek as ed25519;
+use prost::Message;
 use rand::rngs::OsRng;
 use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Encrypt, RsaPublicKey};
-use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -232,12 +232,6 @@ pub struct AcceptKey {
     key_info_encrypted: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct AcceptKeyInfo {
-    read_only: bool,
-    expiration: u64,
-}
-
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
@@ -331,7 +325,7 @@ pub async fn invite_user(
                 .as_secs(),
         };
 
-        let key_info = serde_json::to_vec(&key_info).expect("Key info serialization failed");
+        let key_info = key_info.encode_to_vec();
 
         let key_info_encrypted = recipient_public_key
             .encrypt(&mut OsRng, Pkcs1v15Encrypt, &key_info)

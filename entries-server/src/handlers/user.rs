@@ -100,12 +100,12 @@ pub async fn create(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.hashing.salt_length)
-            .hash_length(env::CONF.hashing.hash_length)
-            .iterations(env::CONF.hashing.hash_iterations)
-            .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
-            .threads(env::CONF.hashing.hash_threads)
-            .secret((&env::CONF.keys.hashing_key).into())
+            .salt_length(env::CONF.hash_salt_length)
+            .hash_length(env::CONF.hash_length)
+            .iterations(env::CONF.hash_iterations)
+            .memory_cost_kib(env::CONF.hash_mem_cost_kib)
+            .threads(env::CONF.hash_threads)
+            .secret((&env::CONF.hashing_key).into())
             .hash(&user_data_ref.auth_string);
 
         let hash = match hash_result {
@@ -181,24 +181,24 @@ pub async fn create(
     let user_creation_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &user_data.email,
-        expiration: SystemTime::now() + env::CONF.lifetimes.user_creation_token_lifetime,
+        expiration: SystemTime::now() + env::CONF.user_creation_token_lifetime,
         token_type: AuthTokenType::UserCreation,
     };
 
     let user_creation_token = AuthToken::sign_new(
-        user_creation_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        user_creation_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(
-            &env::CONF.endpoints.user_verification_url,
+            &env::CONF.user_verification_url,
             &user_creation_token,
-            env::CONF.lifetimes.user_creation_token_lifetime,
+            env::CONF.user_creation_token_lifetime,
         ),
         subject: "Verify your account",
-        from: env::CONF.email.from_address.clone(),
-        reply_to: env::CONF.email.reply_to_address.clone(),
+        from: env::CONF.email_from_address.clone(),
+        reply_to: env::CONF.email_reply_to_address.clone(),
         destination: &user_data.email,
         is_html: true,
     };
@@ -218,8 +218,7 @@ pub async fn create(
 
     let resp_body = HttpResponse::Created().protobuf(BackupCodesAndVerificationEmailSent {
         email_sent: true,
-        email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
-            / 3600,
+        email_token_lifetime_hours: env::CONF.user_creation_token_lifetime.as_secs() / 3600,
         backup_codes,
     })?;
 
@@ -367,12 +366,12 @@ pub async fn change_password(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.hashing.salt_length)
-            .hash_length(env::CONF.hashing.hash_length)
-            .iterations(env::CONF.hashing.hash_iterations)
-            .memory_cost_kib(env::CONF.hashing.hash_mem_cost_kib)
-            .threads(env::CONF.hashing.hash_threads)
-            .secret((&env::CONF.keys.hashing_key).into())
+            .salt_length(env::CONF.hash_salt_length)
+            .hash_length(env::CONF.hash_length)
+            .iterations(env::CONF.hash_iterations)
+            .memory_cost_kib(env::CONF.hash_mem_cost_kib)
+            .threads(env::CONF.hash_threads)
+            .secret((&env::CONF.hashing_key).into())
             .hash(&new_password_data_ref.new_auth_string);
 
         let hash = match hash_result {
@@ -522,10 +521,9 @@ pub async fn init_delete(
         token.verify(&key.public_key)?;
     }
 
-    let deletion_token_expiration =
-        SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime;
+    let deletion_token_expiration = SystemTime::now() + env::CONF.user_deletion_token_lifetime;
     let delete_me_time = deletion_token_expiration
-        + Duration::from_secs(env::CONF.time_delays.user_deletion_delay_days * 24 * 3600);
+        + Duration::from_secs(env::CONF.user_deletion_delay_days * 24 * 3600);
 
     let user_id = user_access_token.0.user_id;
 
@@ -552,24 +550,24 @@ pub async fn init_delete(
     let user_deletion_token_claims = NewAuthTokenClaims {
         user_id: user_access_token.0.user_id,
         user_email: &user_access_token.0.user_email,
-        expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+        expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
         token_type: AuthTokenType::UserDeletion,
     };
 
     let user_deletion_token = AuthToken::sign_new(
-        user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(
-            &env::CONF.endpoints.user_deletion_url,
+            &env::CONF.user_deletion_url,
             &user_deletion_token,
-            env::CONF.lifetimes.user_deletion_token_lifetime,
+            env::CONF.user_deletion_token_lifetime,
         ),
         subject: "Confirm the deletion of your Entries App account",
-        from: env::CONF.email.from_address.clone(),
-        reply_to: env::CONF.email.reply_to_address.clone(),
+        from: env::CONF.email_from_address.clone(),
+        reply_to: env::CONF.email_reply_to_address.clone(),
         destination: &user_access_token.0.user_email,
         is_html: true,
     };
@@ -586,8 +584,7 @@ pub async fn init_delete(
 
     Ok(HttpResponse::Ok().protobuf(VerificationEmailSent {
         email_sent: true,
-        email_token_lifetime_hours: env::CONF.lifetimes.user_deletion_token_lifetime.as_secs()
-            / 3600,
+        email_token_lifetime_hours: env::CONF.user_deletion_token_lifetime.as_secs() / 3600,
     })?)
 }
 
@@ -615,7 +612,7 @@ pub async fn delete(
     };
 
     let user_id = claims.user_id;
-    let days_until_deletion = env::CONF.time_delays.user_deletion_delay_days;
+    let days_until_deletion = env::CONF.user_deletion_delay_days;
 
     match web::block(move || {
         let mut user_dao = db::user::Dao::new(&db_thread_pool);
@@ -887,7 +884,7 @@ pub mod tests {
 
         assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
             .unwrap()
-            .verify_with_secret(&new_user.auth_string, (&env::CONF.keys.hashing_key).into()));
+            .verify_with_secret(&new_user.auth_string, (&env::CONF.hashing_key).into()));
 
         // Test password was hashed with correct params
         let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
@@ -898,7 +895,7 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(hash_len, env::CONF.hashing.hash_length);
+        assert_eq!(hash_len, env::CONF.hash_length);
 
         let salt_start_pos = (&user.auth_string_hash[..(hash_start_pos - 1)])
             .rfind('$')
@@ -912,18 +909,18 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(salt_len, env::CONF.hashing.salt_length);
+        assert_eq!(salt_len, env::CONF.hash_salt_length);
 
         assert!(user.auth_string_hash.contains("argon2id"));
         assert!(user
             .auth_string_hash
-            .contains(&format!("m={}", env::CONF.hashing.hash_mem_cost_kib)));
+            .contains(&format!("m={}", env::CONF.hash_mem_cost_kib)));
         assert!(user
             .auth_string_hash
-            .contains(&format!("t={}", env::CONF.hashing.hash_iterations)));
+            .contains(&format!("t={}", env::CONF.hash_iterations)));
         assert!(user
             .auth_string_hash
-            .contains(&format!("p={}", env::CONF.hashing.hash_threads)));
+            .contains(&format!("p={}", env::CONF.hash_threads)));
 
         // Get backup codes from response
         let codes_array_start = resp_body.find('[').unwrap() + 1;
@@ -1028,13 +1025,13 @@ pub mod tests {
         let user_creation_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
             token_type: AuthTokenType::UserCreation,
         };
 
         let user_creation_token = AuthToken::sign_new(
-            user_creation_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            user_creation_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::get()
@@ -1220,7 +1217,7 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                (&env::CONF.keys.hashing_key).into()
+                (&env::CONF.hashing_key).into()
             ));
 
         assert_ne!(stored_user.auth_string_salt, edit_password.auth_string_salt);
@@ -1279,7 +1276,7 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                (&env::CONF.keys.hashing_key).into()
+                (&env::CONF.hashing_key).into()
             ));
 
         assert_eq!(stored_user.auth_string_salt, edit_password.auth_string_salt);
@@ -1326,7 +1323,7 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(hash_len, env::CONF.hashing.hash_length);
+        assert_eq!(hash_len, env::CONF.hash_length);
 
         let salt_start_pos = (&stored_user.auth_string_hash[..(hash_start_pos - 1)])
             .rfind('$')
@@ -1340,18 +1337,18 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(salt_len, env::CONF.hashing.salt_length);
+        assert_eq!(salt_len, env::CONF.hash_salt_length);
 
         assert!(stored_user.auth_string_hash.contains("argon2id"));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("m={}", env::CONF.hashing.hash_mem_cost_kib)));
+            .contains(&format!("m={}", env::CONF.hash_mem_cost_kib)));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("t={}", env::CONF.hashing.hash_iterations)));
+            .contains(&format!("t={}", env::CONF.hash_iterations)));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("p={}", env::CONF.hashing.hash_threads)));
+            .contains(&format!("p={}", env::CONF.hash_threads)));
     }
 
     #[actix_web::test]
@@ -1547,13 +1544,13 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
             token_type: AuthTokenType::UserDeletion,
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::get()
@@ -1734,13 +1731,13 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
             token_type: AuthTokenType::UserDeletion,
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::get()
@@ -2019,13 +2016,13 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
             token_type: AuthTokenType::UserDeletion,
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let broken_user_deletion_token = &user_deletion_token[..user_deletion_token.len() - 1];
@@ -2237,13 +2234,13 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user1.id,
             user_email: &user1.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.user_deletion_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
             token_type: AuthTokenType::UserDeletion,
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         // TODO: Test with a shared token (delete just one user, budget should survive) and an unshared token

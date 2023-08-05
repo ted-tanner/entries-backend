@@ -22,7 +22,7 @@ pub mod verification {
         db_thread_pool: &DbThreadPool,
         smtp_thread_pool: &EmailSender,
     ) -> Result<(), HttpErrorResponse> {
-        let otp_expiration = SystemTime::now() + env::CONF.lifetimes.otp_lifetime;
+        let otp_expiration = SystemTime::now() + env::CONF.otp_lifetime;
 
         let user_email_copy = String::from(user_email);
 
@@ -44,10 +44,10 @@ pub mod verification {
         };
 
         let message = EmailMessage {
-            body: OtpMessage::generate(&otp[..4], &otp[4..], env::CONF.lifetimes.otp_lifetime),
+            body: OtpMessage::generate(&otp[..4], &otp[4..], env::CONF.otp_lifetime),
             subject: "Your one-time passcode",
-            from: env::CONF.email.from_address.clone(),
-            reply_to: env::CONF.email.reply_to_address.clone(),
+            from: env::CONF.email_from_address.clone(),
+            reply_to: env::CONF.email_reply_to_address.clone(),
             destination: user_email,
             is_html: true,
         };
@@ -153,7 +153,7 @@ pub mod verification {
             };
 
             let does_auth_string_match_hash =
-                hash.verify_with_secret(&auth_string, (&env::CONF.keys.hashing_key).into());
+                hash.verify_with_secret(&auth_string, (&env::CONF.hashing_key).into());
 
             sender
                 .send(Ok(does_auth_string_match_hash))
@@ -520,13 +520,13 @@ pub mod test_utils {
         let access_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
             token_type: AuthTokenType::Access,
         };
 
         let access_token = AuthToken::sign_new(
-            access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         (user, access_token)
@@ -639,12 +639,12 @@ pub mod test_utils {
         let recipient_access_token_claims = NewAuthTokenClaims {
             user_id: recipient.id,
             user_email: recipient_email,
-            expiration: SystemTime::now() + env::CONF.lifetimes.access_token_lifetime,
+            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
             token_type: AuthTokenType::Access,
         };
         let recipient_access_token = AuthToken::sign_new(
-            recipient_access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            recipient_access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::get()

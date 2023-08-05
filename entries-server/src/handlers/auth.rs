@@ -153,13 +153,13 @@ pub async fn sign_in(
     let signin_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &credentials.email,
-        expiration: SystemTime::now() + env::CONF.lifetimes.signin_token_lifetime,
+        expiration: SystemTime::now() + env::CONF.signin_token_lifetime,
         token_type: AuthTokenType::SignIn,
     };
 
     let signin_token = AuthToken::sign_new(
-        signin_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        signin_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let signin_token = SigninToken {
@@ -197,25 +197,25 @@ pub async fn verify_otp_for_signin(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        expiration: now + env::CONF.refresh_token_lifetime,
         token_type: AuthTokenType::Refresh,
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let access_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        expiration: now + env::CONF.access_token_lifetime,
         token_type: AuthTokenType::Access,
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let token_pair = TokenPair {
@@ -283,25 +283,25 @@ pub async fn use_backup_code_for_signin(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id: claims.user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        expiration: now + env::CONF.refresh_token_lifetime,
         token_type: AuthTokenType::Refresh,
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let access_token_claims = NewAuthTokenClaims {
         user_id: claims.user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        expiration: now + env::CONF.access_token_lifetime,
         token_type: AuthTokenType::Access,
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let token_pair = TokenPair {
@@ -387,25 +387,25 @@ pub async fn refresh_tokens(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id: token_claims.user_id,
         user_email: &token_claims.user_email,
-        expiration: now + env::CONF.lifetimes.refresh_token_lifetime,
+        expiration: now + env::CONF.refresh_token_lifetime,
         token_type: AuthTokenType::Refresh,
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let access_token_claims = NewAuthTokenClaims {
         user_id: token_claims.user_id,
         user_email: &token_claims.user_email,
-        expiration: now + env::CONF.lifetimes.access_token_lifetime,
+        expiration: now + env::CONF.access_token_lifetime,
         token_type: AuthTokenType::Access,
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-        &env::CONF.keys.token_signing_key,
+        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        &env::CONF.token_signing_key,
     );
 
     let token_pair = TokenPair {

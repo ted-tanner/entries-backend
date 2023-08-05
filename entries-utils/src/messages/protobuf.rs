@@ -266,6 +266,14 @@ pub struct UserInvitationToBudget {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AcceptKeyInfo {
+    #[prost(bool, required, tag = "1")]
+    pub read_only: bool,
+    #[prost(uint64, required, tag = "2")]
+    pub expiration: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BackupCodesAndVerificationEmailSent {
     #[prost(bool, required, tag = "1")]
     pub email_sent: bool,

@@ -2,10 +2,15 @@ use aes_gcm::{aead::KeyInit, Aes128Gcm};
 use base64::engine::general_purpose::STANDARD as b64;
 use base64::Engine;
 use lettre::message::Mailbox;
+use once_cell::sync::Lazy;
+use std::cell::UnsafeCell;
 use std::fmt;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::time::Duration;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+pub static CONF: Lazy<Config> = Lazy::new(|| Config::from_env().expect("Failed to load config"));
 
 const DB_USERNAME_VAR: &str = "ENTRIES_DB_USERNAME";
 const DB_PASSWORD_VAR: &str = "ENTRIES_DB_PASSWORD";
@@ -15,11 +20,11 @@ const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
 const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
 const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
 
-const HASHING_KEY_VAR: &str = "ENTRIES_HASHING_KEY";
-const TOKEN_SIGNING_KEY_VAR: &str = "ENTRIES_TOKEN_SIGNING_KEY";
+const HASHING_KEY_VAR: &str = "ENTRIES_HASHING_KEY_B64";
+const TOKEN_SIGNING_KEY_VAR: &str = "ENTRIES_TOKEN_SIGNING_KEY_B64";
 const AMAZON_SES_USERNAME_VAR: &str = "ENTRIES_AMAZON_SES_USERNAME";
 const AMAZON_SES_KEY_VAR: &str = "ENTRIES_AMAZON_SES_KEY";
-const TOKEN_ENCRYPTION_KEY_VAR: &str = "ENTRIES_TOKEN_ENCRYPTION_KEY";
+const TOKEN_ENCRYPTION_KEY_VAR: &str = "ENTRIES_TOKEN_ENCRYPTION_KEY_B64";
 
 const HASH_LENGTH_VAR: &str = "ENTRIES_HASH_LENGTH";
 const HASH_ITERATIONS_VAR: &str = "ENTRIES_HASH_ITERATIONS";
@@ -53,19 +58,23 @@ const HASHING_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
 const TOKEN_ENCRYPTION_KEY_SIZE: usize = 16;
 
-pub struct Config {
+#[derive(Zeroize)]
+pub struct ConfigInner {
     pub db_username: String,
     pub db_password: String,
     pub db_hostname: String,
     pub db_port: u16,
     pub db_name: String,
+    #[zeroize(skip)]
     pub db_max_connections: u32,
+    #[zeroize(skip)]
     pub db_idle_timeout_secs: Duration,
 
     pub hashing_key: [u8; HASHING_KEY_SIZE],
     pub token_signing_key: [u8; TOKEN_SIGNING_KEY_SIZE],
     pub amazon_ses_username: String,
     pub amazon_ses_key: String,
+    #[zeroize(skip)]
     pub token_encryption_cipher: Aes128Gcm,
 
     pub hash_length: u32,
@@ -75,30 +84,61 @@ pub struct Config {
     pub hash_salt_length: u32,
 
     pub email_enabled: bool,
+    #[zeroize(skip)]
     pub email_from_address: Mailbox,
+    #[zeroize(skip)]
     pub email_reply_to_address: Mailbox,
     pub smtp_address: String,
+    #[zeroize(skip)]
     pub max_smtp_connections: u32,
+    #[zeroize(skip)]
     pub smtp_idle_timeout_secs: Duration,
 
+    #[zeroize(skip)]
     pub user_verification_url: String,
+    #[zeroize(skip)]
     pub user_deletion_url: String,
 
+    #[zeroize(skip)]
     pub access_token_lifetime: Duration,
+    #[zeroize(skip)]
     pub refresh_token_lifetime: Duration,
+    #[zeroize(skip)]
     pub signin_token_lifetime: Duration,
+    #[zeroize(skip)]
     pub user_creation_token_lifetime: Duration,
+    #[zeroize(skip)]
     pub user_deletion_token_lifetime: Duration,
+    #[zeroize(skip)]
     pub otp_lifetime: Duration,
 
+    #[zeroize(skip)]
     pub actix_worker_count: usize,
 
+    #[zeroize(skip)]
     pub log_level: String,
+    #[zeroize(skip)]
     pub user_deletion_delay_days: u64,
 }
 
+pub struct Config {
+    inner: UnsafeCell<ConfigInner>,
+}
+
+impl Deref for Config {
+    type Target = ConfigInner;
+
+    fn deref(&self) -> &Self::Target {
+        // Safe as long as `unsafe Config::zeroize()` hasn't been called
+        unsafe { &*self.inner.get() }
+    }
+}
+
+// Safe to be shared across threads as long as `unsafe Config::zeroize()` hasn't been called
+unsafe impl Sync for Config {}
+
 impl Config {
-    pub fn from_env() -> Result<&'static Config, ConfigError> {
+    pub fn from_env() -> Result<Config, ConfigError> {
         let hashing_key = Zeroizing::new(
             b64.decode(env_var::<String>(HASHING_KEY_VAR)?.as_bytes())
                 .map_err(|_| ConfigError::InvalidVar(HASHING_KEY_VAR))?,
@@ -133,7 +173,7 @@ impl Config {
             .parse()
             .map_err(|_| ConfigError::InvalidVar(EMAIL_REPLY_TO_ADDR))?;
 
-        let conf = Box::new(Self {
+        let inner = ConfigInner {
             db_username: env_var(DB_USERNAME_VAR)?,
             db_password: env_var(DB_PASSWORD_VAR)?,
             db_hostname: env_var(DB_HOSTNAME_VAR)?,
@@ -189,9 +229,22 @@ impl Config {
 
             log_level: env_var_or(LOG_LEVEL_VAR, String::from("info")),
             user_deletion_delay_days: env_var_or(USER_DELETION_DELAY_DAYS_VAR, 7),
-        });
+        };
 
-        Ok(Box::leak(conf))
+        Ok(Config {
+            inner: UnsafeCell::new(inner),
+        })
+    }
+
+    /// # Safety
+    ///
+    /// Safe only if the Config isn't being used by other threads or across an async
+    /// boundary. Generally, this should only be used at the end of the main function once
+    /// all threads have been joined.
+    pub unsafe fn zeroize(&self) {
+        unsafe {
+            (*self.inner.get()).zeroize();
+        }
     }
 }
 
@@ -246,20 +299,16 @@ pub mod testing {
 
     use super::*;
 
-    lazy_static! {
-        pub static ref CONFIG: &'static Config = Config::from_env().unwrap();
-        pub static ref DB_THREAD_POOL: DbThreadPool = create_db_thread_pool(
+    pub static DB_THREAD_POOL: Lazy<DbThreadPool> = Lazy::new(|| {
+        create_db_thread_pool(
             &format!(
-                "postgres:://{}:{}@{}:{}/{}",
-                CONFIG.db_username,
-                CONFIG.db_password,
-                CONFIG.db_hostname,
-                CONFIG.db_port,
-                CONFIG.db_name,
+                "postgres://{}:{}@{}:{}/{}",
+                CONF.db_username, CONF.db_password, CONF.db_hostname, CONF.db_port, CONF.db_name,
             ),
-            Some(CONFIG.db_max_connections),
-        );
-        pub static ref SMTP_THREAD_POOL: Arc<Box<dyn SendEmail>> =
-            Arc::new(Box::new(MockSender::new()));
-    }
+            Some(CONF.db_max_connections),
+        )
+    });
+
+    pub static SMTP_THREAD_POOL: Lazy<Arc<Box<dyn SendEmail>>> =
+        Lazy::new(|| Arc::new(Box::new(MockSender::new())));
 }
