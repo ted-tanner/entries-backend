@@ -1,11 +1,10 @@
+use entries_utils::db::create_db_thread_pool;
 use entries_utils::email::senders::{AmazonSes, MockSender};
 use entries_utils::email::SendEmail;
 
 use actix_protobuf::ProtoBufConfig;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
-use diesel::prelude::*;
-use diesel::r2d2::{self, ConnectionManager};
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::sync::Arc;
 use zeroize::Zeroizing;
@@ -102,18 +101,11 @@ async fn main() -> std::io::Result<()> {
         env::CONF.db_name,
     ));
 
-    let db_connection_manager = ConnectionManager::<PgConnection>::new(db_uri.as_str());
-    let db_thread_pool = match r2d2::Pool::builder()
-        .max_size(env::CONF.db_max_connections)
-        .idle_timeout(Some(env::CONF.db_idle_timeout_secs))
-        .build(db_connection_manager)
-    {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("ERROR: Failed to connect to database");
-            std::process::exit(1);
-        }
-    };
+    let db_thread_pool = create_db_thread_pool(
+        &db_uri,
+        env::CONF.db_max_connections,
+        env::CONF.db_idle_timeout,
+    );
 
     log::info!("Successfully connected to database");
 
@@ -125,7 +117,7 @@ async fn main() -> std::io::Result<()> {
             &env::CONF.amazon_ses_key,
             &env::CONF.smtp_address,
             env::CONF.max_smtp_connections,
-            env::CONF.smtp_idle_timeout_secs,
+            env::CONF.smtp_idle_timeout,
         )
         .expect("Failed to connect to SMTP relay");
 

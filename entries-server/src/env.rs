@@ -74,7 +74,7 @@ pub struct ConfigInner {
     #[zeroize(skip)]
     pub db_max_connections: u32,
     #[zeroize(skip)]
-    pub db_idle_timeout_secs: Duration,
+    pub db_idle_timeout: Duration,
 
     pub hashing_key: [u8; HASHING_KEY_SIZE],
     pub token_signing_key: [u8; TOKEN_SIGNING_KEY_SIZE],
@@ -98,7 +98,7 @@ pub struct ConfigInner {
     #[zeroize(skip)]
     pub max_smtp_connections: u32,
     #[zeroize(skip)]
-    pub smtp_idle_timeout_secs: Duration,
+    pub smtp_idle_timeout: Duration,
 
     #[zeroize(skip)]
     pub user_verification_url: String,
@@ -187,7 +187,7 @@ impl Config {
             db_port: env_var(DB_PORT_VAR)?,
             db_name: env_var(DB_NAME_VAR)?,
             db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
-            db_idle_timeout_secs: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
+            db_idle_timeout: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
 
             hashing_key,
             token_signing_key,
@@ -210,10 +210,7 @@ impl Config {
             email_reply_to_address,
             smtp_address: env_var(SMTP_ADDRESS_VAR)?,
             max_smtp_connections: env_var_or(MAX_SMTP_CONNECTIONS_VAR, 24)?,
-            smtp_idle_timeout_secs: Duration::from_secs(env_var_or(
-                SMTP_IDLE_TIMEOUT_SECS_VAR,
-                60,
-            )?),
+            smtp_idle_timeout: Duration::from_secs(env_var_or(SMTP_IDLE_TIMEOUT_SECS_VAR, 60)?),
 
             user_verification_url: env_var(USER_VERIFICATION_URL_VAR)?,
             user_deletion_url: env_var(USER_DELETION_URL_VAR)?,
@@ -275,7 +272,7 @@ fn env_var_or<T: FromStr>(key: &'static str, default: T) -> Result<T, ConfigErro
         return Ok(default);
     };
 
-    Ok(var.parse().map_err(|_| ConfigError::invalid(key))?)
+    var.parse().map_err(|_| ConfigError::invalid(key))
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -321,7 +318,8 @@ pub mod testing {
                 "postgres://{}:{}@{}:{}/{}",
                 CONF.db_username, CONF.db_password, CONF.db_hostname, CONF.db_port, CONF.db_name,
             ),
-            Some(CONF.db_max_connections),
+            CONF.db_max_connections,
+            CONF.db_idle_timeout,
         )
     });
 

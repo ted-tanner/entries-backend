@@ -1,6 +1,7 @@
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use std::fmt;
+use std::time::Duration;
 
 pub mod auth;
 pub mod budget;
@@ -11,13 +12,14 @@ pub mod user;
 pub type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 pub type DbConnection = PooledConnection<ConnectionManager<PgConnection>>;
 
-pub fn create_db_thread_pool(database_uri: &str, max_db_connections: Option<u32>) -> DbThreadPool {
+pub fn create_db_thread_pool(
+    database_uri: &str,
+    max_db_connections: u32,
+    idle_timeout: Duration,
+) -> DbThreadPool {
     r2d2::Pool::builder()
-        .max_size(max_db_connections.unwrap_or_else(|| {
-            (num_cpus::get() * 2)
-                .try_into()
-                .expect("Unable to obtain system CPU count")
-        }))
+        .max_size(max_db_connections)
+        .idle_timeout(Some(idle_timeout))
         .build(ConnectionManager::<PgConnection>::new(database_uri))
         .expect("Failed to create DB thread pool")
 }

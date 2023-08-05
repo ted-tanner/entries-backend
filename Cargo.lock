@@ -818,18 +818,16 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
- "diesel",
  "entries_utils",
  "flexi_logger",
  "futures",
- "lazy_static",
  "log",
  "num_cpus",
+ "once_cell",
  "rand",
- "serde",
  "tokio",
- "toml",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
