@@ -12,7 +12,7 @@ pub enum EmailError {
 }
 
 use async_trait::async_trait;
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 impl std::error::Error for EmailError {}
 
@@ -44,4 +44,4 @@ pub trait SendEmail: Send + Sync {
     async fn send<'a>(&self, message: EmailMessage<'a>) -> Result<(), EmailError>;
 }
 
-pub type EmailSender = Box<dyn SendEmail>;
+pub type EmailSender = Arc<Box<dyn SendEmail>>;

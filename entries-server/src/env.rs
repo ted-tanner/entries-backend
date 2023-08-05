@@ -10,7 +10,13 @@ use std::str::FromStr;
 use std::time::Duration;
 use zeroize::{Zeroize, Zeroizing};
 
-pub static CONF: Lazy<Config> = Lazy::new(|| Config::from_env().expect("Failed to load config"));
+pub static CONF: Lazy<Config> = Lazy::new(|| match Config::from_env() {
+    Ok(c) => c,
+    Err(e) => {
+        eprintln!("ERROR: Failed to load configuration: {e}");
+        std::process::exit(1);
+    }
+});
 
 const DB_USERNAME_VAR: &str = "ENTRIES_DB_USERNAME";
 const DB_PASSWORD_VAR: &str = "ENTRIES_DB_PASSWORD";
@@ -48,11 +54,11 @@ const SIGNIN_TOKEN_LIFETIME_MINS_VAR: &str = "ENTRIES_SIGNIN_TOKEN_LIFETIME_MINS
 const USER_CREATION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_CREATION_TOKEN_LIFETIME_DAYS";
 const USER_DELETION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_DELETION_TOKEN_LIFETIME_DAYS";
 const OTP_LIFETIME_MINS_VAR: &str = "ENTRIES_OTP_LIFETIME_MINS";
+const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
 
 const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
-
 const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
-const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
+const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
 
 const HASHING_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
@@ -111,14 +117,15 @@ pub struct ConfigInner {
     pub user_deletion_token_lifetime: Duration,
     #[zeroize(skip)]
     pub otp_lifetime: Duration,
+    #[zeroize(skip)]
+    pub user_deletion_delay_days: u64,
 
     #[zeroize(skip)]
     pub actix_worker_count: usize,
-
     #[zeroize(skip)]
     pub log_level: String,
     #[zeroize(skip)]
-    pub user_deletion_delay_days: u64,
+    pub protobuf_max_size: usize,
 }
 
 pub struct Config {
@@ -179,8 +186,8 @@ impl Config {
             db_hostname: env_var(DB_HOSTNAME_VAR)?,
             db_port: env_var(DB_PORT_VAR)?,
             db_name: env_var(DB_NAME_VAR)?,
-            db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48),
-            db_idle_timeout_secs: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)),
+            db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
+            db_idle_timeout_secs: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
 
             hashing_key,
             token_signing_key,
@@ -202,33 +209,36 @@ impl Config {
             email_from_address,
             email_reply_to_address,
             smtp_address: env_var(SMTP_ADDRESS_VAR)?,
-            max_smtp_connections: env_var_or(MAX_SMTP_CONNECTIONS_VAR, 24),
-            smtp_idle_timeout_secs: Duration::from_secs(env_var_or(SMTP_IDLE_TIMEOUT_SECS_VAR, 60)),
+            max_smtp_connections: env_var_or(MAX_SMTP_CONNECTIONS_VAR, 24)?,
+            smtp_idle_timeout_secs: Duration::from_secs(env_var_or(
+                SMTP_IDLE_TIMEOUT_SECS_VAR,
+                60,
+            )?),
 
             user_verification_url: env_var(USER_VERIFICATION_URL_VAR)?,
             user_deletion_url: env_var(USER_DELETION_URL_VAR)?,
 
             access_token_lifetime: Duration::from_secs(
-                env_var_or(ACCESS_TOKEN_LIFETIME_MINS_VAR, 15) * 60,
+                env_var_or(ACCESS_TOKEN_LIFETIME_MINS_VAR, 15)? * 60,
             ),
             refresh_token_lifetime: Duration::from_secs(
-                env_var_or(REFRESH_TOKEN_LIFETIME_DAYS_VAR, 30) * 86400,
+                env_var_or(REFRESH_TOKEN_LIFETIME_DAYS_VAR, 30)? * 86400,
             ),
             signin_token_lifetime: Duration::from_secs(
-                env_var_or(SIGNIN_TOKEN_LIFETIME_MINS_VAR, 30) * 60,
+                env_var_or(SIGNIN_TOKEN_LIFETIME_MINS_VAR, 30)? * 60,
             ),
             user_creation_token_lifetime: Duration::from_secs(
-                env_var_or(USER_CREATION_TOKEN_LIFETIME_DAYS_VAR, 7) * 86400,
+                env_var_or(USER_CREATION_TOKEN_LIFETIME_DAYS_VAR, 7)? * 86400,
             ),
             user_deletion_token_lifetime: Duration::from_secs(
-                env_var_or(USER_DELETION_TOKEN_LIFETIME_DAYS_VAR, 7) * 86400,
+                env_var_or(USER_DELETION_TOKEN_LIFETIME_DAYS_VAR, 7)? * 86400,
             ),
-            otp_lifetime: Duration::from_secs(env_var_or(OTP_LIFETIME_MINS_VAR, 15) * 60),
+            otp_lifetime: Duration::from_secs(env_var_or(OTP_LIFETIME_MINS_VAR, 15)? * 60),
+            user_deletion_delay_days: env_var_or(USER_DELETION_DELAY_DAYS_VAR, 7)?,
 
-            actix_worker_count: env_var_or(ACTIX_WORKER_COUNT_VAR, num_cpus::get()),
-
-            log_level: env_var_or(LOG_LEVEL_VAR, String::from("info")),
-            user_deletion_delay_days: env_var_or(USER_DELETION_DELAY_DAYS_VAR, 7),
+            actix_worker_count: env_var_or(ACTIX_WORKER_COUNT_VAR, num_cpus::get())?,
+            log_level: env_var_or(LOG_LEVEL_VAR, String::from("info"))?,
+            protobuf_max_size: env_var_or(PROTOBUF_MAX_SIZE_MB_VAR, 750)? * 1024 * 1024,
         };
 
         Ok(Config {
@@ -260,12 +270,12 @@ fn env_var<T: FromStr>(key: &'static str) -> Result<T, ConfigError> {
     Ok(var)
 }
 
-fn env_var_or<T: FromStr>(key: &'static str, default: T) -> T {
+fn env_var_or<T: FromStr>(key: &'static str, default: T) -> Result<T, ConfigError> {
     let Ok(var) = std::env::var(key) else {
-        return default;
+        return Ok(default);
     };
 
-    var.parse().unwrap_or(default)
+    Ok(var.parse().map_err(|_| ConfigError::invalid(key))?)
 }
 
 #[derive(Clone, Copy, Debug)]
