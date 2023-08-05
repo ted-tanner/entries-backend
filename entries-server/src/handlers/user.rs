@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
+use zeroize::Zeroizing;
 
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
@@ -78,6 +79,8 @@ pub async fn create(
     user_data: ProtoBuf<NewUser>,
     throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    let user_data = Zeroizing::new(user_data.0);
+
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
@@ -337,6 +340,8 @@ pub async fn change_password(
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
     throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    let new_password_data = Zeroizing::new(new_password_data.0);
+
     throttle
         .enforce(
             &new_password_data.user_email,
@@ -358,7 +363,7 @@ pub async fn change_password(
     )
     .await?;
 
-    let new_password_data = Arc::new(new_password_data.0);
+    let new_password_data = Arc::new(new_password_data);
     let new_password_data_ref = Arc::clone(&new_password_data);
 
     let (sender, receiver) = oneshot::channel();

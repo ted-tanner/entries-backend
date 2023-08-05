@@ -15,6 +15,7 @@ use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use zeroize::Zeroizing;
 
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
@@ -82,6 +83,8 @@ pub async fn sign_in(
     credentials: ProtoBuf<CredentialPair>,
     throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    let credentials = Zeroizing::new(credentials.0);
+
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
@@ -256,6 +259,8 @@ pub async fn use_backup_code_for_signin(
     code: ProtoBuf<BackupCode>,
     throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    let code = Zeroizing::new(code.0);
+
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
 

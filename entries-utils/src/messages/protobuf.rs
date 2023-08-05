@@ -1,3 +1,6 @@
+use zeroize::Zeroize;
+
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Timestamp {
@@ -6,12 +9,14 @@ pub struct Timestamp {
     #[prost(uint32, required, tag = "2")]
     pub nanos: u32,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UuidV4 {
     #[prost(bytes = "vec", required, tag = "1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Category {
@@ -26,6 +31,7 @@ pub struct Category {
     #[prost(message, required, tag = "5")]
     pub modified_timestamp: Timestamp,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Entry {
@@ -42,6 +48,7 @@ pub struct Entry {
     #[prost(message, required, tag = "6")]
     pub modified_timestamp: Timestamp,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AuthStringAndEncryptedPasswordUpdate {
@@ -70,24 +77,28 @@ pub struct AuthStringAndEncryptedPasswordUpdate {
     #[prost(bytes = "vec", required, tag = "12")]
     pub encrypted_encryption_key: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BackupCode {
     #[prost(string, required, tag = "1")]
     pub value: ::prost::alloc::string::String,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetAccessTokenList {
     #[prost(string, repeated, tag = "1")]
     pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CategoryId {
     #[prost(message, required, tag = "1")]
     pub value: UuidV4,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CategoryUpdate {
@@ -98,6 +109,7 @@ pub struct CategoryUpdate {
     #[prost(bytes = "vec", required, tag = "3")]
     pub expected_previous_data_hash: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CategoryWithTempId {
@@ -106,6 +118,7 @@ pub struct CategoryWithTempId {
     #[prost(bytes = "vec", required, tag = "2")]
     pub encrypted_blob: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CredentialPair {
@@ -116,6 +129,7 @@ pub struct CredentialPair {
     #[prost(int32, required, tag = "3")]
     pub nonce: i32,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EncryptedBlobAndCategoryId {
@@ -124,6 +138,7 @@ pub struct EncryptedBlobAndCategoryId {
     #[prost(message, optional, tag = "2")]
     pub category_id: ::core::option::Option<UuidV4>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EncryptedBlobUpdate {
@@ -132,6 +147,7 @@ pub struct EncryptedBlobUpdate {
     #[prost(bytes = "vec", required, tag = "2")]
     pub expected_previous_data_hash: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntryAndCategory {
@@ -140,12 +156,14 @@ pub struct EntryAndCategory {
     #[prost(bytes = "vec", required, tag = "2")]
     pub category_encrypted_blob: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntryId {
     #[prost(message, required, tag = "1")]
     pub value: UuidV4,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntryUpdate {
@@ -158,6 +176,7 @@ pub struct EntryUpdate {
     #[prost(message, optional, tag = "4")]
     pub category_id: ::core::option::Option<UuidV4>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewBudget {
@@ -168,12 +187,14 @@ pub struct NewBudget {
     #[prost(bytes = "vec", required, tag = "3")]
     pub user_public_budget_key: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewEncryptedBlob {
     #[prost(bytes = "vec", required, tag = "1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewUser {
@@ -216,18 +237,21 @@ pub struct NewUser {
     #[prost(bytes = "vec", required, tag = "19")]
     pub user_keystore_encrypted: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Otp {
     #[prost(string, required, tag = "1")]
     pub value: ::prost::alloc::string::String,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
     #[prost(bytes = "vec", required, tag = "1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RecoveryKeyUpdate {
@@ -244,6 +268,7 @@ pub struct RecoveryKeyUpdate {
     #[prost(bytes = "vec", required, tag = "6")]
     pub encrypted_encryption_key: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UserInvitationToBudget {
@@ -264,6 +289,7 @@ pub struct UserInvitationToBudget {
     #[prost(bool, required, tag = "8")]
     pub read_only: bool,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AcceptKeyInfo {
@@ -272,6 +298,7 @@ pub struct AcceptKeyInfo {
     #[prost(uint64, required, tag = "2")]
     pub expiration: u64,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BackupCodesAndVerificationEmailSent {
@@ -282,12 +309,14 @@ pub struct BackupCodesAndVerificationEmailSent {
     #[prost(string, repeated, tag = "3")]
     pub backup_codes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BackupCodeList {
     #[prost(string, repeated, tag = "1")]
     pub backup_codes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Budget {
@@ -302,6 +331,7 @@ pub struct Budget {
     #[prost(message, repeated, tag = "5")]
     pub entries: ::prost::alloc::vec::Vec<Entry>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetFrame {
@@ -314,6 +344,7 @@ pub struct BudgetFrame {
     #[prost(message, required, tag = "4")]
     pub modified_timestamp: Timestamp,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetFrameCategory {
@@ -322,6 +353,7 @@ pub struct BudgetFrameCategory {
     #[prost(message, required, tag = "2")]
     pub real_id: UuidV4,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetIdAndEncryptionKey {
@@ -334,12 +366,14 @@ pub struct BudgetIdAndEncryptionKey {
     #[prost(bool, required, tag = "4")]
     pub read_only: bool,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetList {
     #[prost(message, repeated, tag = "1")]
     pub budgets: ::prost::alloc::vec::Vec<Budget>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetShareInvite {
@@ -358,12 +392,14 @@ pub struct BudgetShareInvite {
     #[prost(bytes = "vec", required, tag = "7")]
     pub share_info_symmetric_key_encrypted: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetShareInviteList {
     #[prost(message, repeated, tag = "1")]
     pub invites: ::prost::alloc::vec::Vec<BudgetShareInvite>,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntryIdAndCategoryId {
@@ -372,18 +408,21 @@ pub struct EntryIdAndCategoryId {
     #[prost(message, required, tag = "2")]
     pub category_id: UuidV4,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InvitationId {
     #[prost(message, required, tag = "1")]
     pub value: UuidV4,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct IsUserListedForDeletion {
     #[prost(bool, required, tag = "1")]
     pub is_listed_for_deletion: bool,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerErrorResponse {
@@ -397,6 +436,7 @@ pub struct ServerErrorResponse {
     #[prost(string, required, tag = "2")]
     pub err_message: ::prost::alloc::string::String,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigninNonceAndHashParams {
@@ -411,12 +451,14 @@ pub struct SigninNonceAndHashParams {
     #[prost(int32, required, tag = "5")]
     pub nonce: i32,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SigninToken {
     #[prost(string, required, tag = "1")]
     pub value: ::prost::alloc::string::String,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TokenPair {
@@ -427,6 +469,7 @@ pub struct TokenPair {
     #[prost(message, required, tag = "3")]
     pub server_time: Timestamp,
 }
+#[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VerificationEmailSent {

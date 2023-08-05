@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn main() -> std::io::Result<()> {
@@ -14,12 +16,19 @@ fn main() -> std::io::Result<()> {
 
     println!("cargo:rerun-if-changed={}", server_schema.display());
 
-    prost_build::compile_protos(&[server_schema], &[import_dir])?;
+    let mut prost_build_config = prost_build::Config::new();
+    prost_build_config.message_attribute(".", "#[derive(Zeroize)]");
+    prost_build_config.compile_protos(&[server_schema], &[import_dir])?;
 
     let proto_rs = PathBuf::from_iter([out_dir, PROTO_RS_FILE.into()]);
     let dest = PathBuf::from_iter([cwd, "..".into(), PROTO_RS_DEST.iter().collect()]);
 
-    std::fs::copy(proto_rs, dest)?;
+    let mut dest_file = File::create(dest)?;
+
+    writeln!(dest_file, "use zeroize::Zeroize;")?;
+    writeln!(dest_file)?;
+
+    dest_file.write_all(&std::fs::read(proto_rs)?)?;
 
     Ok(())
 }
