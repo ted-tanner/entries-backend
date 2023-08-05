@@ -27,11 +27,17 @@ impl std::fmt::Display for MessageError {
     }
 }
 
-impl From<Uuid> for UuidV4 {
-    fn from(uuid: Uuid) -> Self {
+impl From<&Uuid> for UuidV4 {
+    fn from(uuid: &Uuid) -> Self {
         UuidV4 {
             value: Vec::from(uuid.into_bytes()),
         }
+    }
+}
+
+impl From<Uuid> for UuidV4 {
+    fn from(uuid: Uuid) -> Self {
+        (&uuid).into()
     }
 }
 

@@ -44,3 +44,14 @@ pub struct NewBudgetShareInvite<'a> {
 
     pub created_unix_timestamp_intdiv_five_million: i16,
 }
+
+#[derive(Debug, Queryable)]
+pub struct BudgetShareInvitePublicData {
+    pub id: Uuid,
+    pub budget_accept_key_encrypted: Vec<u8>,
+    pub budget_accept_key_id_encrypted: Vec<u8>,
+    pub budget_info_encrypted: Vec<u8>,
+    pub sender_info_encrypted: Vec<u8>,
+    pub budget_accept_key_info_encrypted: Vec<u8>,
+    pub share_info_symmetric_key_encrypted: Vec<u8>,
+}

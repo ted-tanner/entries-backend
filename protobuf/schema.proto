@@ -250,16 +250,24 @@ message BudgetIdAndEncryptionKey {
     required bool read_only = 4;
 }
 
-message BudgetShareInvite {
-    required UuidV4 invite_id = 1;
+message BudgetList {
+    repeated Budget budgets = 1;
+}
 
-    required bytes budget_accept_private_key_encrypted = 2;
-    required bytes budget_accept_private_key_id = 3;
+message BudgetShareInvite {
+    required UuidV4 id = 1;
+
+    required bytes budget_accept_key_encrypted = 2;
+    required bytes budget_accept_key_id_encrypted = 3;
     required bytes budget_info_encrypted = 4;
     required bytes sender_info_encrypted = 5;
-    required bytes budget_accept_private_key_info_encrypted = 6;
+    required bytes budget_accept_key_info_encrypted = 6;
 
     required bytes share_info_symmetric_key_encrypted = 7;
+}
+
+message BudgetShareInviteList {
+    repeated BudgetShareInvite invites = 1;
 }
 
 message EntryIdAndCategoryId {

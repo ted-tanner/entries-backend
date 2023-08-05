@@ -16,7 +16,6 @@ pub mod html;
 pub mod messages;
 pub mod models;
 pub mod otp;
-pub mod request_io;
 pub mod schema;
 pub mod token;
 pub mod validators;

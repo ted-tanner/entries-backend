@@ -7,17 +7,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
-use crate::messages::CategoryWithTempId;
+use crate::messages::{
+    Budget as BudgetMessage, BudgetList, EntryIdAndCategoryId, InvitationId, UuidV4,
+};
+use crate::messages::{BudgetFrame, BudgetFrameCategory, Category as CategoryMessage};
+use crate::messages::{BudgetIdAndEncryptionKey, CategoryWithTempId};
+use crate::messages::{BudgetShareInvite, BudgetShareInviteList, Entry as EntryMessage};
 use crate::models::budget::{Budget, NewBudget};
 use crate::models::budget_accept_key::{BudgetAcceptKey, NewBudgetAcceptKey};
 use crate::models::budget_access_key::{BudgetAccessKey, NewBudgetAccessKey};
-use crate::models::budget_share_invite::NewBudgetShareInvite;
+use crate::models::budget_share_invite::{BudgetShareInvitePublicData, NewBudgetShareInvite};
 use crate::models::category::{Category, NewCategory};
 use crate::models::entry::{Entry, NewEntry};
-use crate::request_io::{
-    OutputBudget, OutputBudgetFrame, OutputBudgetFrameCategory, OutputBudgetIdAndEncryptionKey,
-    OutputBudgetShareInvite, OutputEntryIdAndCategoryId, OutputInvitationId,
-};
 use crate::schema::budget_accept_keys as budget_accept_key_fields;
 use crate::schema::budget_accept_keys::dsl::budget_accept_keys;
 use crate::schema::budget_access_keys as budget_access_key_fields;
@@ -86,7 +87,7 @@ impl Dao {
             .get_result::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_budget(&mut self, budget_id: Uuid) -> Result<OutputBudget, DaoError> {
+    pub fn get_budget(&mut self, budget_id: Uuid) -> Result<BudgetMessage, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let output_budget = db_connection
@@ -96,12 +97,35 @@ impl Dao {
                 let loaded_categories = Category::belonging_to(&budget).load::<Category>(conn)?;
                 let loaded_entries = Entry::belonging_to(&budget).load::<Entry>(conn)?;
 
-                Ok(OutputBudget {
-                    id: budget.id,
+                let category_messages = loaded_categories
+                    .into_iter()
+                    .map(|c| CategoryMessage {
+                        id: c.id.into(),
+                        budget_id: c.budget_id.into(),
+                        encrypted_blob: c.encrypted_blob,
+                        encrypted_blob_sha1_hash: c.encrypted_blob_sha1_hash,
+                        modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
+                    })
+                    .collect();
+
+                let entry_messages = loaded_entries
+                    .into_iter()
+                    .map(|e| EntryMessage {
+                        id: e.id.into(),
+                        budget_id: e.budget_id.into(),
+                        category_id: e.category_id.as_ref().map(UuidV4::from),
+                        encrypted_blob: e.encrypted_blob,
+                        encrypted_blob_sha1_hash: e.encrypted_blob_sha1_hash,
+                        modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
+                    })
+                    .collect();
+
+                Ok(BudgetMessage {
+                    id: budget.id.into(),
                     encrypted_blob: budget.encrypted_blob,
-                    modified_timestamp: budget.modified_timestamp,
-                    categories: loaded_categories,
-                    entries: loaded_entries,
+                    categories: category_messages,
+                    entries: entry_messages,
+                    modified_timestamp: budget.modified_timestamp.try_into().unwrap_or_default(),
                 })
             })?;
 
@@ -111,7 +135,7 @@ impl Dao {
     pub fn get_multiple_budgets_by_id(
         &mut self,
         budget_ids: &[Uuid],
-    ) -> Result<Vec<OutputBudget>, DaoError> {
+    ) -> Result<BudgetList, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let output_budgets = db_connection
@@ -134,12 +158,38 @@ impl Dao {
                 let mut output_budgets = Vec::new();
 
                 for ((budget, budget_categories), budget_entries) in zipped_budgets {
-                    let output_budget = OutputBudget {
-                        id: budget.id,
+                    let category_messages = budget_categories
+                        .into_iter()
+                        .map(|c| CategoryMessage {
+                            id: c.id.into(),
+                            budget_id: c.budget_id.into(),
+                            encrypted_blob: c.encrypted_blob,
+                            encrypted_blob_sha1_hash: c.encrypted_blob_sha1_hash,
+                            modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
+                        })
+                        .collect();
+
+                    let entry_messages = budget_entries
+                        .into_iter()
+                        .map(|e| EntryMessage {
+                            id: e.id.into(),
+                            budget_id: e.budget_id.into(),
+                            category_id: e.category_id.as_ref().map(UuidV4::from),
+                            encrypted_blob: e.encrypted_blob,
+                            encrypted_blob_sha1_hash: e.encrypted_blob_sha1_hash,
+                            modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
+                        })
+                        .collect();
+
+                    let output_budget = BudgetMessage {
+                        id: budget.id.into(),
                         encrypted_blob: budget.encrypted_blob,
-                        modified_timestamp: budget.modified_timestamp,
-                        categories: budget_categories,
-                        entries: budget_entries,
+                        modified_timestamp: budget
+                            .modified_timestamp
+                            .try_into()
+                            .unwrap_or_default(),
+                        categories: category_messages,
+                        entries: entry_messages,
                     };
 
                     output_budgets.push(output_budget);
@@ -148,7 +198,9 @@ impl Dao {
                 Ok(output_budgets)
             })?;
 
-        Ok(output_budgets)
+        Ok(BudgetList {
+            budgets: output_budgets,
+        })
     }
 
     pub fn create_budget(
@@ -156,7 +208,7 @@ impl Dao {
         encrypted_blob: &[u8],
         budget_categories: &[CategoryWithTempId],
         user_public_budget_key: &[u8],
-    ) -> Result<OutputBudgetFrame, DaoError> {
+    ) -> Result<BudgetFrame, DaoError> {
         let current_time = SystemTime::now();
         let budget_id = Uuid::new_v4();
         let key_id = Uuid::new_v4();
@@ -203,20 +255,20 @@ impl Dao {
             new_category_temp_ids.push(category.temp_id);
         }
 
-        let mut output_budget = OutputBudgetFrame {
-            access_key_id: key_id,
-            id: budget_id,
-            categories: Vec::with_capacity(budget_categories.len()),
-            modified_timestamp: current_time,
+        let mut output_budget = BudgetFrame {
+            access_key_id: key_id.into(),
+            id: budget_id.into(),
+            category_ids: Vec::with_capacity(budget_categories.len()),
+            modified_timestamp: current_time.try_into().unwrap_or_default(),
         };
 
         for i in 0..budget_categories.len() {
-            let category_frame = OutputBudgetFrameCategory {
+            let category_frame = BudgetFrameCategory {
                 temp_id: new_category_temp_ids[i],
-                real_id: new_categories[i].id,
+                real_id: new_categories[i].id.into(),
             };
 
-            output_budget.categories.push(category_frame);
+            output_budget.category_ids.push(category_frame);
         }
 
         let mut db_connection = self.db_thread_pool.get()?;
@@ -295,7 +347,7 @@ impl Dao {
         budget_accept_public_key: &[u8],
         budget_accept_private_key_encrypted: &[u8],
         budget_accept_key_info_encrypted: &[u8],
-    ) -> Result<OutputInvitationId, DaoError> {
+    ) -> Result<InvitationId, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let budget_accept_key = NewBudgetAcceptKey {
@@ -341,8 +393,8 @@ impl Dao {
                 Ok(())
             })?;
 
-        Ok(OutputInvitationId {
-            invitation_id: budget_share_invite.id,
+        Ok(InvitationId {
+            value: budget_share_invite.id.into(),
         })
     }
 
@@ -355,7 +407,7 @@ impl Dao {
         invitation_id: Uuid,
         recipient_user_email: &str,
         recipient_budget_user_access_public_key: &[u8],
-    ) -> Result<OutputBudgetIdAndEncryptionKey, DaoError> {
+    ) -> Result<BudgetIdAndEncryptionKey, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let output_budget_key = db_connection
@@ -382,9 +434,9 @@ impl Dao {
                 diesel::delete(budget_accept_keys.find((accept_key_id, budget_id)))
                     .execute(conn)?;
 
-                Ok(OutputBudgetIdAndEncryptionKey {
-                    budget_id,
-                    budget_access_key_id: new_budget_access_key.key_id,
+                Ok(BudgetIdAndEncryptionKey {
+                    budget_id: budget_id.into(),
+                    budget_access_key_id: new_budget_access_key.key_id.into(),
                     encryption_key_encrypted: budget_encryption_key_encrypted,
                     read_only,
                 })
@@ -465,8 +517,8 @@ impl Dao {
     pub fn get_all_pending_invitations(
         &mut self,
         user_email: &str,
-    ) -> Result<Vec<OutputBudgetShareInvite>, DaoError> {
-        Ok(budget_share_invites
+    ) -> Result<BudgetShareInviteList, DaoError> {
+        let invites = budget_share_invites
             .select((
                 budget_share_invite_fields::id,
                 budget_share_invite_fields::budget_accept_private_key_encrypted,
@@ -477,7 +529,22 @@ impl Dao {
                 budget_share_invite_fields::share_info_symmetric_key_encrypted,
             ))
             .filter(budget_share_invite_fields::recipient_user_email.eq(user_email))
-            .load::<OutputBudgetShareInvite>(&mut self.db_thread_pool.get()?)?)
+            .load::<BudgetShareInvitePublicData>(&mut self.db_thread_pool.get()?)?;
+
+        let invites = invites
+            .into_iter()
+            .map(|i| BudgetShareInvite {
+                id: i.id.into(),
+                budget_accept_key_encrypted: i.budget_accept_key_encrypted,
+                budget_accept_key_id_encrypted: i.budget_accept_key_id_encrypted,
+                budget_info_encrypted: i.budget_info_encrypted,
+                sender_info_encrypted: i.sender_info_encrypted,
+                budget_accept_key_info_encrypted: i.budget_accept_key_info_encrypted,
+                share_info_symmetric_key_encrypted: i.share_info_symmetric_key_encrypted,
+            })
+            .collect();
+
+        Ok(BudgetShareInviteList { invites })
     }
 
     pub fn leave_budget(&mut self, budget_id: Uuid, key_id: Uuid) -> Result<(), DaoError> {
@@ -536,7 +603,7 @@ impl Dao {
         entry_encrypted_blob: &[u8],
         category_encrypted_blob: &[u8],
         budget_id: Uuid,
-    ) -> Result<OutputEntryIdAndCategoryId, DaoError> {
+    ) -> Result<EntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
         let category_id = Uuid::new_v4();
         let entry_id = Uuid::new_v4();
@@ -578,9 +645,9 @@ impl Dao {
                 Ok(())
             })?;
 
-        Ok(OutputEntryIdAndCategoryId {
-            entry_id,
-            category_id,
+        Ok(EntryIdAndCategoryId {
+            entry_id: entry_id.into(),
+            category_id: category_id.into(),
         })
     }
 

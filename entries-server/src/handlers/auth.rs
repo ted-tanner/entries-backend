@@ -1,9 +1,10 @@
 use entries_utils::db::{self, DaoError, DbThreadPool};
 use entries_utils::email::EmailSender;
-use entries_utils::messages::{BackupCode, CredentialPair, EmailQuery, SigninToken};
+use entries_utils::messages::{
+    BackupCode, BackupCodeList, CredentialPair, EmailQuery, SigninNonceAndHashParams, SigninToken,
+};
 use entries_utils::messages::{Otp as OtpMessage, TokenPair};
 use entries_utils::otp::Otp;
-use entries_utils::request_io::{OutputBackupCodes, OutputSigninNonceAndHashParams};
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::validators::{self, Validity};
 
@@ -46,7 +47,7 @@ pub async fn obtain_nonce_and_auth_string_params(
     // The bounds are hardcoded. This is safe.
     let phony_nonce = unsafe { i32::from_be_bytes(hash[16..20].try_into().unwrap_unchecked()) };
 
-    let phony_params = OutputSigninNonceAndHashParams {
+    let phony_params = SigninNonceAndHashParams {
         auth_string_salt: phony_salt,
         auth_string_memory_cost_kib: 250000,
         auth_string_parallelism_factor: 2,
@@ -62,7 +63,7 @@ pub async fn obtain_nonce_and_auth_string_params(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Ok(HttpResponse::Ok().json(phony_params));
+            return Ok(HttpResponse::Ok().protobuf(phony_params)?);
         }
         Err(e) => {
             log::error!("{e}");
@@ -72,7 +73,7 @@ pub async fn obtain_nonce_and_auth_string_params(
         }
     };
 
-    Ok(HttpResponse::Ok().json(real_params))
+    Ok(HttpResponse::Ok().protobuf(real_params)?)
 }
 
 pub async fn sign_in(
@@ -349,9 +350,12 @@ pub async fn regenerate_backup_codes(
         }
     };
 
-    Ok(HttpResponse::Ok().json(OutputBackupCodes {
-        backup_codes: &backup_codes,
-    }))
+    let backup_codes = Arc::into_inner(backup_codes)
+        .expect("Multiple references exist to data that should only have one reference");
+
+    let resp_body = BackupCodeList { backup_codes };
+
+    Ok(HttpResponse::Ok().protobuf(resp_body)?)
 }
 
 pub async fn refresh_tokens(

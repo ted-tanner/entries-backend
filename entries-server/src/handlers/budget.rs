@@ -4,14 +4,13 @@ use entries_utils::messages::{
     PublicKey, UserInvitationToBudget,
 };
 use entries_utils::models::budget_access_key::BudgetAccessKey;
-use entries_utils::request_io::{OutputBudgetShareInvite, OutputCategoryId, OutputEntryId};
 use entries_utils::token::budget_accept_token::BudgetAcceptToken;
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderToken;
 use entries_utils::token::Token;
 use entries_utils::{db, db::DaoError, db::DbThreadPool};
 
-use actix_protobuf::ProtoBuf;
+use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use ed25519_dalek as ed25519;
 use rand::rngs::OsRng;
@@ -58,7 +57,7 @@ pub async fn get(
         },
     };
 
-    Ok(HttpResponse::Ok().json(budget))
+    Ok(HttpResponse::Ok().protobuf(budget)?)
 }
 
 pub async fn get_multiple(
@@ -138,7 +137,7 @@ pub async fn get_multiple(
         },
     };
 
-    Ok(HttpResponse::Ok().json(budgets))
+    Ok(HttpResponse::Ok().protobuf(budgets)?)
 }
 
 pub async fn create(
@@ -183,7 +182,7 @@ pub async fn create(
         }
     };
 
-    Ok(HttpResponse::Created().json(new_budget))
+    Ok(HttpResponse::Created().protobuf(new_budget)?)
 }
 
 pub async fn edit(
@@ -351,7 +350,7 @@ pub async fn invite_user(
 
     let accept_key_data = receiver.await??;
 
-    let invite_and_accept_key_ids = match web::block(move || {
+    let invite_ids = match web::block(move || {
         let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             &invitation_info.recipient_user_email,
@@ -386,7 +385,7 @@ pub async fn invite_user(
         },
     };
 
-    Ok(HttpResponse::Ok().json(invite_and_accept_key_ids))
+    Ok(HttpResponse::Ok().protobuf(invite_ids)?)
 }
 
 pub async fn retract_invitation(
@@ -508,7 +507,7 @@ pub async fn accept_invitation(
         },
     };
 
-    Ok(HttpResponse::Ok().json(budget_keys))
+    Ok(HttpResponse::Ok().protobuf(budget_keys)?)
 }
 
 pub async fn decline_invitation(
@@ -583,7 +582,7 @@ pub async fn get_all_pending_invitations(
         Ok(invites) => invites,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().json(Vec::<OutputBudgetShareInvite>::new()));
+                return Ok(HttpResponse::Ok().protobuf(BudgetAccessTokenList::default())?);
             }
             _ => {
                 log::error!("{e}");
@@ -594,7 +593,7 @@ pub async fn get_all_pending_invitations(
         },
     };
 
-    Ok(HttpResponse::Ok().json(invites))
+    Ok(HttpResponse::Ok().protobuf(invites)?)
 }
 
 pub async fn leave_budget(
@@ -679,7 +678,9 @@ pub async fn create_entry(
         },
     };
 
-    Ok(HttpResponse::Created().json(OutputEntryId { entry_id }))
+    Ok(HttpResponse::Created().protobuf(EntryId {
+        value: entry_id.into(),
+    })?)
 }
 
 pub async fn create_entry_and_category(
@@ -714,7 +715,7 @@ pub async fn create_entry_and_category(
         },
     };
 
-    Ok(HttpResponse::Created().json(entry_and_category_ids))
+    Ok(HttpResponse::Created().protobuf(entry_and_category_ids)?)
 }
 
 pub async fn edit_entry(
@@ -836,7 +837,9 @@ pub async fn create_category(
         },
     };
 
-    Ok(HttpResponse::Created().json(OutputCategoryId { category_id }))
+    Ok(HttpResponse::Created().protobuf(CategoryId {
+        value: category_id.into(),
+    })?)
 }
 
 pub async fn edit_category(

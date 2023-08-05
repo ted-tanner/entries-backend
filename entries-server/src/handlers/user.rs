@@ -9,12 +9,10 @@ use entries_utils::html::templates::{
 };
 use entries_utils::messages::{
     AuthStringAndEncryptedPasswordUpdate, BackupCodesAndVerificationEmailSent,
-    BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, NewUser, RecoveryKeyUpdate,
+    BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, IsUserListedForDeletion, NewUser,
+    PublicKey, RecoveryKeyUpdate, VerificationEmailSent,
 };
 use entries_utils::otp::Otp;
-use entries_utils::request_io::{
-    OutputIsUserListedForDeletion, OutputPublicKey, OutputVerificationEmailSent,
-};
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_utils::token::budget_access_token::BudgetAccessToken;
 use entries_utils::token::{Token, TokenError};
@@ -70,7 +68,7 @@ pub async fn lookup_user_public_key(
         },
     };
 
-    Ok(HttpResponse::Ok().json(OutputPublicKey { public_key }))
+    Ok(HttpResponse::Ok().protobuf(PublicKey { value: public_key })?)
 }
 
 pub async fn create(
@@ -218,14 +216,14 @@ pub async fn create(
     let backup_codes = Arc::into_inner(backup_codes)
         .expect("Multiple references exist to data that should only have one reference");
 
-    let resp = HttpResponse::Created().protobuf(BackupCodesAndVerificationEmailSent {
+    let resp_body = HttpResponse::Created().protobuf(BackupCodesAndVerificationEmailSent {
         email_sent: true,
         email_token_lifetime_hours: env::CONF.lifetimes.user_creation_token_lifetime.as_secs()
             / 3600,
         backup_codes,
     })?;
 
-    Ok(resp)
+    Ok(resp_body)
 }
 
 pub async fn verify_creation(
@@ -586,11 +584,11 @@ pub async fn init_delete(
         }
     };
 
-    Ok(HttpResponse::Ok().json(OutputVerificationEmailSent {
+    Ok(HttpResponse::Ok().protobuf(VerificationEmailSent {
         email_sent: true,
         email_token_lifetime_hours: env::CONF.lifetimes.user_deletion_token_lifetime.as_secs()
             / 3600,
-    }))
+    })?)
 }
 
 pub async fn delete(
@@ -683,9 +681,9 @@ pub async fn is_listed_for_deletion(
         }
     };
 
-    Ok(HttpResponse::Ok().json(OutputIsUserListedForDeletion {
+    Ok(HttpResponse::Ok().protobuf(IsUserListedForDeletion {
         is_listed_for_deletion,
-    }))
+    })?)
 }
 
 pub async fn cancel_delete(

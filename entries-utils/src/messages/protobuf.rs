@@ -328,21 +328,33 @@ pub struct BudgetIdAndEncryptionKey {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BudgetList {
+    #[prost(message, repeated, tag = "1")]
+    pub budgets: ::prost::alloc::vec::Vec<Budget>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BudgetShareInvite {
     #[prost(message, required, tag = "1")]
-    pub invite_id: UuidV4,
+    pub id: UuidV4,
     #[prost(bytes = "vec", required, tag = "2")]
-    pub budget_accept_private_key_encrypted: ::prost::alloc::vec::Vec<u8>,
+    pub budget_accept_key_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "3")]
-    pub budget_accept_private_key_id: ::prost::alloc::vec::Vec<u8>,
+    pub budget_accept_key_id_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "4")]
     pub budget_info_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "5")]
     pub sender_info_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "6")]
-    pub budget_accept_private_key_info_encrypted: ::prost::alloc::vec::Vec<u8>,
+    pub budget_accept_key_info_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "7")]
     pub share_info_symmetric_key_encrypted: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BudgetShareInviteList {
+    #[prost(message, repeated, tag = "1")]
+    pub invites: ::prost::alloc::vec::Vec<BudgetShareInvite>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

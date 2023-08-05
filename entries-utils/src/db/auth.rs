@@ -4,10 +4,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
+use crate::messages::SigninNonceAndHashParams;
 use crate::models::blacklisted_token::NewBlacklistedToken;
 use crate::models::user_backup_code::NewUserBackupCode;
 use crate::models::user_otp::NewUserOtp;
-use crate::request_io::OutputSigninNonceAndHashParams;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
 use crate::schema::blacklisted_tokens::dsl::blacklisted_tokens;
 use crate::schema::signin_nonces as signin_nonce_fields;
@@ -235,7 +235,7 @@ impl Dao {
     pub fn get_auth_string_data_signin_nonce(
         &mut self,
         user_email: &str,
-    ) -> Result<OutputSigninNonceAndHashParams, DaoError> {
+    ) -> Result<SigninNonceAndHashParams, DaoError> {
         let (salt, mem_cost, parallel, iters, nonce) = users
             .left_join(signin_nonces.on(signin_nonce_fields::user_email.eq(user_fields::email)))
             .filter(user_fields::email.eq(user_email))
@@ -249,7 +249,7 @@ impl Dao {
             .first::<(Vec<u8>, i32, i32, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
 
         if let Some(n) = nonce {
-            Ok(OutputSigninNonceAndHashParams {
+            Ok(SigninNonceAndHashParams {
                 auth_string_salt: salt,
                 auth_string_memory_cost_kib: mem_cost,
                 auth_string_parallelism_factor: parallel,
