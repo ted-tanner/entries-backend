@@ -714,9 +714,9 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
+    use entries_utils::messages::NewUser;
     use entries_utils::models::user::User;
     use entries_utils::models::user_deletion_request::UserDeletionRequest;
-    use entries_utils::request_io::InputUser;
     use entries_utils::schema::budget_access_keys as budget_access_key_fields;
     use entries_utils::schema::budget_access_keys::dsl::budget_access_keys;
     use entries_utils::schema::budgets as budget_fields;
@@ -794,7 +794,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user = InputUser {
+        let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: gen_bytes(10),
@@ -982,7 +982,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user = InputUser {
+        let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: vec![8; 10],
@@ -1506,7 +1506,7 @@ pub mod tests {
         // Test init_delete with no budget tokens
         let (user, access_token) = test_utils::create_user().await;
 
-        let budget_access_tokens = InputBudgetAccessTokenList {
+        let budget_access_tokens = NewBudgetAccessTokenList {
             budget_access_tokens: Vec::new(),
         };
 
@@ -1657,7 +1657,7 @@ pub mod tests {
         .unwrap()
         .key_id;
 
-        let budget_access_tokens = InputBudgetAccessTokenList {
+        let budget_access_tokens = NewBudgetAccessTokenList {
             budget_access_tokens: vec![budget1_token, budget2_token],
         };
 
@@ -1928,11 +1928,11 @@ pub mod tests {
 
         let bad_token = b64_urlsafe.encode(bad_token);
 
-        let budget_access_tokens = InputBudgetAccessTokenList {
+        let budget_access_tokens = NewBudgetAccessTokenList {
             budget_access_tokens: vec![budget1_token.clone(), budget2_token],
         };
 
-        let budget_access_tokens_incorrect = InputBudgetAccessTokenList {
+        let budget_access_tokens_incorrect = NewBudgetAccessTokenList {
             budget_access_tokens: vec![budget1_token, bad_token],
         };
 
@@ -2160,7 +2160,7 @@ pub mod tests {
         //       changed to false
         // TODO: After verification, also delete user2 and verify that budget is deleted
 
-        let budget_access_tokens = InputBudgetAccessTokenList {
+        let budget_access_tokens = NewBudgetAccessTokenList {
             budget_access_tokens: vec![budget1_token.clone(), budget2_token],
         };
 

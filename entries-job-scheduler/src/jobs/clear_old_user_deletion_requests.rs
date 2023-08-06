@@ -44,11 +44,11 @@ impl Job for ClearOldUserDeletionRequestsJob {
 mod tests {
     use super::*;
 
+    use entries_utils::messages::NewUser;
     use entries_utils::models::budget::NewBudget;
     use entries_utils::models::budget_access_key::NewBudgetAccessKey;
     use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
     use entries_utils::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
-    use entries_utils::request_io::InputUser;
     use entries_utils::schema::{budget_access_keys, budgets, user_deletion_request_budget_keys};
     use entries_utils::{db::user, schema::user_deletion_requests};
 
@@ -63,7 +63,7 @@ mod tests {
     async fn test_execute() {
         let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user1 = InputUser {
+        let new_user1 = NewUser {
             email: format!("test_user{}@test.com", &user1_number),
 
             auth_string: Vec::new(),
@@ -92,16 +92,37 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user1_id = user_dao
-            .create_user(&new_user1, "Test", &Vec::new())
+            .create_user(
+                &new_user1.email,
+                &new_user1.auth_string,
+                &new_user1.auth_string_salt,
+                new_user1.auth_string_memory_cost_kib,
+                new_user1.auth_string_parallelism_factor,
+                new_user1.auth_string_iters,
+                &new_user1.password_encryption_salt,
+                new_user1.password_encryption_memory_cost_kib,
+                new_user1.password_encryption_parallelism_factor,
+                new_user1.password_encryption_iters,
+                &new_user1.recovery_key_salt,
+                new_user1.recovery_key_memory_cost_kib,
+                new_user1.recovery_key_parallelism_factor,
+                new_user1.recovery_key_iters,
+                &new_user1.encryption_key_encrypted_with_password,
+                &new_user1.encryption_key_encrypted_with_recovery_key,
+                &new_user1.public_key,
+                &new_user1.preferences_encrypted,
+                &new_user1.user_keystore_encrypted,
+                &Vec::new(),
+            )
             .unwrap();
         user_dao.verify_user_creation(user1_id).unwrap();
 
         let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user2 = InputUser {
+        let new_user2 = NewUser {
             email: format!("test_user{}@test.com", &user2_number),
 
             auth_string: Vec::new(),
@@ -144,7 +165,7 @@ mod tests {
 
         diesel::insert_into(budgets::table)
             .values(&new_budget)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_access_key1 = NewBudgetAccessKey {
@@ -156,7 +177,7 @@ mod tests {
 
         diesel::insert_into(budget_access_keys::table)
             .values(&new_budget_access_key1)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_access_key2 = NewBudgetAccessKey {
@@ -168,7 +189,7 @@ mod tests {
 
         diesel::insert_into(budget_access_keys::table)
             .values(&new_budget_access_key2)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_exp = NewUserDeletionRequest {
@@ -179,7 +200,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_requests::table)
             .values(&new_deletion_req_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_key_exp = NewUserDeletionRequestBudgetKey {
@@ -190,7 +211,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_request_budget_keys::table)
             .values(&new_deletion_req_key_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_not_exp = NewUserDeletionRequest {
@@ -201,7 +222,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_requests::table)
             .values(&new_deletion_req_not_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_key_not_exp = NewUserDeletionRequestBudgetKey {
@@ -212,15 +233,15 @@ mod tests {
 
         diesel::insert_into(user_deletion_request_budget_keys::table)
             .values(&new_deletion_req_key_not_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut job = ClearOldUserDeletionRequestsJob::new(env::db::DB_THREAD_POOL.clone());
+        let mut job = ClearOldUserDeletionRequestsJob::new(env::testing::DB_THREAD_POOL.clone());
 
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -228,7 +249,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_exp.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -236,7 +257,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_not_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -244,7 +265,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_not_exp.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -254,7 +275,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -262,7 +283,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_exp.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -270,7 +291,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_not_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -278,7 +299,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_not_exp.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );

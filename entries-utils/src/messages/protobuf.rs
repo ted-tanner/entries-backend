@@ -426,7 +426,12 @@ pub struct IsUserListedForDeletion {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerErrorResponse {
-    #[prost(enumeration = "ErrorType", required, tag = "1", default = "InternalError")]
+    #[prost(
+        enumeration = "ErrorType",
+        required,
+        tag = "1",
+        default = "InternalError"
+    )]
     pub err_type: i32,
     #[prost(string, required, tag = "2")]
     pub err_message: ::prost::alloc::string::String,

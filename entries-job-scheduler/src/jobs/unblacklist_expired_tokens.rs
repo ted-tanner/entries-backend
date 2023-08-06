@@ -45,8 +45,8 @@ mod tests {
     use super::*;
 
     use entries_utils::db::user;
+    use entries_utils::messages::NewUser;
     use entries_utils::models::blacklisted_token::NewBlacklistedToken;
-    use entries_utils::request_io::InputUser;
     use entries_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
     use entries_utils::token::Token;
@@ -66,7 +66,7 @@ mod tests {
     async fn test_execute() {
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user = InputUser {
+        let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: Vec::new(),
@@ -95,7 +95,7 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user_id = user_dao
             .create_user(&new_user, "Test", &Vec::new())
@@ -138,7 +138,7 @@ mod tests {
             token_expiration: SystemTime::now() + Duration::from_secs(3600),
         };
 
-        let mut db_connection = env::db::DB_THREAD_POOL.get().unwrap();
+        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
         dsl::insert_into(blacklisted_tokens)
             .values(&expired_blacklisted)
             .execute(&mut db_connection)
@@ -148,10 +148,10 @@ mod tests {
             .execute(&mut db_connection)
             .unwrap();
 
-        let mut job = UnblacklistExpiredTokensJob::new(env::db::DB_THREAD_POOL.clone());
+        let mut job = UnblacklistExpiredTokensJob::new(env::testing::DB_THREAD_POOL.clone());
         job.execute().await.unwrap();
 
-        let mut dao = AuthDao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = AuthDao::new(&env::testing::DB_THREAD_POOL);
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(&pretend_expired_token.signature, 0)

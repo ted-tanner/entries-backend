@@ -143,8 +143,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_register() {
-        let mut job_runner =
-            JobRunner::new(Duration::from_micros(200), env::db::DB_THREAD_POOL.clone());
+        let mut job_runner = JobRunner::new(
+            Duration::from_micros(200),
+            env::testing::DB_THREAD_POOL.clone(),
+        );
         assert_eq!(job_runner.update_frequency, Duration::from_micros(200));
         assert!(job_runner.jobs.is_empty());
 
@@ -153,7 +155,7 @@ mod tests {
 
         let set_time = SystemTime::now();
 
-        let mut dao = JobRegistryDao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
         dao.set_job_last_run_timestamp(mock_job1.name(), set_time)
             .unwrap();
 
@@ -173,8 +175,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_start() {
-        let mut job_runner =
-            JobRunner::new(Duration::from_millis(1), env::db::DB_THREAD_POOL.clone());
+        let mut job_runner = JobRunner::new(
+            Duration::from_millis(1),
+            env::testing::DB_THREAD_POOL.clone(),
+        );
         let job1 = MockJob::new();
         let job2 = MockJob::new();
 
@@ -216,7 +220,7 @@ mod tests {
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        let mut dao = JobRegistryDao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
         let mock_job_last_run = dao
             .get_job_last_run_timestamp(job_name)
             .unwrap()

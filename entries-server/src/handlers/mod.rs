@@ -403,12 +403,12 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
+    use entries_utils::messages::{
+        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInvite, CategoryWithTempId, NewBudget,
+        NewUser, PublicKey, UserInvitationToBudget,
+    };
     use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
-    use entries_utils::request_io::{
-        InputBudget, InputCategoryWithTempId, InputPublicKey, InputUser, OutputBudgetFrame,
-        OutputBudgetIdAndEncryptionKey, OutputBudgetShareInvite, UserInvitationToBudget,
-    };
     use entries_utils::schema::budgets::dsl::budgets;
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
@@ -469,7 +469,7 @@ pub mod test_utils {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user = InputUser {
+        let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: gen_bytes(10),
@@ -556,15 +556,15 @@ pub mod test_utils {
         let key_pair = ed25519::SigningKey::generate(&mut OsRng);
         let public_key = key_pair.verifying_key().to_bytes();
 
-        let new_budget = InputBudget {
+        let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
             encryption_key_encrypted: gen_bytes(32),
             categories: vec![
-                InputCategoryWithTempId {
+                CategoryWithTempId {
                     temp_id: 0,
                     encrypted_blob: gen_bytes(40),
                 },
-                InputCategoryWithTempId {
+                CategoryWithTempId {
                     temp_id: 1,
                     encrypted_blob: gen_bytes(60),
                 },
@@ -582,7 +582,7 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_data = test::read_body_json::<OutputBudgetFrame, _>(resp).await;
+        let budget_data = test::read_body_json::<BudgetFrame, _>(resp).await;
         let budget = budgets
             .find(budget_data.id)
             .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
@@ -656,7 +656,7 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let invites = test::read_body_json::<Vec<OutputBudgetShareInvite>, _>(resp).await;
+        let invites = test::read_body_json::<Vec<BudgetShareInvite>, _>(resp).await;
 
         let recipient_private_key = RsaPrivateKey::from_pkcs8_der(recipient_private_key).unwrap();
 
@@ -693,7 +693,7 @@ pub mod test_utils {
 
         let access_private_key = ed25519::SigningKey::generate(&mut OsRng);
         let access_public_key = access_private_key.verifying_key();
-        let access_public_key = InputPublicKey {
+        let access_public_key = PublicKey {
             public_key: access_public_key.as_bytes().to_vec(),
         };
 
@@ -708,7 +708,7 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let access_key_id = test::read_body_json::<OutputBudgetIdAndEncryptionKey, _>(resp).await;
+        let access_key_id = test::read_body_json::<BudgetIdAndEncryptionKey, _>(resp).await;
         let access_key_id = access_key_id.budget_access_key_id;
 
         gen_budget_token(budget_id, access_key_id, &accept_private_key)

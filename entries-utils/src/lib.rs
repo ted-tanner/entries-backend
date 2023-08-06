@@ -3,13 +3,6 @@
 #[macro_use]
 extern crate diesel;
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
-
-#[cfg(test)]
-mod test_env;
-
 pub mod db;
 pub mod email;
 pub mod html;

@@ -73,11 +73,11 @@ mod tests {
     use super::*;
 
     use entries_utils::db::budget;
+    use entries_utils::messages::{EntryAndCategory, NewUser};
     use entries_utils::models::budget::NewBudget;
     use entries_utils::models::budget_access_key::NewBudgetAccessKey;
     use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
     use entries_utils::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
-    use entries_utils::request_io::{InputEntryAndCategory, InputUser};
     use entries_utils::schema::{
         budget_access_keys, budgets, categories, entries, user_deletion_request_budget_keys,
         user_keystores, user_preferences,
@@ -95,7 +95,7 @@ mod tests {
     async fn test_execute() {
         let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user1 = InputUser {
+        let new_user1 = NewUser {
             email: format!("test_user{}@test.com", &user1_number),
 
             auth_string: Vec::new(),
@@ -124,7 +124,7 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user1_id = user_dao
             .create_user(&new_user1, "Test", &Vec::new())
@@ -133,7 +133,7 @@ mod tests {
 
         let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user2 = InputUser {
+        let new_user2 = NewUser {
             email: format!("test_user{}@test.com", &user2_number),
 
             auth_string: Vec::new(),
@@ -176,7 +176,7 @@ mod tests {
 
         diesel::insert_into(budgets::table)
             .values(&new_budget1)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget2 = NewBudget {
@@ -188,14 +188,14 @@ mod tests {
 
         diesel::insert_into(budgets::table)
             .values(&new_budget2)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut budget_dao = budget::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut budget_dao = budget::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let out = budget_dao
             .create_entry_and_category(
-                InputEntryAndCategory {
+                EntryAndCategory {
                     entry_encrypted_blob: Vec::new(),
                     category_encrypted_blob: Vec::new(),
                 },
@@ -208,7 +208,7 @@ mod tests {
 
         let out = budget_dao
             .create_entry_and_category(
-                InputEntryAndCategory {
+                EntryAndCategory {
                     entry_encrypted_blob: Vec::new(),
                     category_encrypted_blob: Vec::new(),
                 },
@@ -228,7 +228,7 @@ mod tests {
 
         diesel::insert_into(budget_access_keys::table)
             .values(&new_budget1_access_key1)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget1_access_key2 = NewBudgetAccessKey {
@@ -240,7 +240,7 @@ mod tests {
 
         diesel::insert_into(budget_access_keys::table)
             .values(&new_budget1_access_key2)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget2_access_key1 = NewBudgetAccessKey {
@@ -252,7 +252,7 @@ mod tests {
 
         diesel::insert_into(budget_access_keys::table)
             .values(&new_budget2_access_key1)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_ready = NewUserDeletionRequest {
@@ -263,7 +263,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_requests::table)
             .values(&new_deletion_req_ready)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_key_ready_budget2 = NewUserDeletionRequestBudgetKey {
@@ -274,7 +274,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_request_budget_keys::table)
             .values(&new_deletion_req_key_ready_budget2)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_key_ready = NewUserDeletionRequestBudgetKey {
@@ -285,7 +285,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_request_budget_keys::table)
             .values(&new_deletion_req_key_ready)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_not_ready = NewUserDeletionRequest {
@@ -296,7 +296,7 @@ mod tests {
 
         diesel::insert_into(user_deletion_requests::table)
             .values(&new_deletion_req_not_ready)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_deletion_req_key_not_ready = NewUserDeletionRequestBudgetKey {
@@ -307,15 +307,15 @@ mod tests {
 
         diesel::insert_into(user_deletion_request_budget_keys::table)
             .values(&new_deletion_req_key_not_ready)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut job = DeleteUsersJob::new(env::db::DB_THREAD_POOL.clone());
+        let mut job = DeleteUsersJob::new(env::testing::DB_THREAD_POOL.clone());
 
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -323,7 +323,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -334,7 +334,7 @@ mod tests {
                     new_budget1_access_key1.key_id,
                     new_budget1_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready_budget2.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -353,7 +353,7 @@ mod tests {
                     new_budget2_access_key1.key_id,
                     new_budget2_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_not_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -369,7 +369,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_not_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -380,7 +380,7 @@ mod tests {
                     new_budget1_access_key2.key_id,
                     new_budget1_access_key2.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget1.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -396,7 +396,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget2.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget1_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget1_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget2_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget2_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -436,7 +436,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -452,7 +452,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -470,7 +470,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -478,7 +478,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -489,7 +489,7 @@ mod tests {
                     new_budget1_access_key1.key_id,
                     new_budget1_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready_budget2.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -508,7 +508,7 @@ mod tests {
                     new_budget2_access_key1.key_id,
                     new_budget2_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -516,7 +516,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_not_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -524,7 +524,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_not_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -535,7 +535,7 @@ mod tests {
                     new_budget1_access_key2.key_id,
                     new_budget1_access_key2.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -543,7 +543,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget1.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -551,7 +551,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget2.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -559,7 +559,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget1_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -567,7 +567,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget1_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget1_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -583,7 +583,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget1_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -591,7 +591,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget2_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -599,7 +599,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget2_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -607,7 +607,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -623,7 +623,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -631,7 +631,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -641,7 +641,7 @@ mod tests {
                 user_deletion_requests::ready_for_deletion_time
                     .eq(SystemTime::now() - Duration::from_secs(10)),
             )
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         job.execute().await.unwrap();
@@ -649,7 +649,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -668,7 +668,7 @@ mod tests {
                     new_budget1_access_key1.key_id,
                     new_budget1_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -676,7 +676,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_ready_budget2.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -687,7 +687,7 @@ mod tests {
                     new_budget2_access_key1.key_id,
                     new_budget2_access_key1.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -695,7 +695,7 @@ mod tests {
         assert_eq!(
             user_deletion_requests::table
                 .find(new_deletion_req_not_ready.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(
             user_deletion_request_budget_keys::table
                 .find(new_deletion_req_key_not_ready.key_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -714,7 +714,7 @@ mod tests {
                     new_budget1_access_key2.key_id,
                     new_budget1_access_key2.budget_id
                 ))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -722,7 +722,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget1.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -730,7 +730,7 @@ mod tests {
         assert_eq!(
             budgets::table
                 .find(new_budget2.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -738,7 +738,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget1_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -746,7 +746,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget1_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -754,7 +754,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget1_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -762,7 +762,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget1_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -770,7 +770,7 @@ mod tests {
         assert_eq!(
             entries::table
                 .find(budget2_entry_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(
             categories::table
                 .find(budget2_category_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -786,7 +786,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -794,7 +794,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user1_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -802,7 +802,7 @@ mod tests {
         assert_eq!(
             user_preferences::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -810,7 +810,7 @@ mod tests {
         assert_eq!(
             user_keystores::table
                 .find(user2_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );

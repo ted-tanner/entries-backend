@@ -56,18 +56,18 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_execute() {
-        let mut dao = throttle::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut dao = throttle::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let throttle_id = rand::thread_rng().gen_range::<i64, _>(i64::MIN..i64::MAX);
         dao.mark_attempt_and_get_attempt_count(throttle_id, SystemTime::now())
             .unwrap();
 
-        let mut job = ClearThrottleTableJob::new(env::db::DB_THREAD_POOL.clone());
+        let mut job = ClearThrottleTableJob::new(env::testing::DB_THREAD_POOL.clone());
 
         assert_eq!(
             throttleable_attempts::table
                 .find(throttle_id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -83,7 +83,7 @@ mod tests {
         assert!(
             throttleable_attempts::table
                 .count()
-                .get_result::<i64>(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap()
                 > 0
         );
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(
             throttleable_attempts::table
                 .count()
-                .get_result::<i64>(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );

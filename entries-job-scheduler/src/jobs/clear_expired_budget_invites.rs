@@ -45,10 +45,10 @@ mod tests {
     use super::*;
 
     use entries_utils::db::user;
+    use entries_utils::messages::NewUser;
     use entries_utils::models::budget::NewBudget;
     use entries_utils::models::budget_accept_key::NewBudgetAcceptKey;
     use entries_utils::models::budget_share_invite::NewBudgetShareInvite;
-    use entries_utils::request_io::InputUser;
     use entries_utils::schema::budget_accept_keys;
     use entries_utils::schema::budget_share_invites;
     use entries_utils::schema::budgets;
@@ -64,7 +64,7 @@ mod tests {
     async fn test_execute() {
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let new_user = InputUser {
+        let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: Vec::new(),
@@ -93,10 +93,31 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::db::DB_THREAD_POOL);
+        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user_id = user_dao
-            .create_user(&new_user, "Test", &Vec::new())
+            .create_user(
+                &new_user.email,
+                &new_user.auth_string,
+                &new_user.auth_string_salt,
+                new_user.auth_string_memory_cost_kib,
+                new_user.auth_string_parallelism_factor,
+                new_user.auth_string_iters,
+                &new_user.password_encryption_salt,
+                new_user.password_encryption_memory_cost_kib,
+                new_user.password_encryption_parallelism_factor,
+                new_user.password_encryption_iters,
+                &new_user.recovery_key_salt,
+                new_user.recovery_key_memory_cost_kib,
+                new_user.recovery_key_parallelism_factor,
+                new_user.recovery_key_iters,
+                &new_user.encryption_key_encrypted_with_password,
+                &new_user.encryption_key_encrypted_with_recovery_key,
+                &new_user.public_key,
+                &new_user.preferences_encrypted,
+                &new_user.user_keystore_encrypted,
+                &Vec::new(),
+            )
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
@@ -109,7 +130,7 @@ mod tests {
 
         diesel::insert_into(budgets::table)
             .values(&new_budget)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_share_invite_exp = NewBudgetShareInvite {
@@ -128,7 +149,7 @@ mod tests {
 
         diesel::insert_into(budget_share_invites::table)
             .values(&new_budget_share_invite_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_accept_key_exp = NewBudgetAcceptKey {
@@ -141,7 +162,7 @@ mod tests {
 
         diesel::insert_into(budget_accept_keys::table)
             .values(&new_budget_accept_key_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_share_invite_not_exp = NewBudgetShareInvite {
@@ -160,7 +181,7 @@ mod tests {
 
         diesel::insert_into(budget_share_invites::table)
             .values(&new_budget_share_invite_not_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let new_budget_accept_key_not_exp = NewBudgetAcceptKey {
@@ -173,15 +194,15 @@ mod tests {
 
         diesel::insert_into(budget_accept_keys::table)
             .values(&new_budget_accept_key_not_exp)
-            .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut job = ClearExpiredBudgetInvitesJob::new(env::db::DB_THREAD_POOL.clone());
+        let mut job = ClearExpiredBudgetInvitesJob::new(env::testing::DB_THREAD_POOL.clone());
 
         assert_eq!(
             budget_share_invites::table
                 .find(new_budget_share_invite_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -189,7 +210,7 @@ mod tests {
         assert_eq!(
             budget_accept_keys::table
                 .find((new_budget_accept_key_exp.key_id, new_budget.id))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -197,7 +218,7 @@ mod tests {
         assert_eq!(
             budget_share_invites::table
                 .find(new_budget_share_invite_not_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -205,7 +226,7 @@ mod tests {
         assert_eq!(
             budget_accept_keys::table
                 .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -215,7 +236,7 @@ mod tests {
         assert_eq!(
             budget_share_invites::table
                 .find(new_budget_share_invite_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -223,7 +244,7 @@ mod tests {
         assert_eq!(
             budget_accept_keys::table
                 .find((new_budget_accept_key_exp.key_id, new_budget.id))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
@@ -231,7 +252,7 @@ mod tests {
         assert_eq!(
             budget_share_invites::table
                 .find(new_budget_share_invite_not_exp.id)
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
@@ -239,7 +260,7 @@ mod tests {
         assert_eq!(
             budget_accept_keys::table
                 .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
-                .execute(&mut env::db::DB_THREAD_POOL.get().unwrap())
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
