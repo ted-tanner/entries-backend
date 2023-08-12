@@ -7,6 +7,7 @@ use crate::schema::users;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
 #[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -39,6 +40,7 @@ pub struct User {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewUser<'a> {
     pub id: Uuid,
     pub email: &'a str,

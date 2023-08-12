@@ -7,6 +7,7 @@ use crate::schema::budget_share_invites;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
 #[diesel(table_name = budget_share_invites)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct BudgetShareInvite {
     pub id: Uuid,
 
@@ -27,6 +28,7 @@ pub struct BudgetShareInvite {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = budget_share_invites)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewBudgetShareInvite<'a> {
     pub id: Uuid,
 

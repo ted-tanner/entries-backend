@@ -762,7 +762,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -793,7 +793,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -805,7 +805,7 @@ pub mod tests {
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(10),
+            auth_string_salt: gen_bytes(252144),
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
@@ -980,7 +980,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1088,7 +1088,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1162,7 +1162,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1375,7 +1375,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1515,7 +1515,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1644,7 +1644,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1906,7 +1906,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -2134,7 +2134,7 @@ pub mod tests {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;

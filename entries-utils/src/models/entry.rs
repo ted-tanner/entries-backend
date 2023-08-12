@@ -14,6 +14,7 @@ use crate::schema::entries;
 #[diesel(belongs_to(Budget, foreign_key = budget_id))]
 #[diesel(belongs_to(Category, foreign_key = category_id))]
 #[diesel(table_name = entries)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Entry {
     pub id: Uuid,
     pub budget_id: Uuid,
@@ -28,6 +29,7 @@ pub struct Entry {
 
 #[derive(Clone, Debug, Insertable)]
 #[diesel(table_name = entries)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewEntry<'a> {
     pub id: Uuid,
     pub budget_id: Uuid,

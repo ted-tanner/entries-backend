@@ -135,16 +135,15 @@ async fn main() -> std::io::Result<()> {
         Arc::new(Box::new(MockSender::new()))
     };
 
-    let mut protobuf_config = ProtoBufConfig::default();
-    protobuf_config.limit(env::CONF.protobuf_max_size);
-
-    let protobuf_config = Data::new(protobuf_config);
     let db_thread_pool = Data::new(db_thread_pool);
     let smtp_thread_pool = Data::new(smtp_thread_pool);
 
     HttpServer::new(move || {
+        let mut protobuf_config = ProtoBufConfig::default();
+        protobuf_config.limit(env::CONF.protobuf_max_size);
+
         App::new()
-            .app_data(protobuf_config.clone())
+            .app_data(protobuf_config)
             .app_data(db_thread_pool.clone())
             .app_data(smtp_thread_pool.clone())
             .configure(services::api::configure)

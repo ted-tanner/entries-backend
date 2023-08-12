@@ -466,7 +466,7 @@ pub mod test_utils {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -554,7 +554,7 @@ pub mod test_utils {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -616,7 +616,7 @@ pub mod test_utils {
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(Data::new(ProtoBufConfig::default()))
+                .app_data(ProtoBufConfig::default())
                 .configure(crate::services::api::configure),
         )
         .await;

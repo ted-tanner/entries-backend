@@ -5,6 +5,7 @@ use crate::schema::signin_nonces;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
 #[diesel(table_name = signin_nonces, primary_key(user_email))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct SigninNonce {
     pub user_email: String,
     pub nonce: i32,
@@ -12,6 +13,7 @@ pub struct SigninNonce {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = signin_nonces, primary_key(user_email))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewSigninNonce<'a> {
     pub user_email: &'a str,
     pub nonce: i32,
