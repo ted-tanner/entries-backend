@@ -503,6 +503,7 @@ pub mod test_utils {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -577,6 +578,7 @@ pub mod test_utils {
             .uri("/api/budget/create")
             .insert_header(("AccessToken", access_token))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_budget.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -633,6 +635,7 @@ pub mod test_utils {
             .insert_header(("AccessToken", sender_access_token))
             .insert_header(("BudgetAccessToken", budget_access_token))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -659,6 +662,7 @@ pub mod test_utils {
             .uri("/api/budget/get_all_pending_invitations")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -708,6 +712,7 @@ pub mod test_utils {
             .insert_header(("BudgetAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;

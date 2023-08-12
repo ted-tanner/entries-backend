@@ -714,6 +714,7 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
+    use actix_protobuf::ProtoBufConfig;
     use entries_utils::messages::NewUser;
     use entries_utils::models::user::User;
     use entries_utils::models::user_deletion_request::UserDeletionRequest;
@@ -760,7 +761,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -774,6 +776,7 @@ pub mod tests {
             ))
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -789,7 +792,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -828,6 +832,7 @@ pub mod tests {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -977,7 +982,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1016,6 +1022,7 @@ pub mod tests {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1083,7 +1090,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1103,6 +1111,7 @@ pub mod tests {
             .uri("/api/user/edit_preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_prefs.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1134,6 +1143,7 @@ pub mod tests {
             .uri("/api/user/edit_preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_prefs.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1154,7 +1164,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1166,6 +1177,7 @@ pub mod tests {
             .uri("/api/auth/obtain_otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -1204,6 +1216,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_password.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1268,6 +1281,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_password.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1363,7 +1377,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1375,6 +1390,7 @@ pub mod tests {
             .uri("/api/auth/obtain_otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -1403,6 +1419,7 @@ pub mod tests {
             .uri("/api/user/change_recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1419,6 +1436,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_recovery_key")
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1462,6 +1480,7 @@ pub mod tests {
             .uri("/api/user/change_recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1500,7 +1519,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1514,6 +1534,7 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1627,7 +1648,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1666,6 +1688,7 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1887,7 +1910,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -1942,6 +1966,7 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens_incorrect.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1952,6 +1977,7 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -2112,7 +2138,8 @@ pub mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -2171,6 +2198,7 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", user1_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
