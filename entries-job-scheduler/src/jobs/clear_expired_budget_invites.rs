@@ -98,7 +98,7 @@ mod tests {
         let user_id = user_dao
             .create_user(
                 &new_user.email,
-                &new_user.auth_string,
+                "",
                 &new_user.auth_string_salt,
                 new_user.auth_string_memory_cost_kib,
                 new_user.auth_string_parallelism_factor,

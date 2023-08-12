@@ -404,8 +404,8 @@ pub mod error {
 #[cfg(test)]
 pub mod test_utils {
     use entries_utils::messages::{
-        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInvite, CategoryWithTempId, NewBudget,
-        NewUser, PublicKey, UserInvitationToBudget,
+        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, CategoryWithTempId,
+        NewBudget, NewUser, PublicKey, UserInvitationToBudget,
     };
     use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
@@ -414,6 +414,7 @@ pub mod test_utils {
     use entries_utils::schema::users::dsl::users;
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
+    use actix_web::body::to_bytes;
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
@@ -425,6 +426,7 @@ pub mod test_utils {
     use ed25519_dalek as ed25519;
     use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
+    use prost::Message;
     use rand::rngs::OsRng;
     use rand::Rng;
     use rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
@@ -501,7 +503,7 @@ pub mod test_utils {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&new_user)
+            .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -558,7 +560,6 @@ pub mod test_utils {
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            encryption_key_encrypted: gen_bytes(32),
             categories: vec![
                 CategoryWithTempId {
                     temp_id: 0,
@@ -576,19 +577,24 @@ pub mod test_utils {
             .uri("/api/budget/create")
             .insert_header(("AccessToken", access_token))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&new_budget)
+            .set_payload(new_budget.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_data = test::read_body_json::<BudgetFrame, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_data = BudgetFrame::decode(resp_body).unwrap();
         let budget = budgets
-            .find(budget_data.id)
+            .find(Uuid::try_from(budget_data.id).unwrap())
             .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(budget.id, budget_data.access_key_id, &key_pair);
+        let budget_access_token = gen_budget_token(
+            budget.id,
+            budget_data.access_key_id.try_into().unwrap(),
+            &key_pair,
+        );
 
         (budget, budget_access_token)
     }
@@ -616,7 +622,9 @@ pub mod test_utils {
             budget_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
-            expiration: SystemTime::now() + Duration::from_secs(10),
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .try_into()
+                .unwrap(),
             read_only,
         };
 
@@ -625,7 +633,7 @@ pub mod test_utils {
             .insert_header(("AccessToken", sender_access_token))
             .insert_header(("BudgetAccessToken", budget_access_token))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&invite_info)
+            .set_payload(invite_info.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -656,23 +664,21 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let invites = test::read_body_json::<Vec<BudgetShareInvite>, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
 
         let recipient_private_key = RsaPrivateKey::from_pkcs8_der(recipient_private_key).unwrap();
 
         let accept_private_key = recipient_private_key
-            .decrypt(
-                Pkcs1v15Encrypt,
-                &invites[0].budget_accept_private_key_encrypted,
-            )
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_encrypted)
             .unwrap();
         let accept_private_key_id = recipient_private_key
-            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_private_key_id)
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_id_encrypted)
             .unwrap();
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
         let accept_token_claims = BudgetAcceptTokenClaims {
-            invite_id: invites[0].invite_id,
+            invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
             budget_id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -694,7 +700,7 @@ pub mod test_utils {
         let access_private_key = ed25519::SigningKey::generate(&mut OsRng);
         let access_public_key = access_private_key.verifying_key();
         let access_public_key = PublicKey {
-            public_key: access_public_key.as_bytes().to_vec(),
+            value: access_public_key.as_bytes().to_vec(),
         };
 
         let req = TestRequest::get()
@@ -702,14 +708,15 @@ pub mod test_utils {
             .insert_header(("BudgetAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(access_public_key)
+            .set_payload(access_public_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let access_key_id = test::read_body_json::<BudgetIdAndEncryptionKey, _>(resp).await;
-        let access_key_id = access_key_id.budget_access_key_id;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let access_key_id = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
+        let access_key_id = Uuid::try_from(access_key_id.budget_access_key_id).unwrap();
 
         gen_budget_token(budget_id, access_key_id, &accept_private_key)
     }

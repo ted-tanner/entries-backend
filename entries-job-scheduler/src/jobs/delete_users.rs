@@ -73,7 +73,7 @@ mod tests {
     use super::*;
 
     use entries_utils::db::budget;
-    use entries_utils::messages::{EntryAndCategory, NewUser};
+    use entries_utils::messages::NewUser;
     use entries_utils::models::budget::NewBudget;
     use entries_utils::models::budget_access_key::NewBudgetAccessKey;
     use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
@@ -127,7 +127,28 @@ mod tests {
         let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user1_id = user_dao
-            .create_user(&new_user1, "Test", &Vec::new())
+            .create_user(
+                &new_user1.email,
+                "",
+                &new_user1.auth_string_salt,
+                new_user1.auth_string_memory_cost_kib,
+                new_user1.auth_string_parallelism_factor,
+                new_user1.auth_string_iters,
+                &new_user1.password_encryption_salt,
+                new_user1.password_encryption_memory_cost_kib,
+                new_user1.password_encryption_parallelism_factor,
+                new_user1.password_encryption_iters,
+                &new_user1.recovery_key_salt,
+                new_user1.recovery_key_memory_cost_kib,
+                new_user1.recovery_key_parallelism_factor,
+                new_user1.recovery_key_iters,
+                &new_user1.encryption_key_encrypted_with_password,
+                &new_user1.encryption_key_encrypted_with_recovery_key,
+                &new_user1.public_key,
+                &new_user1.preferences_encrypted,
+                &new_user1.user_keystore_encrypted,
+                &Vec::new(),
+            )
             .unwrap();
         user_dao.verify_user_creation(user1_id).unwrap();
 
@@ -163,7 +184,28 @@ mod tests {
         };
 
         let user2_id = user_dao
-            .create_user(&new_user2, "Test", &Vec::new())
+            .create_user(
+                &new_user2.email,
+                "",
+                &new_user2.auth_string_salt,
+                new_user2.auth_string_memory_cost_kib,
+                new_user2.auth_string_parallelism_factor,
+                new_user2.auth_string_iters,
+                &new_user2.password_encryption_salt,
+                new_user2.password_encryption_memory_cost_kib,
+                new_user2.password_encryption_parallelism_factor,
+                new_user2.password_encryption_iters,
+                &new_user2.recovery_key_salt,
+                new_user2.recovery_key_memory_cost_kib,
+                new_user2.recovery_key_parallelism_factor,
+                new_user2.recovery_key_iters,
+                &new_user2.encryption_key_encrypted_with_password,
+                &new_user2.encryption_key_encrypted_with_recovery_key,
+                &new_user2.public_key,
+                &new_user2.preferences_encrypted,
+                &new_user2.user_keystore_encrypted,
+                &Vec::new(),
+            )
             .unwrap();
         user_dao.verify_user_creation(user2_id).unwrap();
 
@@ -194,30 +236,18 @@ mod tests {
         let mut budget_dao = budget::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let out = budget_dao
-            .create_entry_and_category(
-                EntryAndCategory {
-                    entry_encrypted_blob: Vec::new(),
-                    category_encrypted_blob: Vec::new(),
-                },
-                new_budget1.id,
-            )
+            .create_entry_and_category(&[0], &[0], new_budget1.id)
             .unwrap();
 
-        let budget1_entry_id = out.entry_id;
-        let budget1_category_id = out.category_id;
+        let budget1_entry_id = Uuid::try_from(out.entry_id).unwrap();
+        let budget1_category_id = Uuid::try_from(out.category_id).unwrap();
 
         let out = budget_dao
-            .create_entry_and_category(
-                EntryAndCategory {
-                    entry_encrypted_blob: Vec::new(),
-                    category_encrypted_blob: Vec::new(),
-                },
-                new_budget2.id,
-            )
+            .create_entry_and_category(&[0], &[0], new_budget2.id)
             .unwrap();
 
-        let budget2_entry_id = out.entry_id;
-        let budget2_category_id = out.category_id;
+        let budget2_entry_id = Uuid::try_from(out.entry_id).unwrap();
+        let budget2_category_id = Uuid::try_from(out.category_id).unwrap();
 
         let new_budget1_access_key1 = NewBudgetAccessKey {
             key_id: Uuid::new_v4(),

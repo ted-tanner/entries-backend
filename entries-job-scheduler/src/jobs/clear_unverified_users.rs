@@ -99,7 +99,7 @@ mod tests {
         let user_no_exp_id = user_dao
             .create_user(
                 &new_user_no_exp.email,
-                &new_user_no_exp.auth_string,
+                "",
                 &new_user_no_exp.auth_string_salt,
                 new_user_no_exp.auth_string_memory_cost_kib,
                 new_user_no_exp.auth_string_parallelism_factor,
@@ -155,7 +155,7 @@ mod tests {
         let user_verified_id = user_dao
             .create_user(
                 &new_user_verified.email,
-                &new_user_verified.auth_string,
+                "",
                 &new_user_verified.auth_string_salt,
                 new_user_verified.auth_string_memory_cost_kib,
                 new_user_verified.auth_string_parallelism_factor,
@@ -217,7 +217,7 @@ mod tests {
         let user_exp_id = user_dao
             .create_user(
                 &new_user_exp.email,
-                &new_user_exp.auth_string,
+                "",
                 &new_user_exp.auth_string_salt,
                 new_user_exp.auth_string_memory_cost_kib,
                 new_user_exp.auth_string_parallelism_factor,

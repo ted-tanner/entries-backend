@@ -218,8 +218,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -255,8 +255,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -289,8 +289,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -326,8 +326,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -363,8 +363,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -397,8 +397,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -434,8 +434,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -479,8 +479,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -520,8 +520,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -564,8 +564,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -608,8 +608,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()
@@ -649,8 +649,8 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.keys.token_encryption_cipher),
-            &env::CONF.keys.token_signing_key,
+            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
         );
 
         let req = TestRequest::default()

@@ -93,7 +93,7 @@ mod tests {
         let user1_id = user_dao
             .create_user(
                 &new_user1.email,
-                &new_user1.auth_string,
+                "",
                 &new_user1.auth_string_salt,
                 new_user1.auth_string_memory_cost_kib,
                 new_user1.auth_string_parallelism_factor,
@@ -150,7 +150,28 @@ mod tests {
         let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user2_id = user_dao
-            .create_user(&new_user2, "Test", &Vec::new())
+            .create_user(
+                &new_user2.email,
+                "",
+                &new_user2.auth_string_salt,
+                new_user2.auth_string_memory_cost_kib,
+                new_user2.auth_string_parallelism_factor,
+                new_user2.auth_string_iters,
+                &new_user2.password_encryption_salt,
+                new_user2.password_encryption_memory_cost_kib,
+                new_user2.password_encryption_parallelism_factor,
+                new_user2.password_encryption_iters,
+                &new_user2.recovery_key_salt,
+                new_user2.recovery_key_memory_cost_kib,
+                new_user2.recovery_key_parallelism_factor,
+                new_user2.recovery_key_iters,
+                &new_user2.encryption_key_encrypted_with_password,
+                &new_user2.encryption_key_encrypted_with_recovery_key,
+                &new_user2.public_key,
+                &new_user2.preferences_encrypted,
+                &new_user2.user_keystore_encrypted,
+                &vec![String::from("Test")],
+            )
             .unwrap();
         user_dao.verify_user_creation(user2_id).unwrap();
 

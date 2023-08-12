@@ -182,9 +182,9 @@ pub struct EntryUpdate {
 pub struct NewBudget {
     #[prost(bytes = "vec", required, tag = "1")]
     pub encrypted_blob: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag = "3")]
     pub categories: ::prost::alloc::vec::Vec<CategoryWithTempId>,
-    #[prost(bytes = "vec", required, tag = "3")]
+    #[prost(bytes = "vec", required, tag = "4")]
     pub user_public_budget_key: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Zeroize)]

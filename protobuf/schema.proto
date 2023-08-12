@@ -141,8 +141,8 @@ message EntryUpdate {
 
 message NewBudget {
     required bytes encrypted_blob = 1;
-    repeated CategoryWithTempId categories = 2;
-    required bytes user_public_budget_key = 3;
+    repeated CategoryWithTempId categories = 3;
+    required bytes user_public_budget_key = 4;
 }
 
 message NewEncryptedBlob {

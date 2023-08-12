@@ -737,6 +737,7 @@ pub mod tests {
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
 
+    use actix_web::body::to_bytes;
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
@@ -746,8 +747,8 @@ pub mod tests {
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
+    use prost::Message;
     use rand::Rng;
-    use rsa::pkcs8::EncodePrivateKey;
     use sha1::{Digest, Sha1};
     use std::str::FromStr;
 
@@ -778,8 +779,9 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let resp_public_key = test::read_body_json::<OutputPublicKey, _>(resp).await;
-        assert_eq!(user.public_key, resp_public_key.public_key);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_public_key = PublicKey::decode(resp_body).unwrap();
+        assert_eq!(user.public_key, resp_public_key.value);
     }
 
     #[actix_web::test]
@@ -826,7 +828,7 @@ pub mod tests {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&new_user)
+            .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1014,7 +1016,7 @@ pub mod tests {
         let req = TestRequest::post()
             .uri("/api/user/create")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&new_user)
+            .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1044,7 +1046,7 @@ pub mod tests {
                 "/api/user/verify_creation?UserCreationToken={}",
                 &user_creation_token[..(user_creation_token.len() - 4)],
             ))
-            .set_json(&new_user)
+            .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1062,7 +1064,7 @@ pub mod tests {
                 "/api/user/verify_creation?UserCreationToken={}",
                 user_creation_token,
             ))
-            .set_json(&new_user)
+            .set_payload(new_user.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1092,7 +1094,7 @@ pub mod tests {
             .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
             .collect();
 
-        let updated_prefs = InputEditUserPrefs {
+        let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob.clone(),
             expected_previous_data_hash: vec![200; 8],
         };
@@ -1101,7 +1103,7 @@ pub mod tests {
             .uri("/api/user/edit_preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&updated_prefs)
+            .set_payload(updated_prefs.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1123,7 +1125,7 @@ pub mod tests {
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&stored_prefs_blob);
 
-        let updated_prefs = InputEditUserPrefs {
+        let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob,
             expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
         };
@@ -1132,7 +1134,7 @@ pub mod tests {
             .uri("/api/user/edit_preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&updated_prefs)
+            .set_payload(updated_prefs.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1202,7 +1204,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&edit_password)
+            .set_payload(edit_password.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1266,7 +1268,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_password")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&edit_password)
+            .set_payload(edit_password.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1385,7 +1387,7 @@ pub mod tests {
         let updated_recovery_key_salt: Vec<_> = gen_bytes(16);
         let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
-        let mut edit_recovery_key = InputNewRecoveryKey {
+        let mut edit_recovery_key = RecoveryKeyUpdate {
             otp: String::from("ABCDEFGH"),
 
             recovery_key_salt: updated_recovery_key_salt.clone(),
@@ -1401,7 +1403,7 @@ pub mod tests {
             .uri("/api/user/change_recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&edit_recovery_key)
+            .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1417,7 +1419,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/user/change_recovery_key")
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&edit_recovery_key)
+            .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1460,7 +1462,7 @@ pub mod tests {
             .uri("/api/user/change_recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(&edit_recovery_key)
+            .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1506,20 +1508,19 @@ pub mod tests {
         // Test init_delete with no budget tokens
         let (user, access_token) = test_utils::create_user().await;
 
-        let budget_access_tokens = NewBudgetAccessTokenList {
-            budget_access_tokens: Vec::new(),
-        };
+        let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
 
         let req = TestRequest::delete()
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(budget_access_tokens)
+            .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = test::read_body_json::<OutputVerificationEmailSent, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
         let deletion_requests = user_deletion_requests
@@ -1657,20 +1658,21 @@ pub mod tests {
         .unwrap()
         .key_id;
 
-        let budget_access_tokens = NewBudgetAccessTokenList {
-            budget_access_tokens: vec![budget1_token, budget2_token],
+        let budget_access_tokens = BudgetAccessTokenList {
+            tokens: vec![budget1_token, budget2_token],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(budget_access_tokens)
+            .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = test::read_body_json::<OutputVerificationEmailSent, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
         let deletion_requests = user_deletion_requests
@@ -1928,19 +1930,19 @@ pub mod tests {
 
         let bad_token = b64_urlsafe.encode(bad_token);
 
-        let budget_access_tokens = NewBudgetAccessTokenList {
-            budget_access_tokens: vec![budget1_token.clone(), budget2_token],
+        let budget_access_tokens = BudgetAccessTokenList {
+            tokens: vec![budget1_token.clone(), budget2_token],
         };
 
-        let budget_access_tokens_incorrect = NewBudgetAccessTokenList {
-            budget_access_tokens: vec![budget1_token, bad_token],
+        let budget_access_tokens_incorrect = BudgetAccessTokenList {
+            tokens: vec![budget1_token, bad_token],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(budget_access_tokens_incorrect)
+            .set_payload(budget_access_tokens_incorrect.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1950,12 +1952,13 @@ pub mod tests {
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(budget_access_tokens)
+            .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = test::read_body_json::<OutputVerificationEmailSent, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
         let deletion_requests = user_deletion_requests
@@ -2160,20 +2163,21 @@ pub mod tests {
         //       changed to false
         // TODO: After verification, also delete user2 and verify that budget is deleted
 
-        let budget_access_tokens = NewBudgetAccessTokenList {
-            budget_access_tokens: vec![budget1_token.clone(), budget2_token],
+        let budget_access_tokens = BudgetAccessTokenList {
+            tokens: vec![budget1_token.clone(), budget2_token],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user/init_delete")
             .insert_header(("AccessToken", user1_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .set_json(budget_access_tokens)
+            .set_payload(budget_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = test::read_body_json::<OutputVerificationEmailSent, _>(resp).await;
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
         let deletion_requests = user_deletion_requests
