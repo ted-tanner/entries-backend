@@ -403,6 +403,7 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
+    use actix_protobuf::ProtoBufConfig;
     use entries_utils::messages::{
         BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, CategoryWithTempId,
         NewBudget, NewUser, PublicKey, UserInvitationToBudget,
@@ -464,7 +465,8 @@ pub mod test_utils {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -551,7 +553,8 @@ pub mod test_utils {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;
@@ -612,7 +615,8 @@ pub mod test_utils {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
-                .app_data(Data::from(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(Data::new(ProtoBufConfig::default()))
                 .configure(crate::services::api::configure),
         )
         .await;

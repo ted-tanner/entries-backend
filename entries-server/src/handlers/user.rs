@@ -37,7 +37,7 @@ pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<EmailQuery>,
-    throttle: Throttle<15, 5>,
+    throttle: Throttle<20, 2>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     throttle
         .enforce(
@@ -715,7 +715,7 @@ pub mod tests {
     use super::*;
 
     use actix_protobuf::ProtoBufConfig;
-    use entries_utils::messages::NewUser;
+    use entries_utils::messages::{ErrorType, NewUser, ServerErrorResponse};
     use entries_utils::models::user::User;
     use entries_utils::models::user_deletion_request::UserDeletionRequest;
     use entries_utils::schema::budget_access_keys as budget_access_key_fields;
@@ -839,8 +839,8 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let resp_body = test::try_read_body(resp).await.unwrap();
-        let resp_body = String::from_utf8_lossy(&resp_body);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = BackupCodesAndVerificationEmailSent::decode(resp_body).unwrap();
 
         let user = users
             .filter(user_fields::email.eq(&new_user.email))
@@ -935,10 +935,7 @@ pub mod tests {
             .contains(&format!("p={}", env::CONF.hash_threads)));
 
         // Get backup codes from response
-        let codes_array_start = resp_body.find('[').unwrap() + 1;
-        let codes_array_end = resp_body.find(']').unwrap();
-        let backup_codes_array = resp_body[codes_array_start..codes_array_end].replace('"', "");
-        let codes = backup_codes_array.split(',');
+        let codes = resp_body.backup_codes;
 
         let codes_from_db = user_backup_codes
             .select(user_backup_code_fields::code)
@@ -1118,10 +1115,10 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
-        let resp_body = test::try_read_body(resp).await.unwrap();
-        let resp_body = String::from_utf8_lossy(&resp_body);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
-        assert!(resp_body.contains("\"error_code\":\"U2SLOW\""));
+        assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
         let stored_prefs_blob = user_preferences
             .select(user_preferences_fields::encrypted_blob)
@@ -1223,10 +1220,10 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let resp_body = test::try_read_body(resp).await.unwrap();
-        let resp_body = String::from_utf8_lossy(&resp_body);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
-        assert!(resp_body.contains("\"error_code\":\"DISNOU\""));
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
 
         let stored_user = users
             .find(user.id)
@@ -1426,10 +1423,10 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let resp_body = test::try_read_body(resp).await.unwrap();
-        let resp_body = String::from_utf8_lossy(&resp_body);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
-        assert!(resp_body.contains("\"error_code\":\"DISNOU\""));
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
 
         edit_recovery_key.otp = otp;
 
@@ -1443,12 +1440,10 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let resp_body = test::try_read_body(resp).await.unwrap();
-        let resp_body = String::from_utf8_lossy(&resp_body);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
-        println!("\n\n{:#?}\n\n", resp_body);
-
-        assert!(resp_body.contains("\"error_code\":\"UFORGT\""));
+        assert_eq!(resp_err.err_type, ErrorType::TokenMissing as i32);
 
         let stored_user = users
             .find(user.id)
