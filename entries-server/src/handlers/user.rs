@@ -770,10 +770,7 @@ pub mod tests {
         let (user, access_token) = test_utils::create_user().await;
 
         let req = TestRequest::get()
-            .uri(&format!(
-                "/api/user/lookup_user_public_key?email={}",
-                user.email
-            ))
+            .uri(&format!("/api/user/public_key?email={}", user.email))
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -830,7 +827,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/user/create")
+            .uri("/api/user")
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
@@ -1017,7 +1014,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/user/create")
+            .uri("/api/user")
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
@@ -1047,7 +1044,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/user/verify_creation?UserCreationToken={}",
+                "/api/user/verify?UserCreationToken={}",
                 &user_creation_token[..(user_creation_token.len() - 4)],
             ))
             .set_payload(new_user.encode_to_vec())
@@ -1065,7 +1062,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/user/verify_creation?UserCreationToken={}",
+                "/api/user/verify?UserCreationToken={}",
                 user_creation_token,
             ))
             .set_payload(new_user.encode_to_vec())
@@ -1105,7 +1102,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/edit_preferences")
+            .uri("/api/user/preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1137,7 +1134,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/edit_preferences")
+            .uri("/api/user/preferences")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1171,7 +1168,7 @@ pub mod tests {
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
-            .uri("/api/auth/obtain_otp")
+            .uri("/api/auth/otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1211,7 +1208,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/change_password")
+            .uri("/api/user/password")
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_password.encode_to_vec())
@@ -1276,7 +1273,7 @@ pub mod tests {
         edit_password.otp = otp;
 
         let req = TestRequest::put()
-            .uri("/api/user/change_password")
+            .uri("/api/user/password")
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_password.encode_to_vec())
@@ -1384,7 +1381,7 @@ pub mod tests {
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
-            .uri("/api/auth/obtain_otp")
+            .uri("/api/auth/otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1413,7 +1410,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/change_recovery_key")
+            .uri("/api/user/recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1431,7 +1428,7 @@ pub mod tests {
         edit_recovery_key.otp = otp;
 
         let req = TestRequest::put()
-            .uri("/api/user/change_recovery_key")
+            .uri("/api/user/recovery_key")
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -1472,7 +1469,7 @@ pub mod tests {
         );
 
         let req = TestRequest::put()
-            .uri("/api/user/change_recovery_key")
+            .uri("/api/user/recovery_key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1526,7 +1523,7 @@ pub mod tests {
         let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
 
         let req = TestRequest::delete()
-            .uri("/api/user/init_delete")
+            .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1577,7 +1574,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/user/verify_deletion?{}={}",
+                "/api/user/deletion/verify?{}={}",
                 UserDeletion::token_name(),
                 user_deletion_token,
             ))
@@ -1680,7 +1677,7 @@ pub mod tests {
         };
 
         let req = TestRequest::delete()
-            .uri("/api/user/init_delete")
+            .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1767,7 +1764,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/user/verify_deletion?{}={}",
+                "/api/user/deletion/verify?{}={}",
                 UserDeletion::token_name(),
                 user_deletion_token,
             ))
@@ -1958,7 +1955,7 @@ pub mod tests {
         };
 
         let req = TestRequest::delete()
-            .uri("/api/user/init_delete")
+            .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1969,7 +1966,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
         let req = TestRequest::delete()
-            .uri("/api/user/init_delete")
+            .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -2058,7 +2055,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/user/verify_deletion?{}={}",
+                "/api/user/deletion/verify?{}={}",
                 UserDeletion::token_name(),
                 broken_user_deletion_token,
             ))
@@ -2190,7 +2187,7 @@ pub mod tests {
         };
 
         let req = TestRequest::delete()
-            .uri("/api/user/init_delete")
+            .uri("/api/user")
             .insert_header(("AccessToken", user1_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))

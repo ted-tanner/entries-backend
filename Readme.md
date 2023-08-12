@@ -506,8 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Check for unused dependencies
-* Combine endpoints (/budget/create, /budget/get, /budget/edit can just be /budget POST, GET, PUT)
 * Unit tests!
   - [x] Jobs
   - [ ] Handler utils in `handers/mod.rs`
@@ -516,6 +514,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Update readme documentation
   - Add a section for the job scheduler
   - Create a deployment checklist!
+  - Error Codes that can occur that aren't defined in Protobuf ServerErrorResponse message
+    - 413 Request payload is too big
+    - 500
+    - 404
 * White paper
 
 ### Do it later

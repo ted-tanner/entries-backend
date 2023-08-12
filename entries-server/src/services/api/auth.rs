@@ -6,25 +6,25 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
             .route(
-                "/obtain_nonce_and_auth_string_salt",
+                "/nonce_and_auth_string_salt",
                 web::get().to(handlers::auth::obtain_nonce_and_auth_string_params),
             )
             .route("/sign_in", web::post().to(handlers::auth::sign_in))
             .route(
-                "/verify_otp_for_signin",
+                "/otp/verify",
                 web::post().to(handlers::auth::verify_otp_for_signin),
             )
             .route(
-                "/use_backup_code_for_signin",
+                "/backup_code/use",
                 web::post().to(handlers::auth::use_backup_code_for_signin),
             )
             .route(
-                "/regenerate_backup_codes",
+                "/backup_code/regenerate",
                 web::put().to(handlers::auth::regenerate_backup_codes),
             )
-            .route("obtain_otp", web::get().to(handlers::auth::obtain_otp))
+            .route("otp", web::get().to(handlers::auth::obtain_otp))
             .route(
-                "/refresh_tokens",
+                "/token/refresh",
                 web::post().to(handlers::auth::refresh_tokens),
             )
             .route("/logout", web::post().to(handlers::auth::logout)),
