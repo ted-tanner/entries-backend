@@ -508,7 +508,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 * Unit tests!
   - [x] Jobs
-  - [ ] Handler utils in `handers/mod.rs`
   - [ ] Handlers!
   - [x] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation

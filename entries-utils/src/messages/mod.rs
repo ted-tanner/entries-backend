@@ -45,7 +45,7 @@ impl TryFrom<UuidV4> for Uuid {
     type Error = MessageError;
 
     fn try_from(uuid: UuidV4) -> Result<Self, Self::Error> {
-        Ok((&uuid).try_into()?)
+        (&uuid).try_into()
     }
 }
 
