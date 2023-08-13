@@ -284,9 +284,7 @@ pub async fn invite_user(
         let accept_public_key = accept_key_pair.verifying_key().to_bytes();
         let accept_private_key = accept_key_pair.to_bytes();
 
-        let recipient_public_key = match RsaPublicKey::from_public_key_pem(
-            &String::from_utf8_lossy(&recipient_public_key),
-        ) {
+        let recipient_public_key = match RsaPublicKey::from_public_key_der(&recipient_public_key) {
             Ok(k) => k,
             Err(_) => {
                 sender

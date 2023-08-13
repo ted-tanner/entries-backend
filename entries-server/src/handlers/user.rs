@@ -750,6 +750,7 @@ pub mod tests {
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
     use prost::Message;
     use rand::Rng;
+    use rsa::pkcs8::EncodePrivateKey;
     use sha1::{Digest, Sha1};
     use std::str::FromStr;
 
@@ -2126,7 +2127,7 @@ pub mod tests {
     }
 
     #[actix_web::test]
-    async fn test_delete_user_succeeds_with_shared_token() {
+    async fn test_delete_user_succeeds_with_shared_budgets() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2140,13 +2141,14 @@ pub mod tests {
         let (user1, user1_access_token) = test_utils::create_user().await;
         let (user2, user2_access_token) = test_utils::create_user().await;
 
+        test_utils::gen_new_user_rsa_key(user1.id);
         let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id);
 
-        let (budget1, budget1_token) = test_utils::create_budget(&user1_access_token).await;
-        let (budget2, budget2_token) = test_utils::create_budget(&user1_access_token).await;
+        let (budget1, budget1_token_user1) = test_utils::create_budget(&user1_access_token).await;
+        let (budget2, budget2_token_user1) = test_utils::create_budget(&user1_access_token).await;
 
-        let budget1_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget1_token).unwrap())
+        let budget1_access_key_id_user1 = serde_json::from_str::<BudgetAccessTokenClaims>(
+            String::from_utf8(b64_urlsafe.decode(&budget1_token_user1).unwrap())
                 .unwrap()
                 .rsplit_once('|')
                 .unwrap()
@@ -2155,8 +2157,8 @@ pub mod tests {
         .unwrap()
         .key_id;
 
-        let budget2_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget2_token).unwrap())
+        let budget2_access_key_id_user1 = serde_json::from_str::<BudgetAccessTokenClaims>(
+            String::from_utf8(b64_urlsafe.decode(&budget2_token_user1).unwrap())
                 .unwrap()
                 .rsplit_once('|')
                 .unwrap()
@@ -2165,25 +2167,28 @@ pub mod tests {
         .unwrap()
         .key_id;
 
-        // test_utils::share_budget(
-        //     budget2.id,
-        //     &user2.email,
-        //     user2_rsa_key.to_pkcs8_der(),
-        //     true,
+        let budget2_token_user2 = test_utils::share_budget(
+            budget2.id,
+            &user2.email,
+            user2_rsa_key.to_pkcs8_der().unwrap().as_bytes(),
+            true,
+            &budget2_token_user1,
+            &user1_access_token,
+        )
+        .await;
 
-        // );
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
 
-        // TODO: Share budget2
-        // TODO: Always verify that user2 is able to access budget2, even after user1 is
-        //       deleted
-        // TODO: After user1 is deleted, user1's budget access token record should be deleted
-        //       as well as budget1
-        // TODO: Test that once user2 is the only user in the budget, read-only status is
-        //       changed to false
-        // TODO: After verification, also delete user2 and verify that budget is deleted
+        assert_eq!(resp.status(), StatusCode::OK);
 
         let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget1_token.clone(), budget2_token],
+            tokens: vec![budget1_token_user1, budget2_token_user1],
         };
 
         let req = TestRequest::delete()
@@ -2226,7 +2231,7 @@ pub mod tests {
 
         assert_eq!(
             budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -2235,7 +2240,7 @@ pub mod tests {
 
         assert_eq!(
             budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -2260,6 +2265,16 @@ pub mod tests {
             1,
         );
 
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user1.id,
             user_email: &user1.email,
@@ -2272,9 +2287,260 @@ pub mod tests {
             &env::CONF.token_signing_key,
         );
 
-        // TODO: Test with a shared token (delete just one user, budget should survive) and an unshared token
-        // TODO: Test with a shared token (delete both users, budget should be deleted)
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/deletion/verify?{}={}",
+                UserDeletion::token_name(),
+                user_deletion_token,
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
 
-        // todo!();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user1.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 1);
+
+        let deletion_request_budget_key_count = user_deletion_request_budget_keys
+            .filter(user_deletion_request_budget_key_fields::user_id.eq(user1.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_request_budget_key_count, 2);
+
+        assert_eq!(
+            users
+                .filter(user_fields::id.eq(user1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budgets
+                .filter(budget_fields::id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budgets
+                .filter(budget_fields::id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::budget_id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            2,
+        );
+
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        user_dao.delete_user(&deletion_requests[0]).unwrap();
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user1.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 0);
+
+        let deletion_request_budget_key_count = user_deletion_request_budget_keys
+            .filter(user_deletion_request_budget_key_fields::user_id.eq(user1.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_request_budget_key_count, 0);
+
+        assert_eq!(
+            users
+                .filter(user_fields::id.eq(user1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budgets
+                .filter(budget_fields::id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budgets
+                .filter(budget_fields::id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::budget_id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Delete user 2
+        let budget_access_tokens = BudgetAccessTokenList {
+            tokens: vec![budget2_token_user2],
+        };
+
+        let req = TestRequest::delete()
+            .uri("/api/user")
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let user_deletion_token_claims = NewAuthTokenClaims {
+            user_id: user2.id,
+            user_email: &user2.email,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            token_type: AuthTokenType::UserDeletion,
+        };
+
+        let user_deletion_token = AuthToken::sign_new(
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
+        );
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/deletion/verify?{}={}",
+                UserDeletion::token_name(),
+                user_deletion_token,
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user2.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 1);
+
+        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        user_dao.delete_user(&deletion_requests[0]).unwrap();
+
+        assert_eq!(
+            users
+                .filter(user_fields::id.eq(user2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budgets
+                .filter(budget_fields::id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            budget_access_keys
+                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
     }
 }

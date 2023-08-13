@@ -538,7 +538,7 @@ pub mod test_utils {
     }
 
     pub fn gen_new_user_rsa_key(user_id: Uuid) -> RsaPrivateKey {
-        let keypair = RsaPrivateKey::new(&mut OsRng, 128).unwrap();
+        let keypair = RsaPrivateKey::new(&mut OsRng, 512).unwrap();
         let public_key = keypair.to_public_key().to_public_key_der().unwrap();
 
         dsl::update(users.find(user_id))
@@ -609,7 +609,7 @@ pub mod test_utils {
         recipient_email: &str,
         recipient_private_key: &[u8],
         read_only: bool,
-        budget_access_token: &str,
+        sender_budget_access_token: &str,
         sender_access_token: &str,
     ) -> String {
         let app = test::init_service(
@@ -634,10 +634,10 @@ pub mod test_utils {
             read_only,
         };
 
-        let req = TestRequest::put()
+        let req = TestRequest::post()
             .uri("/api/budget/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", budget_access_token))
+            .insert_header(("BudgetAccessToken", sender_budget_access_token))
             .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -711,7 +711,7 @@ pub mod test_utils {
             value: access_public_key.as_bytes().to_vec(),
         };
 
-        let req = TestRequest::get()
+        let req = TestRequest::put()
             .uri("/api/budget/invitation/accept")
             .insert_header(("BudgetAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
@@ -727,6 +727,6 @@ pub mod test_utils {
         let access_key_id = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
         let access_key_id = Uuid::try_from(access_key_id.budget_access_key_id).unwrap();
 
-        gen_budget_token(budget_id, access_key_id, &accept_private_key)
+        gen_budget_token(budget_id, access_key_id, &access_private_key)
     }
 }
