@@ -684,7 +684,7 @@ pub async fn is_listed_for_deletion(
     };
 
     Ok(HttpResponse::Ok().protobuf(IsUserListedForDeletion {
-        is_listed_for_deletion,
+        value: is_listed_for_deletion,
     })?)
 }
 
@@ -774,7 +774,6 @@ pub mod tests {
             .uri(&format!("/api/user/public_key?email={}", user.email))
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1155,6 +1154,80 @@ pub mod tests {
     }
 
     #[actix_web::test]
+    async fn test_edit_keystore() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let updated_prefs_blob: Vec<_> = (0..32)
+            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .collect();
+
+        let updated_prefs = EncryptedBlobUpdate {
+            encrypted_blob: updated_prefs_blob.clone(),
+            expected_previous_data_hash: vec![200; 8],
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/keystore")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(updated_prefs.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
+
+        let stored_prefs_blob = user_keystores
+            .select(user_keystore_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_ne!(stored_prefs_blob, updated_prefs_blob);
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&stored_prefs_blob);
+
+        let updated_prefs = EncryptedBlobUpdate {
+            encrypted_blob: updated_prefs_blob,
+            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/keystore")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(updated_prefs.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let stored_prefs_blob = user_keystores
+            .select(user_keystore_fields::encrypted_blob)
+            .find(user.id)
+            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
+    }
+
+    #[actix_web::test]
     async fn test_change_password() {
         let app = test::init_service(
             App::new()
@@ -1172,7 +1245,6 @@ pub mod tests {
             .uri("/api/auth/otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -1385,7 +1457,6 @@ pub mod tests {
             .uri("/api/auth/otp")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -2542,5 +2613,134 @@ pub mod tests {
                 .unwrap(),
             0,
         );
+    }
+
+    #[actix_web::test]
+    async fn test_check_user_is_listed_for_deletion() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        // Test init_delete with no budget tokens
+        let (user, access_token) = test_utils::create_user().await;
+
+        let req = TestRequest::get()
+            .uri("/api/user/deletion")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
+        assert!(!resp_body.value);
+
+        let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
+
+        let req = TestRequest::delete()
+            .uri("/api/user")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 0);
+
+        let req = TestRequest::get()
+            .uri("/api/user/deletion")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
+        assert!(!resp_body.value);
+
+        let user_deletion_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            token_type: AuthTokenType::UserDeletion,
+        };
+
+        let user_deletion_token = AuthToken::sign_new(
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            &env::CONF.token_signing_key,
+        );
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/deletion/verify?{}={}",
+                UserDeletion::token_name(),
+                user_deletion_token,
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 1);
+
+        let req = TestRequest::get()
+            .uri("/api/user/deletion")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
+        assert!(resp_body.value);
+
+        let req = TestRequest::delete()
+            .uri("/api/user/deletion")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let deletion_requests = user_deletion_requests
+            .filter(user_deletion_request_fields::user_id.eq(user.id))
+            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(deletion_requests.len(), 0);
+
+        let req = TestRequest::get()
+            .uri("/api/user/deletion")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
+        assert!(!resp_body.value);
     }
 }

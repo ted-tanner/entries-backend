@@ -339,7 +339,6 @@ impl Dao {
         time_until_deletion: Duration,
     ) -> Result<(), DaoError> {
         let new_request = NewUserDeletionRequest {
-            id: Uuid::new_v4(),
             user_id,
             ready_for_deletion_time: SystemTime::now() + time_until_deletion,
         };

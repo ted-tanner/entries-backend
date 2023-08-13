@@ -114,8 +114,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_deletion_requests (id) {
-        id -> Uuid,
+    user_deletion_requests (user_id) {
         user_id -> Uuid,
         ready_for_deletion_time -> Timestamp,
     }

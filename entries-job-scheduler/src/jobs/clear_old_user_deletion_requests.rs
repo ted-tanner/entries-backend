@@ -214,7 +214,6 @@ mod tests {
             .unwrap();
 
         let new_deletion_req_exp = NewUserDeletionRequest {
-            id: Uuid::new_v4(),
             user_id: user1_id,
             ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
         };
@@ -236,7 +235,6 @@ mod tests {
             .unwrap();
 
         let new_deletion_req_not_exp = NewUserDeletionRequest {
-            id: Uuid::new_v4(),
             user_id: user2_id,
             ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
         };
@@ -261,7 +259,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_exp.id)
+                .find(new_deletion_req_exp.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -277,7 +275,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_not_exp.id)
+                .find(new_deletion_req_not_exp.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -295,7 +293,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_exp.id)
+                .find(new_deletion_req_exp.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
@@ -311,7 +309,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_not_exp.id)
+                .find(new_deletion_req_not_exp.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1

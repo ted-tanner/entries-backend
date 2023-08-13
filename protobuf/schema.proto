@@ -285,7 +285,7 @@ message InvitationId {
 }
 
 message IsUserListedForDeletion {
-    required bool is_listed_for_deletion = 1;
+    required bool value = 1;
 }
 
 message ServerErrorResponse {

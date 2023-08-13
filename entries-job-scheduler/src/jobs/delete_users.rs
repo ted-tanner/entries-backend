@@ -286,7 +286,6 @@ mod tests {
             .unwrap();
 
         let new_deletion_req_ready = NewUserDeletionRequest {
-            id: Uuid::new_v4(),
             user_id: user1_id,
             ready_for_deletion_time: SystemTime::now() - Duration::from_secs(10),
         };
@@ -319,7 +318,6 @@ mod tests {
             .unwrap();
 
         let new_deletion_req_not_ready = NewUserDeletionRequest {
-            id: Uuid::new_v4(),
             user_id: user2_id,
             ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
         };
@@ -344,7 +342,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_ready.id)
+                .find(new_deletion_req_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -390,7 +388,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_not_ready.id)
+                .find(new_deletion_req_not_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -499,7 +497,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_ready.id)
+                .find(new_deletion_req_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
@@ -545,7 +543,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_not_ready.id)
+                .find(new_deletion_req_not_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -666,7 +664,7 @@ mod tests {
             1
         );
 
-        diesel::update(user_deletion_requests::table.find(new_deletion_req_not_ready.id))
+        diesel::update(user_deletion_requests::table.find(new_deletion_req_not_ready.user_id))
             .set(
                 user_deletion_requests::ready_for_deletion_time
                     .eq(SystemTime::now() - Duration::from_secs(10)),
@@ -678,7 +676,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_ready.id)
+                .find(new_deletion_req_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
@@ -724,7 +722,7 @@ mod tests {
 
         assert_eq!(
             user_deletion_requests::table
-                .find(new_deletion_req_not_ready.id)
+                .find(new_deletion_req_not_ready.user_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0

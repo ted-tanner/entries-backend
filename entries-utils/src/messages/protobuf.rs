@@ -420,7 +420,7 @@ pub struct InvitationId {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct IsUserListedForDeletion {
     #[prost(bool, required, tag = "1")]
-    pub is_listed_for_deletion: bool,
+    pub value: bool,
 }
 #[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]

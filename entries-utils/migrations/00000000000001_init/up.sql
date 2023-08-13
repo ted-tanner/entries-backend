@@ -166,8 +166,7 @@ CREATE TABLE user_backup_codes (
 );
 
 CREATE TABLE user_deletion_requests (
-    id UUID PRIMARY KEY,
-    user_id UUID UNIQUE NOT NULL,
+    user_id UUID PRIMARY KEY,
     ready_for_deletion_time TIMESTAMP NOT NULL
 );
 

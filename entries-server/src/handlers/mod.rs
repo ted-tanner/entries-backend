@@ -666,7 +666,6 @@ pub mod test_utils {
             .uri("/api/budget/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("AppVersion", "0.1.0"))
-            .insert_header(("Content-Type", "application/protobuf"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
