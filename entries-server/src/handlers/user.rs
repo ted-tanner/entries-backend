@@ -906,7 +906,7 @@ pub mod tests {
 
         assert_eq!(hash_len, env::CONF.hash_length);
 
-        let salt_start_pos = (&user.auth_string_hash[..(hash_start_pos - 1)])
+        let salt_start_pos = user.auth_string_hash[..(hash_start_pos - 1)]
             .rfind('$')
             .unwrap()
             + 1;
@@ -1413,7 +1413,7 @@ pub mod tests {
 
         assert_eq!(hash_len, env::CONF.hash_length);
 
-        let salt_start_pos = (&stored_user.auth_string_hash[..(hash_start_pos - 1)])
+        let salt_start_pos = stored_user.auth_string_hash[..(hash_start_pos - 1)]
             .rfind('$')
             .unwrap()
             + 1;

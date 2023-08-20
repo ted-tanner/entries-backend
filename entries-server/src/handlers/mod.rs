@@ -455,7 +455,7 @@ pub mod test_utils {
         };
 
         let claims = serde_json::to_vec(&claims).unwrap();
-        let signature = hex::encode(&signing_key.sign(&claims).to_bytes());
+        let signature = hex::encode(signing_key.sign(&claims).to_bytes());
 
         let claims = String::from_utf8_lossy(&claims);
         b64_urlsafe.encode(format!("{claims}|{signature}"))

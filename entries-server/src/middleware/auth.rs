@@ -212,7 +212,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -249,7 +249,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Refresh,
         };
@@ -283,7 +283,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -320,7 +320,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -357,7 +357,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Refresh,
         };
@@ -391,7 +391,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -428,7 +428,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -473,7 +473,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Refresh,
         };
@@ -514,7 +514,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -558,7 +558,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };
@@ -602,7 +602,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Refresh,
         };
@@ -643,7 +643,7 @@ mod tests {
 
         let token_claims = NewAuthTokenClaims {
             user_id,
-            user_email: &user_email,
+            user_email,
             expiration: exp,
             token_type: AuthTokenType::Access,
         };

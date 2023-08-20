@@ -170,7 +170,7 @@ mod tests {
                 &new_user2.public_key,
                 &new_user2.preferences_encrypted,
                 &new_user2.user_keystore_encrypted,
-                &vec![String::from("Test")],
+                &[String::from("Test")],
             )
             .unwrap();
         user_dao.verify_user_creation(user2_id).unwrap();
