@@ -40,7 +40,7 @@ impl Dao {
         }
     }
 
-    pub fn get_user_public_key(&mut self, user_email: &str) -> Result<Vec<u8>, DaoError> {
+    pub fn get_user_public_key(&self, user_email: &str) -> Result<Vec<u8>, DaoError> {
         Ok(users
             .select(user_fields::public_key)
             .filter(user_fields::email.eq(user_email))
@@ -49,7 +49,7 @@ impl Dao {
 
     #[allow(clippy::too_many_arguments)]
     pub fn create_user(
-        &mut self,
+        &self,
         email: &str,
         auth_string_hash: &str,
         auth_string_salt: &[u8],
@@ -162,7 +162,7 @@ impl Dao {
         Ok(user_id)
     }
 
-    pub fn verify_user_creation(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+    pub fn verify_user_creation(&self, user_id: Uuid) -> Result<(), DaoError> {
         dsl::update(users.find(user_id))
             .set(user_fields::is_verified.eq(true))
             .execute(&mut self.db_thread_pool.get()?)?;
@@ -171,7 +171,7 @@ impl Dao {
     }
 
     pub fn clear_unverified_users(
-        &mut self,
+        &self,
         max_unverified_user_age: Duration,
     ) -> Result<(), DaoError> {
         diesel::delete(users.filter(user_fields::is_verified.eq(false)).filter(
@@ -183,7 +183,7 @@ impl Dao {
     }
 
     pub fn update_user_prefs(
-        &mut self,
+        &self,
         user_id: Uuid,
         prefs_encrypted_blob: &[u8],
         expected_previous_data_hash: &[u8],
@@ -218,7 +218,7 @@ impl Dao {
     }
 
     pub fn update_user_keystore(
-        &mut self,
+        &self,
         user_id: Uuid,
         keystore_encrypted_blob: &[u8],
         expected_previous_data_hash: &[u8],
@@ -254,7 +254,7 @@ impl Dao {
 
     #[allow(clippy::too_many_arguments)]
     pub fn update_password(
-        &mut self,
+        &self,
         user_email: &str,
         new_auth_string_hash: &str,
         new_auth_string_salt: &[u8],
@@ -288,7 +288,7 @@ impl Dao {
     }
 
     pub fn update_recovery_key(
-        &mut self,
+        &self,
         user_id: Uuid,
         new_recovery_key_salt: &[u8],
         new_recovery_key_memory_cost_kib: i32,
@@ -312,7 +312,7 @@ impl Dao {
     }
 
     pub fn save_user_deletion_budget_keys(
-        &mut self,
+        &self,
         budget_access_key_ids: &[Uuid],
         user_id: Uuid,
         delete_me_time: SystemTime,
@@ -334,7 +334,7 @@ impl Dao {
     }
 
     pub fn initiate_user_deletion(
-        &mut self,
+        &self,
         user_id: Uuid,
         time_until_deletion: Duration,
     ) -> Result<(), DaoError> {
@@ -350,17 +350,14 @@ impl Dao {
         Ok(())
     }
 
-    pub fn cancel_user_deletion(&mut self, user_id: Uuid) -> Result<(), DaoError> {
+    pub fn cancel_user_deletion(&self, user_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(user_deletion_requests.find(user_id))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
 
-    pub fn delete_user(
-        &mut self,
-        user_deletion_request: &UserDeletionRequest,
-    ) -> Result<(), DaoError> {
+    pub fn delete_user(&self, user_deletion_request: &UserDeletionRequest) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
@@ -398,22 +395,20 @@ impl Dao {
         Ok(())
     }
 
-    pub fn get_all_users_ready_for_deletion(
-        &mut self,
-    ) -> Result<Vec<UserDeletionRequest>, DaoError> {
+    pub fn get_all_users_ready_for_deletion(&self) -> Result<Vec<UserDeletionRequest>, DaoError> {
         Ok(user_deletion_requests
             .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
             .get_results(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn check_is_user_listed_for_deletion(&mut self, user_id: Uuid) -> Result<bool, DaoError> {
+    pub fn check_is_user_listed_for_deletion(&self, user_id: Uuid) -> Result<bool, DaoError> {
         Ok(
             dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
                 .get_result(&mut self.db_thread_pool.get()?)?,
         )
     }
 
-    pub fn delete_old_user_deletion_requests(&mut self) -> Result<(), DaoError> {
+    pub fn delete_old_user_deletion_requests(&self) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection

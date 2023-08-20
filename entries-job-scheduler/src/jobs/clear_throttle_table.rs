@@ -32,7 +32,7 @@ impl Job for ClearThrottleTableJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let mut dao = ThrottleDao::new(&self.db_thread_pool);
+        let dao = ThrottleDao::new(&self.db_thread_pool);
         tokio::task::spawn_blocking(move || dao.clear_throttle_table()).await??;
 
         self.is_running = false;
@@ -56,7 +56,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_execute() {
-        let mut dao = throttle::Dao::new(&env::testing::DB_THREAD_POOL);
+        let dao = throttle::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let throttle_id = rand::thread_rng().gen_range::<i64, _>(i64::MIN..i64::MAX);
         dao.mark_attempt_and_get_attempt_count(throttle_id, SystemTime::now())

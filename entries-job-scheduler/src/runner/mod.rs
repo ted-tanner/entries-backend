@@ -37,7 +37,7 @@ impl JobRunner {
             run_frequency.as_secs()
         );
 
-        let mut dao = JobRegistryDao::new(&self.db_thread_pool);
+        let dao = JobRegistryDao::new(&self.db_thread_pool);
         let last_run_time = tokio::task::spawn_blocking(move || {
             dao.get_job_last_run_timestamp(job_name_ref)
                 .unwrap_or_else(|e| {
@@ -91,7 +91,7 @@ impl JobRunner {
                     let current_time = SystemTime::now();
                     job_container.last_run_time = current_time;
 
-                    let mut dao = JobRegistryDao::new(&self.db_thread_pool);
+                    let dao = JobRegistryDao::new(&self.db_thread_pool);
                     let record_run_task = tokio::task::spawn_blocking(move || {
                         dao.set_job_last_run_timestamp(name_ref, current_time)
                     });
@@ -155,7 +155,7 @@ mod tests {
 
         let set_time = SystemTime::now();
 
-        let mut dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
+        let dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
         dao.set_job_last_run_timestamp(mock_job1.name(), set_time)
             .unwrap();
 
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        let mut dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
+        let dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
         let mock_job_last_run = dao
             .get_job_last_run_timestamp(job_name)
             .unwrap()

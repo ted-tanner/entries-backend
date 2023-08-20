@@ -9,7 +9,7 @@ aes-gcm = { version = "0.10.*", features = ["zeroize"] }
 async-trait = "0.1.*"
 base64 = "0.21.*"
 diesel = { version = "2.1.*", features = ["postgres", "uuid", "r2d2"] }
-ed25519-dalek = { version = "2.0.0-rc.3", features = ["rand_core", "zeroize"] }
+ed25519-dalek = { version = "2.0.*", features = ["rand_core", "zeroize"] }
 hex = "0.4.*"
 hmac = "0.12.*"
 lettre = { version = "0.10.*", features = ["tokio1-native-tls"] }

@@ -36,7 +36,7 @@ pub async fn get(
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     let budget = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_budget(budget_access_token.0.claims.budget_id)
     })
     .await?
@@ -82,7 +82,7 @@ pub async fn get_multiple(
     let budget_ids = Arc::new(budget_ids);
     let budget_ids_ref = Arc::clone(&budget_ids);
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
         budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
     })
@@ -116,7 +116,7 @@ pub async fn get_multiple(
     }
 
     let budgets = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_multiple_budgets_by_id(&budget_ids)
     })
     .await?
@@ -166,7 +166,7 @@ pub async fn create(
     }
 
     let new_budget = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_budget(
             &budget_data.encrypted_blob,
             &budget_data.categories,
@@ -194,7 +194,7 @@ pub async fn edit(
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_budget(
             budget_access_token.0.claims.budget_id,
             &budget_data.encrypted_blob,
@@ -257,7 +257,7 @@ pub async fn invite_user(
     let invitation_info = Arc::new(invitation_info.0);
     let invitation_info_ref = Arc::clone(&invitation_info);
 
-    let mut user_dao = db::user::Dao::new(&db_thread_pool);
+    let user_dao = db::user::Dao::new(&db_thread_pool);
     let recipient_public_key = match web::block(move || {
         user_dao.get_user_public_key(&invitation_info_ref.recipient_user_email)
     })
@@ -343,7 +343,7 @@ pub async fn invite_user(
     let accept_key_data = receiver.await??;
 
     let invite_ids = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             &invitation_info.recipient_user_email,
             &invitation_info.sender_public_key,
@@ -387,7 +387,7 @@ pub async fn retract_invitation(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invitation_id = invite_sender_token.0.claims.invite_id;
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let invite_sender_public_key =
         match web::block(move || budget_dao.get_budget_invite_sender_public_key(invitation_id))
             .await?
@@ -411,7 +411,7 @@ pub async fn retract_invitation(
     invite_sender_token.0.verify(&invite_sender_public_key)?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.delete_invitation(invite_sender_token.0.claims.invite_id)
     })
     .await?
@@ -444,7 +444,7 @@ pub async fn accept_invitation(
     let key_id = accept_token.0.claims.key_id;
     let budget_id = accept_token.0.claims.budget_id;
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
         match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
         {
@@ -471,7 +471,7 @@ pub async fn accept_invitation(
     accept_token.0.verify(&budget_accept_key.public_key)?;
 
     let budget_keys = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.accept_invitation(
             budget_accept_key.key_id,
             budget_accept_key.budget_id,
@@ -510,7 +510,7 @@ pub async fn decline_invitation(
     let key_id = accept_token.0.claims.key_id;
     let budget_id = accept_token.0.claims.budget_id;
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let budget_accept_key =
         match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
         {
@@ -533,7 +533,7 @@ pub async fn decline_invitation(
     accept_token.0.verify(&budget_accept_key.public_key)?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.reject_invitation(
             accept_token.0.claims.invite_id,
             accept_token.0.claims.key_id,
@@ -566,7 +566,7 @@ pub async fn get_all_pending_invitations(
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invites = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.get_all_pending_invitations(&user_access_token.0.user_email)
     })
     .await?
@@ -596,7 +596,7 @@ pub async fn leave_budget(
     verify_read_access(&budget_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.leave_budget(
             budget_access_token.0.claims.budget_id,
             budget_access_token.0.claims.key_id,
@@ -639,7 +639,7 @@ pub async fn create_entry(
         .transpose()?;
 
     let entry_id = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry(
             &entry_data.0.encrypted_blob,
             category_id,
@@ -684,7 +684,7 @@ pub async fn create_entry_and_category(
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let entry_and_category_ids = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry_and_category(
             &entry_and_category_data.entry_encrypted_blob,
             &entry_and_category_data.category_encrypted_blob,
@@ -727,7 +727,7 @@ pub async fn edit_entry(
     let entry_id = (&entry_data.entry_id).try_into()?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_entry(
             entry_id,
             &entry_data.encrypted_blob,
@@ -777,7 +777,7 @@ pub async fn delete_entry(
     let entry_id = (&entry_id.value).try_into()?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.delete_entry(entry_id, budget_access_token.0.claims.budget_id)
     })
     .await?
@@ -808,7 +808,7 @@ pub async fn create_category(
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     let category_id = match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_category(&category_data.value, budget_access_token.0.claims.budget_id)
     })
     .await?
@@ -845,7 +845,7 @@ pub async fn edit_category(
     let category_id = (&category_data.category_id).try_into()?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.update_category(
             category_id,
             &category_data.encrypted_blob,
@@ -888,7 +888,7 @@ pub async fn delete_category(
     let category_id = (&category_id.value).try_into()?;
 
     match web::block(move || {
-        let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+        let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.delete_category(category_id, budget_access_token.0.claims.budget_id)
     })
     .await?
@@ -917,7 +917,7 @@ async fn obtain_public_key(
     budget_id: Uuid,
     db_thread_pool: &DbThreadPool,
 ) -> Result<BudgetAccessKey, HttpErrorResponse> {
-    let mut budget_dao = db::budget::Dao::new(db_thread_pool);
+    let budget_dao = db::budget::Dao::new(db_thread_pool);
     let key = match web::block(move || budget_dao.get_public_budget_key(key_id, budget_id)).await? {
         Ok(b) => b,
         Err(e) => match e {

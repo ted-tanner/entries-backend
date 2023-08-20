@@ -37,7 +37,7 @@ impl Dao {
     }
 
     pub fn get_user_auth_string_hash_and_status(
-        &mut self,
+        &self,
         user_email: &str,
     ) -> Result<UserAuthStringHashAndStatus, DaoError> {
         let (user_id, is_user_verified, auth_string_hash) = users
@@ -65,7 +65,7 @@ impl Dao {
     }
 
     pub fn blacklist_token(
-        &mut self,
+        &self,
         token_signature: &[u8],
         token_expiration: u64,
     ) -> Result<(), DaoError> {
@@ -84,7 +84,7 @@ impl Dao {
     }
 
     pub fn check_is_token_on_blacklist_and_blacklist(
-        &mut self,
+        &self,
         token_signature: &[u8],
         token_expiration: u64,
     ) -> Result<bool, DaoError> {
@@ -112,7 +112,7 @@ impl Dao {
     }
 
     pub fn save_otp(
-        &mut self,
+        &self,
         otp: &str,
         user_email: &str,
         expiration: SystemTime,
@@ -136,7 +136,7 @@ impl Dao {
         Ok(())
     }
 
-    pub fn check_unexpired_otp(&mut self, otp: &str, user_email: &str) -> Result<bool, DaoError> {
+    pub fn check_unexpired_otp(&self, otp: &str, user_email: &str) -> Result<bool, DaoError> {
         Ok(dsl::select(dsl::exists(
             user_otps
                 .find(user_email)
@@ -146,7 +146,7 @@ impl Dao {
         .get_result(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn delete_otp(&mut self, otp: &str, user_email: &str) -> Result<(), DaoError> {
+    pub fn delete_otp(&self, otp: &str, user_email: &str) -> Result<(), DaoError> {
         diesel::delete(
             user_otps
                 .find(user_email)
@@ -157,18 +157,14 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_all_expired_otps(&mut self) -> Result<(), DaoError> {
+    pub fn delete_all_expired_otps(&self) -> Result<(), DaoError> {
         dsl::delete(user_otps.filter(user_otp_fields::expiration.lt(SystemTime::now())))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
 
-    pub fn replace_backup_codes(
-        &mut self,
-        user_id: Uuid,
-        codes: &[String],
-    ) -> Result<(), DaoError> {
+    pub fn replace_backup_codes(&self, user_id: Uuid, codes: &[String]) -> Result<(), DaoError> {
         let codes = codes
             .iter()
             .map(|code| NewUserBackupCode { user_id, code })
@@ -194,14 +190,14 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_backup_code(&mut self, code: &str, user_id: Uuid) -> Result<(), DaoError> {
+    pub fn delete_backup_code(&self, code: &str, user_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(user_backup_codes.find((user_id, code)))
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }
 
-    pub fn clear_all_expired_tokens(&mut self) -> Result<usize, DaoError> {
+    pub fn clear_all_expired_tokens(&self) -> Result<usize, DaoError> {
         // Add two minutes to current time to prevent slight clock differences/inaccuracies from
         // opening a window for an attacker to use an expired refresh token
         Ok(diesel::delete(
@@ -211,7 +207,7 @@ impl Dao {
         .execute(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_and_refresh_signin_nonce(&mut self, user_email: &str) -> Result<i32, DaoError> {
+    pub fn get_and_refresh_signin_nonce(&self, user_email: &str) -> Result<i32, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let nonce = db_connection
@@ -233,7 +229,7 @@ impl Dao {
     }
 
     pub fn get_auth_string_data_signin_nonce(
-        &mut self,
+        &self,
         user_email: &str,
     ) -> Result<SigninNonceAndHashParams, DaoError> {
         let (salt, mem_cost, parallel, iters, nonce) = users

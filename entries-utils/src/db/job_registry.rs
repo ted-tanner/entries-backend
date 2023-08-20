@@ -17,10 +17,7 @@ impl Dao {
         }
     }
 
-    pub fn get_job_last_run_timestamp(
-        &mut self,
-        name: &str,
-    ) -> Result<Option<SystemTime>, DaoError> {
+    pub fn get_job_last_run_timestamp(&self, name: &str) -> Result<Option<SystemTime>, DaoError> {
         Ok(job_registry
             .select(job_registry_fields::last_run_timestamp)
             .find(name)
@@ -29,7 +26,7 @@ impl Dao {
     }
 
     pub fn set_job_last_run_timestamp(
-        &mut self,
+        &self,
         job_name: &str,
         timestamp: SystemTime,
     ) -> Result<(), DaoError> {

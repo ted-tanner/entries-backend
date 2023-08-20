@@ -18,7 +18,7 @@ impl Dao {
     }
 
     pub fn mark_attempt_and_get_attempt_count(
-        &mut self,
+        &self,
         identifier_hash: i64,
         expiration: SystemTime,
     ) -> Result<i32, DaoError> {
@@ -64,7 +64,7 @@ impl Dao {
         Ok(attempt_count)
     }
 
-    pub fn clear_throttle_table(&mut self) -> Result<(), DaoError> {
+    pub fn clear_throttle_table(&self) -> Result<(), DaoError> {
         diesel::delete(throttleable_attempts).execute(&mut self.db_thread_pool.get()?)?;
         Ok(())
     }

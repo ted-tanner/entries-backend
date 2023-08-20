@@ -29,7 +29,7 @@ pub mod verification {
         let otp = Arc::new(Otp::generate(8));
         let otp_ref = Arc::clone(&otp);
 
-        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+        let auth_dao = db::auth::Dao::new(db_thread_pool);
         match web::block(move || auth_dao.save_otp(&otp_ref, &user_email_copy, otp_expiration))
             .await?
         {
@@ -83,7 +83,7 @@ pub mod verification {
         let user_email_copy = Arc::new(String::from(user_email));
         let user_email_ref = Arc::clone(&user_email_copy);
 
-        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+        let auth_dao = db::auth::Dao::new(db_thread_pool);
         let exists_unexpired_otp =
             match web::block(move || auth_dao.check_unexpired_otp(&otp_copy, &user_email_copy))
                 .await?
@@ -96,7 +96,7 @@ pub mod verification {
             };
 
         if exists_unexpired_otp {
-            let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+            let auth_dao = db::auth::Dao::new(db_thread_pool);
             match web::block(move || auth_dao.delete_otp(&otp_ref, &user_email_ref)).await? {
                 Ok(_) => (),
                 Err(e) => {
@@ -126,7 +126,7 @@ pub mod verification {
         let user_email_copy = String::from(user_email);
         let auth_string = Zeroizing::new(Vec::from(auth_string));
 
-        let mut auth_dao = db::auth::Dao::new(db_thread_pool);
+        let auth_dao = db::auth::Dao::new(db_thread_pool);
         let hash = match web::block(move || {
             auth_dao.get_user_auth_string_hash_and_status(&user_email_copy)
         })

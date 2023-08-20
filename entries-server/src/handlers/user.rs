@@ -48,7 +48,7 @@ pub async fn lookup_user_public_key(
         .await?;
 
     let public_key = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_public_key(&user_email.email)
     })
     .await?
@@ -138,7 +138,7 @@ pub async fn create(
     let user_data_ref = Arc::clone(&user_data);
 
     let user_id = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.create_user(
             &user_data_ref.email,
             &auth_string_hash.to_string(),
@@ -252,7 +252,7 @@ pub async fn verify_creation(
     };
 
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.verify_user_creation(claims.user_id)
     })
     .await?
@@ -277,7 +277,7 @@ pub async fn edit_preferences(
     new_prefs: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_prefs(
             user_access_token.0.user_id,
             &new_prefs.encrypted_blob,
@@ -309,7 +309,7 @@ pub async fn edit_keystore(
     new_keystore: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_user_keystore(
             user_access_token.0.user_id,
             &new_keystore.encrypted_blob,
@@ -401,7 +401,7 @@ pub async fn change_password(
     };
 
     web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
             &new_password_data.user_email,
             &auth_string_hash.to_string(),
@@ -444,7 +444,7 @@ pub async fn change_recovery_key(
     .await?;
 
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_recovery_key(
             user_id,
             &new_recovery_key_data.recovery_key_salt,
@@ -493,7 +493,7 @@ pub async fn init_delete(
     let key_ids = Arc::new(key_ids);
     let key_ids_ref = Arc::clone(&key_ids);
 
-    let mut budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
         budget_dao.get_multiple_public_budget_keys(&key_ids_ref, &budget_ids)
     })
@@ -533,7 +533,7 @@ pub async fn init_delete(
     let user_id = user_access_token.0.user_id;
 
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.save_user_deletion_budget_keys(&key_ids, user_id, delete_me_time)
     })
     .await?
@@ -620,7 +620,7 @@ pub async fn delete(
     let days_until_deletion = env::CONF.user_deletion_delay_days;
 
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.initiate_user_deletion(
             user_id,
             Duration::from_secs(days_until_deletion * 24 * 60 * 60),
@@ -669,7 +669,7 @@ pub async fn is_listed_for_deletion(
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let is_listed_for_deletion = match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
     })
     .await?
@@ -693,7 +693,7 @@ pub async fn cancel_delete(
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     match web::block(move || {
-        let mut user_dao = db::user::Dao::new(&db_thread_pool);
+        let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.cancel_user_deletion(user_access_token.0.user_id)
     })
     .await?
@@ -1679,7 +1679,7 @@ pub mod tests {
             1,
         );
 
-        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
         user_dao.delete_user(&deletion_requests[0]).unwrap();
 
         let deletion_requests = user_deletion_requests
@@ -1905,7 +1905,7 @@ pub mod tests {
             1,
         );
 
-        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
         user_dao.delete_user(&deletion_requests[0]).unwrap();
 
         let deletion_requests = user_deletion_requests
@@ -2447,7 +2447,7 @@ pub mod tests {
             2,
         );
 
-        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
         user_dao.delete_user(&deletion_requests[0]).unwrap();
 
         let deletion_requests = user_deletion_requests
@@ -2584,7 +2584,7 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let mut user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
         user_dao.delete_user(&deletion_requests[0]).unwrap();
 
         assert_eq!(

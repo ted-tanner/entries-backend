@@ -59,7 +59,7 @@ pub async fn obtain_nonce_and_auth_string_params(
     };
 
     let real_params = match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.get_auth_string_data_signin_nonce(&email.0.email)
     })
     .await?
@@ -98,7 +98,7 @@ pub async fn sign_in(
     let credentials = Arc::new(credentials);
     let credentials_ref = Arc::clone(&credentials);
 
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+    let auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let nonce =
         match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_ref.email))
@@ -121,7 +121,7 @@ pub async fn sign_in(
     }
 
     let credentials_ref = Arc::clone(&credentials);
-    let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+    let auth_dao = db::auth::Dao::new(&db_thread_pool);
 
     let hash_and_status = match web::block(move || {
         auth_dao.get_user_auth_string_hash_and_status(&credentials_ref.email)
@@ -271,7 +271,7 @@ pub async fn use_backup_code_for_signin(
         .await?;
 
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.delete_backup_code(&code.value, user_id)
     })
     .await?
@@ -343,7 +343,7 @@ pub async fn regenerate_backup_codes(
     let backup_codes_ref = Arc::clone(&backup_codes);
 
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.replace_backup_codes(user_id, &backup_codes_ref)
     })
     .await?
@@ -374,7 +374,7 @@ pub async fn refresh_tokens(
     let token_expiration = token_claims.expiration;
 
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.check_is_token_on_blacklist_and_blacklist(&token.0.signature, token_expiration)
     })
     .await?
@@ -438,7 +438,7 @@ pub async fn logout(
     }
 
     match web::block(move || {
-        let mut auth_dao = db::auth::Dao::new(&db_thread_pool);
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
         auth_dao.blacklist_token(&refresh_token.0.signature, refresh_token_claims.expiration)
     })
     .await?

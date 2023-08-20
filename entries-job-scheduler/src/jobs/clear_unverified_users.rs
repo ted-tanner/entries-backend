@@ -37,7 +37,7 @@ impl Job for ClearUnverifiedUsersJob {
         self.is_running = true;
 
         let max_unverified_user_age = self.max_unverified_user_age;
-        let mut dao = UserDao::new(&self.db_thread_pool);
+        let dao = UserDao::new(&self.db_thread_pool);
 
         tokio::task::spawn_blocking(move || dao.clear_unverified_users(max_unverified_user_age))
             .await??;
@@ -94,7 +94,7 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user_no_exp_id = user_dao
             .create_user(

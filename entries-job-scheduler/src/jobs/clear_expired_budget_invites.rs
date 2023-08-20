@@ -32,7 +32,7 @@ impl Job for ClearExpiredBudgetInvitesJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let mut dao = BudgetDao::new(&self.db_thread_pool);
+        let dao = BudgetDao::new(&self.db_thread_pool);
         tokio::task::spawn_blocking(move || dao.delete_all_expired_invitations()).await??;
 
         self.is_running = false;
@@ -93,7 +93,7 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user_id = user_dao
             .create_user(

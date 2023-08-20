@@ -44,7 +44,7 @@ impl Dao {
     }
 
     pub fn get_public_budget_key(
-        &mut self,
+        &self,
         key_id: Uuid,
         budget_id: Uuid,
     ) -> Result<BudgetAccessKey, DaoError> {
@@ -54,7 +54,7 @@ impl Dao {
     }
 
     pub fn get_multiple_public_budget_keys(
-        &mut self,
+        &self,
         key_ids: &[Uuid],
         budget_ids: &[Uuid],
     ) -> Result<Vec<BudgetAccessKey>, DaoError> {
@@ -68,7 +68,7 @@ impl Dao {
     }
 
     pub fn get_budget_accept_public_key(
-        &mut self,
+        &self,
         key_id: Uuid,
         budget_id: Uuid,
     ) -> Result<BudgetAcceptKey, DaoError> {
@@ -78,7 +78,7 @@ impl Dao {
     }
 
     pub fn get_budget_invite_sender_public_key(
-        &mut self,
+        &self,
         invitation_id: Uuid,
     ) -> Result<Vec<u8>, DaoError> {
         Ok(budget_share_invites
@@ -87,7 +87,7 @@ impl Dao {
             .get_result::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
     }
 
-    pub fn get_budget(&mut self, budget_id: Uuid) -> Result<BudgetMessage, DaoError> {
+    pub fn get_budget(&self, budget_id: Uuid) -> Result<BudgetMessage, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let output_budget = db_connection
@@ -132,10 +132,7 @@ impl Dao {
         Ok(output_budget)
     }
 
-    pub fn get_multiple_budgets_by_id(
-        &mut self,
-        budget_ids: &[Uuid],
-    ) -> Result<BudgetList, DaoError> {
+    pub fn get_multiple_budgets_by_id(&self, budget_ids: &[Uuid]) -> Result<BudgetList, DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         let output_budgets = db_connection
@@ -204,7 +201,7 @@ impl Dao {
     }
 
     pub fn create_budget(
-        &mut self,
+        &self,
         encrypted_blob: &[u8],
         budget_categories: &[CategoryWithTempId],
         user_public_budget_key: &[u8],
@@ -293,7 +290,7 @@ impl Dao {
     }
 
     pub fn update_budget(
-        &mut self,
+        &self,
         budget_id: Uuid,
         edited_budget_data: &[u8],
         expected_previous_data_hash: &[u8],
@@ -332,7 +329,7 @@ impl Dao {
 
     #[allow(clippy::too_many_arguments)]
     pub fn invite_user(
-        &mut self,
+        &self,
         recipient_user_email: &str,
         sender_public_key: &[u8],
         encryption_key_encrypted: &[u8],
@@ -400,7 +397,7 @@ impl Dao {
 
     #[allow(clippy::too_many_arguments)]
     pub fn accept_invitation(
-        &mut self,
+        &self,
         accept_key_id: Uuid,
         budget_id: Uuid,
         read_only: bool,
@@ -447,7 +444,7 @@ impl Dao {
 
     // Used when the recipient deletes the invitation
     pub fn reject_invitation(
-        &mut self,
+        &self,
         invitation_id: Uuid,
         accept_key_id: Uuid,
         recipient_user_email: &str,
@@ -476,13 +473,13 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_invitation(&mut self, invitation_id: Uuid) -> Result<(), DaoError> {
+    pub fn delete_invitation(&self, invitation_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(budget_share_invites.find(invitation_id))
             .execute(&mut self.db_thread_pool.get()?)?;
         Ok(())
     }
 
-    pub fn delete_all_expired_invitations(&mut self) -> Result<(), DaoError> {
+    pub fn delete_all_expired_invitations(&self) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         // Not using a database transaction here because these can be deleted separately from
@@ -515,7 +512,7 @@ impl Dao {
     }
 
     pub fn get_all_pending_invitations(
-        &mut self,
+        &self,
         user_email: &str,
     ) -> Result<BudgetShareInviteList, DaoError> {
         let invites = budget_share_invites
@@ -547,7 +544,7 @@ impl Dao {
         Ok(BudgetShareInviteList { invites })
     }
 
-    pub fn leave_budget(&mut self, budget_id: Uuid, key_id: Uuid) -> Result<(), DaoError> {
+    pub fn leave_budget(&self, budget_id: Uuid, key_id: Uuid) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
@@ -571,7 +568,7 @@ impl Dao {
     }
 
     pub fn create_entry(
-        &mut self,
+        &self,
         encrypted_blob: &[u8],
         category_id: Option<Uuid>,
         budget_id: Uuid,
@@ -599,7 +596,7 @@ impl Dao {
     }
 
     pub fn create_entry_and_category(
-        &mut self,
+        &self,
         entry_encrypted_blob: &[u8],
         category_encrypted_blob: &[u8],
         budget_id: Uuid,
@@ -652,7 +649,7 @@ impl Dao {
     }
 
     pub fn update_entry(
-        &mut self,
+        &self,
         entry_id: Uuid,
         entry_encrypted_blob: &[u8],
         expected_previous_data_hash: &[u8],
@@ -695,7 +692,7 @@ impl Dao {
         Ok(())
     }
 
-    pub fn delete_entry(&mut self, entry_id: Uuid, budget_id: Uuid) -> Result<(), DaoError> {
+    pub fn delete_entry(&self, entry_id: Uuid, budget_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(
             entries
                 .find(entry_id)
@@ -707,7 +704,7 @@ impl Dao {
     }
 
     pub fn create_category(
-        &mut self,
+        &self,
         encrypted_blob: &[u8],
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
@@ -733,7 +730,7 @@ impl Dao {
     }
 
     pub fn update_category(
-        &mut self,
+        &self,
         category_id: Uuid,
         category_encrypted_blob: &[u8],
         expected_previous_data_hash: &[u8],
@@ -772,7 +769,7 @@ impl Dao {
             })
     }
 
-    pub fn delete_category(&mut self, category_id: Uuid, budget_id: Uuid) -> Result<(), DaoError> {
+    pub fn delete_category(&self, category_id: Uuid, budget_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(
             categories
                 .find(category_id)

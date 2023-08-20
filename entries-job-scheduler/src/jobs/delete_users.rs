@@ -33,7 +33,7 @@ impl Job for DeleteUsersJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let mut dao = UserDao::new(&self.db_thread_pool);
+        let dao = UserDao::new(&self.db_thread_pool);
 
         let users_ready_for_deletion =
             tokio::task::spawn_blocking(move || dao.get_all_users_ready_for_deletion()).await??;
@@ -41,7 +41,7 @@ impl Job for DeleteUsersJob {
         let mut delete_user_futures = Vec::new();
 
         for user in users_ready_for_deletion {
-            let mut dao = UserDao::new(&self.db_thread_pool);
+            let dao = UserDao::new(&self.db_thread_pool);
 
             delete_user_futures.push(tokio::task::spawn_blocking(move || {
                 let result = dao.delete_user(&user);
@@ -124,7 +124,7 @@ mod tests {
             user_keystore_encrypted: Vec::new(),
         };
 
-        let mut user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let user1_id = user_dao
             .create_user(
@@ -233,7 +233,7 @@ mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut budget_dao = budget::Dao::new(&env::testing::DB_THREAD_POOL);
+        let budget_dao = budget::Dao::new(&env::testing::DB_THREAD_POOL);
 
         let out = budget_dao
             .create_entry_and_category(&[0], &[0], new_budget1.id)
