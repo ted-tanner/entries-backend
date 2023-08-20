@@ -42,15 +42,17 @@ pub async fn obtain_nonce_and_auth_string_params(
     let mut hasher = Sha256::new();
     hasher.update(&*email.email);
     hasher.update(random.to_be_bytes());
+    hasher.update(env::CONF.token_signing_key);
     let hash = hasher.finalize();
 
     let phony_salt = hash[..16].to_vec();
     // The bounds are hardcoded. This is safe.
-    let phony_nonce = unsafe { i32::from_be_bytes(hash[16..20].try_into().unwrap_unchecked()) };
+    let phony_nonce =
+        unsafe { i32::from_be_bytes(hash.get_unchecked(16..20).try_into().unwrap_unchecked()) };
 
     let phony_params = SigninNonceAndHashParams {
         auth_string_salt: phony_salt,
-        auth_string_memory_cost_kib: 250000,
+        auth_string_memory_cost_kib: 125000,
         auth_string_parallelism_factor: 2,
         auth_string_iters: 18,
         nonce: phony_nonce,
@@ -459,4 +461,134 @@ pub async fn logout(
     }
 
     Ok(HttpResponse::Ok().finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use entries_utils::schema::{signin_nonces, users};
+
+    use actix_protobuf::ProtoBufConfig;
+    use actix_web::body::to_bytes;
+    use actix_web::http::StatusCode;
+    use actix_web::test::{self, TestRequest};
+    use actix_web::web::Data;
+    use actix_web::App;
+    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use prost::Message;
+
+    use crate::handlers::test_utils::{self, gen_bytes};
+
+    #[actix_web::test]
+    async fn test_obtain_nonce_and_auth_string_params() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let salt = gen_bytes(16);
+        let nonce = i32::MAX;
+
+        diesel::update(users::table.find(user.id))
+            .set((
+                users::auth_string_salt.eq(&salt),
+                users::auth_string_memory_cost_kib.eq(10),
+                users::auth_string_parallelism_factor.eq(10),
+                users::auth_string_iters.eq(10),
+            ))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        diesel::update(signin_nonces::table.find(&user.email))
+            .set(signin_nonces::nonce.eq(nonce))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        // Real user
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                user.email
+            ))
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.nonce, nonce);
+        assert_eq!(resp_body.auth_string_salt, salt);
+        assert_eq!(resp_body.auth_string_memory_cost_kib, 10);
+        assert_eq!(resp_body.auth_string_parallelism_factor, 10);
+        assert_eq!(resp_body.auth_string_iters, 10);
+
+        // Fake user
+        let req = TestRequest::get()
+            .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let first_salt = resp_body.auth_string_salt.clone();
+        let first_nonce = resp_body.nonce;
+
+        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
+        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
+        assert_eq!(resp_body.auth_string_iters, 18);
+
+        // Should be the same nonce and salt, even for a fake user
+        let req = TestRequest::get()
+            .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.nonce, first_nonce);
+        assert_eq!(resp_body.auth_string_salt, first_salt);
+        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
+        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
+        assert_eq!(resp_body.auth_string_iters, 18);
+
+        // Different fake email should have a different nonce and salt
+        let req = TestRequest::get()
+            .uri("/api/auth/nonce_and_auth_string_params?email=anotherfake@fake.com")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("AppVersion", "0.1.0"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        assert_ne!(resp_body.nonce, first_nonce);
+        assert_ne!(resp_body.auth_string_salt, first_salt);
+        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
+        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
+        assert_eq!(resp_body.auth_string_iters, 18);
+    }
 }

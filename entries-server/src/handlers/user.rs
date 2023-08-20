@@ -714,7 +714,6 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
-    use actix_protobuf::ProtoBufConfig;
     use entries_utils::messages::{ErrorType, NewUser, ServerErrorResponse};
     use entries_utils::models::user::User;
     use entries_utils::models::user_deletion_request::UserDeletionRequest;
@@ -738,6 +737,7 @@ pub mod tests {
     use entries_utils::schema::users as user_fields;
     use entries_utils::schema::users::dsl::users;
 
+    use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};

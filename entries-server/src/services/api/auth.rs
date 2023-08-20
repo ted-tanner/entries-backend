@@ -6,7 +6,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
             .route(
-                "/nonce_and_auth_string_salt",
+                "/nonce_and_auth_string_params",
                 web::get().to(handlers::auth::obtain_nonce_and_auth_string_params),
             )
             .route("/sign_in", web::post().to(handlers::auth::sign_in))
