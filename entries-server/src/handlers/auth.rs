@@ -19,7 +19,6 @@ use zeroize::Zeroizing;
 
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
-use crate::middleware::app_version::AppVersion;
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::throttle::Throttle;
 use crate::middleware::FromHeader;
@@ -183,7 +182,6 @@ pub async fn sign_in(
 
 pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
-    _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: ProtoBuf<OtpMessage>,
     throttle: Throttle<8, 10>,
@@ -256,7 +254,6 @@ pub async fn obtain_otp(
 
 pub async fn use_backup_code_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
-    _app_version: AppVersion,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     code: ProtoBuf<BackupCode>,
     throttle: Throttle<5, 60>,
@@ -367,7 +364,6 @@ pub async fn regenerate_backup_codes(
 
 pub async fn refresh_tokens(
     db_thread_pool: web::Data<DbThreadPool>,
-    _app_version: AppVersion,
     token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let token_claims = token.verify()?;
@@ -465,8 +461,11 @@ pub async fn logout(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
+    use entries_utils::messages::NewUser;
     use entries_utils::schema::{signin_nonces, users};
 
     use actix_protobuf::ProtoBufConfig;
@@ -475,7 +474,8 @@ mod tests {
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
     use actix_web::App;
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use entries_utils::token::Token;
     use prost::Message;
 
     use crate::handlers::test_utils::{self, gen_bytes};
@@ -491,7 +491,7 @@ mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, _) = test_utils::create_user().await;
 
         let salt = gen_bytes(16);
         let nonce = i32::MAX;
@@ -517,8 +517,6 @@ mod tests {
                 "/api/auth/nonce_and_auth_string_params?email={}",
                 user.email
             ))
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -536,8 +534,6 @@ mod tests {
         // Fake user
         let req = TestRequest::get()
             .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -556,8 +552,6 @@ mod tests {
         // Should be the same nonce and salt, even for a fake user
         let req = TestRequest::get()
             .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -575,8 +569,6 @@ mod tests {
         // Different fake email should have a different nonce and salt
         let req = TestRequest::get()
             .uri("/api/auth/nonce_and_auth_string_params?email=anotherfake@fake.com")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -590,5 +582,116 @@ mod tests {
         assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
         assert_eq!(resp_body.auth_string_parallelism_factor, 2);
         assert_eq!(resp_body.auth_string_iters, 18);
+    }
+
+    #[actix_web::test]
+    async fn test_sign_in() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(format!("password{user_number}").as_bytes())
+            .unwrap();
+
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::from(auth_string.as_bytes()),
+
+            auth_string_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_memory_cost_kib: 128,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: gen_bytes(10),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: gen_bytes(10),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            user_keystore_encrypted: gen_bytes(10),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+            .set(users::is_verified.eq(true))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+
+        let signin_token = AuthToken::decode(&signin_token.value).unwrap();
+        let token_type = AuthTokenType::try_from(signin_token.claims.typ).unwrap();
+
+        assert!(matches!(token_type, AuthTokenType::SignIn));
+
+        let claims = signin_token.claims;
+        let decrypted_claims = claims.decrypt(&env::CONF.token_encryption_cipher).unwrap();
+
+        assert_eq!(decrypted_claims.user_email, new_user.email);
+        assert!(
+            decrypted_claims.expiration
+                > (SystemTime::now() + Duration::from_secs(60))
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+        );
     }
 }

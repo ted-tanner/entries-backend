@@ -504,7 +504,6 @@ pub mod test_utils {
 
         let req = TestRequest::post()
             .uri("/api/user")
-            .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_user.encode_to_vec())
             .to_request();
@@ -580,7 +579,6 @@ pub mod test_utils {
         let req = TestRequest::post()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token))
-            .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_budget.encode_to_vec())
             .to_request();
@@ -638,7 +636,6 @@ pub mod test_utils {
             .uri("/api/budget/invitation")
             .insert_header(("AccessToken", sender_access_token))
             .insert_header(("BudgetAccessToken", sender_budget_access_token))
-            .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -665,7 +662,6 @@ pub mod test_utils {
         let req = TestRequest::get()
             .uri("/api/budget/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -714,7 +710,6 @@ pub mod test_utils {
             .uri("/api/budget/invitation/accept")
             .insert_header(("BudgetAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("AppVersion", "0.1.0"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();

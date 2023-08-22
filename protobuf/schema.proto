@@ -35,6 +35,9 @@ enum ErrorType {
 
     // 500
     INTERNAL_ERROR = 18;
+
+    // Unknown
+    UNKNOWN = 19;
 }
 
 message Timestamp {
@@ -289,8 +292,8 @@ message IsUserListedForDeletion {
 }
 
 message ServerErrorResponse {
-    required ErrorType err_type = 1 [default = INTERNAL_ERROR];
-    required string err_message = 2;
+    required ErrorType err_type = 1 [default = UNKNOWN];
+    required string err_message = 2 [default = "If this is a 400 error, the payload or query is probably missing or incorrectly formed."];
 }
 
 message SigninNonceAndHashParams {
