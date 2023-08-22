@@ -426,14 +426,14 @@ pub struct IsUserListedForDeletion {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerErrorResponse {
-    #[prost(enumeration = "ErrorType", required, tag = "1", default = "Unknown")]
-    pub err_type: i32,
     #[prost(
-        string,
+        enumeration = "ErrorType",
         required,
-        tag = "2",
-        default = "If this is a 400 error, the payload or query is probably missing or incorrectly formed."
+        tag = "1",
+        default = "ActixWebPrehandler"
     )]
+    pub err_type: i32,
+    #[prost(string, required, tag = "2")]
     pub err_message: ::prost::alloc::string::String,
 }
 #[derive(Zeroize)]
@@ -506,8 +506,8 @@ pub enum ErrorType {
     InputTooLarge = 17,
     /// 500
     InternalError = 18,
-    /// Unknown
-    Unknown = 19,
+    /// Anything that Actix Web returns before the handler is reached
+    ActixWebPrehandler = 19,
 }
 impl ErrorType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -535,7 +535,7 @@ impl ErrorType {
             ErrorType::ForeignKeyDoesNotExist => "FOREIGN_KEY_DOES_NOT_EXIST",
             ErrorType::InputTooLarge => "INPUT_TOO_LARGE",
             ErrorType::InternalError => "INTERNAL_ERROR",
-            ErrorType::Unknown => "UNKNOWN",
+            ErrorType::ActixWebPrehandler => "ACTIX_WEB_PREHANDLER",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -560,7 +560,7 @@ impl ErrorType {
             "FOREIGN_KEY_DOES_NOT_EXIST" => Some(Self::ForeignKeyDoesNotExist),
             "INPUT_TOO_LARGE" => Some(Self::InputTooLarge),
             "INTERNAL_ERROR" => Some(Self::InternalError),
-            "UNKNOWN" => Some(Self::Unknown),
+            "ACTIX_WEB_PREHANDLER" => Some(Self::ActixWebPrehandler),
             _ => None,
         }
     }
