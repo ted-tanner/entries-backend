@@ -668,6 +668,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
