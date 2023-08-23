@@ -16,7 +16,7 @@ impl Validity {
 
 pub fn validate_email_address(email: &str) -> Validity {
     if email.chars().count() > 320 {
-        return Validity::Invalid("Email address cannot contain a space.");
+        return Validity::Invalid("Email address is too long.");
     }
 
     for c in email.chars() {
