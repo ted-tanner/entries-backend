@@ -40,7 +40,12 @@ pub static CONF: Lazy<Config> = Lazy::new(|| match Config::from_env() {
     Ok(c) => c,
     Err(e) => {
         eprintln!("ERROR: Failed to load configuration: {e}");
-        std::process::exit(1);
+
+        if cfg!(test) {
+            panic!();
+        } else {
+            std::process::exit(1);
+        }
     }
 });
 
