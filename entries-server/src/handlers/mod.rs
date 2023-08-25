@@ -201,6 +201,7 @@ pub mod error {
 
         // 401
         IncorrectCredential(&'static str),
+        IncorrectNonce(&'static str),
         TokenExpired(&'static str),
         TokenMissing(&'static str),
         WrongTokenType(&'static str),
@@ -208,7 +209,6 @@ pub mod error {
         // 403
         UserDisallowed(&'static str),
         PendingAction(&'static str),
-        IncorrectNonce(&'static str),
         TooManyAttempts(&'static str),
         ReadOnlyAccess(&'static str),
 
@@ -349,12 +349,12 @@ pub mod error {
                 | HttpErrorResponse::MissingHeader(_)
                 | HttpErrorResponse::ConflictWithExisting(_) => StatusCode::BAD_REQUEST,
                 HttpErrorResponse::IncorrectCredential(_)
+                | HttpErrorResponse::IncorrectNonce(_)
                 | HttpErrorResponse::TokenExpired(_)
                 | HttpErrorResponse::TokenMissing(_)
                 | HttpErrorResponse::WrongTokenType(_) => StatusCode::UNAUTHORIZED,
                 HttpErrorResponse::UserDisallowed(_)
                 | HttpErrorResponse::PendingAction(_)
-                | HttpErrorResponse::IncorrectNonce(_)
                 | HttpErrorResponse::TooManyAttempts(_)
                 | HttpErrorResponse::ReadOnlyAccess(_) => StatusCode::FORBIDDEN,
                 HttpErrorResponse::DoesNotExist(_)

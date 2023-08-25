@@ -466,7 +466,8 @@ mod tests {
     use super::*;
 
     use entries_utils::messages::NewUser;
-    use entries_utils::schema::{signin_nonces, users};
+    use entries_utils::models::user_otp::UserOtp;
+    use entries_utils::schema::{signin_nonces, user_otps, users};
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -660,6 +661,37 @@ mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
 
+        let mut credentials = CredentialPair {
+            email: new_user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let byte = credentials.auth_string.pop().unwrap();
+        credentials.auth_string.push(byte.wrapping_add(1));
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
         let credentials = CredentialPair {
             email: new_user.email.clone(),
             auth_string: Vec::from(auth_string.as_bytes()),
@@ -694,5 +726,187 @@ mod tests {
                     .unwrap()
                     .as_secs()
         );
+    }
+
+    #[actix_web::test]
+    async fn test_verify_otp_for_signin() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(format!("password{user_number}").as_bytes())
+            .unwrap();
+
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::from(auth_string.as_bytes()),
+
+            auth_string_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_memory_cost_kib: 128,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: gen_bytes(10),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: gen_bytes(10),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            user_keystore_encrypted: gen_bytes(10),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+            .set(users::is_verified.eq(true))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+
+        let otp = user_otps::table
+            .find(&new_user.email)
+            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let otp_msg = OtpMessage {
+            value: otp.otp.clone(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(otp_msg.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let mut bad_signin_token = signin_token.value.clone();
+        bad_signin_token.pop().unwrap();
+        bad_signin_token.pop().unwrap();
+        bad_signin_token.pop().unwrap();
+        bad_signin_token.pop().unwrap();
+
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header(("SignInToken", bad_signin_token))
+            .set_payload(otp_msg.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header(("SignInToken", signin_token.value.clone()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let mut bad_otp_msg = otp_msg.clone();
+        let letter = bad_otp_msg.value.pop().unwrap();
+        bad_otp_msg
+            .value
+            .push(if letter == 'E' { 'F' } else { 'E' });
+
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header(("SignInToken", signin_token.value.clone()))
+            .set_payload(bad_otp_msg.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header(("SignInToken", signin_token.value))
+            .set_payload(otp_msg.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = TokenPair::decode(resp_body).unwrap();
+
+        let access_token = AuthToken::decode(&resp_body.access_token).unwrap();
+        let refresh_token = AuthToken::decode(&resp_body.refresh_token).unwrap();
+
+        assert!(matches!(
+            AuthTokenType::try_from(access_token.claims.typ).unwrap(),
+            AuthTokenType::Access
+        ));
+        assert!(matches!(
+            AuthTokenType::try_from(refresh_token.claims.typ).unwrap(),
+            AuthTokenType::Refresh
+        ));
+
+        assert!(access_token.verify(&env::CONF.token_signing_key).is_ok());
+        assert!(refresh_token.verify(&env::CONF.token_signing_key).is_ok());
     }
 }
