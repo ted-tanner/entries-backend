@@ -982,23 +982,8 @@ mod tests {
             .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        // See if the new OTP is contained in the response body (it shouldn't be)
-        let mut match_count = 0;
-        let mut found_match = false;
-        for byte in resp_body {
-            if byte == new_otp.otp.as_bytes()[match_count] {
-                match_count += 1;
-            } else {
-                match_count = 0;
-            }
-
-            if match_count == new_otp.otp.len() {
-                found_match = true;
-                break;
-            }
-        }
-
-        assert!(!found_match);
+        let resp_body = String::from_utf8_lossy(&resp_body);
+        assert!(!resp_body.contains(&new_otp.otp));
         assert!(old_otp.otp != new_otp.otp);
     }
 }
