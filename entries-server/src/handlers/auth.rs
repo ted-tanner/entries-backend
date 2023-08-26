@@ -465,7 +465,7 @@ mod tests {
 
     use super::*;
 
-    use entries_utils::messages::NewUser;
+    use entries_utils::messages::{ErrorType, NewUser, ServerErrorResponse};
     use entries_utils::models::user_otp::UserOtp;
     use entries_utils::schema::{signin_nonces, user_otps, users};
 
@@ -726,6 +726,45 @@ mod tests {
                     .unwrap()
                     .as_secs()
         );
+
+        // User shouldn't be able to sign in again until they verify their email
+        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+            .set(users::is_verified.eq(false))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::PendingAction as i32);
     }
 
     #[actix_web::test]
@@ -908,5 +947,58 @@ mod tests {
 
         assert!(access_token.verify(&env::CONF.token_signing_key).is_ok());
         assert!(refresh_token.verify(&env::CONF.token_signing_key).is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_obtain_otp() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let old_otp = user_otps::table
+            .find(&user.email)
+            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let req = TestRequest::get()
+            .uri("/api/auth/otp")
+            .insert_header(("AccessToken", access_token))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+
+        let new_otp = user_otps::table
+            .find(&user.email)
+            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        // See if the new OTP is contained in the response body (it shouldn't be)
+        let mut match_count = 0;
+        let mut found_match = false;
+        for byte in resp_body {
+            if byte == new_otp.otp.as_bytes()[match_count] {
+                match_count += 1;
+            } else {
+                match_count = 0;
+            }
+
+            if match_count == new_otp.otp.len() {
+                found_match = true;
+                break;
+            }
+        }
+
+        assert!(!found_match);
+        assert!(old_otp.otp != new_otp.otp);
     }
 }

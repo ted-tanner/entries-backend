@@ -403,7 +403,8 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
-    use actix_protobuf::ProtoBufConfig;
+
+    use entries_utils::db;
     use entries_utils::messages::{
         BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, CategoryWithTempId,
         NewBudget, NewUser, PublicKey, UserInvitationToBudget,
@@ -415,6 +416,7 @@ pub mod test_utils {
     use entries_utils::schema::users::dsl::users;
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
+    use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
@@ -511,15 +513,21 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        dsl::update(users.filter(user_fields::email.eq(&new_user.email)))
-            .set(user_fields::is_verified.eq(true))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
-
         let user = users
             .filter(user_fields::email.eq(&new_user.email))
             .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
+
+        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
+        user_dao.verify_user_creation(user.id).unwrap();
+
+        super::verification::generate_and_email_otp(
+            &user.email,
+            &env::testing::DB_THREAD_POOL,
+            &env::testing::SMTP_THREAD_POOL,
+        )
+        .await
+        .unwrap();
 
         let access_token_claims = NewAuthTokenClaims {
             user_id: user.id,
