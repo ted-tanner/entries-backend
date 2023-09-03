@@ -119,7 +119,9 @@ impl TokenSignatureVerifier for Ed25519Verifier {
             Err(_) => return false,
         });
 
-        let Ok(key) = key else { return false; };
+        let Ok(key) = key else {
+            return false;
+        };
 
         let signature = Signature::from_bytes(match signature.try_into() {
             Ok(s) => s,

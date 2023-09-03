@@ -506,7 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Make dao not require `mut`
 * Unit tests!
   - [x] Jobs
   - [ ] Handlers!

@@ -148,6 +148,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(smtp_thread_pool.clone())
             .configure(services::api::configure)
             .configure(services::web::configure)
+            .wrap(actix_web::middleware::Compress::default())
             .wrap(actix_web::middleware::Logger::default())
     })
     .workers(env::CONF.actix_worker_count)
