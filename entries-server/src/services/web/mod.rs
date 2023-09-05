@@ -1,11 +1,11 @@
-use actix_web::web;
+use actix_web::web::*;
 
 use crate::handlers::index;
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
+pub fn configure(cfg: &mut ServiceConfig) {
     cfg.service(
-        web::scope("")
-            .route("/", web::get().to(index::get::index))
-            .route("/heartbeat", web::get().to(index::get::heartbeat)),
+        scope("")
+            .route("/", get().to(index::get::index))
+            .route("/heartbeat", get().to(index::get::heartbeat)),
     );
 }

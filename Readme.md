@@ -521,6 +521,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Accept SSL connections without reverse proxy, if no customers are really using
 * Once this is done, use it in `Token::decode()` https://github.com/rust-lang/rust/pull/112818
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate

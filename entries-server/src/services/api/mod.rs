@@ -1,12 +1,12 @@
-use actix_web::web;
+use actix_web::web::*;
 
 mod auth;
 mod budget;
 mod user;
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
+pub fn configure(cfg: &mut ServiceConfig) {
     cfg.service(
-        web::scope("/api")
+        scope("/api")
             .configure(auth::configure)
             .configure(budget::configure)
             .configure(user::configure),

@@ -1,32 +1,26 @@
-use actix_web::web;
+use actix_web::web::*;
 
-use crate::handlers;
+use crate::handlers::auth;
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
+pub fn configure(cfg: &mut ServiceConfig) {
     cfg.service(
-        web::scope("/auth")
+        scope("/auth")
             .route(
                 "/nonce_and_auth_string_params",
-                web::get().to(handlers::auth::obtain_nonce_and_auth_string_params),
+                get().to(auth::obtain_nonce_and_auth_string_params),
             )
-            .route("/sign_in", web::post().to(handlers::auth::sign_in))
-            .route(
-                "/otp/verify",
-                web::post().to(handlers::auth::verify_otp_for_signin),
-            )
+            .route("/sign_in", post().to(auth::sign_in))
+            .route("/otp/verify", post().to(auth::verify_otp_for_signin))
             .route(
                 "/backup_code/use",
-                web::post().to(handlers::auth::use_backup_code_for_signin),
+                post().to(auth::use_backup_code_for_signin),
             )
             .route(
                 "/backup_code/regenerate",
-                web::put().to(handlers::auth::regenerate_backup_codes),
+                put().to(auth::regenerate_backup_codes),
             )
-            .route("otp", web::get().to(handlers::auth::obtain_otp))
-            .route(
-                "/token/refresh",
-                web::post().to(handlers::auth::refresh_tokens),
-            )
-            .route("/logout", web::post().to(handlers::auth::logout)),
+            .route("otp", get().to(auth::obtain_otp))
+            .route("/token/refresh", post().to(auth::refresh_tokens))
+            .route("/logout", post().to(auth::logout)),
     );
 }
