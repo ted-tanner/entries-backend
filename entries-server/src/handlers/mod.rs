@@ -406,8 +406,8 @@ pub mod test_utils {
 
     use entries_utils::db;
     use entries_utils::messages::{
-        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, CategoryWithTempId,
-        NewBudget, NewUser, PublicKey, UserInvitationToBudget,
+        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, NewBudget, NewUser,
+        PublicKey, UserInvitationToBudget,
     };
     use entries_utils::models::budget::Budget;
     use entries_utils::models::user::User;
@@ -571,16 +571,7 @@ pub mod test_utils {
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            categories: vec![
-                CategoryWithTempId {
-                    temp_id: 0,
-                    encrypted_blob: gen_bytes(40),
-                },
-                CategoryWithTempId {
-                    temp_id: 1,
-                    encrypted_blob: gen_bytes(60),
-                },
-            ],
+            categories: Vec::new(),
             user_public_budget_key: Vec::from(public_key),
         };
 

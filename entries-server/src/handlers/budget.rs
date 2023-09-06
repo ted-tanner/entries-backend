@@ -1414,32 +1414,29 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(resp_budget1.id.clone()).unwrap(), budget1.id);
         assert_eq!(resp_budget1.encrypted_blob, budget1.encrypted_blob);
-        assert_eq!(resp_budget1.categories.len(), 2);
+        assert_eq!(resp_budget1.categories.len(), 0);
         assert_eq!(resp_budget1.entries.len(), 0);
 
         assert_eq!(Uuid::try_from(resp_budget2.id.clone()).unwrap(), budget2.id);
         assert_eq!(resp_budget2.encrypted_blob, budget2.encrypted_blob);
-        assert_eq!(resp_budget2.categories.len(), 2);
+        assert_eq!(resp_budget2.categories.len(), 0);
         assert_eq!(resp_budget2.entries.len(), 0);
 
         assert_eq!(Uuid::try_from(resp_budget3.id.clone()).unwrap(), budget3.id);
         assert_eq!(resp_budget3.encrypted_blob, budget3.encrypted_blob);
-        assert_eq!(resp_budget3.categories.len(), 3);
+        assert_eq!(resp_budget3.categories.len(), 1);
         assert_eq!(resp_budget3.entries.len(), 1);
 
-        let resp_category = resp_budget3
-            .categories
-            .iter()
-            .find(|c| Uuid::try_from(&c.id).unwrap() == new_category_id)
-            .unwrap();
-
-        assert_eq!(Uuid::try_from(&resp_category.id).unwrap(), new_category_id);
         assert_eq!(
-            Uuid::try_from(&resp_category.budget_id).unwrap(),
+            Uuid::try_from(&resp_budget3.categories[0].id).unwrap(),
+            new_category_id
+        );
+        assert_eq!(
+            Uuid::try_from(&resp_budget3.categories[0].budget_id).unwrap(),
             budget3.id
         );
         assert_eq!(
-            resp_category.encrypted_blob,
+            resp_budget3.categories[0].encrypted_blob,
             new_entry_and_category.category_encrypted_blob
         );
 
