@@ -970,7 +970,7 @@ async fn verify_read_access<F: TokenLocation>(
 pub mod tests {
     use super::*;
 
-    use entries_utils::messages::{Budget as BudgetMessage, EntryIdAndCategoryId};
+    use entries_utils::messages::{Budget as BudgetMessage, BudgetList, EntryIdAndCategoryId};
     use entries_utils::messages::{BudgetFrame, CategoryWithTempId};
     use entries_utils::models::budget::Budget;
     use entries_utils::schema::budgets::dsl::budgets;
@@ -1336,6 +1336,128 @@ pub mod tests {
         assert_eq!(
             Uuid::try_from(new_entry3.category_id.clone().unwrap()).unwrap(),
             new_category4_id
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_get_multiple_budgets() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, access_token) = test_utils::create_user().await;
+        let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
+        let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
+        let (budget3, budget3_token) = test_utils::create_budget(&access_token).await;
+
+        let new_entry_and_category = EntryAndCategory {
+            entry_encrypted_blob: gen_bytes(30),
+            category_encrypted_blob: gen_bytes(12),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry_and_category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget3_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry_and_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let new_entry_and_category_ids = EntryIdAndCategoryId::decode(resp_body).unwrap();
+
+        let new_entry_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
+        let new_category_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
+
+        let budget_access_tokens = BudgetAccessTokenList {
+            tokens: vec![budget1_token, budget2_token, budget3_token],
+        };
+
+        let req = TestRequest::get()
+            .uri("/api/budget/multiple")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_list = BudgetList::decode(resp_body).unwrap();
+
+        let resp_budget1 = budget_list
+            .budgets
+            .iter()
+            .find(|b| Uuid::try_from(&b.id).unwrap() == budget1.id)
+            .unwrap();
+        let resp_budget2 = budget_list
+            .budgets
+            .iter()
+            .find(|b| Uuid::try_from(&b.id).unwrap() == budget2.id)
+            .unwrap();
+        let resp_budget3 = budget_list
+            .budgets
+            .iter()
+            .find(|b| Uuid::try_from(&b.id).unwrap() == budget3.id)
+            .unwrap();
+
+        assert_eq!(budget_list.budgets.len(), 3);
+
+        assert_eq!(Uuid::try_from(resp_budget1.id.clone()).unwrap(), budget1.id);
+        assert_eq!(resp_budget1.encrypted_blob, budget1.encrypted_blob);
+        assert_eq!(resp_budget1.categories.len(), 2);
+        assert_eq!(resp_budget1.entries.len(), 0);
+
+        assert_eq!(Uuid::try_from(resp_budget2.id.clone()).unwrap(), budget2.id);
+        assert_eq!(resp_budget2.encrypted_blob, budget2.encrypted_blob);
+        assert_eq!(resp_budget2.categories.len(), 2);
+        assert_eq!(resp_budget2.entries.len(), 0);
+
+        assert_eq!(Uuid::try_from(resp_budget3.id.clone()).unwrap(), budget3.id);
+        assert_eq!(resp_budget3.encrypted_blob, budget3.encrypted_blob);
+        assert_eq!(resp_budget3.categories.len(), 3);
+        assert_eq!(resp_budget3.entries.len(), 1);
+
+        let resp_category = resp_budget3
+            .categories
+            .iter()
+            .find(|c| Uuid::try_from(&c.id).unwrap() == new_category_id)
+            .unwrap();
+
+        assert_eq!(Uuid::try_from(&resp_category.id).unwrap(), new_category_id);
+        assert_eq!(
+            Uuid::try_from(&resp_category.budget_id).unwrap(),
+            budget3.id
+        );
+        assert_eq!(
+            resp_category.encrypted_blob,
+            new_entry_and_category.category_encrypted_blob
+        );
+
+        assert_eq!(
+            Uuid::try_from(&resp_budget3.entries[0].id).unwrap(),
+            new_entry_id
+        );
+        assert_eq!(
+            Uuid::try_from(&resp_budget3.entries[0].budget_id).unwrap(),
+            budget3.id
+        );
+        assert_eq!(
+            Uuid::try_from(resp_budget3.entries[0].category_id.as_ref().unwrap()).unwrap(),
+            new_category_id
+        );
+        assert_eq!(
+            resp_budget3.entries[0].encrypted_blob,
+            new_entry_and_category.entry_encrypted_blob
         );
     }
 }

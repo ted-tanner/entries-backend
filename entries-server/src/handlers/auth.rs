@@ -879,11 +879,7 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let mut bad_signin_token = signin_token.value.clone();
-        bad_signin_token.pop().unwrap();
-        bad_signin_token.pop().unwrap();
-        bad_signin_token.pop().unwrap();
-        bad_signin_token.pop().unwrap();
+        let bad_signin_token = "thisisabadtoken";
 
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
@@ -893,7 +889,7 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
 
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
