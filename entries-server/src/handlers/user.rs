@@ -712,13 +712,19 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
-    use entries_utils::messages::{ErrorType, NewUser, ServerErrorResponse};
+    use entries_utils::messages::{
+        EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse,
+    };
     use entries_utils::models::user::User;
     use entries_utils::models::user_deletion_request::UserDeletionRequest;
     use entries_utils::schema::budget_access_keys as budget_access_key_fields;
     use entries_utils::schema::budget_access_keys::dsl::budget_access_keys;
     use entries_utils::schema::budgets as budget_fields;
     use entries_utils::schema::budgets::dsl::budgets;
+    use entries_utils::schema::categories as category_fields;
+    use entries_utils::schema::categories::dsl::categories;
+    use entries_utils::schema::entries as entry_fields;
+    use entries_utils::schema::entries::dsl::entries;
     use entries_utils::schema::signin_nonces::dsl::signin_nonces;
     use entries_utils::schema::user_backup_codes as user_backup_code_fields;
     use entries_utils::schema::user_backup_codes::dsl::user_backup_codes;
@@ -751,6 +757,7 @@ pub mod tests {
     use rsa::pkcs8::EncodePrivateKey;
     use sha1::{Digest, Sha1};
     use std::str::FromStr;
+    use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::auth::RequestAuthTokenType;
@@ -1707,6 +1714,28 @@ pub mod tests {
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
         let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
 
+        let new_entry_and_category = EntryAndCategory {
+            entry_encrypted_blob: gen_bytes(30),
+            category_encrypted_blob: gen_bytes(14),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry_and_category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget1_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry_and_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let new_entry_and_category_ids = EntryIdAndCategoryId::decode(resp_body).unwrap();
+
+        let new_entry_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
+        let new_category_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
+
         let budget1_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
             String::from_utf8(b64_urlsafe.decode(&budget1_token).unwrap())
                 .unwrap()
@@ -1789,6 +1818,24 @@ pub mod tests {
         assert_eq!(
             budgets
                 .filter(budget_fields::id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            entries
+                .filter(entry_fields::id.eq(new_entry_id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            categories
+                .filter(category_fields::id.eq(new_category_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -1879,6 +1926,24 @@ pub mod tests {
         );
 
         assert_eq!(
+            entries
+                .filter(entry_fields::id.eq(new_entry_id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
+            categories
+                .filter(category_fields::id.eq(new_category_id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            1,
+        );
+
+        assert_eq!(
             budgets
                 .filter(budget_fields::id.eq(budget2.id))
                 .count()
@@ -1935,6 +2000,24 @@ pub mod tests {
         assert_eq!(
             budgets
                 .filter(budget_fields::id.eq(budget1.id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            entries
+                .filter(entry_fields::id.eq(new_entry_id))
+                .count()
+                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap(),
+            0,
+        );
+
+        assert_eq!(
+            categories
+                .filter(category_fields::id.eq(new_category_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
