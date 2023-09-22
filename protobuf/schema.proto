@@ -27,17 +27,22 @@ enum ErrorType {
     READ_ONLY_ACCESS = 14;
 
     // 404
-    DOES_NOT_EXIST = 15;
-    FOREIGN_KEY_DOES_NOT_EXIST = 16;
+    USER_DOES_NOT_EXIST = 15;
+    KEY_DOES_NOT_EXIST = 16;
+    BUDGET_DOES_NOT_EXIST = 17;
+    ENTRY_DOES_NOT_EXIST = 18;
+    CATEGORY_DOES_NOT_EXIST = 19;
+    INVITATION_DOES_NOT_EXIST = 20;
+    FOREIGN_KEY_DOES_NOT_EXIST = 21;
 
     // 418
-    INPUT_TOO_LARGE = 17;
+    INPUT_TOO_LARGE = 22;
 
     // 500
-    INTERNAL_ERROR = 18;
+    INTERNAL_ERROR = 23;
 
     // Anything that Actix Web returns before the handler is reached
-    ACTIX_WEB_PREHANDLER = 19;
+    ACTIX_WEB_PREHANDLER = 24;
 }
 
 message Timestamp {

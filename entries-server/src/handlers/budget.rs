@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use crate::handlers::error::HttpErrorResponse;
+use crate::handlers::error::{DoesNotExistType, HttpErrorResponse};
 use crate::middleware::auth::{Access, VerifiedToken};
 use crate::middleware::special_access_token::SpecialAccessToken;
 use crate::middleware::throttle::Throttle;
@@ -46,6 +46,7 @@ pub async fn get(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -91,7 +92,10 @@ pub async fn get_multiple(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    INVALID_ID_MSG,
+                    DoesNotExistType::Budget,
+                ));
             }
             _ => {
                 log::error!("{e}");
@@ -103,13 +107,21 @@ pub async fn get_multiple(
     };
 
     if public_keys.len() != tokens.len() {
-        return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
+        return Err(HttpErrorResponse::DoesNotExist(
+            INVALID_ID_MSG,
+            DoesNotExistType::Budget,
+        ));
     }
 
     for key in public_keys {
         let token = match tokens.get(&key.key_id) {
             Some(t) => t,
-            None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
+            None => {
+                return Err(HttpErrorResponse::DoesNotExist(
+                    INVALID_ID_MSG,
+                    DoesNotExistType::Budget,
+                ))
+            }
         };
 
         token.verify(&key.public_key)?;
@@ -126,6 +138,7 @@ pub async fn get_multiple(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "One of the provided IDs did not match a budget",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -211,6 +224,7 @@ pub async fn edit(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -266,7 +280,10 @@ pub async fn invite_user(
         Ok(k) => k,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist("No user with given email"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "No user with given email",
+                    DoesNotExistType::User,
+                ));
             }
             _ => {
                 log::error!("{e}");
@@ -368,6 +385,7 @@ pub async fn invite_user(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget or invite with ID matching token",
+                    DoesNotExistType::Invitation,
                 ));
             }
             _ => {
@@ -397,6 +415,7 @@ pub async fn retract_invitation(
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
                         "No invitation with ID matching token",
+                        DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
@@ -421,6 +440,7 @@ pub async fn retract_invitation(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
+                    DoesNotExistType::Invitation,
                 ));
             }
             _ => {
@@ -453,6 +473,7 @@ pub async fn accept_invitation(
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
                         "No share invite with ID matching token",
+                        DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
@@ -488,6 +509,7 @@ pub async fn accept_invitation(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
+                    DoesNotExistType::Invitation,
                 ));
             }
             _ => {
@@ -519,6 +541,7 @@ pub async fn decline_invitation(
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
                         "No share invite with ID matching token",
+                        DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
@@ -547,6 +570,7 @@ pub async fn decline_invitation(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No share invite with ID matching token",
+                    DoesNotExistType::Invitation,
                 ));
             }
             _ => {
@@ -609,6 +633,7 @@ pub async fn leave_budget(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -652,7 +677,8 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    "There was an ID mismatch for the budget, entry, or category",
+                    DoesNotExistType::Entry,
                 ));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
@@ -698,6 +724,7 @@ pub async fn create_entry_and_category(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -745,7 +772,8 @@ pub async fn edit_entry(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No entry with ID matching token",
+                    "Entry not found",
+                    DoesNotExistType::Entry,
                 ));
             }
             DaoError::QueryFailure(diesel::result::Error::DatabaseError(
@@ -786,7 +814,8 @@ pub async fn delete_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No entry with ID matching token",
+                    "Entry not found",
+                    DoesNotExistType::Entry,
                 ));
             }
             _ => {
@@ -818,6 +847,7 @@ pub async fn create_category(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -862,7 +892,8 @@ pub async fn edit_category(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No category with ID matching token",
+                    "Category not found",
+                    DoesNotExistType::Category,
                 ));
             }
             _ => {
@@ -897,7 +928,8 @@ pub async fn delete_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No category with ID matching token",
+                    "Category not found",
+                    DoesNotExistType::Category,
                 ));
             }
             _ => {
@@ -924,6 +956,7 @@ async fn obtain_public_key(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No budget with ID matching token",
+                    DoesNotExistType::Budget,
                 ));
             }
             _ => {
@@ -1462,7 +1495,7 @@ pub mod tests {
     }
 
     #[actix_rt::test]
-    async fn test_deleting_category_sets_category_id_to_null_for_entries() {
+    async fn test_delete_category() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -1603,6 +1636,135 @@ pub mod tests {
     }
 
     #[actix_rt::test]
+    async fn test_delete_entry() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, access_token) = test_utils::create_user().await;
+
+        let key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let public_key = key_pair.verifying_key().to_bytes();
+
+        let new_budget = NewBudget {
+            encrypted_blob: gen_bytes(32),
+            categories: vec![CategoryWithTempId {
+                temp_id: 0,
+                encrypted_blob: gen_bytes(40),
+            }],
+            user_public_budget_key: Vec::from(public_key),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_budget.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+
+        let budget = budgets
+            .find(Uuid::try_from(budget_data.id).unwrap())
+            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let budget_access_token = gen_budget_token(
+            budget.id,
+            budget_data.access_key_id.try_into().unwrap(),
+            &key_pair,
+        );
+
+        let category_id: Uuid = (&budget_data.category_ids[0].real_id).try_into().unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 1);
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(new_entry.category_id.clone().unwrap()).unwrap(),
+            category_id,
+        );
+
+        let entry_id: Uuid = (&entry_message.id).try_into().unwrap();
+
+        let entry_id_message = EntryId {
+            value: entry_id.into(),
+        };
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_id_message.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 1);
+        assert_eq!(budget_message.entries.len(), 0);
+    }
+
+    #[actix_rt::test]
     async fn test_edit_budget() {
         let app = test::init_service(
             App::new()
@@ -1691,9 +1853,287 @@ pub mod tests {
         assert_eq!(budget_message.entries.len(), 0);
     }
 
-    // TODO: test_delete_entry (should probably be before last test)
+    #[actix_rt::test]
+    async fn test_edit_entry() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
 
-    // TODO: test_edit_entry (very similar to last test)
+        let (_, access_token) = test_utils::create_user().await;
+        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.categories.len(), 0);
+        assert_eq!(budget_message.entries.len(), 0);
+
+        let new_category1 = NewEncryptedBlob {
+            value: gen_bytes(40),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category1.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category1_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_category2 = NewEncryptedBlob {
+            value: gen_bytes(40),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category2.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category2_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            category_id: Some(category2_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(new_entry.category_id.clone().unwrap()).unwrap(),
+            category2_id,
+        );
+
+        let entry_id: Uuid = (&entry_message.id).try_into().unwrap();
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_message.encrypted_blob);
+        let hash = sha1_hasher.finalize();
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: gen_bytes(20),
+            category_id: Some(category1_id.into()),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
+
+        let entry_update = EntryUpdate {
+            entry_id: Uuid::new_v4().into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+            category_id: Some(category1_id.into()),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(error_message.err_type, ErrorType::EntryDoesNotExist as i32);
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+            category_id: Some(Uuid::new_v4().into()),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(
+            error_message.err_type,
+            ErrorType::ForeignKeyDoesNotExist as i32
+        );
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+            category_id: Some(category1_id.into()),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, entry_update.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
+            category1_id,
+        );
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&entry_message.encrypted_blob);
+        let hash = sha1_hasher.finalize();
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+            category_id: None,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, entry_update.encrypted_blob);
+        assert!(entry_message.category_id.is_none());
+    }
+
     // TODO: test_edit_category (very similar to last test)
 
     // TODO: test_invite_user

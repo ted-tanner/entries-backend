@@ -14,7 +14,7 @@ pub mod verification {
     use tokio::sync::oneshot;
     use zeroize::Zeroizing;
 
-    use super::error::HttpErrorResponse;
+    use super::error::{DoesNotExistType, HttpErrorResponse};
     use crate::env;
 
     pub async fn generate_and_email_otp(
@@ -35,7 +35,10 @@ pub mod verification {
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::DoesNotExist("User not found"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "User not found",
+                    DoesNotExistType::User,
+                ));
             }
             Err(e) => {
                 log::error!("{e}");
@@ -190,6 +193,16 @@ pub mod error {
     use tokio::sync::oneshot;
 
     #[derive(Debug)]
+    pub enum DoesNotExistType {
+        User,
+        Key,
+        Budget,
+        Entry,
+        Category,
+        Invitation,
+    }
+
+    #[derive(Debug)]
     pub enum HttpErrorResponse {
         // 400
         IncorrectlyFormed(&'static str),
@@ -213,7 +226,7 @@ pub mod error {
         ReadOnlyAccess(&'static str),
 
         // 404
-        DoesNotExist(&'static str),
+        DoesNotExist(&'static str, DoesNotExistType),
         ForeignKeyDoesNotExist(&'static str),
 
         // 418
@@ -308,8 +321,16 @@ pub mod error {
                 },
 
                 // 404
-                HttpErrorResponse::DoesNotExist(msg) => ServerErrorResponse {
-                    err_type: ErrorType::DoesNotExist.into(),
+                HttpErrorResponse::DoesNotExist(msg, dne_type) => ServerErrorResponse {
+                    err_type: match dne_type {
+                        DoesNotExistType::User => ErrorType::UserDoesNotExist,
+                        DoesNotExistType::Key => ErrorType::KeyDoesNotExist,
+                        DoesNotExistType::Budget => ErrorType::BudgetDoesNotExist,
+                        DoesNotExistType::Entry => ErrorType::EntryDoesNotExist,
+                        DoesNotExistType::Category => ErrorType::CategoryDoesNotExist,
+                        DoesNotExistType::Invitation => ErrorType::InvitationDoesNotExist,
+                    }
+                    .into(),
                     err_message: format!("Does not exist: {msg}"),
                 },
                 HttpErrorResponse::ForeignKeyDoesNotExist(msg) => ServerErrorResponse {
@@ -357,7 +378,7 @@ pub mod error {
                 | HttpErrorResponse::PendingAction(_)
                 | HttpErrorResponse::TooManyAttempts(_)
                 | HttpErrorResponse::ReadOnlyAccess(_) => StatusCode::FORBIDDEN,
-                HttpErrorResponse::DoesNotExist(_)
+                HttpErrorResponse::DoesNotExist(_, _)
                 | HttpErrorResponse::ForeignKeyDoesNotExist(_) => StatusCode::NOT_FOUND,
                 HttpErrorResponse::InputTooLarge(_) => StatusCode::IM_A_TEAPOT,
                 HttpErrorResponse::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,

@@ -27,7 +27,7 @@ use tokio::sync::oneshot;
 use zeroize::Zeroizing;
 
 use crate::env;
-use crate::handlers::{self, error::HttpErrorResponse};
+use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
 use crate::middleware::throttle::Throttle;
 use crate::middleware::{FromHeader, FromQuery};
@@ -57,6 +57,7 @@ pub async fn lookup_user_public_key(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     "No user with given email address",
+                    DoesNotExistType::Key,
                 ));
             }
             _ => {
@@ -500,7 +501,10 @@ pub async fn init_delete(
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    INVALID_ID_MSG,
+                    DoesNotExistType::Budget,
+                ));
             }
             _ => {
                 log::error!("{e}");
@@ -512,13 +516,21 @@ pub async fn init_delete(
     };
 
     if public_keys.len() != tokens.len() {
-        return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
+        return Err(HttpErrorResponse::DoesNotExist(
+            INVALID_ID_MSG,
+            DoesNotExistType::Budget,
+        ));
     }
 
     for key in public_keys {
         let token = match tokens.get(&key.key_id) {
             Some(t) => t,
-            None => return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG)),
+            None => {
+                return Err(HttpErrorResponse::DoesNotExist(
+                    INVALID_ID_MSG,
+                    DoesNotExistType::Budget,
+                ))
+            }
         };
 
         token.verify(&key.public_key)?;
@@ -539,7 +551,10 @@ pub async fn init_delete(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(INVALID_ID_MSG));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    INVALID_ID_MSG,
+                    DoesNotExistType::User,
+                ));
             }
             _ => {
                 log::error!("{e}");

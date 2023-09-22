@@ -500,14 +500,19 @@ pub enum ErrorType {
     TooManyAttempts = 13,
     ReadOnlyAccess = 14,
     /// 404
-    DoesNotExist = 15,
-    ForeignKeyDoesNotExist = 16,
+    UserDoesNotExist = 15,
+    KeyDoesNotExist = 16,
+    BudgetDoesNotExist = 17,
+    EntryDoesNotExist = 18,
+    CategoryDoesNotExist = 19,
+    InvitationDoesNotExist = 20,
+    ForeignKeyDoesNotExist = 21,
     /// 418
-    InputTooLarge = 17,
+    InputTooLarge = 22,
     /// 500
-    InternalError = 18,
+    InternalError = 23,
     /// Anything that Actix Web returns before the handler is reached
-    ActixWebPrehandler = 19,
+    ActixWebPrehandler = 24,
 }
 impl ErrorType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -531,7 +536,12 @@ impl ErrorType {
             ErrorType::IncorrectNonce => "INCORRECT_NONCE",
             ErrorType::TooManyAttempts => "TOO_MANY_ATTEMPTS",
             ErrorType::ReadOnlyAccess => "READ_ONLY_ACCESS",
-            ErrorType::DoesNotExist => "DOES_NOT_EXIST",
+            ErrorType::UserDoesNotExist => "USER_DOES_NOT_EXIST",
+            ErrorType::KeyDoesNotExist => "KEY_DOES_NOT_EXIST",
+            ErrorType::BudgetDoesNotExist => "BUDGET_DOES_NOT_EXIST",
+            ErrorType::EntryDoesNotExist => "ENTRY_DOES_NOT_EXIST",
+            ErrorType::CategoryDoesNotExist => "CATEGORY_DOES_NOT_EXIST",
+            ErrorType::InvitationDoesNotExist => "INVITATION_DOES_NOT_EXIST",
             ErrorType::ForeignKeyDoesNotExist => "FOREIGN_KEY_DOES_NOT_EXIST",
             ErrorType::InputTooLarge => "INPUT_TOO_LARGE",
             ErrorType::InternalError => "INTERNAL_ERROR",
@@ -556,7 +566,12 @@ impl ErrorType {
             "INCORRECT_NONCE" => Some(Self::IncorrectNonce),
             "TOO_MANY_ATTEMPTS" => Some(Self::TooManyAttempts),
             "READ_ONLY_ACCESS" => Some(Self::ReadOnlyAccess),
-            "DOES_NOT_EXIST" => Some(Self::DoesNotExist),
+            "USER_DOES_NOT_EXIST" => Some(Self::UserDoesNotExist),
+            "KEY_DOES_NOT_EXIST" => Some(Self::KeyDoesNotExist),
+            "BUDGET_DOES_NOT_EXIST" => Some(Self::BudgetDoesNotExist),
+            "ENTRY_DOES_NOT_EXIST" => Some(Self::EntryDoesNotExist),
+            "CATEGORY_DOES_NOT_EXIST" => Some(Self::CategoryDoesNotExist),
+            "INVITATION_DOES_NOT_EXIST" => Some(Self::InvitationDoesNotExist),
             "FOREIGN_KEY_DOES_NOT_EXIST" => Some(Self::ForeignKeyDoesNotExist),
             "INPUT_TOO_LARGE" => Some(Self::InputTooLarge),
             "INTERNAL_ERROR" => Some(Self::InternalError),

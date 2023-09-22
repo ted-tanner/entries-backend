@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
 
 use crate::env;
-use crate::handlers::{self, error::HttpErrorResponse};
+use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::throttle::Throttle;
 use crate::middleware::FromHeader;
@@ -105,7 +105,10 @@ pub async fn sign_in(
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::DoesNotExist("User not found"));
+                return Err(HttpErrorResponse::DoesNotExist(
+                    "User not found",
+                    DoesNotExistType::User,
+                ));
             }
             Err(e) => {
                 log::error!("{e}");
@@ -129,7 +132,10 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::DoesNotExist("User not found"));
+            return Err(HttpErrorResponse::DoesNotExist(
+                "User not found",
+                DoesNotExistType::User,
+            ));
         }
         Err(e) => {
             log::error!("{e}");
