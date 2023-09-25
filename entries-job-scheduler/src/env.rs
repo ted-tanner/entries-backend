@@ -14,7 +14,7 @@ const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
 const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
 const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
 
-const UPDATE_FREQUENCY_SECS_VAR: &str = "ENTRIES_JOB_RUNNER_UPDATE_FREQUENCY_SECS";
+const UPDATE_FREQUENCY_MS_VAR: &str = "ENTRIES_JOB_RUNNER_UPDATE_FREQUENCY_MS";
 const WORKER_THREADS_VAR: &str = "ENTRIES_JOB_RUNNER_WORKER_THREADS";
 const MAX_BLOCKING_THREADS_VAR: &str = "ENTRIES_JOB_RUNNER_MAX_BLOCKING_THREADS";
 
@@ -116,7 +116,7 @@ impl Config {
             db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
             db_idle_timeout: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
 
-            update_frequency: Duration::from_secs(env_var_or(UPDATE_FREQUENCY_SECS_VAR, 5)?),
+            update_frequency: Duration::from_millis(env_var_or(UPDATE_FREQUENCY_MS_VAR, 5)?),
             worker_threads: env_var_or(WORKER_THREADS_VAR, num_cpus::get())?,
             max_blocking_threads: env_var_or(MAX_BLOCKING_THREADS_VAR, 40)?,
 
