@@ -340,7 +340,7 @@ cargo run --release -- --port 9001 --schedule-cron-jobs
 
 ### Unit and Integration Tests
 
-Unit and integration tests are run by `cargo`. They do interact with Redis and Postgres, so **make sure the server is configured for a testing environment before running the tests** (see [Server Configuration](#server-configuration)).
+Unit and integration tests are run by `cargo`. They do interact with Redis and Postgres, so **make sure the server is configured for a testing environment before running the tests** (see [Server Configuration](#server-configuration)). Also, **load the requisite environment variables into your shell or several tests will fail**.
 
 The vast majority of tests can be run asychronously across multiple threads without interfering with one another. To run the tests, make sure the environment is properly configured and running (including Redis and Postgres) and run the following command:
 

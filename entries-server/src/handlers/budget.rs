@@ -1592,7 +1592,7 @@ pub mod tests {
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(
-            Uuid::try_from(new_entry.category_id.clone().unwrap()).unwrap(),
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category_id,
         );
 
@@ -1724,7 +1724,7 @@ pub mod tests {
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(
-            Uuid::try_from(new_entry.category_id.clone().unwrap()).unwrap(),
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category_id,
         );
 
@@ -1966,7 +1966,7 @@ pub mod tests {
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(
-            Uuid::try_from(new_entry.category_id.clone().unwrap()).unwrap(),
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
         );
 
@@ -2097,6 +2097,29 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: gen_bytes(20),
+            category_id: None,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: gen_bytes(20),
             expected_previous_data_hash: hash.to_vec(),
             category_id: None,
         };
@@ -2134,7 +2157,370 @@ pub mod tests {
         assert!(entry_message.category_id.is_none());
     }
 
-    // TODO: test_edit_category (very similar to last test)
+    #[actix_rt::test]
+    async fn test_edit_category() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, access_token) = test_utils::create_user().await;
+        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.categories.len(), 0);
+        assert_eq!(budget_message.entries.len(), 0);
+
+        let new_category1 = NewEncryptedBlob {
+            value: gen_bytes(40),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category1.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category1_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_category2 = NewEncryptedBlob {
+            value: gen_bytes(40),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category2.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category2_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            category_id: Some(category2_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 2);
+
+        let cat1_pos = budget_message
+            .categories
+            .iter()
+            .position(|c| c.id == category1_id.into())
+            .unwrap();
+        let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
+
+        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            budget_message.categories[cat1_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat1_pos].encrypted_blob,
+            new_category1.value
+        );
+
+        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            budget_message.categories[cat2_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat2_pos].encrypted_blob,
+            new_category2.value
+        );
+
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
+            category2_id,
+        );
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&budget_message.categories[cat2_pos].encrypted_blob);
+        let hash = sha1_hasher.finalize();
+
+        let category_update = CategoryUpdate {
+            category_id: category2_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: gen_bytes(20),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
+
+        let category_update = CategoryUpdate {
+            category_id: Uuid::new_v4().into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(
+            error_message.err_type,
+            ErrorType::CategoryDoesNotExist as i32
+        );
+
+        let category_update = CategoryUpdate {
+            category_id: category2_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 2);
+
+        let cat1_pos = budget_message
+            .categories
+            .iter()
+            .position(|c| c.id == category1_id.into())
+            .unwrap();
+        let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
+
+        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            budget_message.categories[cat1_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat1_pos].encrypted_blob,
+            new_category1.value
+        );
+
+        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            budget_message.categories[cat2_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat2_pos].encrypted_blob,
+            category_update.encrypted_blob
+        );
+
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
+            category2_id,
+        );
+
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(&category_update.encrypted_blob);
+        let hash = sha1_hasher.finalize();
+
+        let category_update = CategoryUpdate {
+            category_id: category2_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: gen_bytes(20),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let error_message = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
+
+        let category_update = CategoryUpdate {
+            category_id: category2_id.into(),
+            encrypted_blob: gen_bytes(20),
+            expected_previous_data_hash: hash.to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
+        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+
+        assert_eq!(budget_message.categories.len(), 2);
+
+        let cat1_pos = budget_message
+            .categories
+            .iter()
+            .position(|c| c.id == category1_id.into())
+            .unwrap();
+        let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
+
+        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            budget_message.categories[cat1_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat1_pos].encrypted_blob,
+            new_category1.value
+        );
+
+        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            budget_message.categories[cat2_pos].budget_id,
+            budget.id.into()
+        );
+        assert_eq!(
+            budget_message.categories[cat2_pos].encrypted_blob,
+            category_update.encrypted_blob
+        );
+
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(
+            Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
+            category2_id,
+        );
+    }
 
     // TODO: test_invite_user
     // TODO: test_retract_invitation
