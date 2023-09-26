@@ -424,7 +424,6 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
-
     use entries_utils::db;
     use entries_utils::messages::{
         BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, NewBudget, NewUser,
