@@ -506,10 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Unit tests!
-  - [x] Jobs
-  - [ ] Handlers!
-  - [x] Tokens! (auth_token, budget_*_tokens)
 * Update readme documentation
   - Add a section for the job scheduler
   - Create a deployment checklist!

@@ -319,7 +319,7 @@ pub async fn invite_user(
         else {
             sender
                 .send(Err(HttpErrorResponse::IncorrectlyFormed(
-                    "Recipient user's public key is incorrectly formatted",
+                    "Recipient user's private key is incorrectly formatted",
                 )))
                 .expect("Sending to channel failed");
 
@@ -359,7 +359,7 @@ pub async fn invite_user(
 
     let accept_key_data = receiver.await??;
 
-    let invite_ids = match web::block(move || {
+    let invite_id = match web::block(move || {
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.invite_user(
             &invitation_info.recipient_user_email,
@@ -395,7 +395,7 @@ pub async fn invite_user(
         },
     };
 
-    Ok(HttpResponse::Ok().protobuf(invite_ids)?)
+    Ok(HttpResponse::Ok().protobuf(invite_id)?)
 }
 
 pub async fn retract_invitation(
@@ -1008,13 +1008,15 @@ pub mod tests {
     use ed25519::{Signer, SigningKey};
     use entries_utils::messages::{
         Budget as BudgetMessage, BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList,
-        EntryIdAndCategoryId, ErrorType, ServerErrorResponse,
+        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse,
     };
     use entries_utils::messages::{BudgetFrame, CategoryWithTempId};
     use entries_utils::models::budget::Budget;
     use entries_utils::schema::budget_access_keys as budget_access_key_fields;
     use entries_utils::schema::budget_access_keys::dsl::budget_access_keys;
     use entries_utils::schema::budgets::dsl::budgets;
+    use entries_utils::schema::users as user_fields;
+    use entries_utils::schema::users::dsl::users;
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -1026,7 +1028,10 @@ pub mod tests {
     use base64::Engine;
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
+    use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
     use prost::Message;
+    use rsa::pkcs8::EncodePublicKey;
+    use rsa::RsaPrivateKey;
     use sha1::{Digest, Sha1};
 
     use crate::env;
@@ -2742,9 +2747,493 @@ pub mod tests {
         assert_eq!(budget_message.entries.len(), 0);
     }
 
-    // TODO: test_retract_invitation
-    // TODO: test_accept_invitation
-    // TODO: test_decline_invitation
-    // TODO: test_get_all_pending_invitations
-    // TODO: test_leave_budget
+    #[actix_rt::test]
+    async fn test_retract_invitation() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, sender_access_token) = test_utils::create_user().await;
+        let (recipient, recipient_access_token) = test_utils::create_user().await;
+        let (_, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+
+        let recipient_keypair = RsaPrivateKey::new(&mut OsRng, 512).unwrap();
+        let recipient_public_key = recipient_keypair
+            .to_public_key()
+            .to_public_key_der()
+            .unwrap();
+
+        diesel::update(users.find(recipient.id))
+            .set(user_fields::public_key.eq(recipient_public_key.to_vec()))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let invite_sender_keypair = SigningKey::generate(&mut OsRng);
+        let invite_sender_pub_key = invite_sender_keypair.verifying_key();
+
+        let invite_info = UserInvitationToBudget {
+            recipient_user_email: recipient.email,
+            sender_public_key: invite_sender_pub_key.to_bytes().to_vec(),
+            encryption_key_encrypted: gen_bytes(44),
+            budget_info_encrypted: gen_bytes(20),
+            sender_info_encrypted: gen_bytes(30),
+            share_info_symmetric_key_encrypted: gen_bytes(35),
+            expiration: (SystemTime::now() + Duration::from_secs(60))
+                .try_into()
+                .unwrap(),
+            read_only: true,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::post()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invite_id = InvitationId::decode(resp_body).unwrap();
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        assert_eq!(invites.len(), 1);
+
+        let claims = BudgetInviteSenderTokenClaims {
+            invite_id: invite_id.value.try_into().unwrap(),
+            expiration: (SystemTime::now() + Duration::from_secs(100))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+        let claims = serde_json::to_string(&claims).unwrap();
+        let signature = hex::encode(invite_sender_keypair.sign(claims.as_bytes()).to_bytes());
+        let invite_sender_token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetInviteSenderToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetInviteSenderToken", invite_sender_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        assert!(invites.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_decline_invitation() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, sender_access_token) = test_utils::create_user().await;
+        let (recipient, recipient_access_token) = test_utils::create_user().await;
+
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+
+        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+
+        let invite_info = UserInvitationToBudget {
+            recipient_user_email: recipient.email,
+            sender_public_key: gen_bytes(22),
+            encryption_key_encrypted: gen_bytes(44),
+            budget_info_encrypted: gen_bytes(20),
+            sender_info_encrypted: gen_bytes(30),
+            share_info_symmetric_key_encrypted: gen_bytes(35),
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .try_into()
+                .unwrap(),
+            read_only: true,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token))
+            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        let accept_private_key = recipient_private_key
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_encrypted)
+            .unwrap();
+        let accept_private_key_id = recipient_private_key
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_id_encrypted)
+            .unwrap();
+        let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
+
+        let accept_token_claims = BudgetAcceptTokenClaims {
+            invite_id: (&invites[0].id).try_into().unwrap(),
+            key_id: accept_private_key_id,
+            budget_id: budget.id,
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
+        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
+        let accept_private_key = SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let signature = hex::encode(
+            accept_private_key
+                .sign(accept_token_claims.as_bytes())
+                .to_bytes(),
+        );
+        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
+
+        let access_private_key = ed25519::SigningKey::generate(&mut OsRng);
+        let access_public_key = access_private_key.verifying_key();
+        let access_public_key = PublicKey {
+            value: access_public_key.as_bytes().to_vec(),
+        };
+
+        // Make the signature invalid
+        let mut bad_token = accept_token.clone();
+        let last_char = bad_token.pop().unwrap();
+        if last_char == 'a' {
+            bad_token.push('b');
+        } else {
+            bad_token.push('a');
+        }
+
+        let req = TestRequest::put()
+            .uri("/api/budget/invitation/decline")
+            .insert_header(("BudgetAcceptToken", bad_token))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(access_public_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let req = TestRequest::put()
+            .uri("/api/budget/invitation/decline")
+            .insert_header(("BudgetAcceptToken", accept_token))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(access_public_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        assert!(invites.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_leave_budget() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(crate::services::api::configure),
+        )
+        .await;
+
+        let (_, sender_access_token) = test_utils::create_user().await;
+        let (recipient, recipient_access_token) = test_utils::create_user().await;
+
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+
+        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+
+        let invite_info = UserInvitationToBudget {
+            recipient_user_email: recipient.email,
+            sender_public_key: gen_bytes(22),
+            encryption_key_encrypted: gen_bytes(44),
+            budget_info_encrypted: gen_bytes(20),
+            sender_info_encrypted: gen_bytes(30),
+            share_info_symmetric_key_encrypted: gen_bytes(35),
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .try_into()
+                .unwrap(),
+            read_only: true,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        let accept_private_key = recipient_private_key
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_encrypted)
+            .unwrap();
+        let accept_private_key_id = recipient_private_key
+            .decrypt(Pkcs1v15Encrypt, &invites[0].budget_accept_key_id_encrypted)
+            .unwrap();
+        let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
+
+        let accept_token_claims = BudgetAcceptTokenClaims {
+            invite_id: (&invites[0].id).try_into().unwrap(),
+            key_id: accept_private_key_id,
+            budget_id: budget.id,
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
+        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
+        let accept_private_key = SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let signature = hex::encode(
+            accept_private_key
+                .sign(accept_token_claims.as_bytes())
+                .to_bytes(),
+        );
+        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
+
+        let access_private_key = ed25519::SigningKey::generate(&mut OsRng);
+        let access_public_key = access_private_key.verifying_key();
+        let access_public_key = PublicKey {
+            value: access_public_key.as_bytes().to_vec(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/invitation/accept")
+            .insert_header(("BudgetAcceptToken", accept_token))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(access_public_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let message = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
+
+        assert_eq!(message.budget_id, budget.id.into());
+        assert_eq!(
+            message.encryption_key_encrypted,
+            invite_info.encryption_key_encrypted
+        );
+        assert_eq!(message.read_only, invite_info.read_only);
+
+        let access_key_id = Uuid::try_from(message.budget_access_key_id).unwrap();
+        let recipient_budget_token =
+            gen_budget_token(budget.id, access_key_id, &access_private_key);
+
+        // Check both sender and recipient can access the budget
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let budget_access_key_count = budget_access_keys
+            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(budget_access_key_count, 2);
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/leave")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let budget_access_key_count = budget_access_keys
+            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(budget_access_key_count, 1);
+
+        // Check recipient can access the budget but sender no longer has access
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        assert!(budgets
+            .find(budget.id)
+            .first::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .is_ok());
+
+        let req = TestRequest::delete()
+            .uri("/api/budget/leave")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let budget_access_key_count = budget_access_keys
+            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+            .count()
+            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(budget_access_key_count, 0);
+
+        // Check both sender and recipient no longer have access to the budget
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        assert!(budgets
+            .find(budget.id)
+            .first::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .is_err());
+    }
 }

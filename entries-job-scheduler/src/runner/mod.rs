@@ -216,7 +216,7 @@ mod tests {
         assert_eq!(*job1_run_count.lock().await, 1);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        time::sleep(Duration::from_millis(16)).await;
+        time::sleep(Duration::from_millis(18)).await;
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
