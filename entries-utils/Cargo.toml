@@ -12,7 +12,7 @@ diesel = { version = "2.1.*", features = ["postgres", "uuid", "r2d2"] }
 ed25519-dalek = { version = "2.0.*", features = ["rand_core", "zeroize"] }
 hex = "0.4.*"
 hmac = "0.12.*"
-lettre = { version = "0.10.*", features = ["tokio1-native-tls"] }
+lettre = { version = "0.11.*", features = ["tokio1-native-tls"] }
 log = "0.4.*"
 num_cpus = "1.16.*"
 rand = "0.8.*"
@@ -23,7 +23,7 @@ serde = { version = "1.0.*", features = ["derive"] }
 serde_json = "1.0.*"
 sha1 = "0.10.*"
 sha2 = "0.10.*"
-uuid = { version = "1.4.*", features = ["serde", "v4"] }
+uuid = { version = "1.5.*", features = ["serde", "v4"] }
 zeroize = { version = "1.6.*", features = ["zeroize_derive"] }
 
 [dev-dependencies]
