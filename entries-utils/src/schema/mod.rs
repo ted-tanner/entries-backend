@@ -172,7 +172,16 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(budget_accept_keys -> budgets (budget_id));
+diesel::joinable!(budget_access_keys -> budgets (budget_id));
+diesel::joinable!(categories -> budgets (budget_id));
+diesel::joinable!(entries -> budgets (budget_id));
 diesel::joinable!(entries -> categories (category_id));
+diesel::joinable!(user_backup_codes -> users (user_id));
+diesel::joinable!(user_deletion_request_budget_keys -> users (user_id));
+diesel::joinable!(user_deletion_requests -> users (user_id));
+diesel::joinable!(user_keystores -> users (user_id));
+diesel::joinable!(user_preferences -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
