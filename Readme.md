@@ -506,7 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Replace HMAC, sha2, and sha1 with openssl crate
 * Update readme documentation
   - Add a section for the job scheduler
   - Create a deployment checklist!
