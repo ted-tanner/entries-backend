@@ -20,6 +20,7 @@ use entries_utils::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
+use openssl::sha::Sha1;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -769,7 +770,6 @@ pub mod tests {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use prost::Message;
     use rand::Rng;
-    use sha1::{Digest, Sha1};
     use std::str::FromStr;
     use uuid::Uuid;
 
@@ -1145,7 +1145,7 @@ pub mod tests {
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob,
-            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
         };
 
         let req = TestRequest::put()
@@ -1217,7 +1217,7 @@ pub mod tests {
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob,
-            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
         };
 
         let req = TestRequest::put()

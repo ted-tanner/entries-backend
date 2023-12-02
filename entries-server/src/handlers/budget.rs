@@ -14,6 +14,7 @@ use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use openssl::pkey::PKey;
 use openssl::rsa::{Padding, Rsa};
+use openssl::sha::Sha1;
 use prost::Message;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -1045,7 +1046,6 @@ pub mod tests {
     use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
     use openssl::sign::Signer;
     use prost::Message;
-    use sha1::{Digest, Sha1};
 
     use crate::env;
     use crate::handlers::test_utils::{self, gen_budget_token, gen_bytes};
@@ -1844,11 +1844,11 @@ pub mod tests {
         assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(budget.encrypted_blob);
+        sha1_hasher.update(&budget.encrypted_blob);
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
         };
 
         let req = TestRequest::put()
@@ -2001,7 +2001,7 @@ pub mod tests {
 
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&entry_message.encrypted_blob);
-        let hash = sha1_hasher.finalize();
+        let hash = sha1_hasher.finish();
 
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
@@ -2119,7 +2119,7 @@ pub mod tests {
 
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&entry_message.encrypted_blob);
-        let hash = sha1_hasher.finalize();
+        let hash = sha1_hasher.finish();
 
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
@@ -2331,7 +2331,7 @@ pub mod tests {
 
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&budget_message.categories[cat2_pos].encrypted_blob);
-        let hash = sha1_hasher.finalize();
+        let hash = sha1_hasher.finish();
 
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
@@ -2453,7 +2453,7 @@ pub mod tests {
 
         let mut sha1_hasher = Sha1::new();
         sha1_hasher.update(&category_update.encrypted_blob);
-        let hash = sha1_hasher.finalize();
+        let hash = sha1_hasher.finish();
 
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
@@ -2723,11 +2723,11 @@ pub mod tests {
         assert_eq!(budget_message.entries.len(), 0);
 
         let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(budget.encrypted_blob);
+        sha1_hasher.update(&budget.encrypted_blob);
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: sha1_hasher.finalize().to_vec(),
+            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
         };
 
         let req = TestRequest::put()

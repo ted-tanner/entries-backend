@@ -5,11 +5,10 @@ pub mod budget_invite_sender_token;
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
-use hmac::{Hmac, Mac};
+use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
-use openssl::sign::Verifier;
+use openssl::sign::{Signer, Verifier};
 use serde::de::DeserializeOwned;
-use sha2::Sha256;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -133,25 +132,30 @@ pub struct HmacSha256Verifier {}
 
 impl TokenSignatureVerifier for HmacSha256Verifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool {
-        let mut mac = Hmac::<Sha256>::new(key.into());
-        mac.update(json.as_bytes());
+        let Ok(key) = PKey::hmac(key) else {
+            return false;
+        };
 
-        let correct_hash = mac.finalize().into_bytes();
+        let mut signer = Signer::new(MessageDigest::sha256(), &key)
+            .expect("Failed to create signer from HMAC signing key");
+        let correct_signature = signer
+            .sign_oneshot_to_vec(json.as_bytes())
+            .expect("Failed to sign token claims");
 
-        let mut hashes_dont_match = 0u8;
+        let mut signatures_dont_match = 0u8;
 
-        if correct_hash.len() != signature.len() || signature.is_empty() {
+        if correct_signature.len() != signature.len() || signature.is_empty() {
             return false;
         }
 
         // Do bitwise comparison to prevent timing attacks
-        for (i, correct_hash_byte) in correct_hash.iter().enumerate() {
+        for (i, correct_sig_byte) in correct_signature.iter().enumerate() {
             unsafe {
-                hashes_dont_match |= correct_hash_byte ^ signature.get_unchecked(i);
+                signatures_dont_match |= correct_sig_byte ^ signature.get_unchecked(i);
             }
         }
 
-        hashes_dont_match == 0
+        signatures_dont_match == 0
     }
 }
 
@@ -159,7 +163,7 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 mod tests {
     use super::*;
 
-    use hmac::{Hmac, Mac};
+    use openssl::pkey::PKey;
     use openssl::sign::Signer;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
@@ -190,15 +194,21 @@ mod tests {
 
     impl TestTokenHmac {
         pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
+            let signing_key =
+                PKey::hmac(signing_key).expect("Failed to create HMAC signing key from bytes");
+
             let mut json_of_claims =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-            let mut mac = Hmac::<Sha256>::new(signing_key.into());
-            mac.update(&json_of_claims);
-            let hash = hex::encode(mac.finalize().into_bytes());
+            let mut signer = Signer::new(MessageDigest::sha256(), &signing_key)
+                .expect("Failed to create signer from HMAC signing key");
+            let signature = signer
+                .sign_oneshot_to_vec(&json_of_claims)
+                .expect("Failed to sign token claims");
+            let signature = hex::encode(signature);
 
             json_of_claims.push(b'|');
-            json_of_claims.extend_from_slice(&hash.into_bytes());
+            json_of_claims.extend_from_slice(&signature.into_bytes());
 
             b64_urlsafe.encode(json_of_claims)
         }
@@ -217,8 +227,9 @@ mod tests {
 
     impl TestTokenEd25519 {
         pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
-            let key = PKey::private_key_from_der(signing_key).unwrap();
-            let mut signer = Signer::new_without_digest(&key).unwrap();
+            let signing_key = PKey::private_key_from_der(signing_key)
+                .expect("Failed to create Ed25519 signing key from bytes");
+            let mut signer = Signer::new_without_digest(&signing_key).unwrap();
 
             let mut json_of_claims =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
@@ -316,8 +327,8 @@ mod tests {
             .as_secs();
         let key = PKey::generate_ed25519().unwrap();
 
-        let priv_key = key.private_key_to_der().unwrap();
         let pub_key = key.public_key_to_der().unwrap();
+        let priv_key = key.private_key_to_der().unwrap();
 
         let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &priv_key);
         let t = TestTokenEd25519::decode(&token).unwrap();

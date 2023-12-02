@@ -10,9 +10,9 @@ use entries_utils::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
+use openssl::sha::Sha256;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
@@ -39,10 +39,10 @@ pub async fn obtain_nonce_and_auth_string_params(
     let random: u64 = rng.gen();
 
     let mut hasher = Sha256::new();
-    hasher.update(&*email.email);
-    hasher.update(random.to_be_bytes());
-    hasher.update(env::CONF.token_signing_key);
-    let hash = hasher.finalize();
+    hasher.update(email.email.as_bytes());
+    hasher.update(&random.to_be_bytes());
+    hasher.update(&env::CONF.token_signing_key);
+    let hash = hasher.finish();
 
     let phony_salt = hash[..16].to_vec();
     // The bounds are hardcoded. This is safe.

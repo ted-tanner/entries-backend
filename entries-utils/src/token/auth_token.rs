@@ -2,11 +2,12 @@ use crate::token::{Expiring, HmacSha256Verifier, Token, TokenError};
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
-use hmac::{Hmac, Mac};
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::sign::Signer;
 use openssl::symm::{decrypt, encrypt, Cipher};
 use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -168,16 +169,22 @@ impl AuthTokenEncryptedClaims {
 pub struct AuthToken {}
 
 impl AuthToken {
-    pub fn sign_new(encrypted_claims: AuthTokenEncryptedClaims, signing_key: &[u8; 64]) -> String {
+    pub fn sign_new(encrypted_claims: AuthTokenEncryptedClaims, signing_key: &[u8]) -> String {
+        let signing_key =
+            PKey::hmac(signing_key).expect("Failed to create HMAC signing key from bytes");
+
         let mut json_of_claims =
             serde_json::to_vec(&encrypted_claims).expect("Failed to transform claims into JSON");
 
-        let mut mac = Hmac::<Sha256>::new(signing_key.into());
-        mac.update(&json_of_claims);
-        let hash = hex::encode(mac.finalize().into_bytes());
+        let mut signer = Signer::new(MessageDigest::sha256(), &signing_key)
+            .expect("Failed to create signer from HMAC signing key");
+        let signature = signer
+            .sign_oneshot_to_vec(&json_of_claims)
+            .expect("Failed to sign token claims");
+        let signature = hex::encode(signature);
 
         json_of_claims.push(b'|');
-        json_of_claims.extend_from_slice(&hash.into_bytes());
+        json_of_claims.extend_from_slice(&signature.into_bytes());
 
         b64_urlsafe.encode(json_of_claims)
     }

@@ -506,8 +506,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Use `PKey<Private>` rather that `[u8]`
-* Replace RSA, AES-GCM, and ed25519 with openssl crate
 * Replace HMAC, sha2, and sha1 with openssl crate
 * Update readme documentation
   - Add a section for the job scheduler
