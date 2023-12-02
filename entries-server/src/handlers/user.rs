@@ -188,7 +188,7 @@ pub async fn create(
     };
 
     let user_creation_token = AuthToken::sign_new(
-        user_creation_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        user_creation_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -573,7 +573,7 @@ pub async fn init_delete(
     };
 
     let user_deletion_token = AuthToken::sign_new(
-        user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -769,7 +769,6 @@ pub mod tests {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use prost::Message;
     use rand::Rng;
-    use rsa::pkcs8::EncodePrivateKey;
     use sha1::{Digest, Sha1};
     use std::str::FromStr;
     use uuid::Uuid;
@@ -1055,7 +1054,7 @@ pub mod tests {
         };
 
         let user_creation_token = AuthToken::sign_new(
-            user_creation_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_creation_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -1645,7 +1644,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -1874,7 +1873,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -2197,7 +2196,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -2319,7 +2318,7 @@ pub mod tests {
         let budget2_token_user2 = test_utils::share_budget(
             budget2.id,
             &user2.email,
-            user2_rsa_key.to_pkcs8_der().unwrap().as_bytes(),
+            &user2_rsa_key.private_key_to_der().unwrap(),
             true,
             &budget2_token_user1,
             &user1_access_token,
@@ -2429,7 +2428,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -2635,7 +2634,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -2751,7 +2750,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -2863,7 +2862,7 @@ pub mod tests {
         };
 
         let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 

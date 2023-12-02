@@ -174,7 +174,7 @@ fn verify_token(
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
     let claims = decoded_token.verify(&env::CONF.token_signing_key)?;
-    let claims = claims.decrypt(&env::CONF.token_encryption_cipher)?;
+    let claims = claims.decrypt(&env::CONF.token_encryption_key)?;
 
     if mem::discriminant(&claims.token_type) != mem::discriminant(&expected_type) {
         return Err(TokenError::WrongTokenType);
@@ -218,7 +218,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -255,7 +255,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -289,7 +289,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -326,7 +326,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -363,7 +363,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -397,7 +397,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -434,7 +434,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -479,7 +479,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -520,7 +520,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -564,7 +564,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -608,7 +608,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 
@@ -649,7 +649,7 @@ mod tests {
         };
 
         let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_cipher),
+            token_claims.encrypt(&env::CONF.token_encryption_key),
             &env::CONF.token_signing_key,
         );
 

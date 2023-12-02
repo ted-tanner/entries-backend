@@ -33,8 +33,7 @@ mod tests {
 
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use ed25519_dalek::{Signer, SigningKey};
-    use rand::rngs::OsRng;
+    use openssl::{pkey::PKey, sign::Signer};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -54,9 +53,10 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
-        let keypair = SigningKey::generate(&mut OsRng);
-        let pub_key = keypair.verifying_key();
-        let signature = hex::encode(keypair.sign(claims.as_bytes()).to_bytes());
+        let keypair = PKey::generate_ed25519().unwrap();
+        let mut signer = Signer::new_without_digest(&keypair).unwrap();
+        let pub_key = keypair.public_key_to_der().unwrap();
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
 
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
         let t = BudgetAccessToken::decode(&token).unwrap();
@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(t.claims.budget_id, bid);
         assert_eq!(t.claims.expiration, exp);
 
-        let verified_claims = t.verify(pub_key.as_bytes()).unwrap();
+        let verified_claims = t.verify(&pub_key).unwrap();
 
         assert_eq!(verified_claims.key_id, kid);
         assert_eq!(verified_claims.budget_id, bid);
@@ -84,7 +84,7 @@ mod tests {
         let token = b64_urlsafe.encode(&token);
         assert!(BudgetAccessToken::decode(&token)
             .unwrap()
-            .verify(pub_key.as_bytes())
+            .verify(&pub_key)
             .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
@@ -99,12 +99,12 @@ mod tests {
         };
         let claims = serde_json::to_string(&claims).unwrap();
 
-        let signature = hex::encode(keypair.sign(claims.as_bytes()).to_bytes());
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
 
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
         assert!(BudgetAccessToken::decode(&token)
             .unwrap()
-            .verify(pub_key.as_bytes())
+            .verify(&pub_key)
             .is_err());
     }
 }

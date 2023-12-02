@@ -51,11 +51,8 @@ mod tests {
     use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
     use entries_utils::token::Token;
 
-    use aes_gcm::{
-        aead::{KeyInit, OsRng},
-        Aes128Gcm,
-    };
     use diesel::{dsl, RunQueryDsl};
+    use rand::rngs::OsRng;
     use rand::Rng;
     use std::time::{Duration, SystemTime};
 
@@ -123,7 +120,7 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
-        let cipher = Aes128Gcm::new(&Aes128Gcm::generate_key(&mut OsRng));
+        let aes_key: [u8; 16] = OsRng.gen();
 
         let pretend_expired_token_claims = NewAuthTokenClaims {
             user_id,
@@ -133,7 +130,7 @@ mod tests {
         };
 
         let pretend_expired_token =
-            AuthToken::sign_new(pretend_expired_token_claims.encrypt(&cipher), &[0; 64]);
+            AuthToken::sign_new(pretend_expired_token_claims.encrypt(&aes_key), &[0; 64]);
 
         let unexpired_token_claims = NewAuthTokenClaims {
             user_id,
@@ -143,7 +140,7 @@ mod tests {
         };
 
         let unexpired_token =
-            AuthToken::sign_new(unexpired_token_claims.encrypt(&cipher), &[0; 64]);
+            AuthToken::sign_new(unexpired_token_claims.encrypt(&aes_key), &[0; 64]);
 
         let pretend_expired_token = AuthToken::decode(&pretend_expired_token).unwrap();
 

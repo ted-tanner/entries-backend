@@ -1,9 +1,9 @@
 use crate::token::{Expiring, HmacSha256Verifier, Token, TokenError};
 
-use aes_gcm::{aead::Aead, Aes128Gcm};
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
 use hmac::{Hmac, Mac};
+use openssl::symm::{decrypt, encrypt, Cipher};
 use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -78,7 +78,7 @@ pub struct NewAuthTokenClaims<'a> {
 }
 
 impl<'a> NewAuthTokenClaims<'a> {
-    pub fn encrypt(&self, cipher: &Aes128Gcm) -> AuthTokenEncryptedClaims {
+    pub fn encrypt(&self, key: &[u8; 16]) -> AuthTokenEncryptedClaims {
         let private_claims = NewPrivateAuthTokenClaims {
             user_id: self.user_id,
             email: self.user_email,
@@ -87,11 +87,15 @@ impl<'a> NewAuthTokenClaims<'a> {
         let private_claims_json = serde_json::to_vec(&private_claims)
             .expect("Failed to transform private claims into JSON");
 
-        let nonce: [u8; 12] = OsRng.gen();
+        let nonce: [u8; 16] = OsRng.gen();
 
-        let encrypted_private_claims = cipher
-            .encrypt((&nonce).into(), private_claims_json.as_ref())
-            .expect("Failed to encrypt private token claims");
+        let encrypted_private_claims = encrypt(
+            Cipher::aes_128_ctr(),
+            key,
+            Some(&nonce),
+            private_claims_json.as_ref(),
+        )
+        .expect("Failed to encrypt private token claims");
 
         let exp = self
             .expiration
@@ -125,7 +129,7 @@ impl Expiring for AuthTokenEncryptedClaims {
 }
 
 impl AuthTokenEncryptedClaims {
-    pub fn decrypt(&self, cipher: &Aes128Gcm) -> Result<AuthTokenClaims, TokenError> {
+    pub fn decrypt(&self, key: &[u8]) -> Result<AuthTokenClaims, TokenError> {
         let nonce = b64_urlsafe
             .decode(&self.nnc)
             .map_err(|_| TokenError::TokenInvalid)?;
@@ -133,9 +137,13 @@ impl AuthTokenEncryptedClaims {
             .decode(&self.enc)
             .map_err(|_| TokenError::TokenInvalid)?;
 
-        let decrypted_self_bytes = cipher
-            .decrypt((&*nonce).into(), private_claims.as_ref())
-            .map_err(|_| TokenError::TokenInvalid)?;
+        let decrypted_self_bytes = decrypt(
+            Cipher::aes_128_ctr(),
+            key,
+            Some(&nonce),
+            private_claims.as_ref(),
+        )
+        .map_err(|_| TokenError::TokenInvalid)?;
 
         let decrypted_self_json_str =
             String::from_utf8(decrypted_self_bytes).map_err(|_| TokenError::TokenInvalid)?;
@@ -188,7 +196,6 @@ impl Token for AuthToken {
 mod tests {
     use super::*;
 
-    use aes_gcm::{aead::KeyInit, Aes128Gcm};
     use std::time::Duration;
 
     #[test]
@@ -196,7 +203,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
         let exp = SystemTime::now() + Duration::from_secs(10);
-        let encryption_key = Aes128Gcm::new(&[8; 16].into());
+        let encryption_key = [8; 16];
         let signing_key = [9; 64];
 
         let claims = NewAuthTokenClaims {

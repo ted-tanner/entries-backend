@@ -51,9 +51,8 @@ mod tests {
     use actix_web::test::TestRequest;
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use ed25519::Signer;
-    use ed25519_dalek as ed25519;
-    use rand::rngs::OsRng;
+    use openssl::pkey::PKey;
+    use openssl::sign::Signer;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
@@ -81,9 +80,10 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
-        let access_key_pair = ed25519::SigningKey::generate(&mut OsRng);
-        let access_public_key = access_key_pair.verifying_key().to_bytes();
-        let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+        let access_key_pair = PKey::generate_ed25519().unwrap();
+        let access_public_key = access_key_pair.public_key_to_der().unwrap();
+        let mut signer = Signer::new_without_digest(&access_key_pair).unwrap();
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
@@ -128,7 +128,8 @@ mod tests {
         assert_eq!(c.budget_id, bid);
         assert_eq!(c.expiration, exp);
 
-        let mut signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+        let mut signer = Signer::new_without_digest(&access_key_pair).unwrap();
+        let mut signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
 
         // Make the signature invalid
         let last_char = signature.pop().unwrap();
@@ -166,7 +167,7 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
-        let signature = hex::encode(access_key_pair.sign(claims.as_bytes()).to_bytes());
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
@@ -198,9 +199,10 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
-        let invite_key_pair = ed25519::SigningKey::generate(&mut OsRng);
-        let invite_public_key = invite_key_pair.verifying_key().to_bytes();
-        let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+        let invite_key_pair = PKey::generate_ed25519().unwrap();
+        let invite_public_key = invite_key_pair.public_key_to_der().unwrap();
+        let mut signer = Signer::new_without_digest(&invite_key_pair).unwrap();
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()
@@ -241,7 +243,8 @@ mod tests {
 
         assert!(t.0.verify(&invite_public_key).is_ok());
 
-        let mut signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+        let mut signer = Signer::new_without_digest(&invite_key_pair).unwrap();
+        let mut signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
 
         // Make the signature invalid
         let last_char = signature.pop().unwrap();
@@ -278,7 +281,7 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let claims = String::from_utf8_lossy(&claims);
 
-        let signature = hex::encode(invite_key_pair.sign(claims.as_bytes()).to_bytes());
+        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
         let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
 
         let req = TestRequest::default()

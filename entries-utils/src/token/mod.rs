@@ -5,8 +5,9 @@ pub mod budget_invite_sender_token;
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
-use ed25519_dalek::{Signature, VerifyingKey, SIGNATURE_LENGTH};
 use hmac::{Hmac, Mac};
+use openssl::pkey::PKey;
+use openssl::sign::Verifier;
 use serde::de::DeserializeOwned;
 use sha2::Sha256;
 use std::marker::PhantomData;
@@ -110,25 +111,21 @@ pub struct Ed25519Verifier {}
 
 impl TokenSignatureVerifier for Ed25519Verifier {
     fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool {
-        if signature.len() != SIGNATURE_LENGTH {
+        if signature.len() != 64 {
             return false;
         }
 
-        let key = VerifyingKey::from_bytes(match key.try_into() {
-            Ok(k) => k,
-            Err(_) => return false,
-        });
-
-        let Ok(key) = key else {
+        let Ok(key) = PKey::public_key_from_der(key) else {
             return false;
         };
 
-        let signature = Signature::from_bytes(match signature.try_into() {
-            Ok(s) => s,
-            Err(_) => return false,
-        });
+        let Ok(mut verifier) = Verifier::new_without_digest(&key) else {
+            return false;
+        };
 
-        key.verify_strict(json.as_bytes(), &signature).is_ok()
+        verifier
+            .verify_oneshot(signature, json.as_bytes())
+            .unwrap_or(false)
     }
 }
 
@@ -162,9 +159,8 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 mod tests {
     use super::*;
 
-    use ed25519_dalek::{Signer, SigningKey};
     use hmac::{Hmac, Mac};
-    use rand::rngs::OsRng;
+    use openssl::sign::Signer;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
     use uuid::Uuid;
@@ -193,7 +189,7 @@ mod tests {
     }
 
     impl TestTokenHmac {
-        pub fn sign_new(claims: TestClaims, signing_key: &[u8; 64]) -> String {
+        pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
             let mut json_of_claims =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
@@ -220,11 +216,14 @@ mod tests {
     }
 
     impl TestTokenEd25519 {
-        pub fn sign_new(claims: TestClaims, keypair: &SigningKey) -> String {
+        pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
+            let key = PKey::private_key_from_der(signing_key).unwrap();
+            let mut signer = Signer::new_without_digest(&key).unwrap();
+
             let mut json_of_claims =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-            let hash = hex::encode(keypair.sign(&json_of_claims).to_bytes());
+            let hash = hex::encode(signer.sign_oneshot_to_vec(&json_of_claims).unwrap());
 
             json_of_claims.push(b'|');
             json_of_claims.extend_from_slice(&hash.into_bytes());
@@ -315,12 +314,14 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let keypair = SigningKey::generate(&mut OsRng);
-        let pub_key = keypair.verifying_key();
+        let key = PKey::generate_ed25519().unwrap();
 
-        let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
+        let priv_key = key.private_key_to_der().unwrap();
+        let pub_key = key.public_key_to_der().unwrap();
+
+        let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &priv_key);
         let t = TestTokenEd25519::decode(&token).unwrap();
-        let claims = t.verify(pub_key.as_bytes()).unwrap();
+        let claims = t.verify(&pub_key).unwrap();
 
         assert_eq!(claims.id, id);
         assert_eq!(claims.exp, exp);
@@ -328,17 +329,17 @@ mod tests {
         make_signature_invalid(&mut token);
         assert!(TestTokenEd25519::decode(&token)
             .unwrap()
-            .verify(pub_key.as_bytes())
+            .verify(&pub_key)
             .is_err());
 
         let exp = (SystemTime::now() - Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &keypair);
+        let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &priv_key);
         assert!(TestTokenEd25519::decode(&token)
             .unwrap()
-            .verify(pub_key.as_bytes())
+            .verify(&pub_key)
             .is_err());
     }
 }

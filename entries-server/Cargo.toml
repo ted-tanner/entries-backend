@@ -8,22 +8,20 @@ edition.workspace = true
 entries_utils = { path = "../entries-utils" }
 actix-protobuf = "0.10.*"
 actix-web = "4.4.*"
-aes-gcm = { version = "0.10.*", features = ["zeroize"] }
 argon2-kdf = "1.5.*"
 base64 = "0.21.*"
 diesel = { version = "2.1.*", features = ["postgres", "uuid", "r2d2"] }
-ed25519-dalek = { version = "2.0.*", features = ["rand_core", "zeroize"] }
 flexi_logger = { version = "0.27.*", features = ["async", "compress"], default_features = false }
 futures = "0.3.*"
 lettre = "0.11.*"
 log = "0.4.*"
 num_cpus = "1.16.*"
 once_cell = "1.18.*"
+openssl = "0.10.*"
 prost = "0.12.*"
 rand = "0.8.*"
 rand_chacha = "0.3.*"
 rayon = "1.8.*"
-rsa = "0.9.*"
 sha2 = "0.10.*"
 tokio = "1.33.*"
 uuid = { version = "1.5.*", features = ["v4"] }

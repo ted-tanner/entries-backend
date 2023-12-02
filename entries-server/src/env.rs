@@ -1,4 +1,3 @@
-use aes_gcm::{aead::KeyInit, Aes128Gcm};
 use base64::engine::general_purpose::STANDARD as b64;
 use base64::Engine;
 use lettre::message::Mailbox;
@@ -65,6 +64,7 @@ const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
 const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
 const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
 
+const AES_128_KEY_SIZE: usize = 16;
 const HASHING_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
 const TOKEN_ENCRYPTION_KEY_SIZE: usize = 16;
@@ -85,8 +85,7 @@ pub struct ConfigInner {
     pub token_signing_key: [u8; TOKEN_SIGNING_KEY_SIZE],
     pub amazon_ses_username: String,
     pub amazon_ses_key: String,
-    #[zeroize(skip)]
-    pub token_encryption_cipher: Aes128Gcm,
+    pub token_encryption_key: [u8; AES_128_KEY_SIZE],
 
     pub hash_length: u32,
     pub hash_iterations: u32,
@@ -172,11 +171,9 @@ impl Config {
                 .map_err(|_| ConfigError::InvalidVar(TOKEN_ENCRYPTION_KEY_VAR))?,
         );
 
-        let cipher = Aes128Gcm::new(
-            token_encryption_key[..TOKEN_ENCRYPTION_KEY_SIZE]
-                .try_into()
-                .map_err(|_| ConfigError::InvalidVar(TOKEN_ENCRYPTION_KEY_VAR))?,
-        );
+        let token_encryption_key = token_encryption_key[..TOKEN_ENCRYPTION_KEY_SIZE]
+            .try_into()
+            .map_err(|_| ConfigError::InvalidVar(TOKEN_ENCRYPTION_KEY_VAR))?;
 
         let email_from_address: Mailbox = env_var::<String>(EMAIL_FROM_ADDR)?
             .parse()
@@ -198,7 +195,7 @@ impl Config {
             token_signing_key,
             amazon_ses_username: env_var(AMAZON_SES_USERNAME_VAR)?,
             amazon_ses_key: env_var(AMAZON_SES_KEY_VAR)?,
-            token_encryption_cipher: cipher,
+            token_encryption_key,
 
             hash_length: env_var(HASH_LENGTH_VAR)?,
             hash_iterations: env_var(HASH_ITERATIONS_VAR)?,
@@ -257,11 +254,6 @@ impl Config {
         unsafe {
             let inner = self.inner.get();
             (*inner).zeroize();
-
-            // With the zeroize feature on the aes_gcm crate, Aes128Gcm is zeroized when
-            // dropped. By replacing the cipher, we ensure the old cipher is dropped and
-            // zeroized.
-            (*inner).token_encryption_cipher = Aes128Gcm::new(&[0u8; 16].into());
         }
     }
 }

@@ -168,7 +168,7 @@ pub async fn sign_in(
     };
 
     let signin_token = AuthToken::sign_new(
-        signin_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        signin_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -211,7 +211,7 @@ pub async fn verify_otp_for_signin(
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -223,7 +223,7 @@ pub async fn verify_otp_for_signin(
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        access_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -298,7 +298,7 @@ pub async fn use_backup_code_for_signin(
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -310,7 +310,7 @@ pub async fn use_backup_code_for_signin(
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        access_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -401,7 +401,7 @@ pub async fn refresh_tokens(
     };
 
     let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -413,7 +413,7 @@ pub async fn refresh_tokens(
     };
 
     let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_cipher),
+        access_token_claims.encrypt(&env::CONF.token_encryption_key),
         &env::CONF.token_signing_key,
     );
 
@@ -722,7 +722,7 @@ mod tests {
         assert!(matches!(token_type, AuthTokenType::SignIn));
 
         let claims = signin_token.claims;
-        let decrypted_claims = claims.decrypt(&env::CONF.token_encryption_cipher).unwrap();
+        let decrypted_claims = claims.decrypt(&env::CONF.token_encryption_key).unwrap();
 
         assert_eq!(decrypted_claims.user_email, new_user.email);
         assert!(
