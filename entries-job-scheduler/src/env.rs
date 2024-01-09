@@ -24,8 +24,6 @@ const CLEAR_EXPIRED_OTPS_JOB_FREQUENCY_SECS_VAR: &str =
     "ENTRIES_CLEAR_EXPIRED_OTPS_JOB_FREQUENCY_SECS";
 const CLEAR_OLD_USER_DELETION_REQUESTS_JOB_FREQUENCY_SECS_VAR: &str =
     "ENTRIES_CLEAR_OLD_USER_DELETION_REQUESTS_JOB_FREQUENCY_SECS";
-const CLEAR_THROTTLE_TABLE_JOB_FREQUENCY_SECS_VAR: &str =
-    "ENTRIES_CLEAR_THROTTLE_TABLE_JOB_FREQUENCY_SECS";
 const CLEAR_UNVERIFIED_USERS_JOB_FREQUENCY_SECS_VAR: &str =
     "ENTRIES_CLEAR_UNVERIFIED_USERS_JOB_FREQUENCY_SECS";
 const CLEAR_UNVERIFIED_USERS_MAX_USER_AGE_DAYS_VAR: &str =
@@ -74,8 +72,6 @@ pub struct ConfigInner {
     pub clear_expired_otps_job_frequency: Duration,
     #[zeroize(skip)]
     pub clear_old_user_deletion_requests_job_frequency: Duration,
-    #[zeroize(skip)]
-    pub clear_throttle_table_job_frequency: Duration,
     #[zeroize(skip)]
     pub clear_unverified_users_job_frequency: Duration,
     #[zeroize(skip)]
@@ -128,9 +124,6 @@ impl Config {
             )?),
             clear_old_user_deletion_requests_job_frequency: Duration::from_secs(env_var(
                 CLEAR_OLD_USER_DELETION_REQUESTS_JOB_FREQUENCY_SECS_VAR,
-            )?),
-            clear_throttle_table_job_frequency: Duration::from_secs(env_var(
-                CLEAR_THROTTLE_TABLE_JOB_FREQUENCY_SECS_VAR,
             )?),
             clear_unverified_users_job_frequency: Duration::from_secs(env_var(
                 CLEAR_UNVERIFIED_USERS_JOB_FREQUENCY_SECS_VAR,

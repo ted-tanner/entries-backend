@@ -24,7 +24,6 @@ DROP TABLE categories;
 DROP TABLE entries;
 DROP TABLE job_registry;
 DROP TABLE signin_nonces;
-DROP TABLE throttleable_attempts;
 DROP TABLE users;
 DROP TABLE user_backup_codes;
 DROP TABLE user_deletion_requests;

@@ -14,6 +14,8 @@ mod handlers;
 mod middleware;
 mod services;
 
+use services::api::RouteLimiters;
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mut port = 9000u16;
@@ -138,6 +140,8 @@ async fn main() -> std::io::Result<()> {
     let db_thread_pool = Data::new(db_thread_pool);
     let smtp_thread_pool = Data::new(smtp_thread_pool);
 
+    let limiters = RouteLimiters::default();
+
     HttpServer::new(move || {
         let mut protobuf_config = ProtoBufConfig::default();
         protobuf_config.limit(env::CONF.protobuf_max_size);
@@ -146,7 +150,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(protobuf_config)
             .app_data(db_thread_pool.clone())
             .app_data(smtp_thread_pool.clone())
-            .configure(services::api::configure)
+            .configure(|cfg| services::api::configure(cfg, limiters.clone()))
             .configure(services::web::configure)
             .wrap(actix_web::middleware::Compress::default())
             .wrap(actix_web::middleware::Logger::default())

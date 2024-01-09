@@ -10,7 +10,7 @@ mod runner;
 
 use jobs::{
     ClearExpiredBudgetInvitesJob, ClearExpiredOtpsJob, ClearOldUserDeletionRequestsJob,
-    ClearThrottleTableJob, ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
+    ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
 };
 
 fn main() {
@@ -85,13 +85,6 @@ fn main() {
                 .register(
                     Box::new(ClearOldUserDeletionRequestsJob::new(db_thread_pool.clone())),
                     env::CONF.clear_old_user_deletion_requests_job_frequency,
-                )
-                .await;
-
-            job_runner
-                .register(
-                    Box::new(ClearThrottleTableJob::new(db_thread_pool.clone())),
-                    env::CONF.clear_throttle_table_job_frequency,
                 )
                 .await;
 

@@ -456,6 +456,7 @@ pub mod test_utils {
     use uuid::Uuid;
 
     use crate::env;
+    use crate::services::api::RouteLimiters;
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
         (0..count)
@@ -487,7 +488,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -580,7 +581,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -632,7 +633,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 

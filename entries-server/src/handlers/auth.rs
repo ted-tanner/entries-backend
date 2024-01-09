@@ -20,7 +20,6 @@ use zeroize::Zeroizing;
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
-use crate::middleware::throttle::Throttle;
 use crate::middleware::FromHeader;
 
 pub async fn obtain_nonce_and_auth_string_params(
@@ -82,17 +81,12 @@ pub async fn sign_in(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     credentials: ProtoBuf<CredentialPair>,
-    throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let credentials = Zeroizing::new(credentials.0);
 
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(msg));
     }
-
-    throttle
-        .enforce(&credentials.email, "sign_in", &db_thread_pool)
-        .await?;
 
     let credentials = Arc::new(credentials);
     let credentials_ref = Arc::clone(&credentials);
@@ -190,14 +184,9 @@ pub async fn verify_otp_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: ProtoBuf<OtpMessage>,
-    throttle: Throttle<8, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
-
-    throttle
-        .enforce(&user_id, "verify_otp_for_signin", &db_thread_pool)
-        .await?;
 
     handlers::verification::verify_otp(&otp.value, &claims.user_email, &db_thread_pool).await?;
 
@@ -240,14 +229,7 @@ pub async fn obtain_otp(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    throttle: Throttle<4, 10>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let user_id = user_access_token.0.user_id;
-
-    throttle
-        .enforce(&user_id, "sign_in", &db_thread_pool)
-        .await?;
-
     handlers::verification::generate_and_email_otp(
         &user_access_token.0.user_email,
         db_thread_pool.as_ref(),
@@ -262,16 +244,11 @@ pub async fn use_backup_code_for_signin(
     db_thread_pool: web::Data<DbThreadPool>,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     code: ProtoBuf<BackupCode>,
-    throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let code = Zeroizing::new(code.0);
 
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
-
-    throttle
-        .enforce(&user_id, "use_backup_code_for_signin", &db_thread_pool)
-        .await?;
 
     match web::block(move || {
         let auth_dao = db::auth::Dao::new(&db_thread_pool);
@@ -327,13 +304,8 @@ pub async fn regenerate_backup_codes(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     otp: ProtoBuf<OtpMessage>,
-    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
-
-    throttle
-        .enforce(&user_id, "regenerate_backup_codes", &db_thread_pool)
-        .await?;
 
     handlers::verification::verify_otp(
         &otp.value,
@@ -486,6 +458,7 @@ mod tests {
     use prost::Message;
 
     use crate::handlers::test_utils::{self, gen_bytes};
+    use crate::services::api::RouteLimiters;
 
     #[actix_web::test]
     async fn test_obtain_nonce_and_auth_string_params() {
@@ -494,7 +467,7 @@ mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -598,7 +571,7 @@ mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -780,7 +753,7 @@ mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -958,7 +931,7 @@ mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 

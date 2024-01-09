@@ -2,31 +2,44 @@ use actix_web::web::*;
 
 use crate::handlers::budget;
 
-pub fn configure(cfg: &mut ServiceConfig) {
+use super::RouteLimiters;
+
+pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
     cfg.service(
         scope("/budget")
-            .route("", get().to(budget::get))
-            .route("", put().to(budget::edit))
-            .route("", post().to(budget::create))
-            .route("/multiple", get().to(budget::get_multiple))
-            .route("/invitation", post().to(budget::invite_user))
-            .route("/invitation", delete().to(budget::retract_invitation))
-            .route("/invitation/accept", put().to(budget::accept_invitation))
-            .route("/invitation/decline", put().to(budget::decline_invitation))
-            .route(
-                "/invitation/all_pending",
-                get().to(budget::get_all_pending_invitations),
+            .service(
+                resource("")
+                    .route(get().to(budget::get))
+                    .route(put().to(budget::edit))
+                    .route(post().to(budget::create).wrap(limiters.create_budget)),
             )
-            .route("/leave", delete().to(budget::leave_budget))
-            .route("/entry", post().to(budget::create_entry))
-            .route("/entry", put().to(budget::edit_entry))
-            .route("/entry", delete().to(budget::delete_entry))
-            .route(
-                "/entry_and_category",
-                post().to(budget::create_entry_and_category),
+            .service(resource("/multiple").route(get().to(budget::get_multiple)))
+            .service(
+                resource("invitation")
+                    .route(post().to(budget::invite_user).wrap(limiters.budget_invite))
+                    .route(delete().to(budget::retract_invitation)),
             )
-            .route("/category", post().to(budget::create_category))
-            .route("/category", put().to(budget::edit_category))
-            .route("/category", delete().to(budget::delete_category)),
+            .service(resource("/invitation/accept").route(put().to(budget::accept_invitation)))
+            .service(resource("/invitation/decline").route(put().to(budget::decline_invitation)))
+            .service(
+                resource("/invitation/all_pending")
+                    .route(get().to(budget::get_all_pending_invitations)),
+            )
+            .service(resource("/leave").route(delete().to(budget::leave_budget)))
+            .service(
+                resource("/entry")
+                    .route(post().to(budget::create_entry))
+                    .route(put().to(budget::edit_entry))
+                    .route(delete().to(budget::delete_entry)),
+            )
+            .service(
+                resource("/entry_and_category").route(post().to(budget::create_entry_and_category)),
+            )
+            .service(
+                resource("/category")
+                    .route(post().to(budget::create_category))
+                    .route(put().to(budget::edit_category))
+                    .route(delete().to(budget::delete_category)),
+            ),
     );
 }

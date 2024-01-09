@@ -7,7 +7,6 @@ pub mod category;
 pub mod entry;
 pub mod job_registry_item;
 pub mod signin_nonce;
-pub mod throttleable_attempt;
 pub mod user;
 pub mod user_backup_code;
 pub mod user_deletion_request;

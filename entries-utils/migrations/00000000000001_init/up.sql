@@ -117,14 +117,6 @@ CREATE TABLE signin_nonces (
     nonce INT NOT NULL
 );
 
-CREATE TABLE throttleable_attempts (
-    identifier_hash BIGINT PRIMARY KEY,
-    attempt_count INT NOT NULL,
-    expiration_timestamp TIMESTAMP NOT NULL
-);
-
-CREATE INDEX ON throttleable_attempts USING BTREE (expiration_timestamp);
-
 CREATE TABLE users (
     id UUID PRIMARY KEY,
 

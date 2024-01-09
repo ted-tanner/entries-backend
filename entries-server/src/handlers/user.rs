@@ -20,7 +20,6 @@ use entries_utils::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
-use openssl::sha::Sha1;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -30,23 +29,13 @@ use zeroize::Zeroizing;
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
-use crate::middleware::throttle::Throttle;
 use crate::middleware::{FromHeader, FromQuery};
 
 pub async fn lookup_user_public_key(
     db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<EmailQuery>,
-    throttle: Throttle<20, 2>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    throttle
-        .enforce(
-            &user_access_token.0.user_id,
-            "lookup_user_public_key",
-            &db_thread_pool,
-        )
-        .await?;
-
     let public_key = match web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_public_key(&user_email.email)
@@ -77,7 +66,6 @@ pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_data: ProtoBuf<NewUser>,
-    throttle: Throttle<5, 60>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_data = Zeroizing::new(user_data.0);
 
@@ -90,10 +78,6 @@ pub async fn create(
             "Provided auth string is too long. Max: 1024 bytes",
         ));
     }
-
-    throttle
-        .enforce(&user_data.email, "create_user", &db_thread_pool)
-        .await?;
 
     let user_data = Arc::new(user_data);
     let user_data_ref = Arc::clone(&user_data);
@@ -338,17 +322,8 @@ pub async fn edit_keystore(
 pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
-    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let new_password_data = Zeroizing::new(new_password_data.0);
-
-    throttle
-        .enforce(
-            &new_password_data.user_email,
-            "change_password",
-            &db_thread_pool,
-        )
-        .await?;
 
     if new_password_data.new_auth_string.len() > 1024 {
         return Err(HttpErrorResponse::InputTooLarge(
@@ -428,13 +403,8 @@ pub async fn change_recovery_key(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
-    throttle: Throttle<6, 15>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_id = user_access_token.0.user_id;
-
-    throttle
-        .enforce(&user_id, "change_recovery_key", &db_thread_pool)
-        .await?;
 
     handlers::verification::verify_otp(
         &new_recovery_key_data.otp,
@@ -768,6 +738,7 @@ pub mod tests {
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use openssl::sha::Sha1;
     use prost::Message;
     use rand::Rng;
     use std::str::FromStr;
@@ -775,6 +746,7 @@ pub mod tests {
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::auth::RequestAuthTokenType;
+    use crate::services::api::RouteLimiters;
 
     #[actix_web::test]
     async fn test_lookup_user_public_key() {
@@ -783,7 +755,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -809,7 +781,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -995,7 +967,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1102,7 +1074,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1174,7 +1146,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1246,7 +1218,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1455,7 +1427,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1590,7 +1562,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -1718,7 +1690,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -2055,7 +2027,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -2281,7 +2253,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -2694,7 +2666,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 
@@ -2817,7 +2789,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(crate::services::api::configure),
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
         )
         .await;
 

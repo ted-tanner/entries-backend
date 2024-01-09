@@ -1,7 +1,10 @@
 pub mod app_version;
 pub mod auth;
 pub mod special_access_token;
-pub mod throttle;
+
+mod limiter;
+
+pub use limiter::Limiter;
 
 use entries_utils::token::TokenError;
 
