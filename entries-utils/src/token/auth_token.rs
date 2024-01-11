@@ -2,14 +2,11 @@ use crate::token::{Expiring, HmacSha256Verifier, Token, TokenError};
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::sign::Signer;
-use openssl::symm::{decrypt, encrypt, Cipher};
-use rand::{rngs::OsRng, Rng};
+use hmac::Mac;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+use super::HmacSha256;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum AuthTokenType {
@@ -64,134 +61,52 @@ struct NewPrivateAuthTokenClaims<'a> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthTokenClaims {
+    #[serde(rename = "uid")]
     pub user_id: Uuid,
+    #[serde(rename = "eml")]
     pub user_email: String,
+    #[serde(rename = "exp")]
     pub expiration: u64,
+    #[serde(rename = "typ")]
     pub token_type: AuthTokenType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NewAuthTokenClaims<'a> {
+    #[serde(rename = "uid")]
     pub user_id: Uuid,
+    #[serde(rename = "eml")]
     pub user_email: &'a str,
-    pub expiration: SystemTime,
+    #[serde(rename = "exp")]
+    pub expiration: u64,
+    #[serde(rename = "typ")]
     pub token_type: AuthTokenType,
 }
 
-impl<'a> NewAuthTokenClaims<'a> {
-    pub fn encrypt(&self, key: &[u8; 16]) -> AuthTokenEncryptedClaims {
-        let private_claims = NewPrivateAuthTokenClaims {
-            user_id: self.user_id,
-            email: self.user_email,
-        };
-
-        let private_claims_json = serde_json::to_vec(&private_claims)
-            .expect("Failed to transform private claims into JSON");
-
-        let nonce: [u8; 16] = OsRng.gen();
-
-        let encrypted_private_claims = encrypt(
-            Cipher::aes_128_ctr(),
-            key,
-            Some(&nonce),
-            private_claims_json.as_ref(),
-        )
-        .expect("Failed to encrypt private token claims");
-
-        let exp = self
-            .expiration
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to fetch system time")
-            .as_secs();
-
-        AuthTokenEncryptedClaims {
-            exp,
-
-            nnc: b64_urlsafe.encode(nonce),
-            enc: b64_urlsafe.encode(encrypted_private_claims),
-
-            typ: self.token_type.into(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AuthTokenEncryptedClaims {
-    pub exp: u64,    // Expiration
-    pub nnc: String, // Nonce
-    pub enc: String, // Encrypted Data
-    pub typ: u8,     // Token Type
-}
-
-impl Expiring for AuthTokenEncryptedClaims {
+impl Expiring for AuthTokenClaims {
     fn expiration(&self) -> u64 {
-        self.exp
-    }
-}
-
-impl AuthTokenEncryptedClaims {
-    pub fn decrypt(&self, key: &[u8]) -> Result<AuthTokenClaims, TokenError> {
-        let nonce = b64_urlsafe
-            .decode(&self.nnc)
-            .map_err(|_| TokenError::TokenInvalid)?;
-        let private_claims = b64_urlsafe
-            .decode(&self.enc)
-            .map_err(|_| TokenError::TokenInvalid)?;
-
-        let decrypted_self_bytes = decrypt(
-            Cipher::aes_128_ctr(),
-            key,
-            Some(&nonce),
-            private_claims.as_ref(),
-        )
-        .map_err(|_| TokenError::TokenInvalid)?;
-
-        let decrypted_self_json_str =
-            String::from_utf8(decrypted_self_bytes).map_err(|_| TokenError::TokenInvalid)?;
-
-        let decrypted_self =
-            serde_json::from_str::<PrivateAuthTokenClaims>(&decrypted_self_json_str)
-                .map_err(|_| TokenError::TokenInvalid)?;
-
-        let token_type = self.typ.try_into().map_err(|_| TokenError::TokenInvalid)?;
-
-        let claims = AuthTokenClaims {
-            user_id: decrypted_self.user_id,
-            user_email: decrypted_self.email,
-            expiration: self.exp,
-            token_type,
-        };
-
-        Ok(claims)
+        self.expiration
     }
 }
 
 pub struct AuthToken {}
 
 impl AuthToken {
-    pub fn sign_new(encrypted_claims: AuthTokenEncryptedClaims, signing_key: &[u8]) -> String {
-        let signing_key =
-            PKey::hmac(signing_key).expect("Failed to create HMAC signing key from bytes");
+    pub fn sign_new(claims: NewAuthTokenClaims, signing_key: &[u8]) -> String {
+        let mut token_unencoded =
+            serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-        let mut json_of_claims =
-            serde_json::to_vec(&encrypted_claims).expect("Failed to transform claims into JSON");
+        let mut mac = HmacSha256::new_from_slice(signing_key).expect("HMAC key should not fail");
+        mac.update(&token_unencoded);
+        let signature = mac.finalize();
+        token_unencoded.extend_from_slice(&signature.into_bytes());
 
-        let mut signer = Signer::new(MessageDigest::sha256(), &signing_key)
-            .expect("Failed to create signer from HMAC signing key");
-        let signature = signer
-            .sign_oneshot_to_vec(&json_of_claims)
-            .expect("Failed to sign token claims");
-        let signature = hex::encode(signature);
-
-        json_of_claims.push(b'|');
-        json_of_claims.extend_from_slice(&signature.into_bytes());
-
-        b64_urlsafe.encode(json_of_claims)
+        b64_urlsafe.encode(&token_unencoded)
     }
 }
 
 impl Token for AuthToken {
-    type Claims = AuthTokenEncryptedClaims;
+    type Claims = AuthTokenClaims;
     type Verifier = HmacSha256Verifier;
 
     fn token_name() -> &'static str {
@@ -203,14 +118,16 @@ impl Token for AuthToken {
 mod tests {
     use super::*;
 
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn test_encrypt_decrypt_sign_verify() {
+    fn test_sign_and_verify() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
-        let exp = SystemTime::now() + Duration::from_secs(10);
-        let encryption_key = [8; 16];
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let signing_key = [9; 64];
 
         let claims = NewAuthTokenClaims {
@@ -220,53 +137,29 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
-        assert!(
-            !String::from_utf8_lossy(&b64_urlsafe.decode(&token).unwrap()).contains(user_email)
-        );
-
+        let token = AuthToken::sign_new(claims, &signing_key);
         let t = AuthToken::decode(&token).unwrap();
         let claims = t.verify(&signing_key).unwrap();
-        let decrypted_claims = claims.decrypt(&encryption_key).unwrap();
 
-        assert_eq!(decrypted_claims.user_id, user_id);
-        assert_eq!(decrypted_claims.user_email, user_email);
-        assert_eq!(
-            decrypted_claims.expiration,
-            exp.duration_since(UNIX_EPOCH).unwrap().as_secs()
-        );
-        assert_eq!(decrypted_claims.token_type, AuthTokenType::Access);
+        assert_eq!(claims.user_id, user_id);
+        assert_eq!(claims.user_email, user_email);
+        assert_eq!(claims.expiration, exp,);
+        assert_eq!(claims.token_type, AuthTokenType::Access);
 
-        let decrypted_claims = NewAuthTokenClaims {
-            user_id: decrypted_claims.user_id,
-            user_email: &decrypted_claims.user_email,
-            expiration: UNIX_EPOCH + Duration::from_secs(decrypted_claims.expiration),
-            token_type: decrypted_claims.token_type,
+        let claims = NewAuthTokenClaims {
+            user_id: claims.user_id,
+            user_email: &claims.user_email,
+            expiration: claims.expiration,
+            token_type: claims.token_type,
         };
 
-        let encrypted_claims = decrypted_claims.encrypt(&encryption_key);
-        let t = AuthToken::sign_new(encrypted_claims.clone(), &signing_key);
+        let t = AuthToken::sign_new(claims, &signing_key);
 
-        assert!(
-            String::from_utf8_lossy(&b64_urlsafe.decode(&t).unwrap()).contains(&format!(
-                "{}",
-                exp.duration_since(UNIX_EPOCH).unwrap().as_secs()
-            ))
-        );
+        assert!(String::from_utf8_lossy(&b64_urlsafe.decode(&t).unwrap())
+            .contains(&format!("{}", exp,)));
 
         let t = AuthToken::decode(&t.clone()).unwrap();
-
-        assert_eq!(t.claims.enc, encrypted_claims.enc);
-        assert_eq!(t.claims.exp, encrypted_claims.exp);
-        assert_eq!(t.claims.nnc, encrypted_claims.nnc);
-        assert_eq!(t.claims.typ, encrypted_claims.typ);
-
-        let claims = t.verify(&signing_key).unwrap();
-
-        assert_eq!(claims.enc, encrypted_claims.enc);
-        assert_eq!(claims.exp, encrypted_claims.exp);
-        assert_eq!(claims.nnc, encrypted_claims.nnc);
-        assert_eq!(claims.typ, encrypted_claims.typ);
+        t.verify(&signing_key).unwrap();
 
         let claims = NewAuthTokenClaims {
             user_id,
@@ -275,22 +168,25 @@ mod tests {
             token_type: AuthTokenType::Refresh,
         };
 
-        let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
+        let token = AuthToken::sign_new(claims, &signing_key);
         let mut t = b64_urlsafe.decode(token).unwrap();
 
         // Make the signature invalid
-        let last_char = t.pop().unwrap();
-        if last_char == b'a' {
-            t.push(b'b');
+        let last_byte = t.pop().unwrap();
+        if last_byte == 0x01 {
+            t.push(0x02);
         } else {
-            t.push(b'a');
+            t.push(0x01);
         }
 
         let t = b64_urlsafe.encode(t);
 
         assert!(AuthToken::decode(&t).unwrap().verify(&signing_key).is_err());
 
-        let exp = SystemTime::now() - Duration::from_secs(10);
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let claims = NewAuthTokenClaims {
             user_id,
@@ -299,7 +195,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(claims.encrypt(&encryption_key), &signing_key);
+        let token = AuthToken::sign_new(claims, &signing_key);
         assert!(AuthToken::decode(&token)
             .unwrap()
             .verify(&signing_key)

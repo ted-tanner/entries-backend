@@ -2,7 +2,7 @@ use diesel::associations::GroupedBy;
 use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use openssl::sha::Sha1;
+use sha1::{Digest, Sha1};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -216,7 +216,7 @@ impl Dao {
         let new_budget = NewBudget {
             id: budget_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -233,7 +233,7 @@ impl Dao {
             let mut sha1_hasher = Sha1::new();
             sha1_hasher.update(&category.encrypted_blob);
 
-            category_hashes.push(sha1_hasher.finish());
+            category_hashes.push(sha1_hasher.finalize());
         }
 
         let mut new_categories = Vec::new();
@@ -316,7 +316,8 @@ impl Dao {
                     .set((
                         budget_fields::modified_timestamp.eq(SystemTime::now()),
                         budget_fields::encrypted_blob.eq(edited_budget_data),
-                        budget_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finish().as_slice()),
+                        budget_fields::encrypted_blob_sha1_hash
+                            .eq(sha1_hasher.finalize().as_slice()),
                     ))
                     .execute(conn)?;
 
@@ -583,7 +584,7 @@ impl Dao {
             budget_id,
             category_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -611,7 +612,7 @@ impl Dao {
             id: category_id,
             budget_id,
             encrypted_blob: category_encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -623,7 +624,7 @@ impl Dao {
             budget_id,
             category_id: Some(category_id),
             encrypted_blob: entry_encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -680,7 +681,7 @@ impl Dao {
                 .set((
                     entry_fields::category_id.eq(category_id),
                     entry_fields::encrypted_blob.eq(entry_encrypted_blob),
-                    entry_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finish().as_slice()),
+                    entry_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finalize().as_slice()),
                     entry_fields::modified_timestamp.eq(SystemTime::now()),
                 ))
                 .execute(conn)?;
@@ -717,7 +718,7 @@ impl Dao {
             id: category_id,
             budget_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
             modified_timestamp: current_time,
         };
 
@@ -759,7 +760,7 @@ impl Dao {
                 )
                 .set((
                     category_fields::encrypted_blob.eq(category_encrypted_blob),
-                    category_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finish().as_slice()),
+                    category_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finalize().as_slice()),
                     category_fields::modified_timestamp.eq(SystemTime::now()),
                 ))
                 .execute(conn)?;

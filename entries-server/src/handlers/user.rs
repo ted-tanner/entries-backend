@@ -22,7 +22,7 @@ use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use zeroize::Zeroizing;
 
@@ -168,14 +168,15 @@ pub async fn create(
     let user_creation_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &user_data.email,
-        expiration: SystemTime::now() + env::CONF.user_creation_token_lifetime,
+        expiration: (SystemTime::now() + env::CONF.user_creation_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::UserCreation,
     };
 
-    let user_creation_token = AuthToken::sign_new(
-        user_creation_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let user_creation_token =
+        AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(
@@ -539,14 +540,15 @@ pub async fn init_delete(
     let user_deletion_token_claims = NewAuthTokenClaims {
         user_id: user_access_token.0.user_id,
         user_email: &user_access_token.0.user_email,
-        expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+        expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::UserDeletion,
     };
 
-    let user_deletion_token = AuthToken::sign_new(
-        user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let user_deletion_token =
+        AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
     let message = EmailMessage {
         body: UserVerificationMessage::generate(
@@ -738,6 +740,7 @@ pub mod tests {
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use ed25519_dalek as ed25519;
     use openssl::sha::Sha1;
     use prost::Message;
     use rand::Rng;
@@ -1021,14 +1024,15 @@ pub mod tests {
         let user_creation_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserCreation,
         };
 
-        let user_creation_token = AuthToken::sign_new(
-            user_creation_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_creation_token =
+            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -1611,14 +1615,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -1722,25 +1727,19 @@ pub mod tests {
         let new_entry_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
         let new_category_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
 
-        let budget1_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget1_token).unwrap())
+        let decoded = b64_urlsafe.decode(&budget1_token).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget1_access_key_id =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
-        let budget2_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget2_token).unwrap())
+        let decoded = b64_urlsafe.decode(&budget2_token).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget2_access_key_id =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
         let budget_access_tokens = BudgetAccessTokenList {
             tokens: vec![budget1_token, budget2_token],
@@ -1840,14 +1839,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -2037,25 +2037,19 @@ pub mod tests {
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
         let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
 
-        let budget1_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget1_token).unwrap())
+        let decoded = b64_urlsafe.decode(&budget1_token).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget1_access_key_id =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
-        let budget2_access_key_id = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget2_token).unwrap())
+        let decoded = b64_urlsafe.decode(&budget2_token).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget2_access_key_id =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
         let mut bad_token = b64_urlsafe.decode(&budget2_token).unwrap();
 
@@ -2085,7 +2079,7 @@ pub mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
 
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::delete()
             .uri("/api/user")
@@ -2163,14 +2157,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let broken_user_deletion_token = &user_deletion_token[..user_deletion_token.len() - 1];
 
@@ -2267,25 +2262,19 @@ pub mod tests {
         let (budget1, budget1_token_user1) = test_utils::create_budget(&user1_access_token).await;
         let (budget2, budget2_token_user1) = test_utils::create_budget(&user1_access_token).await;
 
-        let budget1_access_key_id_user1 = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget1_token_user1).unwrap())
+        let decoded = b64_urlsafe.decode(&budget1_token_user1).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget1_access_key_id_user1 =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
-        let budget2_access_key_id_user1 = serde_json::from_str::<BudgetAccessTokenClaims>(
-            String::from_utf8(b64_urlsafe.decode(&budget2_token_user1).unwrap())
+        let decoded = b64_urlsafe.decode(&budget2_token_user1).unwrap();
+        let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
+        let budget2_access_key_id_user1 =
+            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
-                .rsplit_once('|')
-                .unwrap()
-                .0,
-        )
-        .unwrap()
-        .key_id;
+                .key_id;
 
         let budget2_token_user2 = test_utils::share_budget(
             budget2.id,
@@ -2395,14 +2384,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user1.id,
             user_email: &user1.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -2601,14 +2591,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user2.id,
             user_email: &user2.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -2717,14 +2708,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -2829,14 +2821,15 @@ pub mod tests {
         let user_deletion_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.user_deletion_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
             token_type: AuthTokenType::UserDeletion,
         };
 
-        let user_deletion_token = AuthToken::sign_new(
-            user_deletion_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let user_deletion_token =
+            AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri(&format!(

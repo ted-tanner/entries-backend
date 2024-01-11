@@ -215,6 +215,7 @@ pub mod error {
         // 401
         IncorrectCredential(&'static str),
         IncorrectNonce(&'static str),
+        BadToken(&'static str),
         TokenExpired(&'static str),
         TokenMissing(&'static str),
         WrongTokenType(&'static str),
@@ -284,6 +285,10 @@ pub mod error {
                 HttpErrorResponse::IncorrectCredential(msg) => ServerErrorResponse {
                     err_type: ErrorType::IncorrectCredential.into(),
                     err_message: format!("Incorrect credential: {msg}"),
+                },
+                HttpErrorResponse::BadToken(msg) => ServerErrorResponse {
+                    err_type: ErrorType::IncorrectCredential.into(),
+                    err_message: format!("Bad token: {msg}"),
                 },
                 HttpErrorResponse::TokenExpired(msg) => ServerErrorResponse {
                     err_type: ErrorType::TokenExpired.into(),
@@ -371,6 +376,7 @@ pub mod error {
                 | HttpErrorResponse::ConflictWithExisting(_) => StatusCode::BAD_REQUEST,
                 HttpErrorResponse::IncorrectCredential(_)
                 | HttpErrorResponse::IncorrectNonce(_)
+                | HttpErrorResponse::BadToken(_)
                 | HttpErrorResponse::TokenExpired(_)
                 | HttpErrorResponse::TokenMissing(_)
                 | HttpErrorResponse::WrongTokenType(_) => StatusCode::UNAUTHORIZED,
@@ -413,7 +419,7 @@ pub mod error {
     impl From<TokenError> for HttpErrorResponse {
         fn from(err: TokenError) -> Self {
             match err {
-                TokenError::TokenInvalid => HttpErrorResponse::IncorrectlyFormed("Invalid token"),
+                TokenError::TokenInvalid => HttpErrorResponse::BadToken("Invalid token"),
                 TokenError::TokenExpired => HttpErrorResponse::TokenExpired("Token expired"),
                 TokenError::TokenMissing => HttpErrorResponse::TokenMissing("Missing token"),
                 TokenError::WrongTokenType => HttpErrorResponse::WrongTokenType("Wrong token type"),
@@ -445,11 +451,12 @@ pub mod test_utils {
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use ed25519_dalek as ed25519;
+    use ed25519_dalek::Signer;
     use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
-    use openssl::pkey::{PKey, Private};
+    use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
-    use openssl::sign::Signer;
     use prost::Message;
     use rand::Rng;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -464,7 +471,11 @@ pub mod test_utils {
             .collect()
     }
 
-    pub fn gen_budget_token(budget_id: Uuid, key_id: Uuid, signing_key: &PKey<Private>) -> String {
+    pub fn gen_budget_token(
+        budget_id: Uuid,
+        key_id: Uuid,
+        signing_key: &ed25519::SigningKey,
+    ) -> String {
         let expiration = SystemTime::now() + Duration::from_secs(10);
         let expiration = expiration.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
@@ -474,12 +485,13 @@ pub mod test_utils {
             expiration,
         };
 
-        let claims = serde_json::to_vec(&claims).unwrap();
-        let mut signer = Signer::new_without_digest(signing_key).unwrap();
-        let signature = hex::encode(signer.sign_oneshot_to_vec(&claims).unwrap());
+        let mut token_unencoded =
+            serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-        let claims = String::from_utf8_lossy(&claims);
-        b64_urlsafe.encode(format!("{claims}|{signature}"))
+        let signature = signing_key.sign(&token_unencoded);
+        token_unencoded.extend_from_slice(&signature.to_bytes());
+
+        b64_urlsafe.encode(&token_unencoded)
     }
 
     pub async fn create_user() -> (User, String) {
@@ -551,14 +563,14 @@ pub mod test_utils {
         let access_token_claims = NewAuthTokenClaims {
             user_id: user.id,
             user_email: &user.email,
-            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             token_type: AuthTokenType::Access,
         };
 
-        let access_token = AuthToken::sign_new(
-            access_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
         (user, access_token)
     }
@@ -585,13 +597,13 @@ pub mod test_utils {
         )
         .await;
 
-        let key_pair = PKey::generate_ed25519().unwrap();
-        let public_key = key_pair.public_key_to_der().unwrap();
+        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = key_pair.verifying_key().to_bytes();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
             categories: Vec::new(),
-            user_public_budget_key: public_key,
+            user_public_budget_key: Vec::from(public_key),
         };
 
         let req = TestRequest::post()
@@ -669,13 +681,14 @@ pub mod test_utils {
         let recipient_access_token_claims = NewAuthTokenClaims {
             user_id: recipient.id,
             user_email: recipient_email,
-            expiration: SystemTime::now() + env::CONF.access_token_lifetime,
+            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             token_type: AuthTokenType::Access,
         };
-        let recipient_access_token = AuthToken::sign_new(
-            recipient_access_token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let recipient_access_token =
+            AuthToken::sign_new(recipient_access_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
             .uri("/api/budget/invitation/all_pending")
@@ -723,18 +736,15 @@ pub mod test_utils {
         };
 
         let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
-        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
-        let accept_private_key = PKey::private_key_from_der(&accept_private_key).unwrap();
-        let mut signer = Signer::new_without_digest(&accept_private_key).unwrap();
-        let signature = hex::encode(
-            signer
-                .sign_oneshot_to_vec(accept_token_claims.as_bytes())
-                .unwrap(),
-        );
-        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
+        let accept_private_key =
+            ed25519::SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let mut token = accept_token_claims.clone();
+        let signature = accept_private_key.sign(&accept_token_claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = PKey::generate_ed25519().unwrap();
-        let access_public_key = access_private_key.public_key_to_der().unwrap();
+        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
         };

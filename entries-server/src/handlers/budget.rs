@@ -12,9 +12,10 @@ use entries_utils::{db, db::DaoError, db::DbThreadPool};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
-use openssl::pkey::PKey;
+use ed25519_dalek as ed25519;
 use openssl::rsa::{Padding, Rsa};
 use prost::Message;
+use rand::rngs::OsRng;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -281,14 +282,9 @@ pub async fn invite_user(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let accept_key_pair =
-            PKey::generate_ed25519().expect("Failed to generate ed25519 key pair");
-        let accept_public_key = accept_key_pair
-            .public_key_to_der()
-            .expect("Failed to serialize public key");
-        let accept_private_key = accept_key_pair
-            .private_key_to_der()
-            .expect("Failed to serialize private key");
+        let accept_key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let accept_public_key = accept_key_pair.verifying_key().to_bytes();
+        let accept_private_key = accept_key_pair.as_bytes();
 
         let recipient_public_key = match Rsa::public_key_from_der(&recipient_public_key) {
             Ok(k) => k,
@@ -1026,10 +1022,11 @@ pub mod tests {
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use ed25519_dalek as ed25519;
+    use ed25519_dalek::Signer;
     use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
     use openssl::sha::Sha1;
-    use openssl::sign::Signer;
     use prost::Message;
 
     use crate::env;
@@ -1049,8 +1046,8 @@ pub mod tests {
 
         let (_, access_token) = test_utils::create_user().await;
 
-        let key_pair = PKey::generate_ed25519().unwrap();
-        let public_key = key_pair.public_key_to_der().unwrap();
+        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
@@ -1520,8 +1517,8 @@ pub mod tests {
 
         let (_, access_token) = test_utils::create_user().await;
 
-        let key_pair = PKey::generate_ed25519().unwrap();
-        let public_key = key_pair.public_key_to_der().unwrap();
+        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
@@ -1661,8 +1658,8 @@ pub mod tests {
 
         let (_, access_token) = test_utils::create_user().await;
 
-        let key_pair = PKey::generate_ed25519().unwrap();
-        let public_key = key_pair.public_key_to_der().unwrap();
+        let key_pair = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = key_pair.verifying_key().to_bytes().to_vec();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
@@ -2621,30 +2618,28 @@ pub mod tests {
         };
 
         let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
-        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
-        let accept_private_key = PKey::private_key_from_der(&accept_private_key).unwrap();
-        let mut signer = Signer::new_without_digest(&accept_private_key).unwrap();
-        let signature = hex::encode(
-            signer
-                .sign_oneshot_to_vec(accept_token_claims.as_bytes())
-                .unwrap(),
-        );
-        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
+        let accept_private_key =
+            ed25519::SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let mut token = accept_token_claims.clone();
+        let signature = accept_private_key.sign(&accept_token_claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let mut bad_token = token.clone();
+        let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = PKey::generate_ed25519().unwrap();
-        let access_public_key = access_private_key.public_key_to_der().unwrap();
+        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
         };
 
         // Make the signature invalid
-        let mut bad_token = accept_token.clone();
-        let last_char = bad_token.pop().unwrap();
-        if last_char == 'a' {
-            bad_token.push('b');
+        let last_byte = bad_token.pop().unwrap();
+        if last_byte == 0x01 {
+            bad_token.push(0x02);
         } else {
-            bad_token.push('a');
+            bad_token.push(0x01);
         }
+        let bad_token = b64_urlsafe.encode(bad_token);
 
         let req = TestRequest::put()
             .uri("/api/budget/invitation/accept")
@@ -2784,12 +2779,12 @@ pub mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let invite_sender_keypair = PKey::generate_ed25519().unwrap();
-        let invite_sender_pub_key = invite_sender_keypair.public_key_to_der().unwrap();
+        let invite_sender_keypair = ed25519::SigningKey::generate(&mut OsRng);
+        let invite_sender_pub_key = invite_sender_keypair.verifying_key().to_bytes();
 
         let invite_info = UserInvitationToBudget {
             recipient_user_email: recipient.email,
-            sender_public_key: invite_sender_pub_key,
+            sender_public_key: invite_sender_pub_key.to_vec(),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
@@ -2844,10 +2839,12 @@ pub mod tests {
                 .unwrap()
                 .as_secs(),
         };
-        let claims = serde_json::to_string(&claims).unwrap();
-        let mut signer = Signer::new_without_digest(&invite_sender_keypair).unwrap();
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
-        let invite_sender_token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let claims = serde_json::to_vec(&claims).unwrap();
+
+        let mut token = claims.clone();
+        let signature = invite_sender_keypair.sign(&claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let invite_sender_token = b64_urlsafe.encode(token);
 
         let req = TestRequest::delete()
             .uri("/api/budget/invitation")
@@ -2910,7 +2907,6 @@ pub mod tests {
         let (recipient, recipient_access_token) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
-
         let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
 
         let invite_info = UserInvitationToBudget {
@@ -2981,31 +2977,28 @@ pub mod tests {
         };
 
         let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
-        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
-        let accept_private_key = PKey::private_key_from_der(&accept_private_key).unwrap();
-        let mut signer = Signer::new_without_digest(&accept_private_key).unwrap();
-        let signature = hex::encode(
-            signer
-                .sign_oneshot_to_vec(accept_token_claims.as_bytes())
-                .unwrap(),
-        );
+        let accept_private_key =
+            ed25519::SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let mut token = accept_token_claims.clone();
+        let signature = accept_private_key.sign(&accept_token_claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let mut bad_token = token.clone();
+        let accept_token = b64_urlsafe.encode(token);
 
-        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
-
-        let access_private_key = PKey::generate_ed25519().unwrap();
-        let access_public_key = access_private_key.public_key_to_der().unwrap();
+        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_public_key = Vec::from(access_private_key.to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
         };
 
         // Make the signature invalid
-        let mut bad_token = accept_token.clone();
-        let last_char = bad_token.pop().unwrap();
-        if last_char == 'a' {
-            bad_token.push('b');
+        let last_byte = bad_token.pop().unwrap();
+        if last_byte == 0x01 {
+            bad_token.push(0x02);
         } else {
-            bad_token.push('a');
+            bad_token.push(0x01);
         }
+        let bad_token = b64_urlsafe.encode(bad_token);
 
         let req = TestRequest::put()
             .uri("/api/budget/invitation/decline")
@@ -3129,19 +3122,15 @@ pub mod tests {
         };
 
         let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
-        let accept_token_claims = String::from_utf8_lossy(&accept_token_claims);
-        let accept_private_key = PKey::private_key_from_der(&accept_private_key).unwrap();
-        let mut signer = Signer::new_without_digest(&accept_private_key).unwrap();
-        let signature = hex::encode(
-            signer
-                .sign_oneshot_to_vec(accept_token_claims.as_bytes())
-                .unwrap(),
-        );
+        let accept_private_key =
+            ed25519::SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let mut token = accept_token_claims.clone();
+        let signature = accept_private_key.sign(&accept_token_claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let accept_token = b64_urlsafe.encode(token);
 
-        let accept_token = b64_urlsafe.encode(format!("{accept_token_claims}|{signature}"));
-
-        let access_private_key = PKey::generate_ed25519().unwrap();
-        let access_public_key = access_private_key.public_key_to_der().unwrap();
+        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
         };

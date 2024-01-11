@@ -1,6 +1,6 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-use openssl::sha::Sha1;
 use rand::{rngs::OsRng, Rng};
+use sha1::{Digest, Sha1};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -111,7 +111,7 @@ impl Dao {
         let new_user_preferences = NewUserPreferences {
             user_id,
             encrypted_blob: preferences_encrypted,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
         };
 
         let mut sha1_hasher = Sha1::new();
@@ -120,7 +120,7 @@ impl Dao {
         let new_user_keystore = NewUserKeystore {
             user_id,
             encrypted_blob: user_keystore_encrypted,
-            encrypted_blob_sha1_hash: &sha1_hasher.finish(),
+            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
         };
 
         let new_signin_nonce = NewSigninNonce {
@@ -209,7 +209,7 @@ impl Dao {
                     .set((
                         user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
                         user_preferences_fields::encrypted_blob_sha1_hash
-                            .eq(sha1_hasher.finish().as_slice()),
+                            .eq(sha1_hasher.finalize().as_slice()),
                     ))
                     .execute(conn)?;
 
@@ -244,7 +244,7 @@ impl Dao {
                     .set((
                         user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
                         user_keystore_fields::encrypted_blob_sha1_hash
-                            .eq(sha1_hasher.finish().as_slice()),
+                            .eq(sha1_hasher.finalize().as_slice()),
                     ))
                     .execute(conn)?;
 

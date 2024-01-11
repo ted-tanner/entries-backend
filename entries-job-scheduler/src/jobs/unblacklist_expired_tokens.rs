@@ -52,7 +52,6 @@ mod tests {
     use entries_utils::token::Token;
 
     use diesel::{dsl, RunQueryDsl};
-    use rand::rngs::OsRng;
     use rand::Rng;
     use std::time::{Duration, SystemTime};
 
@@ -120,27 +119,29 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
-        let aes_key: [u8; 16] = OsRng.gen();
-
         let pretend_expired_token_claims = NewAuthTokenClaims {
             user_id,
             user_email: &new_user.email,
-            expiration: SystemTime::now() - Duration::from_secs(3600),
+            expiration: (SystemTime::now() - Duration::from_secs(3600))
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             token_type: AuthTokenType::Refresh,
         };
 
-        let pretend_expired_token =
-            AuthToken::sign_new(pretend_expired_token_claims.encrypt(&aes_key), &[0; 64]);
+        let pretend_expired_token = AuthToken::sign_new(pretend_expired_token_claims, &[0; 64]);
 
         let unexpired_token_claims = NewAuthTokenClaims {
             user_id,
             user_email: &new_user.email,
-            expiration: SystemTime::now() + Duration::from_secs(3600),
+            expiration: (SystemTime::now() + Duration::from_secs(3600))
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             token_type: AuthTokenType::Refresh,
         };
 
-        let unexpired_token =
-            AuthToken::sign_new(unexpired_token_claims.encrypt(&aes_key), &[0; 64]);
+        let unexpired_token = AuthToken::sign_new(unexpired_token_claims, &[0; 64]);
 
         let pretend_expired_token = AuthToken::decode(&pretend_expired_token).unwrap();
 

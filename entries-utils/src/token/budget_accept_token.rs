@@ -5,9 +5,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BudgetAcceptTokenClaims {
+    #[serde(rename = "iid")]
     pub invite_id: Uuid, // Invitation ID
-    pub key_id: Uuid,    // Budget Share Key ID
+    #[serde(rename = "kid")]
+    pub key_id: Uuid, // Budget Share Key ID
+    #[serde(rename = "bid")]
     pub budget_id: Uuid,
+    #[serde(rename = "exp")]
     pub expiration: u64,
 }
 
@@ -34,7 +38,8 @@ mod tests {
 
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use openssl::{pkey::PKey, sign::Signer};
+    use ed25519_dalek as ed25519;
+    use ed25519_dalek::Signer;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -53,14 +58,17 @@ mod tests {
             budget_id: bid,
             expiration: exp,
         };
-        let claims = serde_json::to_string(&claims).unwrap();
+        let claims = serde_json::to_vec(&claims).unwrap();
 
-        let keypair = PKey::generate_ed25519().unwrap();
-        let mut signer = Signer::new_without_digest(&keypair).unwrap();
-        let pub_key = keypair.public_key_to_der().unwrap();
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
+        let keypair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let pub_key = keypair.verifying_key().to_bytes();
 
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let mut token_unencoded = claims.clone();
+
+        let signature = keypair.sign(&token_unencoded);
+        token_unencoded.extend_from_slice(&signature.to_bytes());
+
+        let token = b64_urlsafe.encode(&token_unencoded);
         let t = BudgetAcceptToken::decode(&token).unwrap();
 
         assert_eq!(t.claims.invite_id, iid);
@@ -75,14 +83,15 @@ mod tests {
         assert_eq!(verified_claims.budget_id, bid);
         assert_eq!(verified_claims.expiration, exp);
 
-        let mut token = format!("{claims}|{signature}");
+        let mut token = claims.clone();
+        token.extend_from_slice(&signature.to_bytes());
 
         // Make the signature invalid
-        let last_char = token.pop().unwrap();
-        if last_char == 'a' {
-            token.push('b');
+        let last_byte = token.pop().unwrap();
+        if last_byte == 0x01 {
+            token.push(0x02);
         } else {
-            token.push('a');
+            token.push(0x01);
         }
 
         let token = b64_urlsafe.encode(&token);
@@ -102,11 +111,12 @@ mod tests {
             budget_id: bid,
             expiration: exp,
         };
-        let claims = serde_json::to_string(&claims).unwrap();
+        let mut token = serde_json::to_vec(&claims).unwrap();
+        let signature = keypair.sign(&token);
 
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
+        token.extend_from_slice(&signature.to_bytes());
 
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let token = b64_urlsafe.encode(&token);
         assert!(BudgetAcceptToken::decode(&token)
             .unwrap()
             .verify(&pub_key)

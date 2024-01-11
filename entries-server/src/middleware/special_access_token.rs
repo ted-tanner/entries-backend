@@ -51,8 +51,8 @@ mod tests {
     use actix_web::test::TestRequest;
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use openssl::pkey::PKey;
-    use openssl::sign::Signer;
+    use ed25519_dalek as ed25519;
+    use ed25519_dalek::Signer;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
@@ -77,14 +77,15 @@ mod tests {
             budget_id: bid,
             expiration: exp,
         };
-        let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
 
-        let access_key_pair = PKey::generate_ed25519().unwrap();
-        let access_public_key = access_key_pair.public_key_to_der().unwrap();
-        let mut signer = Signer::new_without_digest(&access_key_pair).unwrap();
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let claims = serde_json::to_vec(&claims).unwrap();
+        let mut token = claims.clone();
+
+        let access_key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_public_key = access_key_pair.verifying_key().to_bytes();
+        let signature = access_key_pair.sign(&claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -128,18 +129,19 @@ mod tests {
         assert_eq!(c.budget_id, bid);
         assert_eq!(c.expiration, exp);
 
-        let mut signer = Signer::new_without_digest(&access_key_pair).unwrap();
-        let mut signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
+        let mut signature = Vec::from(access_key_pair.sign(&claims).to_bytes());
 
         // Make the signature invalid
-        let last_char = signature.pop().unwrap();
-        if last_char == 'a' {
-            signature.push('b');
+        let last_byte = signature.pop().unwrap();
+        if last_byte == 0x01 {
+            signature.push(0x02);
         } else {
-            signature.push('a');
+            signature.push(0x01);
         }
 
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let mut token = claims.clone();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -165,10 +167,11 @@ mod tests {
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
+        let mut token = claims.clone();
 
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let signature = access_key_pair.sign(&claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .insert_header(("BudgetAccessToken", token.as_str()))
@@ -197,13 +200,13 @@ mod tests {
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
+        let mut token = claims.clone();
 
-        let invite_key_pair = PKey::generate_ed25519().unwrap();
-        let invite_public_key = invite_key_pair.public_key_to_der().unwrap();
-        let mut signer = Signer::new_without_digest(&invite_key_pair).unwrap();
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let invite_key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let invite_public_key = invite_key_pair.verifying_key().to_bytes();
+        let signature = invite_key_pair.sign(&claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
@@ -243,18 +246,19 @@ mod tests {
 
         assert!(t.0.verify(&invite_public_key).is_ok());
 
-        let mut signer = Signer::new_without_digest(&invite_key_pair).unwrap();
-        let mut signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
+        let mut signature = Vec::from(invite_key_pair.sign(&claims).to_bytes());
 
         // Make the signature invalid
-        let last_char = signature.pop().unwrap();
-        if last_char == 'a' {
-            signature.push('b');
+        let last_byte = signature.pop().unwrap();
+        if last_byte == 0x01 {
+            signature.push(0x02);
         } else {
-            signature.push('a');
+            signature.push(0x01);
         }
 
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let mut token = claims.clone();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
@@ -279,10 +283,11 @@ mod tests {
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
-        let claims = String::from_utf8_lossy(&claims);
+        let mut token = claims.clone();
 
-        let signature = hex::encode(signer.sign_oneshot_to_vec(claims.as_bytes()).unwrap());
-        let token = b64_urlsafe.encode(format!("{claims}|{signature}"));
+        let signature = invite_key_pair.sign(&claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
             .uri(&format!("/test?BudgetInviteSenderToken={}", &token))

@@ -5,7 +5,6 @@ use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::marker::PhantomData;
-use std::mem;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::env;
@@ -86,6 +85,7 @@ impl RequestAuthTokenType for UserDeletion {
 
 type AuthDecodedToken = DecodedToken<<AuthToken as Token>::Claims, <AuthToken as Token>::Verifier>;
 
+#[derive(Debug)]
 pub struct UnverifiedToken<T: RequestAuthTokenType, L: TokenLocation>(
     pub AuthDecodedToken,
     PhantomData<T>,
@@ -174,9 +174,8 @@ fn verify_token(
     expected_type: AuthTokenType,
 ) -> Result<AuthTokenClaims, TokenError> {
     let claims = decoded_token.verify(&env::CONF.token_signing_key)?;
-    let claims = claims.decrypt(&env::CONF.token_encryption_key)?;
 
-    if mem::discriminant(&claims.token_type) != mem::discriminant(&expected_type) {
+    if claims.token_type != expected_type {
         return Err(TokenError::WrongTokenType);
     }
 
@@ -189,7 +188,7 @@ fn verify_token(
         return Err(TokenError::TokenExpired);
     }
 
-    Ok(claims)
+    Ok(claims.clone())
 }
 
 #[cfg(test)]
@@ -208,7 +207,10 @@ mod tests {
     async fn test_verified_from_header() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
-        let exp = SystemTime::now() + Duration::from_secs(10);
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -217,10 +219,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -254,10 +253,7 @@ mod tests {
             token_type: AuthTokenType::Refresh,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -279,7 +275,10 @@ mod tests {
                 .is_err()
         );
 
-        let exp = SystemTime::now() - Duration::from_secs(10);
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -288,10 +287,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -316,7 +312,10 @@ mod tests {
     async fn test_verified_from_query() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
-        let exp = SystemTime::now() + Duration::from_secs(10);
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -325,10 +324,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))
@@ -362,10 +358,7 @@ mod tests {
             token_type: AuthTokenType::Refresh,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))
@@ -387,7 +380,10 @@ mod tests {
                 .is_err()
         );
 
-        let exp = SystemTime::now() - Duration::from_secs(10);
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -396,10 +392,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))
@@ -424,7 +417,10 @@ mod tests {
     async fn test_unverified_from_header() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
-        let exp = SystemTime::now() + Duration::from_secs(10);
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -433,10 +429,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -478,10 +471,7 @@ mod tests {
             token_type: AuthTokenType::Refresh,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -510,7 +500,10 @@ mod tests {
                 .is_err()
         );
 
-        let exp = SystemTime::now() - Duration::from_secs(10);
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -519,10 +512,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .insert_header(("AccessToken", token.as_str()))
@@ -554,7 +544,10 @@ mod tests {
     async fn test_unverified_from_query() {
         let user_id = Uuid::new_v4();
         let user_email = "test1234@example.com";
-        let exp = SystemTime::now() + Duration::from_secs(10);
+        let exp = (SystemTime::now() + Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -563,10 +556,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))
@@ -607,10 +597,7 @@ mod tests {
             token_type: AuthTokenType::Refresh,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))
@@ -639,7 +626,10 @@ mod tests {
                 .is_err()
         );
 
-        let exp = SystemTime::now() - Duration::from_secs(10);
+        let exp = (SystemTime::now() - Duration::from_secs(10))
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let token_claims = NewAuthTokenClaims {
             user_id,
@@ -648,10 +638,7 @@ mod tests {
             token_type: AuthTokenType::Access,
         };
 
-        let token = AuthToken::sign_new(
-            token_claims.encrypt(&env::CONF.token_encryption_key),
-            &env::CONF.token_signing_key,
-        );
+        let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
             .uri(&format!("/test?AccessToken={}", &token))

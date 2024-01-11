@@ -10,9 +10,9 @@ use entries_utils::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
-use openssl::sha::Sha256;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
@@ -39,9 +39,9 @@ pub async fn obtain_nonce_and_auth_string_params(
 
     let mut hasher = Sha256::new();
     hasher.update(email.email.as_bytes());
-    hasher.update(&random.to_be_bytes());
-    hasher.update(&env::CONF.token_signing_key);
-    let hash = hasher.finish();
+    hasher.update(random.to_be_bytes());
+    hasher.update(env::CONF.token_signing_key);
+    let hash = hasher.finalize();
 
     let phony_salt = hash[..16].to_vec();
     // The bounds are hardcoded. This is safe.
@@ -157,14 +157,14 @@ pub async fn sign_in(
     let signin_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &credentials.email,
-        expiration: SystemTime::now() + env::CONF.signin_token_lifetime,
+        expiration: (SystemTime::now() + env::CONF.signin_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::SignIn,
     };
 
-    let signin_token = AuthToken::sign_new(
-        signin_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let signin_token = AuthToken::sign_new(signin_token_claims, &env::CONF.token_signing_key);
 
     let signin_token = SigninToken {
         value: signin_token,
@@ -195,26 +195,26 @@ pub async fn verify_otp_for_signin(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.refresh_token_lifetime,
+        expiration: (now + env::CONF.refresh_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Refresh,
     };
 
-    let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
 
     let access_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.access_token_lifetime,
+        expiration: (now + env::CONF.access_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Access,
     };
 
-    let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
     let token_pair = TokenPair {
         access_token,
@@ -270,26 +270,26 @@ pub async fn use_backup_code_for_signin(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id: claims.user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.refresh_token_lifetime,
+        expiration: (now + env::CONF.refresh_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Refresh,
     };
 
-    let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
 
     let access_token_claims = NewAuthTokenClaims {
         user_id: claims.user_id,
         user_email: &claims.user_email,
-        expiration: now + env::CONF.access_token_lifetime,
+        expiration: (now + env::CONF.access_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Access,
     };
 
-    let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
     let token_pair = TokenPair {
         access_token,
@@ -368,26 +368,26 @@ pub async fn refresh_tokens(
     let refresh_token_claims = NewAuthTokenClaims {
         user_id: token_claims.user_id,
         user_email: &token_claims.user_email,
-        expiration: now + env::CONF.refresh_token_lifetime,
+        expiration: (now + env::CONF.refresh_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Refresh,
     };
 
-    let refresh_token = AuthToken::sign_new(
-        refresh_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
 
     let access_token_claims = NewAuthTokenClaims {
         user_id: token_claims.user_id,
         user_email: &token_claims.user_email,
-        expiration: now + env::CONF.access_token_lifetime,
+        expiration: (now + env::CONF.access_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs(),
         token_type: AuthTokenType::Access,
     };
 
-    let access_token = AuthToken::sign_new(
-        access_token_claims.encrypt(&env::CONF.token_encryption_key),
-        &env::CONF.token_signing_key,
-    );
+    let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
     let token_pair = TokenPair {
         access_token,
@@ -690,16 +690,15 @@ mod tests {
         let signin_token = SigninToken::decode(resp_body).unwrap();
 
         let signin_token = AuthToken::decode(&signin_token.value).unwrap();
-        let token_type = AuthTokenType::try_from(signin_token.claims.typ).unwrap();
+        let token_type = signin_token.claims.token_type;
 
         assert!(matches!(token_type, AuthTokenType::SignIn));
 
         let claims = signin_token.claims;
-        let decrypted_claims = claims.decrypt(&env::CONF.token_encryption_key).unwrap();
 
-        assert_eq!(decrypted_claims.user_email, new_user.email);
+        assert_eq!(claims.user_email, new_user.email);
         assert!(
-            decrypted_claims.expiration
+            claims.expiration
                 > (SystemTime::now() + Duration::from_secs(60))
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -912,11 +911,11 @@ mod tests {
         let refresh_token = AuthToken::decode(&resp_body.refresh_token).unwrap();
 
         assert!(matches!(
-            AuthTokenType::try_from(access_token.claims.typ).unwrap(),
+            access_token.claims.token_type,
             AuthTokenType::Access
         ));
         assert!(matches!(
-            AuthTokenType::try_from(refresh_token.claims.typ).unwrap(),
+            refresh_token.claims.token_type,
             AuthTokenType::Refresh
         ));
 

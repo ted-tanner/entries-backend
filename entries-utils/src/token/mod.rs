@@ -5,12 +5,15 @@ pub mod budget_invite_sender_token;
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::sign::{Signer, Verifier};
+use ed25519_dalek as ed25519;
+use hmac::{Hmac, Mac};
 use serde::de::DeserializeOwned;
+use sha2::Sha256;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug)]
 pub enum TokenError {
@@ -38,15 +41,17 @@ pub trait Expiring {
 }
 
 pub trait TokenSignatureVerifier {
-    fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool;
+    fn signature_length() -> usize;
+    fn verify(json: &[u8], signature: &[u8], key: &[u8]) -> bool;
 }
 
+#[derive(Debug)]
 pub struct DecodedToken<C, V>
 where
     C: Expiring + DeserializeOwned,
     V: TokenSignatureVerifier,
 {
-    pub json: String,
+    pub json: Vec<u8>,
     pub signature: Vec<u8>,
     pub claims: C,
     phantom: PhantomData<V>,
@@ -85,20 +90,19 @@ pub trait Token {
             .decode(token)
             .map_err(|_| TokenError::TokenInvalid)?;
 
-        let Ok(token_str) = std::str::from_utf8(&decoded_token) else {
+        if decoded_token.len() <= Self::Verifier::signature_length() {
             return Err(TokenError::TokenInvalid);
-        };
+        }
 
-        let Some((claims_json, signature)) = token_str.rsplit_once('|') else {
-            return Err(TokenError::TokenInvalid);
-        };
+        let json_len = decoded_token.len() - Self::Verifier::signature_length();
+        let json = &decoded_token[..json_len];
 
-        let signature = hex::decode(signature).map_err(|_| TokenError::TokenInvalid)?;
-        let claims = serde_json::from_str::<Self::Claims>(claims_json)
-            .map_err(|_| TokenError::TokenInvalid)?;
+        let signature = Vec::from(&decoded_token[json_len..]);
+        let claims: Self::Claims =
+            serde_json::from_slice(json).map_err(|_| TokenError::TokenInvalid)?;
 
         Ok(DecodedToken {
-            json: String::from(claims_json),
+            json: Vec::from(json),
             signature,
             claims,
             phantom: PhantomData,
@@ -106,41 +110,50 @@ pub trait Token {
     }
 }
 
+#[derive(Debug)]
 pub struct Ed25519Verifier {}
 
 impl TokenSignatureVerifier for Ed25519Verifier {
-    fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool {
-        if signature.len() != 64 {
+    fn signature_length() -> usize {
+        ed25519::SIGNATURE_LENGTH
+    }
+
+    fn verify(json: &[u8], signature: &[u8], key: &[u8]) -> bool {
+        let Ok(signature) = <[u8; ed25519::SIGNATURE_LENGTH]>::try_from(signature) else {
+            return false;
+        };
+
+        let signature = ed25519::Signature::from(signature);
+
+        if key.len() != ed25519::PUBLIC_KEY_LENGTH {
             return false;
         }
 
-        let Ok(key) = PKey::public_key_from_der(key) else {
+        let Ok(key) = key.try_into() else {
             return false;
         };
 
-        let Ok(mut verifier) = Verifier::new_without_digest(&key) else {
+        let Ok(key) = ed25519::VerifyingKey::from_bytes(key) else {
             return false;
         };
 
-        verifier
-            .verify_oneshot(signature, json.as_bytes())
-            .unwrap_or(false)
+        key.verify_strict(json, &signature).is_ok()
     }
 }
 
+#[derive(Debug)]
 pub struct HmacSha256Verifier {}
 
 impl TokenSignatureVerifier for HmacSha256Verifier {
-    fn verify(json: &str, signature: &[u8], key: &[u8]) -> bool {
-        let Ok(key) = PKey::hmac(key) else {
-            return false;
-        };
+    fn signature_length() -> usize {
+        32
+    }
 
-        let mut signer = Signer::new(MessageDigest::sha256(), &key)
-            .expect("Failed to create signer from HMAC signing key");
-        let correct_signature = signer
-            .sign_oneshot_to_vec(json.as_bytes())
-            .expect("Failed to sign token claims");
+    fn verify(json: &[u8], signature: &[u8], key: &[u8]) -> bool {
+        let mut mac =
+            HmacSha256::new_from_slice(key).expect("HMAC should not fail to initialize with key");
+        mac.update(json);
+        let correct_signature = mac.finalize().into_bytes();
 
         let mut signatures_dont_match = 0u8;
 
@@ -163,8 +176,7 @@ impl TokenSignatureVerifier for HmacSha256Verifier {
 mod tests {
     use super::*;
 
-    use openssl::pkey::PKey;
-    use openssl::sign::Signer;
+    use ed25519_dalek::Signer;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
     use uuid::Uuid;
@@ -194,23 +206,16 @@ mod tests {
 
     impl TestTokenHmac {
         pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
-            let signing_key =
-                PKey::hmac(signing_key).expect("Failed to create HMAC signing key from bytes");
-
-            let mut json_of_claims =
+            let mut token_unencoded =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-            let mut signer = Signer::new(MessageDigest::sha256(), &signing_key)
-                .expect("Failed to create signer from HMAC signing key");
-            let signature = signer
-                .sign_oneshot_to_vec(&json_of_claims)
-                .expect("Failed to sign token claims");
-            let signature = hex::encode(signature);
+            let mut mac =
+                HmacSha256::new_from_slice(signing_key).expect("HMAC key should not fail");
+            mac.update(&token_unencoded);
+            let signature = mac.finalize();
+            token_unencoded.extend_from_slice(&signature.into_bytes());
 
-            json_of_claims.push(b'|');
-            json_of_claims.extend_from_slice(&signature.into_bytes());
-
-            b64_urlsafe.encode(json_of_claims)
+            b64_urlsafe.encode(&token_unencoded)
         }
     }
 
@@ -226,20 +231,14 @@ mod tests {
     }
 
     impl TestTokenEd25519 {
-        pub fn sign_new(claims: TestClaims, signing_key: &[u8]) -> String {
-            let signing_key = PKey::private_key_from_der(signing_key)
-                .expect("Failed to create Ed25519 signing key from bytes");
-            let mut signer = Signer::new_without_digest(&signing_key).unwrap();
-
-            let mut json_of_claims =
+        pub fn sign_new(claims: TestClaims, signing_key: &ed25519::SigningKey) -> String {
+            let mut token_unencoded =
                 serde_json::to_vec(&claims).expect("Failed to transform claims into JSON");
 
-            let hash = hex::encode(signer.sign_oneshot_to_vec(&json_of_claims).unwrap());
+            let signature = signing_key.sign(&token_unencoded);
+            token_unencoded.extend_from_slice(&signature.to_bytes());
 
-            json_of_claims.push(b'|');
-            json_of_claims.extend_from_slice(&hash.into_bytes());
-
-            b64_urlsafe.encode(json_of_claims)
+            b64_urlsafe.encode(&token_unencoded)
         }
     }
 
@@ -325,12 +324,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let key = PKey::generate_ed25519().unwrap();
+        let key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
 
-        let pub_key = key.public_key_to_der().unwrap();
-        let priv_key = key.private_key_to_der().unwrap();
+        let pub_key = key.verifying_key().to_bytes();
 
-        let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &priv_key);
+        let mut token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &key);
         let t = TestTokenEd25519::decode(&token).unwrap();
         let claims = t.verify(&pub_key).unwrap();
 
@@ -347,7 +345,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &priv_key);
+        let token = TestTokenEd25519::sign_new(TestClaims { id, exp }, &key);
         assert!(TestTokenEd25519::decode(&token)
             .unwrap()
             .verify(&pub_key)
