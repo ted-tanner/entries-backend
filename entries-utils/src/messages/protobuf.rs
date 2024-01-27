@@ -230,12 +230,25 @@ pub struct NewUser {
     pub encryption_key_encrypted_with_password: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "16")]
     pub encryption_key_encrypted_with_recovery_key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", required, tag = "17")]
-    pub public_key: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, required, tag = "17")]
+    pub public_key_id: UuidV4,
     #[prost(bytes = "vec", required, tag = "18")]
-    pub preferences_encrypted: ::prost::alloc::vec::Vec<u8>,
+    pub public_key: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "19")]
+    pub preferences_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", required, tag = "20")]
     pub user_keystore_encrypted: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Zeroize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewUserPublicKey {
+    #[prost(message, required, tag = "1")]
+    pub id: UuidV4,
+    #[prost(bytes = "vec", required, tag = "2")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, required, tag = "3")]
+    pub expected_previous_public_key_id: UuidV4,
 }
 #[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -274,19 +287,23 @@ pub struct RecoveryKeyUpdate {
 pub struct UserInvitationToBudget {
     #[prost(string, required, tag = "1")]
     pub recipient_user_email: ::prost::alloc::string::String,
-    #[prost(bytes = "vec", required, tag = "2")]
-    pub sender_public_key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", required, tag = "3")]
-    pub encryption_key_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, required, tag = "2")]
+    pub recipient_public_key_id_used_by_sender: UuidV4,
+    #[prost(message, required, tag = "3")]
+    pub recipient_public_key_id_used_by_server: UuidV4,
     #[prost(bytes = "vec", required, tag = "4")]
-    pub budget_info_encrypted: ::prost::alloc::vec::Vec<u8>,
+    pub sender_public_key: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "5")]
-    pub sender_info_encrypted: ::prost::alloc::vec::Vec<u8>,
+    pub encryption_key_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "6")]
+    pub budget_info_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", required, tag = "7")]
+    pub sender_info_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", required, tag = "8")]
     pub share_info_symmetric_key_encrypted: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, required, tag = "7")]
+    #[prost(message, required, tag = "9")]
     pub expiration: Timestamp,
-    #[prost(bool, required, tag = "8")]
+    #[prost(bool, required, tag = "10")]
     pub read_only: bool,
 }
 #[derive(Zeroize)]
@@ -391,6 +408,10 @@ pub struct BudgetShareInvite {
     pub budget_accept_key_info_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "7")]
     pub share_info_symmetric_key_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, required, tag = "8")]
+    pub recipient_public_key_id_used_by_sender: UuidV4,
+    #[prost(message, required, tag = "9")]
+    pub recipient_public_key_id_used_by_server: UuidV4,
 }
 #[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -468,6 +489,15 @@ pub struct TokenPair {
     pub refresh_token: ::prost::alloc::string::String,
     #[prost(message, required, tag = "3")]
     pub server_time: Timestamp,
+}
+#[derive(Zeroize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UserPublicKey {
+    #[prost(message, required, tag = "1")]
+    pub id: UuidV4,
+    #[prost(bytes = "vec", required, tag = "2")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Zeroize)]
 #[allow(clippy::derive_partial_eq_without_eq)]

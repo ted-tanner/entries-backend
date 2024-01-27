@@ -95,6 +95,7 @@ mod tests {
     async fn test_execute() {
         let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user1 = NewUser {
             email: format!("test_user{}@test.com", &user1_number),
 
@@ -118,6 +119,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -144,6 +146,7 @@ mod tests {
                 new_user1.recovery_key_iters,
                 &new_user1.encryption_key_encrypted_with_password,
                 &new_user1.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user1.public_key,
                 &new_user1.preferences_encrypted,
                 &new_user1.user_keystore_encrypted,
@@ -154,6 +157,7 @@ mod tests {
 
         let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user2 = NewUser {
             email: format!("test_user{}@test.com", &user2_number),
 
@@ -177,6 +181,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -201,6 +206,7 @@ mod tests {
                 new_user2.recovery_key_iters,
                 &new_user2.encryption_key_encrypted_with_password,
                 &new_user2.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user2.public_key,
                 &new_user2.preferences_encrypted,
                 &new_user2.user_keystore_encrypted,

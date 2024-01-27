@@ -506,6 +506,7 @@ pub mod test_utils {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -529,6 +530,7 @@ pub mod test_utils {
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
+            public_key_id: public_key_id.into(),
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
@@ -632,6 +634,7 @@ pub mod test_utils {
         (budget, budget_access_token)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn share_budget(
         budget_id: Uuid,
         recipient_email: &str,
@@ -639,6 +642,8 @@ pub mod test_utils {
         read_only: bool,
         sender_budget_access_token: &str,
         sender_access_token: &str,
+        recipient_public_key_id_used_by_sender: Uuid,
+        recipient_public_key_id_used_by_server: Uuid,
     ) -> String {
         let app = test::init_service(
             App::new()
@@ -651,6 +656,8 @@ pub mod test_utils {
 
         let invite_info = UserInvitationToBudget {
             recipient_user_email: String::from(recipient_email),
+            recipient_public_key_id_used_by_sender: recipient_public_key_id_used_by_sender.into(),
+            recipient_public_key_id_used_by_server: recipient_public_key_id_used_by_server.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),

@@ -180,10 +180,17 @@ message NewUser {
     required bytes encryption_key_encrypted_with_password = 15;
     required bytes encryption_key_encrypted_with_recovery_key = 16;
 
-    required bytes public_key = 17;
+	required UuidV4 public_key_id = 17;
+    required bytes public_key = 18;
 
-    required bytes preferences_encrypted = 18;
-    required bytes user_keystore_encrypted = 19;
+    required bytes preferences_encrypted = 19;
+    required bytes user_keystore_encrypted = 20;
+}
+
+message NewUserPublicKey {
+	required UuidV4 id = 1;
+	required bytes value = 2;
+	required UuidV4 expected_previous_public_key_id = 3;
 }
 
 message Otp {
@@ -207,16 +214,18 @@ message RecoveryKeyUpdate {
 
 message UserInvitationToBudget {
     required string recipient_user_email = 1;
-    required bytes sender_public_key = 2;
+	required UuidV4 recipient_public_key_id_used_by_sender = 2;
+	required UuidV4 recipient_public_key_id_used_by_server = 3;
+    required bytes sender_public_key = 4;
 
-    required bytes encryption_key_encrypted = 3;
+    required bytes encryption_key_encrypted = 5;
 
-    required bytes budget_info_encrypted = 4;
-    required bytes sender_info_encrypted = 5;
-    required bytes share_info_symmetric_key_encrypted = 6;
+    required bytes budget_info_encrypted = 6;
+    required bytes sender_info_encrypted = 7;
+    required bytes share_info_symmetric_key_encrypted = 8;
 
-    required Timestamp expiration = 7;
-    required bool read_only = 8;
+    required Timestamp expiration = 9;
+    required bool read_only = 10;
 }
 
 // Server outputs
@@ -277,6 +286,9 @@ message BudgetShareInvite {
     required bytes budget_accept_key_info_encrypted = 6;
 
     required bytes share_info_symmetric_key_encrypted = 7;
+
+	required UuidV4 recipient_public_key_id_used_by_sender = 8;
+	required UuidV4 recipient_public_key_id_used_by_server = 9;
 }
 
 message BudgetShareInviteList {
@@ -318,6 +330,11 @@ message TokenPair {
     required string access_token = 1;
     required string refresh_token = 2;
     required Timestamp server_time = 3;
+}
+
+message UserPublicKey {
+	required UuidV4 id = 1;
+	required bytes value = 2;
 }
 
 message VerificationEmailSent {

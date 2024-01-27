@@ -306,7 +306,7 @@ impl Dao {
                     .get_result::<Vec<u8>>(conn)?;
 
                 if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDateHash);
+                    return Err(DaoError::OutOfDate);
                 }
 
                 let mut sha1_hasher = Sha1::new();
@@ -336,6 +336,8 @@ impl Dao {
         budget_info_encrypted: &[u8],
         sender_info_encrypted: &[u8],
         share_info_symmetric_key_encrypted: &[u8],
+        recipient_public_key_id_used_by_sender: Uuid,
+        recipient_public_key_id_used_by_server: Uuid,
         budget_id: Uuid,
         expiration: SystemTime,
         read_only: bool,
@@ -373,6 +375,8 @@ impl Dao {
             budget_accept_key_info_encrypted,
             budget_accept_key_id_encrypted,
             share_info_symmetric_key_encrypted,
+            recipient_public_key_id_used_by_sender,
+            recipient_public_key_id_used_by_server,
             created_unix_timestamp_intdiv_five_million,
         };
 
@@ -518,12 +522,14 @@ impl Dao {
         let invites = budget_share_invites
             .select((
                 budget_share_invite_fields::id,
-                budget_share_invite_fields::budget_accept_private_key_encrypted,
-                budget_share_invite_fields::budget_accept_key_id_encrypted,
                 budget_share_invite_fields::budget_info_encrypted,
                 budget_share_invite_fields::sender_info_encrypted,
-                budget_share_invite_fields::budget_accept_key_info_encrypted,
                 budget_share_invite_fields::share_info_symmetric_key_encrypted,
+                budget_share_invite_fields::budget_accept_key_info_encrypted,
+                budget_share_invite_fields::budget_accept_private_key_encrypted,
+                budget_share_invite_fields::budget_accept_key_id_encrypted,
+                budget_share_invite_fields::recipient_public_key_id_used_by_sender,
+                budget_share_invite_fields::recipient_public_key_id_used_by_server,
             ))
             .filter(budget_share_invite_fields::recipient_user_email.eq(user_email))
             .load::<BudgetShareInvitePublicData>(&mut self.db_thread_pool.get()?)?;
@@ -538,6 +544,12 @@ impl Dao {
                 sender_info_encrypted: i.sender_info_encrypted,
                 budget_accept_key_info_encrypted: i.budget_accept_key_info_encrypted,
                 share_info_symmetric_key_encrypted: i.share_info_symmetric_key_encrypted,
+                recipient_public_key_id_used_by_sender: i
+                    .recipient_public_key_id_used_by_sender
+                    .into(),
+                recipient_public_key_id_used_by_server: i
+                    .recipient_public_key_id_used_by_server
+                    .into(),
             })
             .collect();
 
@@ -667,7 +679,7 @@ impl Dao {
                     .get_result::<Vec<u8>>(conn)?;
 
                 if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDateHash);
+                    return Err(DaoError::OutOfDate);
                 }
 
                 let mut sha1_hasher = Sha1::new();
@@ -747,7 +759,7 @@ impl Dao {
                     .get_result::<Vec<u8>>(conn)?;
 
                 if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDateHash);
+                    return Err(DaoError::OutOfDate);
                 }
 
                 let mut sha1_hasher = Sha1::new();

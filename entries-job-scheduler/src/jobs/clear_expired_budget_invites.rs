@@ -64,6 +64,7 @@ mod tests {
     async fn test_execute() {
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -87,6 +88,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -113,6 +115,7 @@ mod tests {
                 new_user.recovery_key_iters,
                 &new_user.encryption_key_encrypted_with_password,
                 &new_user.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user.public_key,
                 &new_user.preferences_encrypted,
                 &new_user.user_keystore_encrypted,
@@ -144,6 +147,8 @@ mod tests {
             budget_accept_key_info_encrypted: &[0; 4],
             budget_accept_key_id_encrypted: &[0; 4],
             share_info_symmetric_key_encrypted: &[0; 4],
+            recipient_public_key_id_used_by_sender: (&new_user.public_key_id).try_into().unwrap(),
+            recipient_public_key_id_used_by_server: (&new_user.public_key_id).try_into().unwrap(),
             created_unix_timestamp_intdiv_five_million: 100,
         };
 
@@ -176,6 +181,8 @@ mod tests {
             budget_accept_key_info_encrypted: &[0; 4],
             budget_accept_key_id_encrypted: &[0; 4],
             share_info_symmetric_key_encrypted: &[0; 4],
+            recipient_public_key_id_used_by_sender: (&new_user.public_key_id).try_into().unwrap(),
+            recipient_public_key_id_used_by_server: (&new_user.public_key_id).try_into().unwrap(),
             created_unix_timestamp_intdiv_five_million: i16::MAX,
         };
 

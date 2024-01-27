@@ -58,6 +58,7 @@ mod tests {
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
     use std::time::{Duration, SystemTime};
+    use uuid::Uuid;
 
     use crate::env;
 
@@ -65,6 +66,7 @@ mod tests {
     async fn test_execute() {
         let user_no_exp_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user_no_exp = NewUser {
             email: format!("test_user{}@test.com", &user_no_exp_number),
 
@@ -88,6 +90,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -114,6 +117,7 @@ mod tests {
                 new_user_no_exp.recovery_key_iters,
                 &new_user_no_exp.encryption_key_encrypted_with_password,
                 &new_user_no_exp.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user_no_exp.public_key,
                 &new_user_no_exp.preferences_encrypted,
                 &new_user_no_exp.user_keystore_encrypted,
@@ -123,6 +127,7 @@ mod tests {
 
         let user_verified_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user_verified = NewUser {
             email: format!("test_user{}@test.com", &user_verified_number),
 
@@ -146,6 +151,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -170,6 +176,7 @@ mod tests {
                 new_user_verified.recovery_key_iters,
                 &new_user_verified.encryption_key_encrypted_with_password,
                 &new_user_verified.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user_verified.public_key,
                 &new_user_verified.preferences_encrypted,
                 &new_user_verified.user_keystore_encrypted,
@@ -185,6 +192,7 @@ mod tests {
 
         let user_exp_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user_exp = NewUser {
             email: format!("test_user{}@test.com", &user_exp_number),
 
@@ -208,6 +216,7 @@ mod tests {
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
 
+            public_key_id: public_key_id.into(),
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
@@ -232,6 +241,7 @@ mod tests {
                 new_user_exp.recovery_key_iters,
                 &new_user_exp.encryption_key_encrypted_with_password,
                 &new_user_exp.encryption_key_encrypted_with_recovery_key,
+                public_key_id,
                 &new_user_exp.public_key,
                 &new_user_exp.preferences_encrypted,
                 &new_user_exp.user_keystore_encrypted,

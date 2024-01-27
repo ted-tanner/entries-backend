@@ -23,6 +23,9 @@ pub struct BudgetShareInvite {
     pub budget_accept_key_id_encrypted: Vec<u8>,
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 
+    pub recipient_public_key_id_used_by_sender: Uuid,
+    pub recipient_public_key_id_used_by_server: Uuid,
+
     pub created_unix_timestamp_intdiv_five_million: i16,
 }
 
@@ -44,16 +47,24 @@ pub struct NewBudgetShareInvite<'a> {
     pub budget_accept_key_id_encrypted: &'a [u8],
     pub share_info_symmetric_key_encrypted: &'a [u8],
 
+    pub recipient_public_key_id_used_by_sender: Uuid,
+    pub recipient_public_key_id_used_by_server: Uuid,
+
     pub created_unix_timestamp_intdiv_five_million: i16,
 }
 
 #[derive(Debug, Queryable)]
 pub struct BudgetShareInvitePublicData {
     pub id: Uuid,
-    pub budget_accept_key_encrypted: Vec<u8>,
-    pub budget_accept_key_id_encrypted: Vec<u8>,
+
     pub budget_info_encrypted: Vec<u8>,
     pub sender_info_encrypted: Vec<u8>,
-    pub budget_accept_key_info_encrypted: Vec<u8>,
     pub share_info_symmetric_key_encrypted: Vec<u8>,
+
+    pub budget_accept_key_info_encrypted: Vec<u8>,
+    pub budget_accept_key_encrypted: Vec<u8>,
+    pub budget_accept_key_id_encrypted: Vec<u8>,
+
+    pub recipient_public_key_id_used_by_sender: Uuid,
+    pub recipient_public_key_id_used_by_server: Uuid,
 }

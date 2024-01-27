@@ -27,7 +27,7 @@ pub fn create_db_thread_pool(
 pub enum DaoError {
     DbThreadPoolFailure(r2d2::Error),
     QueryFailure(diesel::result::Error),
-    OutOfDateHash,
+    OutOfDate,
     CannotRunQuery(&'static str),
     WontRunQuery, // This error indicates that the DAO refuses to run a query
 }
@@ -43,7 +43,7 @@ impl fmt::Display for DaoError {
             DaoError::QueryFailure(e) => {
                 write!(f, "DaoError: Query failed: {e}")
             }
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 write!(f, "DaoError: Hash was out of date")
             }
             DaoError::CannotRunQuery(msg) => {

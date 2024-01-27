@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
+use crate::messages::UserPublicKey;
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_backup_code::NewUserBackupCode;
@@ -40,11 +41,16 @@ impl Dao {
         }
     }
 
-    pub fn get_user_public_key(&self, user_email: &str) -> Result<Vec<u8>, DaoError> {
-        Ok(users
-            .select(user_fields::public_key)
+    pub fn get_user_public_key(&self, user_email: &str) -> Result<UserPublicKey, DaoError> {
+        let (key_id, key) = users
+            .select((user_fields::public_key_id, user_fields::public_key))
             .filter(user_fields::email.eq(user_email))
-            .first::<Vec<u8>>(&mut self.db_thread_pool.get()?)?)
+            .first::<(Uuid, Vec<u8>)>(&mut self.db_thread_pool.get()?)?;
+
+        Ok(UserPublicKey {
+            id: key_id.into(),
+            value: key,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -66,6 +72,7 @@ impl Dao {
         recovery_key_iters: i32,
         encryption_key_encrypted_with_password: &[u8],
         encryption_key_encrypted_with_recovery_key: &[u8],
+        public_key_id: Uuid,
         public_key: &[u8],
         preferences_encrypted: &[u8],
         user_keystore_encrypted: &[u8],
@@ -83,6 +90,7 @@ impl Dao {
 
             created_timestamp: current_time,
 
+            public_key_id,
             public_key,
 
             auth_string_hash,
@@ -182,6 +190,40 @@ impl Dao {
         Ok(())
     }
 
+    pub fn rotate_user_public_key(
+        &self,
+        user_id: Uuid,
+        public_key_id: Uuid,
+        public_key: &[u8],
+        expected_previous_public_key_id: Uuid,
+    ) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let previous_public_key_id = users
+                    .find(user_id)
+                    .select(user_fields::public_key_id)
+                    .get_result::<Uuid>(conn)?;
+
+                if previous_public_key_id != expected_previous_public_key_id {
+                    return Err(DaoError::OutOfDate);
+                }
+
+                dsl::update(users.find(user_id))
+                    .set((
+                        user_fields::public_key_id.eq(public_key_id),
+                        user_fields::public_key.eq(public_key),
+                    ))
+                    .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
     pub fn update_user_prefs(
         &self,
         user_id: Uuid,
@@ -199,7 +241,7 @@ impl Dao {
                     .get_result::<Vec<u8>>(conn)?;
 
                 if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDateHash);
+                    return Err(DaoError::OutOfDate);
                 }
 
                 let mut sha1_hasher = Sha1::new();
@@ -234,7 +276,7 @@ impl Dao {
                     .get_result::<Vec<u8>>(conn)?;
 
                 if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDateHash);
+                    return Err(DaoError::OutOfDate);
                 }
 
                 let mut sha1_hasher = Sha1::new();

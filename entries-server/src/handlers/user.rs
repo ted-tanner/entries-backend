@@ -10,7 +10,7 @@ use entries_utils::html::templates::{
 use entries_utils::messages::{
     AuthStringAndEncryptedPasswordUpdate, BackupCodesAndVerificationEmailSent,
     BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, IsUserListedForDeletion, NewUser,
-    PublicKey, RecoveryKeyUpdate, VerificationEmailSent,
+    NewUserPublicKey, RecoveryKeyUpdate, UserPublicKey, VerificationEmailSent,
 };
 use entries_utils::otp::Otp;
 use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
@@ -36,13 +36,13 @@ pub async fn lookup_user_public_key(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let public_key = match web::block(move || {
+    let (key_id, key) = match web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_public_key(&user_email.email)
     })
     .await?
     {
-        Ok(k) => k,
+        Ok(k) => (k.id, k.value),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -59,7 +59,10 @@ pub async fn lookup_user_public_key(
         },
     };
 
-    Ok(HttpResponse::Ok().protobuf(PublicKey { value: public_key })?)
+    Ok(HttpResponse::Ok().protobuf(UserPublicKey {
+        id: key_id,
+        value: key,
+    })?)
 }
 
 pub async fn create(
@@ -119,6 +122,8 @@ pub async fn create(
     let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
     let backup_codes_ref = Arc::clone(&backup_codes);
 
+    let user_public_key_id = (&user_data.public_key_id).try_into()?;
+
     let user_data_ref = Arc::clone(&user_data);
 
     let user_id = match web::block(move || {
@@ -140,6 +145,7 @@ pub async fn create(
             user_data_ref.recovery_key_iters,
             &user_data_ref.encryption_key_encrypted_with_password,
             &user_data_ref.encryption_key_encrypted_with_recovery_key,
+            user_public_key_id,
             &user_data_ref.public_key,
             &user_data_ref.preferences_encrypted,
             &user_data_ref.user_keystore_encrypted,
@@ -256,6 +262,40 @@ pub async fn verify_creation(
         .body(VerifyUserSuccessPage::generate(&claims.user_email)))
 }
 
+pub async fn rotate_user_public_key(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    new_key: ProtoBuf<NewUserPublicKey>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let new_key_id = (&new_key.0.id).try_into()?;
+    let expected_previous_public_key_id =
+        (&new_key.0.expected_previous_public_key_id).try_into()?;
+    match web::block(move || {
+        let user_dao = db::user::Dao::new(&db_thread_pool);
+        user_dao.rotate_user_public_key(
+            user_access_token.0.user_id,
+            new_key_id,
+            &new_key.0.value,
+            expected_previous_public_key_id,
+        )
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(DaoError::OutOfDate) => {
+            return Err(HttpErrorResponse::OutOfDate("Expected key was out of date"));
+        }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(
+                "Failed to rotate user public key",
+            ));
+        }
+    };
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 pub async fn edit_preferences(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
@@ -273,7 +313,7 @@ pub async fn edit_preferences(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             _ => {
@@ -305,7 +345,7 @@ pub async fn edit_keystore(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             _ => {
@@ -773,7 +813,11 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_public_key = PublicKey::decode(resp_body).unwrap();
+        let resp_public_key = UserPublicKey::decode(resp_body).unwrap();
+        assert_eq!(
+            user.public_key_id,
+            (&resp_public_key.id).try_into().unwrap()
+        );
         assert_eq!(user.public_key, resp_public_key.value);
     }
 
@@ -790,6 +834,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -813,6 +858,7 @@ pub mod tests {
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
+            public_key_id: public_key_id.into(),
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
@@ -881,6 +927,7 @@ pub mod tests {
             user.encryption_key_encrypted_with_recovery_key,
             new_user.encryption_key_encrypted_with_recovery_key
         );
+        assert_eq!(user.public_key_id, public_key_id);
         assert_eq!(user.public_key, new_user.public_key);
 
         assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
@@ -976,6 +1023,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -999,6 +1047,7 @@ pub mod tests {
             encryption_key_encrypted_with_password: vec![8; 10],
             encryption_key_encrypted_with_recovery_key: vec![8; 10],
 
+            public_key_id: public_key_id.into(),
             public_key: vec![8; 10],
 
             preferences_encrypted: vec![8; 10],
@@ -1069,6 +1118,77 @@ pub mod tests {
             .unwrap();
 
         assert!(user.is_verified);
+    }
+
+    #[actix_web::test]
+    async fn test_rotate_user_public_key() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token) = test_utils::create_user().await;
+
+        let new_key_id = Uuid::new_v4();
+        let new_key = [8; 30];
+
+        let old_key_update = NewUserPublicKey {
+            id: (&new_key_id).into(),
+            value: new_key.to_vec(),
+            expected_previous_public_key_id: Uuid::new_v4().into(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/public_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(old_key_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
+
+        let user_after_req = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(user_after_req.public_key_id, user.public_key_id);
+        assert_eq!(user_after_req.public_key, user.public_key);
+
+        let key_update = NewUserPublicKey {
+            id: (&new_key_id).into(),
+            value: new_key.to_vec(),
+            expected_previous_public_key_id: (&user.public_key_id).into(),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/public_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(key_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let user_after_req = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_ne!(user_after_req.public_key_id, user.public_key_id);
+        assert_ne!(user_after_req.public_key, user.public_key);
+        assert_eq!(user_after_req.public_key_id, new_key_id);
+        assert_eq!(user_after_req.public_key, new_key);
     }
 
     #[actix_web::test]
@@ -2283,6 +2403,8 @@ pub mod tests {
             true,
             &budget2_token_user1,
             &user1_access_token,
+            user2.public_key_id,
+            user2.public_key_id,
         )
         .await;
 

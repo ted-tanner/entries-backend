@@ -13,6 +13,7 @@ pub struct User {
     pub email: String,
     pub is_verified: bool,
 
+    pub public_key_id: Uuid,
     pub public_key: Vec<u8>,
 
     pub created_timestamp: SystemTime,
@@ -46,6 +47,7 @@ pub struct NewUser<'a> {
     pub email: &'a str,
     pub is_verified: bool,
 
+    pub public_key_id: Uuid,
     pub public_key: &'a [u8],
 
     pub created_timestamp: SystemTime,

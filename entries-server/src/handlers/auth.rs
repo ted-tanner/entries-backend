@@ -456,6 +456,7 @@ mod tests {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use entries_utils::token::Token;
     use prost::Message;
+    use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::services::api::RouteLimiters;
@@ -584,6 +585,7 @@ mod tests {
             .hash(format!("password{user_number}").as_bytes())
             .unwrap();
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -607,6 +609,7 @@ mod tests {
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
+            public_key_id: public_key_id.into(),
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
@@ -765,6 +768,7 @@ mod tests {
             .hash(format!("password{user_number}").as_bytes())
             .unwrap();
 
+        let public_key_id = Uuid::new_v4();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -788,6 +792,7 @@ mod tests {
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
 
+            public_key_id: public_key_id.into(),
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),

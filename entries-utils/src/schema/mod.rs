@@ -39,6 +39,8 @@ diesel::table! {
         budget_accept_key_info_encrypted -> Bytea,
         budget_accept_key_id_encrypted -> Bytea,
         share_info_symmetric_key_encrypted -> Bytea,
+        recipient_public_key_id_used_by_sender -> Uuid,
+        recipient_public_key_id_used_by_server -> Uuid,
         created_unix_timestamp_intdiv_five_million -> Int2,
     }
 }
@@ -144,6 +146,7 @@ diesel::table! {
         #[max_length = 255]
         email -> Varchar,
         is_verified -> Bool,
+        public_key_id -> Uuid,
         public_key -> Bytea,
         created_timestamp -> Timestamp,
         auth_string_hash -> Text,

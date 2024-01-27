@@ -13,11 +13,13 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .route(delete().to(user::init_delete).wrap(limiters.email)),
             )
             .service(
-                resource("/public_key").route(
-                    get()
-                        .to(user::lookup_user_public_key)
-                        .wrap(limiters.key_lookup),
-                ),
+                resource("/public_key")
+                    .route(
+                        get()
+                            .to(user::lookup_user_public_key)
+                            .wrap(limiters.key_lookup),
+                    )
+                    .route(put().to(user::rotate_user_public_key)),
             )
             .service(resource("/verify").route(get().to(user::verify_creation)))
             .service(resource("/preferences").route(put().to(user::edit_preferences)))

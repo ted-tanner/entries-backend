@@ -77,6 +77,12 @@ CREATE TABLE budget_share_invites (
     -- accepts the invitation (the user needs to decrypt the info fields)
     share_info_symmetric_key_encrypted BYTEA NOT NULL,
 
+    -- ID of the invite recipient's public RSA key the sender used to encrypt the symmetric key
+    -- and other info about the budget and sender
+    recipient_public_key_id_used_by_sender UUID NOT NULL,
+    -- ID of the invite recipient's public RSA key the server used to encrypt the accept key
+    recipient_public_key_id_used_by_server UUID NOT NULL,
+
     -- The UNIX timestamp of creation, integer-divided by 5 million seconds. The purpose of
     -- storing this is to allow the server to delete 2-month/3-month old invites without being
     -- able to associate them with the expiration time of a budget_share_key
@@ -123,6 +129,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     is_verified BOOLEAN NOT NULL,
 
+    public_key_id UUID NOT NULL,
     public_key BYTEA NOT NULL,
 
     created_timestamp TIMESTAMP NOT NULL,

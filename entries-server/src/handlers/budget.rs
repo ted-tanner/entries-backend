@@ -208,7 +208,7 @@ pub async fn edit(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -257,12 +257,12 @@ pub async fn invite_user(
     let invitation_info_ref = Arc::clone(&invitation_info);
 
     let user_dao = db::user::Dao::new(&db_thread_pool);
-    let recipient_public_key = match web::block(move || {
+    let (recipient_pub_key_id, recipient_public_key) = match web::block(move || {
         user_dao.get_user_public_key(&invitation_info_ref.recipient_user_email)
     })
     .await?
     {
-        Ok(k) => k,
+        Ok(k) => (Uuid::try_from(k.id)?, k.value),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -354,6 +354,8 @@ pub async fn invite_user(
     });
 
     let accept_key_data = receiver.await??;
+    let recipient_pub_key_id_used_by_sender =
+        (&invitation_info.recipient_public_key_id_used_by_sender).try_into()?;
 
     let invite_id = match web::block(move || {
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
@@ -364,6 +366,8 @@ pub async fn invite_user(
             &invitation_info.budget_info_encrypted,
             &invitation_info.sender_info_encrypted,
             &invitation_info.share_info_symmetric_key_encrypted,
+            recipient_pub_key_id_used_by_sender,
+            recipient_pub_key_id,
             budget_access_token.0.claims.budget_id,
             expiration,
             invitation_info.read_only,
@@ -763,7 +767,7 @@ pub async fn edit_entry(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -883,7 +887,7 @@ pub async fn edit_category(
     {
         Ok(_) => (),
         Err(e) => match e {
-            DaoError::OutOfDateHash => {
+            DaoError::OutOfDate => {
                 return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -2549,9 +2553,10 @@ pub mod tests {
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
         let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
-
         let invite_info = UserInvitationToBudget {
             recipient_user_email: recipient.email,
+            recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
+            recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),
@@ -2584,6 +2589,20 @@ pub mod tests {
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        assert_eq!(invites.len(), 1);
+        assert_eq!(
+            recipient.public_key_id,
+            (&invites[0].recipient_public_key_id_used_by_sender)
+                .try_into()
+                .unwrap()
+        );
+        assert_eq!(
+            recipient.public_key_id,
+            (&invites[0].recipient_public_key_id_used_by_server)
+                .try_into()
+                .unwrap()
+        );
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
@@ -2784,6 +2803,8 @@ pub mod tests {
 
         let invite_info = UserInvitationToBudget {
             recipient_user_email: recipient.email,
+            recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
+            recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: invite_sender_pub_key.to_vec(),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),
@@ -2911,6 +2932,8 @@ pub mod tests {
 
         let invite_info = UserInvitationToBudget {
             recipient_user_email: recipient.email,
+            recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
+            recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),
@@ -3056,6 +3079,8 @@ pub mod tests {
 
         let invite_info = UserInvitationToBudget {
             recipient_user_email: recipient.email,
+            recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
+            recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
             budget_info_encrypted: gen_bytes(20),
