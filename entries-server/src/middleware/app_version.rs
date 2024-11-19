@@ -5,6 +5,7 @@ use futures::future;
 use crate::handlers::error::HttpErrorResponse;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AppVersion(pub String);
 
 impl FromRequest for AppVersion {

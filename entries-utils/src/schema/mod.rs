@@ -92,6 +92,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    throttleable_attempts (identifier_hash) {
+        identifier_hash -> Int8,
+        attempt_count -> Int4,
+        expiration_timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
     user_backup_codes (user_id, code) {
         user_id -> Uuid,
         #[max_length = 12]
@@ -188,6 +196,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     entries,
     job_registry,
     signin_nonces,
+    throttleable_attempts,
     user_backup_codes,
     user_deletion_request_budget_keys,
     user_deletion_requests,

@@ -14,6 +14,7 @@ use crate::middleware::{into_actix_error_res, TokenLocation};
 pub trait RequestAuthTokenType {
     fn token_name() -> &'static str;
     fn token_type() -> AuthTokenType;
+    #[allow(dead_code)]
     fn token_lifetime() -> Duration;
 }
 

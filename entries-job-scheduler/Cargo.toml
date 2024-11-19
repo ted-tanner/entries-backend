@@ -7,16 +7,16 @@ edition.workspace = true
 [dependencies]
 async-trait = "0.1.*"
 entries_utils = { path = "../entries-utils" }
-flexi_logger = { version = "0.27.*", features = ["async", "compress"], default_features = false }
+flexi_logger = { version = "0.29.*", features = ["async", "compress"], default-features = false }
 futures = "0.3.*"
 log = "0.4.*"
 num_cpus = "1.16.*"
-once_cell = "1.19.*"
-tokio = { version = "1.35.*", features = ["rt-multi-thread", "time"] }
-uuid = { version = "1.7.*", features = ["serde", "v4"] }
-zeroize = { version = "1.7.*", features = ["zeroize_derive"] }
+once_cell = "1.20.*"
+tokio = { version = "1.41.*", features = ["rt-multi-thread", "time"] }
+uuid = { version = "1.11.*", features = ["serde", "v4"] }
+zeroize = { version = "1.8.*", features = ["zeroize_derive"] }
 
 [dev-dependencies]
-diesel = { version = "2.1.*", features = ["postgres", "uuid", "r2d2"] }
-tokio = { version = "1.35.*", features = ["macros", "sync"] }
+diesel = { version = "2.2.*", features = ["postgres", "uuid", "r2d2"] }
+tokio = { version = "1.41.*", features = ["macros", "sync"] }
 rand = "0.8.*"
