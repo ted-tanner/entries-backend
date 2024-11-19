@@ -506,6 +506,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Rather than synchronizing with a sha1_hash, do a version instead that is just a random int64
 * Update readme documentation
   - Add a section for the job scheduler
   - Create a deployment checklist!
