@@ -1,5 +1,5 @@
-use entries_utils::db::auth::Dao as AuthDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::auth::Dao as AuthDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 
@@ -44,12 +44,12 @@ impl Job for UnblacklistExpiredTokensJob {
 mod tests {
     use super::*;
 
-    use entries_utils::db::user;
-    use entries_utils::messages::NewUser;
-    use entries_utils::models::blacklisted_token::NewBlacklistedToken;
-    use entries_utils::schema::blacklisted_tokens::dsl::blacklisted_tokens;
-    use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
-    use entries_utils::token::Token;
+    use entries_common::db::user;
+    use entries_common::messages::NewUser;
+    use entries_common::models::blacklisted_token::NewBlacklistedToken;
+    use entries_common::schema::blacklisted_tokens::dsl::blacklisted_tokens;
+    use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
+    use entries_common::token::Token;
 
     use diesel::{dsl, RunQueryDsl};
     use rand::Rng;

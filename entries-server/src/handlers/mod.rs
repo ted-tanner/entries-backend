@@ -5,9 +5,9 @@ pub mod user;
 
 pub mod verification {
     use actix_web::web;
-    use entries_utils::db::{self, DaoError, DbThreadPool};
-    use entries_utils::email::{templates::OtpMessage, EmailMessage, EmailSender};
-    use entries_utils::otp::Otp;
+    use entries_common::db::{self, DaoError, DbThreadPool};
+    use entries_common::email::{templates::OtpMessage, EmailMessage, EmailSender};
+    use entries_common::otp::Otp;
     use std::str::FromStr;
     use std::sync::Arc;
     use std::time::SystemTime;
@@ -184,8 +184,8 @@ pub mod verification {
 
 pub mod error {
     use actix_protobuf::ProtoBufResponseBuilder;
-    use entries_utils::messages::{ErrorType, MessageError, ServerErrorResponse};
-    use entries_utils::token::TokenError;
+    use entries_common::messages::{ErrorType, MessageError, ServerErrorResponse};
+    use entries_common::token::TokenError;
 
     use actix_web::http::{header, StatusCode};
     use actix_web::{HttpResponse, HttpResponseBuilder};
@@ -430,17 +430,17 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
-    use entries_utils::db;
-    use entries_utils::messages::{
+    use entries_common::db;
+    use entries_common::messages::{
         BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, NewBudget, NewUser,
         PublicKey, UserInvitationToBudget,
     };
-    use entries_utils::models::budget::Budget;
-    use entries_utils::models::user::User;
-    use entries_utils::schema::budgets::dsl::budgets;
-    use entries_utils::schema::users as user_fields;
-    use entries_utils::schema::users::dsl::users;
-    use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
+    use entries_common::models::budget::Budget;
+    use entries_common::models::user::User;
+    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::schema::users as user_fields;
+    use entries_common::schema::users::dsl::users;
+    use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -453,8 +453,8 @@ pub mod test_utils {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
-    use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
-    use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
+    use entries_common::token::budget_accept_token::BudgetAcceptTokenClaims;
+    use entries_common::token::budget_access_token::BudgetAccessTokenClaims;
     use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
     use prost::Message;

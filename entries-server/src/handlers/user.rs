@@ -1,22 +1,22 @@
-use entries_utils::db::{self, DaoError, DbThreadPool};
-use entries_utils::email::templates::UserVerificationMessage;
-use entries_utils::email::{EmailMessage, EmailSender};
-use entries_utils::html::templates::{
+use entries_common::db::{self, DaoError, DbThreadPool};
+use entries_common::email::templates::UserVerificationMessage;
+use entries_common::email::{EmailMessage, EmailSender};
+use entries_common::html::templates::{
     DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
     DeleteUserInternalErrorPage, DeleteUserInvalidLinkPage, DeleteUserLinkMissingTokenPage,
     DeleteUserSuccessPage, VerifyUserExpiredLinkPage, VerifyUserInternalErrorPage,
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
-use entries_utils::messages::{
+use entries_common::messages::{
     AuthStringAndEncryptedPasswordUpdate, BackupCodesAndVerificationEmailSent,
     BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, IsUserListedForDeletion, NewUser,
     NewUserPublicKey, RecoveryKeyUpdate, UserPublicKey, VerificationEmailSent,
 };
-use entries_utils::otp::Otp;
-use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
-use entries_utils::token::budget_access_token::BudgetAccessToken;
-use entries_utils::token::{Token, TokenError};
-use entries_utils::validators::{self, Validity};
+use entries_common::otp::Otp;
+use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
+use entries_common::token::budget_access_token::BudgetAccessToken;
+use entries_common::token::{Token, TokenError};
+use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
@@ -744,35 +744,35 @@ pub async fn cancel_delete(
 pub mod tests {
     use super::*;
 
-    use entries_utils::messages::{
+    use entries_common::messages::{
         EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse,
     };
-    use entries_utils::models::user::User;
-    use entries_utils::models::user_deletion_request::UserDeletionRequest;
-    use entries_utils::schema::budget_access_keys as budget_access_key_fields;
-    use entries_utils::schema::budget_access_keys::dsl::budget_access_keys;
-    use entries_utils::schema::budgets as budget_fields;
-    use entries_utils::schema::budgets::dsl::budgets;
-    use entries_utils::schema::categories as category_fields;
-    use entries_utils::schema::categories::dsl::categories;
-    use entries_utils::schema::entries as entry_fields;
-    use entries_utils::schema::entries::dsl::entries;
-    use entries_utils::schema::signin_nonces::dsl::signin_nonces;
-    use entries_utils::schema::user_backup_codes as user_backup_code_fields;
-    use entries_utils::schema::user_backup_codes::dsl::user_backup_codes;
-    use entries_utils::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
-    use entries_utils::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
-    use entries_utils::schema::user_deletion_requests as user_deletion_request_fields;
-    use entries_utils::schema::user_deletion_requests::dsl::user_deletion_requests;
-    use entries_utils::schema::user_keystores as user_keystore_fields;
-    use entries_utils::schema::user_keystores::dsl::user_keystores;
-    use entries_utils::schema::user_otps as user_otp_fields;
-    use entries_utils::schema::user_otps::dsl::user_otps;
-    use entries_utils::schema::user_preferences as user_preferences_fields;
-    use entries_utils::schema::user_preferences::dsl::user_preferences;
-    use entries_utils::schema::users as user_fields;
-    use entries_utils::schema::users::dsl::users;
-    use entries_utils::token::budget_access_token::BudgetAccessTokenClaims;
+    use entries_common::models::user::User;
+    use entries_common::models::user_deletion_request::UserDeletionRequest;
+    use entries_common::schema::budget_access_keys as budget_access_key_fields;
+    use entries_common::schema::budget_access_keys::dsl::budget_access_keys;
+    use entries_common::schema::budgets as budget_fields;
+    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::schema::categories as category_fields;
+    use entries_common::schema::categories::dsl::categories;
+    use entries_common::schema::entries as entry_fields;
+    use entries_common::schema::entries::dsl::entries;
+    use entries_common::schema::signin_nonces::dsl::signin_nonces;
+    use entries_common::schema::user_backup_codes as user_backup_code_fields;
+    use entries_common::schema::user_backup_codes::dsl::user_backup_codes;
+    use entries_common::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
+    use entries_common::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
+    use entries_common::schema::user_deletion_requests as user_deletion_request_fields;
+    use entries_common::schema::user_deletion_requests::dsl::user_deletion_requests;
+    use entries_common::schema::user_keystores as user_keystore_fields;
+    use entries_common::schema::user_keystores::dsl::user_keystores;
+    use entries_common::schema::user_otps as user_otp_fields;
+    use entries_common::schema::user_otps::dsl::user_otps;
+    use entries_common::schema::user_preferences as user_preferences_fields;
+    use entries_common::schema::user_preferences::dsl::user_preferences;
+    use entries_common::schema::users as user_fields;
+    use entries_common::schema::users::dsl::users;
+    use entries_common::token::budget_access_token::BudgetAccessTokenClaims;
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;

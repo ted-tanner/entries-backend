@@ -1,5 +1,5 @@
-use entries_utils::db::auth::Dao as AuthDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::auth::Dao as AuthDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 
@@ -44,10 +44,10 @@ impl Job for ClearExpiredOtpsJob {
 mod tests {
     use super::*;
 
-    use entries_utils::db::user;
-    use entries_utils::messages::NewUser;
-    use entries_utils::models::user_otp::NewUserOtp;
-    use entries_utils::schema::user_otps;
+    use entries_common::db::user;
+    use entries_common::messages::NewUser;
+    use entries_common::models::user_otp::NewUserOtp;
+    use entries_common::schema::user_otps;
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;

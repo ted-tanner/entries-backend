@@ -1,6 +1,6 @@
-use entries_utils::db::create_db_thread_pool;
-use entries_utils::email::senders::{AmazonSes, MockSender};
-use entries_utils::email::SendEmail;
+use entries_common::db::create_db_thread_pool;
+use entries_common::email::senders::{AmazonSes, MockSender};
+use entries_common::email::SendEmail;
 
 use actix_protobuf::ProtoBufConfig;
 use actix_web::web::Data;

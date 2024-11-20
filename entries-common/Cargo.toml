@@ -1,5 +1,5 @@
 [package]
-name = "entries_utils"
+name = "entries_common"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

@@ -1,14 +1,14 @@
-use entries_utils::messages::{
+use entries_common::messages::{
     AcceptKeyInfo, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
     EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
     PublicKey, UserInvitationToBudget,
 };
-use entries_utils::models::budget_access_key::BudgetAccessKey;
-use entries_utils::token::budget_accept_token::BudgetAcceptToken;
-use entries_utils::token::budget_access_token::BudgetAccessToken;
-use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderToken;
-use entries_utils::token::Token;
-use entries_utils::{db, db::DaoError, db::DbThreadPool};
+use entries_common::models::budget_access_key::BudgetAccessKey;
+use entries_common::token::budget_accept_token::BudgetAcceptToken;
+use entries_common::token::budget_access_token::BudgetAccessToken;
+use entries_common::token::budget_invite_sender_token::BudgetInviteSenderToken;
+use entries_common::token::Token;
+use entries_common::{db, db::DaoError, db::DbThreadPool};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
@@ -1016,17 +1016,17 @@ pub mod tests {
 
     use super::*;
 
-    use entries_utils::messages::{
+    use entries_common::messages::{
         Budget as BudgetMessage, BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList,
         EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse,
     };
-    use entries_utils::messages::{BudgetFrame, CategoryWithTempId};
-    use entries_utils::models::budget::Budget;
-    use entries_utils::schema::budget_access_keys as budget_access_key_fields;
-    use entries_utils::schema::budget_access_keys::dsl::budget_access_keys;
-    use entries_utils::schema::budgets::dsl::budgets;
-    use entries_utils::schema::users as user_fields;
-    use entries_utils::schema::users::dsl::users;
+    use entries_common::messages::{BudgetFrame, CategoryWithTempId};
+    use entries_common::models::budget::Budget;
+    use entries_common::schema::budget_access_keys as budget_access_key_fields;
+    use entries_common::schema::budget_access_keys::dsl::budget_access_keys;
+    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::schema::users as user_fields;
+    use entries_common::schema::users::dsl::users;
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -1039,8 +1039,8 @@ pub mod tests {
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
-    use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
-    use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
+    use entries_common::token::budget_accept_token::BudgetAcceptTokenClaims;
+    use entries_common::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
     use prost::Message;
     use rand::Rng;
 

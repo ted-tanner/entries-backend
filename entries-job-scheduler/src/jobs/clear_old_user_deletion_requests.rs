@@ -1,5 +1,5 @@
-use entries_utils::db::user::Dao as UserDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::user::Dao as UserDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 
@@ -44,13 +44,13 @@ impl Job for ClearOldUserDeletionRequestsJob {
 mod tests {
     use super::*;
 
-    use entries_utils::messages::NewUser;
-    use entries_utils::models::budget::NewBudget;
-    use entries_utils::models::budget_access_key::NewBudgetAccessKey;
-    use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
-    use entries_utils::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
-    use entries_utils::schema::{budget_access_keys, budgets, user_deletion_request_budget_keys};
-    use entries_utils::{db::user, schema::user_deletion_requests};
+    use entries_common::messages::NewUser;
+    use entries_common::models::budget::NewBudget;
+    use entries_common::models::budget_access_key::NewBudgetAccessKey;
+    use entries_common::models::user_deletion_request::NewUserDeletionRequest;
+    use entries_common::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
+    use entries_common::schema::{budget_access_keys, budgets, user_deletion_request_budget_keys};
+    use entries_common::{db::user, schema::user_deletion_requests};
 
     use diesel::{QueryDsl, RunQueryDsl};
     use rand::Rng;

@@ -22,17 +22,17 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Cargo test (Utils)",
+            "name": "Cargo test (Common)",
             "cargo": {
                 "args": [
                     "test",
                     "--lib",
-                    "entries_utils",
+                    "entries_common",
                     "--no-run"
                 ]
             },
             "args": ["--test-threads=1", "--include-ignored"],
-            "cwd": "${workspaceFolder}/entries-utils"
+            "cwd": "${workspaceFolder}/entries-common"
         },
         {
             "type": "lldb",

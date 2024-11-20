@@ -1,4 +1,4 @@
-use entries_utils::token::{DecodedToken, Token, TokenError};
+use entries_common::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
@@ -56,7 +56,7 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
-    use entries_utils::token::{
+    use entries_common::token::{
         budget_access_token::{BudgetAccessToken, BudgetAccessTokenClaims},
         budget_invite_sender_token::{BudgetInviteSenderToken, BudgetInviteSenderTokenClaims},
     };

@@ -1,4 +1,4 @@
-use entries_utils::db::create_db_thread_pool;
+use entries_common::db::create_db_thread_pool;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use runner::JobRunner;
 use std::time::Duration;

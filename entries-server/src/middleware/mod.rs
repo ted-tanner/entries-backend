@@ -6,7 +6,7 @@ mod limiter;
 
 pub use limiter::Limiter;
 
-use entries_utils::token::TokenError;
+use entries_common::token::TokenError;
 
 use actix_web::HttpRequest;
 

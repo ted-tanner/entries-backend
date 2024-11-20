@@ -1,5 +1,5 @@
-use entries_utils::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
-use entries_utils::token::{DecodedToken, Token, TokenError};
+use entries_common::token::auth_token::{AuthToken, AuthTokenClaims, AuthTokenType};
+use entries_common::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
@@ -200,7 +200,7 @@ mod tests {
     use actix_web::test::TestRequest;
     use uuid::Uuid;
 
-    use entries_utils::token::auth_token::{AuthToken, NewAuthTokenClaims};
+    use entries_common::token::auth_token::{AuthToken, NewAuthTokenClaims};
 
     use crate::middleware::{FromHeader, FromQuery};
 

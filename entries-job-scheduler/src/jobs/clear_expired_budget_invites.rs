@@ -1,5 +1,5 @@
-use entries_utils::db::budget::Dao as BudgetDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::budget::Dao as BudgetDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 
@@ -44,14 +44,14 @@ impl Job for ClearExpiredBudgetInvitesJob {
 mod tests {
     use super::*;
 
-    use entries_utils::db::user;
-    use entries_utils::messages::NewUser;
-    use entries_utils::models::budget::NewBudget;
-    use entries_utils::models::budget_accept_key::NewBudgetAcceptKey;
-    use entries_utils::models::budget_share_invite::NewBudgetShareInvite;
-    use entries_utils::schema::budget_accept_keys;
-    use entries_utils::schema::budget_share_invites;
-    use entries_utils::schema::budgets;
+    use entries_common::db::user;
+    use entries_common::messages::NewUser;
+    use entries_common::models::budget::NewBudget;
+    use entries_common::models::budget_accept_key::NewBudgetAcceptKey;
+    use entries_common::models::budget_share_invite::NewBudgetShareInvite;
+    use entries_common::schema::budget_accept_keys;
+    use entries_common::schema::budget_share_invites;
+    use entries_common::schema::budgets;
 
     use diesel::{QueryDsl, RunQueryDsl};
     use rand::Rng;

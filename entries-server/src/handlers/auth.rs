@@ -1,12 +1,12 @@
-use entries_utils::db::{self, DaoError, DbThreadPool};
-use entries_utils::email::EmailSender;
-use entries_utils::messages::{
+use entries_common::db::{self, DaoError, DbThreadPool};
+use entries_common::email::EmailSender;
+use entries_common::messages::{
     BackupCode, BackupCodeList, CredentialPair, EmailQuery, SigninNonceAndHashParams, SigninToken,
 };
-use entries_utils::messages::{Otp as OtpMessage, TokenPair};
-use entries_utils::otp::Otp;
-use entries_utils::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
-use entries_utils::validators::{self, Validity};
+use entries_common::messages::{Otp as OtpMessage, TokenPair};
+use entries_common::otp::Otp;
+use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
+use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
@@ -443,9 +443,9 @@ mod tests {
 
     use super::*;
 
-    use entries_utils::messages::{ErrorType, NewUser, ServerErrorResponse};
-    use entries_utils::models::user_otp::UserOtp;
-    use entries_utils::schema::{signin_nonces, user_otps, users};
+    use entries_common::messages::{ErrorType, NewUser, ServerErrorResponse};
+    use entries_common::models::user_otp::UserOtp;
+    use entries_common::schema::{signin_nonces, user_otps, users};
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -454,7 +454,7 @@ mod tests {
     use actix_web::web::Data;
     use actix_web::App;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-    use entries_utils::token::Token;
+    use entries_common::token::Token;
     use prost::Message;
     use uuid::Uuid;
 

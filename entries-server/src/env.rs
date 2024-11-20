@@ -287,9 +287,9 @@ impl fmt::Display for ConfigError {
 
 #[cfg(test)]
 pub mod testing {
-    use entries_utils::db::{create_db_thread_pool, DbThreadPool};
-    use entries_utils::email::senders::MockSender;
-    use entries_utils::email::SendEmail;
+    use entries_common::db::{create_db_thread_pool, DbThreadPool};
+    use entries_common::email::senders::MockSender;
+    use entries_common::email::SendEmail;
 
     use std::sync::Arc;
 

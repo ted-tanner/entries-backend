@@ -1,6 +1,6 @@
-use entries_utils::db::job_registry::Dao as JobRegistryDao;
+use entries_common::db::job_registry::Dao as JobRegistryDao;
 
-use entries_utils::db::DbThreadPool;
+use entries_common::db::DbThreadPool;
 use futures::future;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::time;

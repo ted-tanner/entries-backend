@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "entries-job-scheduler",
     "entries-server",
-    "entries-utils",
+    "entries-common",
 ]
 
 [workspace.package]

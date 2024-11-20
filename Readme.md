@@ -515,7 +515,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - 8,000 entries/budget
 * Enforce maximum data blob size
     - An entry shouldn't be more than 4kb, whereas a keystore should probably be limited to 80mb (5,000 budget keys at 6kb/key = ~15mb, plus budget share keys and other kinds of keys). Limits should be considered on a per-type basis.
-* Rename entries_utils to entries_commons
 * Update readme documentation
   - Add a section for the job scheduler
   - Explanation of encryption scheme and expected role of the client in the scheme
@@ -555,10 +554,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Use more string slices to avoid extra allocations when creating structs. Use lifetimes to accomplish this
 * Budget comments, entry comments
   - Reactions to said comments
-* Validation for `entries_utils::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
+* Validation for `entries_common::password_hasher::HashParams` (e.g. make sure `hash_mem_size_kib` is at least 128 and is a power of 2)
 * Use lifetimes to reduce they copying of strings (e.g. TokenPair, TokenClaims, perhaps some of the OutputX structs, etc)
 * Budget user get request logic should be handled in a query to eliminate multiple queries
-* Create mock in Dao to test DB stuff in entries-utils
+* Create mock in Dao to test DB stuff in entries-common
 * Replace lazy_static with OnceCell
 * Save all refresh tokens belonging to a user (save them when they get issued) in the database so they can all be blacklisted at once.
 * In `entries_server::handlers::budget::remove_budget(...)`, make deleting the budget non-blocking. Users have already been removed from the budget, so the handler can return without finishing deleting the budget. See the comment in the code for an idea of how to do this performantly
@@ -568,7 +567,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * To ensure user is in budget, don't make db query. Just filter db items using a join with the UserBudgetAssociation
 * Reject accept/decline budget shares and buddy requests if already accepted or declined
 * Admin console
-* If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `entries_utils::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
+* If user deletion fails, put a record in another table for manual deletion later. When implementing this, make sure in `entries_common::db::user::delete_user` the request gets deleted from the requests table before attempting to delete user data so the request doesn't get run again in subsequent runs of the delete_users job.
 * Give the job scheduler a thread pool and queue up jobs for the pool to execute so multiple jobs can run at once
 * Languages/localization
 * Budgets that are not modified for a year will be deleted?

@@ -5,7 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-entries_utils = { path = "../entries-utils" }
+entries_common = { path = "../entries-common" }
 actix-protobuf = "0.11.*"
 actix-web = "4.9.*"
 argon2-kdf = "1.5.*"

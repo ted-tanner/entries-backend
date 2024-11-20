@@ -12,7 +12,7 @@ pub use clear_unverified_users::ClearUnverifiedUsersJob;
 pub use delete_users::DeleteUsersJob;
 pub use unblacklist_expired_tokens::UnblacklistExpiredTokensJob;
 
-use entries_utils::db::DaoError;
+use entries_common::db::DaoError;
 
 use async_trait::async_trait;
 use std::fmt;

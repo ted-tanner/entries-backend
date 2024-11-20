@@ -1,5 +1,5 @@
-use entries_utils::db::user::Dao as UserDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::user::Dao as UserDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 use std::time::Duration;
@@ -51,9 +51,9 @@ impl Job for ClearUnverifiedUsersJob {
 mod tests {
     use super::*;
 
-    use entries_utils::db::user;
-    use entries_utils::messages::NewUser;
-    use entries_utils::schema::users;
+    use entries_common::db::user;
+    use entries_common::messages::NewUser;
+    use entries_common::schema::users;
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;

@@ -809,12 +809,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "entries_common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "diesel",
+ "ed25519-dalek",
+ "hmac",
+ "lettre",
+ "log",
+ "num_cpus",
+ "once_cell",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "r2d2",
+ "rand",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "entries_job_scheduler"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "diesel",
- "entries_utils",
+ "entries_common",
  "flexi_logger",
  "futures",
  "log",
@@ -838,7 +863,7 @@ dependencies = [
  "base64",
  "diesel",
  "ed25519-dalek",
- "entries_utils",
+ "entries_common",
  "flexi_logger",
  "futures",
  "lettre",
@@ -854,31 +879,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "entries_utils"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64",
- "diesel",
- "ed25519-dalek",
- "hmac",
- "lettre",
- "log",
- "num_cpus",
- "once_cell",
- "prost",
- "prost-build",
- "prost-types",
- "r2d2",
- "rand",
- "serde",
- "serde_json",
- "sha2",
  "uuid",
  "zeroize",
 ]

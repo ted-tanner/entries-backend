@@ -6,7 +6,7 @@ fn main() -> std::io::Result<()> {
     const PROTO_DIR: &[&str] = &["protobuf"];
     const SCHEMA_FILE: &str = "schema.proto";
     const PROTO_RS_FILE: &str = "entries.serverschema.rs";
-    const PROTO_RS_DEST: &[&str] = &["entries-utils", "src", "messages", "protobuf.rs"];
+    const PROTO_RS_DEST: &[&str] = &["entries-common", "src", "messages", "protobuf.rs"];
 
     let cwd = std::env::current_dir()?;
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());

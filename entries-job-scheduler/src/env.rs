@@ -202,7 +202,7 @@ impl fmt::Display for ConfigError {
 
 #[cfg(test)]
 pub mod testing {
-    use entries_utils::db::{create_db_thread_pool, DbThreadPool};
+    use entries_common::db::{create_db_thread_pool, DbThreadPool};
 
     use super::*;
 

@@ -1,5 +1,5 @@
-use entries_utils::db::user::Dao as UserDao;
-use entries_utils::db::DbThreadPool;
+use entries_common::db::user::Dao as UserDao;
+use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 use futures::future;
@@ -72,17 +72,17 @@ impl Job for DeleteUsersJob {
 mod tests {
     use super::*;
 
-    use entries_utils::db::budget;
-    use entries_utils::messages::NewUser;
-    use entries_utils::models::budget::NewBudget;
-    use entries_utils::models::budget_access_key::NewBudgetAccessKey;
-    use entries_utils::models::user_deletion_request::NewUserDeletionRequest;
-    use entries_utils::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
-    use entries_utils::schema::{
+    use entries_common::db::budget;
+    use entries_common::messages::NewUser;
+    use entries_common::models::budget::NewBudget;
+    use entries_common::models::budget_access_key::NewBudgetAccessKey;
+    use entries_common::models::user_deletion_request::NewUserDeletionRequest;
+    use entries_common::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
+    use entries_common::schema::{
         budget_access_keys, budgets, categories, entries, user_deletion_request_budget_keys,
         user_keystores, user_preferences,
     };
-    use entries_utils::{db::user, schema::user_deletion_requests};
+    use entries_common::{db::user, schema::user_deletion_requests};
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;

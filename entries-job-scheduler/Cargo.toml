@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1.*"
-entries_utils = { path = "../entries-utils" }
+entries_common = { path = "../entries-common" }
 flexi_logger = { version = "0.29.*", features = ["async", "compress"], default-features = false }
 futures = "0.3.*"
 log = "0.4.*"
