@@ -58,7 +58,7 @@ message Category {
     required UuidV4 id = 1;
     required UuidV4 budget_id = 2;
     required bytes encrypted_blob = 3;
-    required bytes encrypted_blob_sha1_hash = 4;
+    required int64 version_nonce = 4;
     required Timestamp modified_timestamp = 5;
 }
 
@@ -67,7 +67,7 @@ message Entry {
     required UuidV4 budget_id = 2;
     optional UuidV4 category_id = 3;
     required bytes encrypted_blob = 4;
-    required bytes encrypted_blob_sha1_hash = 5;
+    required int64 version_nonce = 5;
     required Timestamp modified_timestamp = 6;
 }
 
@@ -107,12 +107,14 @@ message CategoryId {
 message CategoryUpdate {
     required UuidV4 category_id = 1;
     required bytes encrypted_blob = 2;
-    required bytes expected_previous_data_hash = 3;
+    required int64 version_nonce = 3;
+    required int64 expected_previous_version_nonce = 4;
 }
 
 message CategoryWithTempId {
     required int32 temp_id = 1;
     required bytes encrypted_blob = 2;
+    required int64 version_nonce = 3;
 }
 
 message CredentialPair {
@@ -123,17 +125,21 @@ message CredentialPair {
 
 message EncryptedBlobAndCategoryId {
     required bytes encrypted_blob = 1;
-    optional UuidV4 category_id = 2;
+    required int64 version_nonce = 2;
+    optional UuidV4 category_id = 3;
 }
 
 message EncryptedBlobUpdate {
     required bytes encrypted_blob = 1;
-    required bytes expected_previous_data_hash = 2;
+    required int64 version_nonce = 2;
+    required int64 expected_previous_version_nonce = 3;
 }
 
 message EntryAndCategory {
     required bytes entry_encrypted_blob = 1;
-    required bytes category_encrypted_blob = 2;
+    required int64 entry_version_nonce = 2;
+    required bytes category_encrypted_blob = 3;
+    required int64 category_version_nonce = 4;
 }
 
 message EntryId {
@@ -143,18 +149,21 @@ message EntryId {
 message EntryUpdate {
     required UuidV4 entry_id = 1;
     required bytes encrypted_blob = 2;
-    required bytes expected_previous_data_hash = 3;
-    optional UuidV4 category_id = 4;
+    required int64 version_nonce = 3;
+    required int64 expected_previous_version_nonce = 4;
+    optional UuidV4 category_id = 5;
 }
 
 message NewBudget {
     required bytes encrypted_blob = 1;
+    required int64 version_nonce = 2;
     repeated CategoryWithTempId categories = 3;
     required bytes user_public_budget_key = 4;
 }
 
 message NewEncryptedBlob {
     required bytes value = 1;
+    required int64 version_nonce = 2;
 }
 
 message NewUser {
@@ -184,7 +193,9 @@ message NewUser {
     required bytes public_key = 18;
 
     required bytes preferences_encrypted = 19;
-    required bytes user_keystore_encrypted = 20;
+    required int64 preferences_version_nonce = 20;
+    required bytes user_keystore_encrypted = 21;
+    required int64 user_keystore_version_nonce = 22;
 }
 
 message NewUserPublicKey {
@@ -248,9 +259,10 @@ message BackupCodeList {
 message Budget {
     required UuidV4 id = 1;
     required bytes encrypted_blob = 2;
-    required Timestamp modified_timestamp = 3;
-    repeated Category categories = 4;
-    repeated Entry entries = 5;
+    required int64 version_nonce = 3;
+    required Timestamp modified_timestamp = 4;
+    repeated Category categories = 5;
+    repeated Entry entries = 6;
 }
 
 message BudgetFrame {

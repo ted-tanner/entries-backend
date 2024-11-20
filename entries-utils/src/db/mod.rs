@@ -44,7 +44,7 @@ impl fmt::Display for DaoError {
                 write!(f, "DaoError: Query failed: {e}")
             }
             DaoError::OutOfDate => {
-                write!(f, "DaoError: Hash was out of date")
+                write!(f, "DaoError: Version nonce was out of date")
             }
             DaoError::CannotRunQuery(msg) => {
                 write!(f, "DaoError: Cannot run query: {msg}")

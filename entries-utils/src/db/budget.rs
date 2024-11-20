@@ -2,7 +2,6 @@ use diesel::associations::GroupedBy;
 use diesel::{
     dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl,
 };
-use sha1::{Digest, Sha1};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -103,7 +102,7 @@ impl Dao {
                         id: c.id.into(),
                         budget_id: c.budget_id.into(),
                         encrypted_blob: c.encrypted_blob,
-                        encrypted_blob_sha1_hash: c.encrypted_blob_sha1_hash,
+                        version_nonce: c.version_nonce,
                         modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
                     })
                     .collect();
@@ -115,7 +114,7 @@ impl Dao {
                         budget_id: e.budget_id.into(),
                         category_id: e.category_id.as_ref().map(UuidV4::from),
                         encrypted_blob: e.encrypted_blob,
-                        encrypted_blob_sha1_hash: e.encrypted_blob_sha1_hash,
+                        version_nonce: e.version_nonce,
                         modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
                     })
                     .collect();
@@ -125,6 +124,7 @@ impl Dao {
                     encrypted_blob: budget.encrypted_blob,
                     categories: category_messages,
                     entries: entry_messages,
+                    version_nonce: budget.version_nonce,
                     modified_timestamp: budget.modified_timestamp.try_into().unwrap_or_default(),
                 })
             })?;
@@ -161,7 +161,7 @@ impl Dao {
                             id: c.id.into(),
                             budget_id: c.budget_id.into(),
                             encrypted_blob: c.encrypted_blob,
-                            encrypted_blob_sha1_hash: c.encrypted_blob_sha1_hash,
+                            version_nonce: c.version_nonce,
                             modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
                         })
                         .collect();
@@ -173,7 +173,7 @@ impl Dao {
                             budget_id: e.budget_id.into(),
                             category_id: e.category_id.as_ref().map(UuidV4::from),
                             encrypted_blob: e.encrypted_blob,
-                            encrypted_blob_sha1_hash: e.encrypted_blob_sha1_hash,
+                            version_nonce: e.version_nonce,
                             modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
                         })
                         .collect();
@@ -181,6 +181,7 @@ impl Dao {
                     let output_budget = BudgetMessage {
                         id: budget.id.into(),
                         encrypted_blob: budget.encrypted_blob,
+                        version_nonce: budget.version_nonce,
                         modified_timestamp: budget
                             .modified_timestamp
                             .try_into()
@@ -203,6 +204,7 @@ impl Dao {
     pub fn create_budget(
         &self,
         encrypted_blob: &[u8],
+        version_nonce: i64,
         budget_categories: &[CategoryWithTempId],
         user_public_budget_key: &[u8],
     ) -> Result<BudgetFrame, DaoError> {
@@ -210,13 +212,10 @@ impl Dao {
         let budget_id = Uuid::new_v4();
         let key_id = Uuid::new_v4();
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(encrypted_blob);
-
         let new_budget = NewBudget {
             id: budget_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce,
             modified_timestamp: current_time,
         };
 
@@ -227,24 +226,15 @@ impl Dao {
             read_only: false,
         };
 
-        let mut category_hashes = Vec::new();
-
-        for category in budget_categories.iter() {
-            let mut sha1_hasher = Sha1::new();
-            sha1_hasher.update(&category.encrypted_blob);
-
-            category_hashes.push(sha1_hasher.finalize());
-        }
-
         let mut new_categories = Vec::new();
         let mut new_category_temp_ids = Vec::new();
 
-        for (i, category) in budget_categories.iter().enumerate() {
+        for category in budget_categories.iter() {
             let new_category = NewCategory {
                 budget_id,
                 id: Uuid::new_v4(),
                 encrypted_blob: &category.encrypted_blob,
-                encrypted_blob_sha1_hash: &category_hashes[i],
+                version_nonce,
                 modified_timestamp: current_time,
             };
 
@@ -293,38 +283,51 @@ impl Dao {
         &self,
         budget_id: Uuid,
         edited_budget_data: &[u8],
-        expected_previous_data_hash: &[u8],
+        version_nonce: i64,
+        expected_previous_version_nonce: i64,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_hash = budgets
-                    .select(budget_fields::encrypted_blob_sha1_hash)
-                    .find(budget_id)
-                    .get_result::<Vec<u8>>(conn)?;
+                let affected_row_count = dsl::update(
+                    budgets
+                        .find(budget_id)
+                        .filter(budget_fields::version_nonce.eq(expected_previous_version_nonce)),
+                )
+                .set((
+                    budget_fields::modified_timestamp.eq(dsl::now),
+                    budget_fields::encrypted_blob.eq(edited_budget_data),
+                    budget_fields::version_nonce.eq(version_nonce),
+                ))
+                .execute(conn)?;
 
-                if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDate);
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the version_nonce was out-of-date
+                    let current_version_nonce = budgets
+                        .select(budget_fields::version_nonce)
+                        .find(budget_id)
+                        .first::<i64>(conn);
+
+                    match current_version_nonce {
+                        Ok(existing_nonce) => {
+                            if existing_nonce != expected_previous_version_nonce {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
                 }
 
-                let mut sha1_hasher = Sha1::new();
-                sha1_hasher.update(edited_budget_data);
-
-                dsl::update(budgets.find(budget_id))
-                    .set((
-                        budget_fields::modified_timestamp.eq(SystemTime::now()),
-                        budget_fields::encrypted_blob.eq(edited_budget_data),
-                        budget_fields::encrypted_blob_sha1_hash
-                            .eq(sha1_hasher.finalize().as_slice()),
-                    ))
-                    .execute(conn)?;
-
                 Ok(())
-            })?;
-
-        Ok(())
+            })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -582,21 +585,19 @@ impl Dao {
     pub fn create_entry(
         &self,
         encrypted_blob: &[u8],
+        version_nonce: i64,
         category_id: Option<Uuid>,
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let entry_id = Uuid::new_v4();
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(encrypted_blob);
-
         let new_entry = NewEntry {
             id: entry_id,
             budget_id,
             category_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce,
             modified_timestamp: current_time,
         };
 
@@ -610,33 +611,29 @@ impl Dao {
     pub fn create_entry_and_category(
         &self,
         entry_encrypted_blob: &[u8],
+        entry_version_nonce: i64,
         category_encrypted_blob: &[u8],
+        category_version_nonce: i64,
         budget_id: Uuid,
     ) -> Result<EntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
         let category_id = Uuid::new_v4();
         let entry_id = Uuid::new_v4();
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(category_encrypted_blob);
-
         let new_category = NewCategory {
             id: category_id,
             budget_id,
             encrypted_blob: category_encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce: category_version_nonce,
             modified_timestamp: current_time,
         };
-
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(entry_encrypted_blob);
 
         let new_entry = NewEntry {
             id: entry_id,
             budget_id,
             category_id: Some(category_id),
             encrypted_blob: entry_encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce: entry_version_nonce,
             modified_timestamp: current_time,
         };
 
@@ -664,7 +661,8 @@ impl Dao {
         &self,
         entry_id: Uuid,
         entry_encrypted_blob: &[u8],
-        expected_previous_data_hash: &[u8],
+        version_nonce: i64,
+        expected_previous_version_nonce: i64,
         category_id: Option<Uuid>,
         budget_id: Uuid,
     ) -> Result<(), DaoError> {
@@ -672,36 +670,46 @@ impl Dao {
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_hash = entries
-                    .find(entry_id)
-                    .select(entry_fields::encrypted_blob_sha1_hash)
-                    .get_result::<Vec<u8>>(conn)?;
-
-                if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDate);
-                }
-
-                let mut sha1_hasher = Sha1::new();
-                sha1_hasher.update(entry_encrypted_blob);
-
-                diesel::update(
+                let affected_row_count = diesel::update(
                     entries
                         .find(entry_id)
-                        .filter(entry_fields::budget_id.eq(budget_id)),
+                        .filter(entry_fields::budget_id.eq(budget_id))
+                        .filter(entry_fields::version_nonce.eq(expected_previous_version_nonce)),
                 )
                 .set((
                     entry_fields::category_id.eq(category_id),
                     entry_fields::encrypted_blob.eq(entry_encrypted_blob),
-                    entry_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finalize().as_slice()),
-                    entry_fields::modified_timestamp.eq(SystemTime::now()),
+                    entry_fields::version_nonce.eq(version_nonce),
+                    entry_fields::modified_timestamp.eq(dsl::now),
                 ))
                 .execute(conn)?;
 
-                Ok(())
-            })?;
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the version_nonce was out-of-date
+                    let current_version_nonce = entries
+                        .select(entry_fields::version_nonce)
+                        .find(entry_id)
+                        .first::<i64>(conn);
 
-        Ok(())
+                    match current_version_nonce {
+                        Ok(existing_nonce) => {
+                            if existing_nonce != expected_previous_version_nonce {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
+                }
+
+                Ok(())
+            })
     }
 
     pub fn delete_entry(&self, entry_id: Uuid, budget_id: Uuid) -> Result<(), DaoError> {
@@ -718,19 +726,17 @@ impl Dao {
     pub fn create_category(
         &self,
         encrypted_blob: &[u8],
+        version_nonce: i64,
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let category_id = Uuid::new_v4();
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(encrypted_blob);
-
         let new_category = NewCategory {
             id: category_id,
             budget_id,
             encrypted_blob,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce,
             modified_timestamp: current_time,
         };
 
@@ -745,37 +751,50 @@ impl Dao {
         &self,
         category_id: Uuid,
         category_encrypted_blob: &[u8],
-        expected_previous_data_hash: &[u8],
+        version_nonce: i64,
+        expected_previous_version_nonce: i64,
         budget_id: Uuid,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_hash = categories
-                    .find(category_id)
-                    .select(category_fields::encrypted_blob_sha1_hash)
-                    .get_result::<Vec<u8>>(conn)?;
-
-                if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDate);
-                }
-
-                let mut sha1_hasher = Sha1::new();
-                sha1_hasher.update(category_encrypted_blob);
-
-                diesel::update(
+                let affected_row_count = diesel::update(
                     categories
                         .find(category_id)
-                        .filter(category_fields::budget_id.eq(budget_id)),
+                        .filter(category_fields::budget_id.eq(budget_id))
+                        .filter(category_fields::version_nonce.eq(expected_previous_version_nonce)),
                 )
                 .set((
                     category_fields::encrypted_blob.eq(category_encrypted_blob),
-                    category_fields::encrypted_blob_sha1_hash.eq(sha1_hasher.finalize().as_slice()),
-                    category_fields::modified_timestamp.eq(SystemTime::now()),
+                    category_fields::version_nonce.eq(version_nonce),
+                    category_fields::modified_timestamp.eq(dsl::now),
                 ))
                 .execute(conn)?;
+
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the version_nonce was out-of-date
+                    let current_version_nonce = categories
+                        .select(category_fields::version_nonce)
+                        .find(category_id)
+                        .first::<i64>(conn);
+
+                    match current_version_nonce {
+                        Ok(existing_nonce) => {
+                            if existing_nonce != expected_previous_version_nonce {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
+                }
 
                 Ok(())
             })

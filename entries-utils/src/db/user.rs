@@ -1,6 +1,5 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
 use rand::{rngs::OsRng, Rng};
-use sha1::{Digest, Sha1};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -75,7 +74,9 @@ impl Dao {
         public_key_id: Uuid,
         public_key: &[u8],
         preferences_encrypted: &[u8],
+        preferences_version_nonce: i64,
         user_keystore_encrypted: &[u8],
+        user_keystore_version_nonce: i64,
         backup_codes: &[String],
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
@@ -113,22 +114,16 @@ impl Dao {
             encryption_key_encrypted_with_recovery_key,
         };
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(preferences_encrypted);
-
         let new_user_preferences = NewUserPreferences {
             user_id,
             encrypted_blob: preferences_encrypted,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce: preferences_version_nonce,
         };
-
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(user_keystore_encrypted);
 
         let new_user_keystore = NewUserKeystore {
             user_id,
             encrypted_blob: user_keystore_encrypted,
-            encrypted_blob_sha1_hash: &sha1_hasher.finalize(),
+            version_nonce: user_keystore_version_nonce,
         };
 
         let new_signin_nonce = NewSigninNonce {
@@ -201,59 +196,88 @@ impl Dao {
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_public_key_id = users
-                    .find(user_id)
-                    .select(user_fields::public_key_id)
-                    .get_result::<Uuid>(conn)?;
+                let affected_row_count = dsl::update(
+                    users
+                        .find(user_id)
+                        .filter(user_fields::public_key_id.eq(expected_previous_public_key_id)),
+                )
+                .set((
+                    user_fields::public_key_id.eq(public_key_id),
+                    user_fields::public_key.eq(public_key),
+                ))
+                .execute(conn)?;
 
-                if previous_public_key_id != expected_previous_public_key_id {
-                    return Err(DaoError::OutOfDate);
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the key ID was out-of-date
+                    let current_key_id = users
+                        .select(user_fields::public_key_id)
+                        .find(user_id)
+                        .first::<Uuid>(conn);
+
+                    match current_key_id {
+                        Ok(current_key_id) => {
+                            if current_key_id != expected_previous_public_key_id {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
                 }
 
-                dsl::update(users.find(user_id))
-                    .set((
-                        user_fields::public_key_id.eq(public_key_id),
-                        user_fields::public_key.eq(public_key),
-                    ))
-                    .execute(conn)?;
-
                 Ok(())
-            })?;
-
-        Ok(())
+            })
     }
 
     pub fn update_user_prefs(
         &self,
         user_id: Uuid,
         prefs_encrypted_blob: &[u8],
-        expected_previous_data_hash: &[u8],
+        version_nonce: i64,
+        expected_previous_version_nonce: i64,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_hash = user_preferences
-                    .find(user_id)
-                    .select(user_preferences_fields::encrypted_blob_sha1_hash)
-                    .get_result::<Vec<u8>>(conn)?;
+                let affected_row_count = dsl::update(user_preferences.find(user_id).filter(
+                    user_preferences_fields::version_nonce.eq(expected_previous_version_nonce),
+                ))
+                .set((
+                    user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
+                    user_preferences_fields::version_nonce.eq(version_nonce),
+                ))
+                .execute(conn)?;
 
-                if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDate);
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the version_nonce was out-of-date
+                    let current_version_nonce = user_preferences
+                        .select(user_preferences_fields::version_nonce)
+                        .find(user_id)
+                        .first::<i64>(conn);
+
+                    match current_version_nonce {
+                        Ok(current_version_nonce) => {
+                            if current_version_nonce != expected_previous_version_nonce {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
                 }
-
-                let mut sha1_hasher = Sha1::new();
-                sha1_hasher.update(prefs_encrypted_blob);
-
-                dsl::update(user_preferences.find(user_id))
-                    .set((
-                        user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
-                        user_preferences_fields::encrypted_blob_sha1_hash
-                            .eq(sha1_hasher.finalize().as_slice()),
-                    ))
-                    .execute(conn)?;
 
                 Ok(())
             })
@@ -263,32 +287,45 @@ impl Dao {
         &self,
         user_id: Uuid,
         keystore_encrypted_blob: &[u8],
-        expected_previous_data_hash: &[u8],
+        version_nonce: i64,
+        expected_previous_version_nonce: i64,
     ) -> Result<(), DaoError> {
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
             .build_transaction()
+            .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let previous_hash = user_keystores
-                    .find(user_id)
-                    .select(user_keystore_fields::encrypted_blob_sha1_hash)
-                    .get_result::<Vec<u8>>(conn)?;
+                let affected_row_count = dsl::update(user_keystores.find(user_id).filter(
+                    user_keystore_fields::version_nonce.eq(expected_previous_version_nonce),
+                ))
+                .set((
+                    user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
+                    user_keystore_fields::version_nonce.eq(version_nonce),
+                ))
+                .execute(conn)?;
 
-                if previous_hash != expected_previous_data_hash {
-                    return Err(DaoError::OutOfDate);
+                if affected_row_count == 0 {
+                    // Check whether the update failed because the record wasn't found or because
+                    // the version_nonce was out-of-date
+                    let current_version_nonce = user_keystores
+                        .select(user_keystore_fields::version_nonce)
+                        .find(user_id)
+                        .first::<i64>(conn);
+
+                    match current_version_nonce {
+                        Ok(current_version_nonce) => {
+                            if current_version_nonce != expected_previous_version_nonce {
+                                return Err(DaoError::OutOfDate);
+                            }
+
+                            // This case should never happen because we filtered on version_nonce
+                            // in the update query
+                            unreachable!();
+                        }
+                        Err(e) => return Err(DaoError::from(e)),
+                    }
                 }
-
-                let mut sha1_hasher = Sha1::new();
-                sha1_hasher.update(keystore_encrypted_blob);
-
-                dsl::update(user_keystores.find(user_id))
-                    .set((
-                        user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
-                        user_keystore_fields::encrypted_blob_sha1_hash
-                            .eq(sha1_hasher.finalize().as_slice()),
-                    ))
-                    .execute(conn)?;
 
                 Ok(())
             })

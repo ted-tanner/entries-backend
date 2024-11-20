@@ -8,7 +8,7 @@ CREATE INDEX ON blacklisted_tokens USING HASH (token_signature);
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL,
+    version_nonce BIGINT NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL
 );
 
@@ -96,7 +96,7 @@ CREATE TABLE categories (
     budget_id UUID NOT NULL,
 
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL,
+    version_nonce BIGINT NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -108,7 +108,7 @@ CREATE TABLE entries (
     category_id UUID, -- Intentionally nullable
 
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL,
+    version_nonce BIGINT NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL
 );
@@ -189,7 +189,7 @@ CREATE INDEX ON user_deletion_request_budget_keys USING BTREE (delete_me_time);
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL
+    version_nonce BIGINT NOT NULL
 );
 
 CREATE TABLE user_otps (
@@ -203,7 +203,7 @@ CREATE INDEX ON user_otps USING BTREE (user_email, otp);
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    encrypted_blob_sha1_hash BYTEA NOT NULL
+    version_nonce BIGINT NOT NULL
 );
 
 -- Foreign keys

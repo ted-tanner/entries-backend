@@ -1,0 +1,89 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (utils)",
+            "cwd": "${workspaceRoot}/entries-utils",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--",
+                    "--test-threads=1",
+                    "--include-ignored"
+                ]
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (scheduler)",
+            "cwd": "${workspaceRoot}",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin",
+                    "entries_job_scheduler/entries-job-scheduler",
+                    "--",
+                    "--test-threads=1",
+                    "--include-ignored"
+                ]
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test (server)",
+            "cwd": "${workspaceRoot}/entries-server",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin",
+                    "entries_server",
+                    "--",
+                    "--test-threads=1",
+                    "--include-ignored"
+                ]
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Job Scheduler",
+            "cwd": "${workspaceRoot}",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin",
+                    "entries_job_scheduler",
+                    "--",
+                    "--config",
+                    "entries-job-scheduler/conf/jobs-conf.toml"
+                ]
+            },
+            "args": ["--config", "/Users/tanner/repos/rust-server/entries-job-scheduler/test-debug-conf/jobs-conf.toml"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Server",
+            "cwd": "${workspaceRoot}",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin",
+                    "entries_server"
+                ]
+            },
+            "args": ["--config", "/Users/tanner/repos/rust-server/entries-server/test-debug-conf/server-conf.toml"]
+        }
+    ]
+}

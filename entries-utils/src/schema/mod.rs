@@ -49,7 +49,7 @@ diesel::table! {
     budgets (id) {
         id -> Uuid,
         encrypted_blob -> Bytea,
-        encrypted_blob_sha1_hash -> Bytea,
+        version_nonce -> Int8,
         modified_timestamp -> Timestamp,
     }
 }
@@ -59,7 +59,7 @@ diesel::table! {
         id -> Uuid,
         budget_id -> Uuid,
         encrypted_blob -> Bytea,
-        encrypted_blob_sha1_hash -> Bytea,
+        version_nonce -> Int8,
         modified_timestamp -> Timestamp,
     }
 }
@@ -70,7 +70,7 @@ diesel::table! {
         budget_id -> Uuid,
         category_id -> Nullable<Uuid>,
         encrypted_blob -> Bytea,
-        encrypted_blob_sha1_hash -> Bytea,
+        version_nonce -> Int8,
         modified_timestamp -> Timestamp,
     }
 }
@@ -126,7 +126,7 @@ diesel::table! {
     user_keystores (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
-        encrypted_blob_sha1_hash -> Bytea,
+        version_nonce -> Int8,
     }
 }
 
@@ -144,7 +144,7 @@ diesel::table! {
     user_preferences (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
-        encrypted_blob_sha1_hash -> Bytea,
+        version_nonce -> Int8,
     }
 }
 

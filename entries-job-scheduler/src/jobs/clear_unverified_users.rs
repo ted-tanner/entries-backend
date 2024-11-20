@@ -94,7 +94,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: Vec::new(),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -120,7 +122,9 @@ mod tests {
                 public_key_id,
                 &new_user_no_exp.public_key,
                 &new_user_no_exp.preferences_encrypted,
+                new_user_no_exp.preferences_version_nonce,
                 &new_user_no_exp.user_keystore_encrypted,
+                new_user_no_exp.user_keystore_version_nonce,
                 &Vec::new(),
             )
             .unwrap();
@@ -155,7 +159,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: Vec::new(),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let user_verified_id = user_dao
@@ -179,7 +185,9 @@ mod tests {
                 public_key_id,
                 &new_user_verified.public_key,
                 &new_user_verified.preferences_encrypted,
+                new_user_verified.preferences_version_nonce,
                 &new_user_verified.user_keystore_encrypted,
+                new_user_verified.user_keystore_version_nonce,
                 &Vec::new(),
             )
             .unwrap();
@@ -220,7 +228,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: Vec::new(),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let user_exp_id = user_dao
@@ -244,7 +254,9 @@ mod tests {
                 public_key_id,
                 &new_user_exp.public_key,
                 &new_user_exp.preferences_encrypted,
+                new_user_exp.preferences_version_nonce,
                 &new_user_exp.user_keystore_encrypted,
+                new_user_exp.user_keystore_version_nonce,
                 &Vec::new(),
             )
             .unwrap();

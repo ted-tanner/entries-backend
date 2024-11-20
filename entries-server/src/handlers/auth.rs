@@ -472,7 +472,7 @@ mod tests {
         )
         .await;
 
-        let (user, _) = test_utils::create_user().await;
+        let (user, _, _, _) = test_utils::create_user().await;
 
         let salt = gen_bytes(16);
         let nonce = i32::MAX;
@@ -613,7 +613,9 @@ mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -796,7 +798,9 @@ mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -939,7 +943,7 @@ mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let old_otp = user_otps::table
             .find(&user.email)

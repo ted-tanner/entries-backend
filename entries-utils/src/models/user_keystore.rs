@@ -12,7 +12,7 @@ use crate::schema::user_keystores;
 pub struct UserKeystore {
     pub user_id: Uuid,
     pub encrypted_blob: Vec<u8>,
-    pub encrypted_blob_sha1_hash: Vec<u8>,
+    pub version_nonce: i64,
 }
 
 #[derive(Debug, Insertable)]
@@ -21,5 +21,5 @@ pub struct UserKeystore {
 pub struct NewUserKeystore<'a> {
     pub user_id: Uuid,
     pub encrypted_blob: &'a [u8],
-    pub encrypted_blob_sha1_hash: &'a [u8],
+    pub version_nonce: i64,
 }

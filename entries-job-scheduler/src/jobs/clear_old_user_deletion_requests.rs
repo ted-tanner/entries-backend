@@ -91,7 +91,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: Vec::new(),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -117,7 +119,9 @@ mod tests {
                 public_key_id,
                 &new_user1.public_key,
                 &new_user1.preferences_encrypted,
+                new_user1.preferences_version_nonce,
                 &new_user1.user_keystore_encrypted,
+                new_user1.user_keystore_version_nonce,
                 &Vec::new(),
             )
             .unwrap();
@@ -153,7 +157,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: Vec::new(),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let user2_id = user_dao
@@ -177,7 +183,9 @@ mod tests {
                 public_key_id,
                 &new_user2.public_key,
                 &new_user2.preferences_encrypted,
+                new_user2.preferences_version_nonce,
                 &new_user2.user_keystore_encrypted,
+                new_user2.user_keystore_version_nonce,
                 &Vec::new(),
             )
             .unwrap();
@@ -186,7 +194,7 @@ mod tests {
         let new_budget = NewBudget {
             id: Uuid::new_v4(),
             encrypted_blob: &[0; 4],
-            encrypted_blob_sha1_hash: &[0; 4],
+            version_nonce: rand::thread_rng().gen(),
             modified_timestamp: SystemTime::now(),
         };
 

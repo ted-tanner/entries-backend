@@ -148,7 +148,9 @@ pub async fn create(
             user_public_key_id,
             &user_data_ref.public_key,
             &user_data_ref.preferences_encrypted,
+            user_data_ref.preferences_version_nonce,
             &user_data_ref.user_keystore_encrypted,
+            user_data_ref.user_keystore_version_nonce,
             &backup_codes_ref,
         )
     })
@@ -306,7 +308,8 @@ pub async fn edit_preferences(
         user_dao.update_user_prefs(
             user_access_token.0.user_id,
             &new_prefs.encrypted_blob,
-            &new_prefs.expected_previous_data_hash,
+            new_prefs.version_nonce,
+            new_prefs.expected_previous_version_nonce,
         )
     })
     .await?
@@ -314,7 +317,7 @@ pub async fn edit_preferences(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
             }
             _ => {
                 log::error!("{e}");
@@ -338,7 +341,8 @@ pub async fn edit_keystore(
         user_dao.update_user_keystore(
             user_access_token.0.user_id,
             &new_keystore.encrypted_blob,
-            &new_keystore.expected_previous_data_hash,
+            new_keystore.version_nonce,
+            new_keystore.expected_previous_version_nonce,
         )
     })
     .await?
@@ -346,7 +350,7 @@ pub async fn edit_keystore(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
             }
             _ => {
                 log::error!("{e}");
@@ -781,7 +785,6 @@ pub mod tests {
     use base64::Engine;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
-    use openssl::sha::Sha1;
     use prost::Message;
     use rand::Rng;
     use std::str::FromStr;
@@ -802,7 +805,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri(&format!("/api/user/public_key?email={}", user.email))
@@ -862,7 +865,9 @@ pub mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -987,21 +992,32 @@ pub mod tests {
 
         assert_eq!(count, codes_from_db.len());
 
-        let keystore = user_keystores
-            .select(user_keystore_fields::encrypted_blob)
+        let (keystore, keystore_version_nonce) = user_keystores
+            .select((
+                user_keystore_fields::encrypted_blob,
+                user_keystore_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         assert_eq!(keystore, new_user.user_keystore_encrypted);
+        assert_eq!(keystore_version_nonce, new_user.user_keystore_version_nonce);
 
-        let preferences = user_preferences
-            .select(user_preferences_fields::encrypted_blob)
+        let (preferences, preferences_version_nonce) = user_preferences
+            .select((
+                user_preferences_fields::encrypted_blob,
+                user_preferences_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         assert_eq!(preferences, new_user.preferences_encrypted);
+        assert_eq!(
+            preferences_version_nonce,
+            new_user.preferences_version_nonce
+        );
 
         assert!(
             dsl::select(dsl::exists(signin_nonces.find(&new_user.email)))
@@ -1051,7 +1067,9 @@ pub mod tests {
             public_key: vec![8; 10],
 
             preferences_encrypted: vec![8; 10],
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: vec![8; 10],
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1131,7 +1149,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let new_key_id = Uuid::new_v4();
         let new_key = [8; 30];
@@ -1202,7 +1220,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, preferences_version_nonce, _) = test_utils::create_user().await;
 
         let updated_prefs_blob: Vec<_> = (0..32)
             .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
@@ -1210,7 +1228,8 @@ pub mod tests {
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob.clone(),
-            expected_previous_data_hash: vec![200; 8],
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: preferences_version_nonce.wrapping_add(1),
         };
 
         let req = TestRequest::put()
@@ -1228,20 +1247,22 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
-        let stored_prefs_blob = user_preferences
-            .select(user_preferences_fields::encrypted_blob)
+        let (stored_prefs_blob, stored_prefs_version_nonce) = user_preferences
+            .select((
+                user_preferences_fields::encrypted_blob,
+                user_preferences_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .first::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         assert_ne!(stored_prefs_blob, updated_prefs_blob);
-
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&stored_prefs_blob);
+        assert_ne!(stored_prefs_version_nonce, updated_prefs.version_nonce);
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob,
-            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: preferences_version_nonce,
         };
 
         let req = TestRequest::put()
@@ -1254,13 +1275,17 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let stored_prefs_blob = user_preferences
-            .select(user_preferences_fields::encrypted_blob)
+        let (stored_prefs_blob, stored_prefs_version_nonce) = user_preferences
+            .select((
+                user_preferences_fields::encrypted_blob,
+                user_preferences_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
+        assert_eq!(stored_prefs_version_nonce, updated_prefs.version_nonce);
     }
 
     #[actix_web::test]
@@ -1274,22 +1299,23 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, keystore_version_nonce) = test_utils::create_user().await;
 
-        let updated_prefs_blob: Vec<_> = (0..32)
+        let updated_keystore_blob: Vec<_> = (0..32)
             .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
             .collect();
 
-        let updated_prefs = EncryptedBlobUpdate {
-            encrypted_blob: updated_prefs_blob.clone(),
-            expected_previous_data_hash: vec![200; 8],
+        let updated_keystore = EncryptedBlobUpdate {
+            encrypted_blob: updated_keystore_blob.clone(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: keystore_version_nonce.wrapping_add(1),
         };
 
         let req = TestRequest::put()
             .uri("/api/user/keystore")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(updated_prefs.encode_to_vec())
+            .set_payload(updated_keystore.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1300,39 +1326,51 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
-        let stored_prefs_blob = user_keystores
-            .select(user_keystore_fields::encrypted_blob)
+        let (stored_keystore_blob, stored_keystore_version_nonce) = user_keystores
+            .select((
+                user_keystore_fields::encrypted_blob,
+                user_keystore_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .first::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_ne!(stored_prefs_blob, updated_prefs_blob);
+        assert_ne!(stored_keystore_blob, updated_keystore_blob);
+        assert_ne!(
+            stored_keystore_version_nonce,
+            updated_keystore.version_nonce
+        );
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&stored_prefs_blob);
-
-        let updated_prefs = EncryptedBlobUpdate {
-            encrypted_blob: updated_prefs_blob,
-            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
+        let updated_keystore = EncryptedBlobUpdate {
+            encrypted_blob: updated_keystore_blob,
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: keystore_version_nonce,
         };
 
         let req = TestRequest::put()
             .uri("/api/user/keystore")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(updated_prefs.encode_to_vec())
+            .set_payload(updated_keystore.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let stored_prefs_blob = user_keystores
-            .select(user_keystore_fields::encrypted_blob)
+        let (stored_keystore_blob, stored_keystore_version_nonce) = user_keystores
+            .select((
+                user_keystore_fields::encrypted_blob,
+                user_keystore_fields::version_nonce,
+            ))
             .find(user.id)
-            .get_result::<Vec<u8>>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
+        assert_eq!(stored_keystore_blob, updated_keystore.encrypted_blob);
+        assert_eq!(
+            stored_keystore_version_nonce,
+            updated_keystore.version_nonce
+        );
     }
 
     #[actix_web::test]
@@ -1346,7 +1384,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -1555,7 +1593,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -1691,7 +1729,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
 
@@ -1820,14 +1858,16 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
         let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
+            entry_version_nonce: rand::thread_rng().gen(),
             category_encrypted_blob: gen_bytes(14),
+            category_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -2152,7 +2192,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
         let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
@@ -2373,8 +2413,8 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user1, user1_access_token) = test_utils::create_user().await;
-        let (user2, user2_access_token) = test_utils::create_user().await;
+        let (user1, user1_access_token, _, _) = test_utils::create_user().await;
+        let (user2, user2_access_token, _, _) = test_utils::create_user().await;
 
         test_utils::gen_new_user_rsa_key(user1.id);
         let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id);
@@ -2784,7 +2824,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
@@ -2908,7 +2948,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no budget tokens
-        let (user, access_token) = test_utils::create_user().await;
+        let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")

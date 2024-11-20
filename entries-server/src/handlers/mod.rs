@@ -494,7 +494,7 @@ pub mod test_utils {
         b64_urlsafe.encode(&token_unencoded)
     }
 
-    pub async fn create_user() -> (User, String) {
+    pub async fn create_user() -> (User, String, i64, i64) {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -534,7 +534,9 @@ pub mod test_utils {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: rand::thread_rng().gen(),
             user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -574,7 +576,12 @@ pub mod test_utils {
 
         let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
-        (user, access_token)
+        (
+            user,
+            access_token,
+            new_user.preferences_version_nonce,
+            new_user.user_keystore_version_nonce,
+        )
     }
 
     pub fn gen_new_user_rsa_key(user_id: Uuid) -> Rsa<Private> {
@@ -604,6 +611,7 @@ pub mod test_utils {
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
             categories: Vec::new(),
             user_public_budget_key: Vec::from(public_key),
         };

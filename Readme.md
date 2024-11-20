@@ -506,9 +506,22 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Rather than synchronizing with a sha1_hash, do a version instead that is just a random int64
+* Inline foreign keys in `up.sql`
+* Paginate get budget responses
+* Paginate get entry responses
+* Max pagination: 1,000 items
+* Enforce practical limits on entries per budget and budgets per user
+  - 5,000 budgets/user
+  - 8,000 entries/budget
+* Enforce maximum data blob size
+    - An entry shouldn't be more than 4kb, whereas a keystore should probably be limited to 80mb (5,000 budget keys at 6kb/key = ~15mb, plus budget share keys and other kinds of keys). Limits should be considered on a per-type basis.
+* Rename entries_utils to entries_commons
 * Update readme documentation
   - Add a section for the job scheduler
+  - Explanation of encryption scheme and expected role of the client in the scheme
+  - Explanation of versioning of encrypted blobs, version_nonce fields, and the role of the client in handling versioning
+  - Guide to all endpoints (requests and responses)
+  - List (and explanation) of enforced size limits
   - Create a deployment checklist!
   - Error Codes that can occur that aren't defined in Protobuf ServerErrorResponse message
     - 413 Request payload is too big
@@ -519,8 +532,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Do it later
 
 * Remove OpenSSL (use Rust hmac, ed25519_dalek, sha1, etc instead)
+* Once this PR is done and merged, use it in `Token::decode()` https://github.com/rust-lang/rust/pull/112818
 * Accept SSL connections without reverse proxy, if no customers are really using
-* Once this is done, use it in `Token::decode()` https://github.com/rust-lang/rust/pull/112818
 * Add webauthn-rs and totp_rs
 * Update ed25519-dalek crate
 * Enable serde `"rc"` feature and accept an `Arc<str>` (or perhaps `Rc<str>`) instead of a `String` for inputs (same with `Arc<[u8]>` instead of `Vec<u8>`)

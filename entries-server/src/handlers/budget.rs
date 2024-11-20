@@ -172,6 +172,7 @@ pub async fn create(
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_budget(
             &budget_data.encrypted_blob,
+            budget_data.version_nonce,
             &budget_data.categories,
             &budget_data.user_public_budget_key,
         )
@@ -201,7 +202,8 @@ pub async fn edit(
         budget_dao.update_budget(
             budget_access_token.0.claims.budget_id,
             &budget_data.encrypted_blob,
-            &budget_data.expected_previous_data_hash,
+            budget_data.version_nonce,
+            budget_data.expected_previous_version_nonce,
         )
     })
     .await?
@@ -209,7 +211,7 @@ pub async fn edit(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -667,6 +669,7 @@ pub async fn create_entry(
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry(
             &entry_data.0.encrypted_blob,
+            entry_data.0.version_nonce,
             category_id,
             budget_access_token.0.claims.budget_id,
         )
@@ -713,7 +716,9 @@ pub async fn create_entry_and_category(
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
         budget_dao.create_entry_and_category(
             &entry_and_category_data.entry_encrypted_blob,
+            entry_and_category_data.entry_version_nonce,
             &entry_and_category_data.category_encrypted_blob,
+            entry_and_category_data.category_version_nonce,
             budget_access_token.0.claims.budget_id,
         )
     })
@@ -758,7 +763,8 @@ pub async fn edit_entry(
         budget_dao.update_entry(
             entry_id,
             &entry_data.encrypted_blob,
-            &entry_data.expected_previous_data_hash,
+            entry_data.version_nonce,
+            entry_data.expected_previous_version_nonce,
             category_id,
             budget_access_token.0.claims.budget_id,
         )
@@ -768,7 +774,7 @@ pub async fn edit_entry(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -838,7 +844,11 @@ pub async fn create_category(
 
     let category_id = match web::block(move || {
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(&category_data.value, budget_access_token.0.claims.budget_id)
+        budget_dao.create_category(
+            &category_data.value,
+            category_data.version_nonce,
+            budget_access_token.0.claims.budget_id,
+        )
     })
     .await?
     {
@@ -879,7 +889,8 @@ pub async fn edit_category(
         budget_dao.update_category(
             category_id,
             &category_data.encrypted_blob,
-            &category_data.expected_previous_data_hash,
+            category_data.version_nonce,
+            category_data.expected_previous_version_nonce,
             budget_access_token.0.claims.budget_id,
         )
     })
@@ -888,7 +899,7 @@ pub async fn edit_category(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date hash"));
+                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -1030,8 +1041,8 @@ pub mod tests {
     use ed25519_dalek::Signer;
     use entries_utils::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_utils::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
-    use openssl::sha::Sha1;
     use prost::Message;
+    use rand::Rng;
 
     use crate::env;
     use crate::handlers::test_utils::{self, gen_budget_token, gen_bytes};
@@ -1048,21 +1059,24 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
             categories: vec![
                 CategoryWithTempId {
                     temp_id: 0,
                     encrypted_blob: gen_bytes(40),
+                    version_nonce: rand::thread_rng().gen(),
                 },
                 CategoryWithTempId {
                     temp_id: 1,
                     encrypted_blob: gen_bytes(60),
+                    version_nonce: rand::thread_rng().gen(),
                 },
             ],
             user_public_budget_key: public_key,
@@ -1141,6 +1155,7 @@ pub mod tests {
 
         let new_category = NewEncryptedBlob {
             value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1197,6 +1212,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: Some(new_category_id.into()),
         };
 
@@ -1267,6 +1283,7 @@ pub mod tests {
 
         let new_entry2 = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: None,
         };
 
@@ -1325,7 +1342,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
+            entry_version_nonce: rand::thread_rng().gen(),
             category_encrypted_blob: gen_bytes(12),
+            category_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1400,14 +1419,16 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
         let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
         let (budget3, budget3_token) = test_utils::create_budget(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
+            entry_version_nonce: rand::thread_rng().gen(),
             category_encrypted_blob: gen_bytes(12),
+            category_version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1519,16 +1540,18 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
+                version_nonce: rand::thread_rng().gen(),
             }],
             user_public_budget_key: public_key,
         };
@@ -1561,6 +1584,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: Some(category_id.into()),
         };
 
@@ -1660,16 +1684,18 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
         let public_key = key_pair.verifying_key().to_bytes().to_vec();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
+                version_nonce: rand::thread_rng().gen(),
             }],
             user_public_budget_key: public_key,
         };
@@ -1702,6 +1728,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: Some(category_id.into()),
         };
 
@@ -1789,7 +1816,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
         let req = TestRequest::get()
@@ -1806,12 +1833,14 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: budget.version_nonce.wrapping_add(1),
         };
 
         let req = TestRequest::put()
@@ -1830,12 +1859,10 @@ pub mod tests {
 
         assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&budget.encrypted_blob);
-
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: budget.version_nonce,
         };
 
         let req = TestRequest::put()
@@ -1863,6 +1890,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
     }
@@ -1878,7 +1906,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
         let req = TestRequest::get()
@@ -1895,11 +1923,13 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1922,6 +1952,7 @@ pub mod tests {
 
         let new_category2 = NewEncryptedBlob {
             value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -1944,6 +1975,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: Some(category2_id.into()),
         };
 
@@ -1972,6 +2004,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 2);
         assert_eq!(budget_message.entries.len(), 1);
@@ -1979,21 +2012,20 @@ pub mod tests {
         let entry_message = &budget_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
         assert_eq!(
             Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
         );
 
         let entry_id: Uuid = (&entry_message.id).try_into().unwrap();
-
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&entry_message.encrypted_blob);
-        let hash = sha1_hasher.finish();
+        let mut expected_previous_version_nonce = entry_message.version_nonce;
 
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: expected_previous_version_nonce.wrapping_sub(1),
             category_id: Some(category1_id.into()),
         };
 
@@ -2016,7 +2048,8 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: Uuid::new_v4().into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce,
             category_id: Some(category1_id.into()),
         };
 
@@ -2039,7 +2072,8 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce,
             category_id: Some(Uuid::new_v4().into()),
         };
 
@@ -2065,7 +2099,8 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce,
             category_id: Some(category1_id.into()),
         };
 
@@ -2079,6 +2114,8 @@ pub mod tests {
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
+
+        expected_previous_version_nonce = entry_update.version_nonce;
 
         let req = TestRequest::get()
             .uri("/api/budget")
@@ -2104,14 +2141,11 @@ pub mod tests {
             category1_id,
         );
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&entry_message.encrypted_blob);
-        let hash = sha1_hasher.finish();
-
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: expected_previous_version_nonce.wrapping_add(1),
             category_id: None,
         };
 
@@ -2134,7 +2168,8 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce,
             category_id: None,
         };
 
@@ -2182,7 +2217,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token) = test_utils::create_user().await;
+        let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
         let req = TestRequest::get()
@@ -2199,11 +2234,13 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -2226,6 +2263,7 @@ pub mod tests {
 
         let new_category2 = NewEncryptedBlob {
             value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
         };
 
         let req = TestRequest::post()
@@ -2248,6 +2286,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
             category_id: Some(category2_id.into()),
         };
 
@@ -2276,6 +2315,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 2);
 
@@ -2295,6 +2335,10 @@ pub mod tests {
             budget_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
+        assert_eq!(
+            budget_message.categories[cat1_pos].version_nonce,
+            new_category1.version_nonce
+        );
 
         assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
@@ -2305,25 +2349,27 @@ pub mod tests {
             budget_message.categories[cat2_pos].encrypted_blob,
             new_category2.value
         );
+        assert_eq!(
+            budget_message.categories[cat2_pos].version_nonce,
+            new_category2.version_nonce
+        );
 
         assert_eq!(budget_message.entries.len(), 1);
 
         let entry_message = &budget_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
         assert_eq!(
             Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
         );
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&budget_message.categories[cat2_pos].encrypted_blob);
-        let hash = sha1_hasher.finish();
-
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: new_category2.version_nonce.wrapping_add(1),
         };
 
         let req = TestRequest::put()
@@ -2345,7 +2391,8 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: Uuid::new_v4().into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: new_category2.version_nonce,
         };
 
         let req = TestRequest::put()
@@ -2370,7 +2417,8 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: new_category2.version_nonce,
         };
 
         let req = TestRequest::put()
@@ -2398,6 +2446,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 2);
 
@@ -2417,6 +2466,10 @@ pub mod tests {
             budget_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
+        assert_eq!(
+            budget_message.categories[cat1_pos].version_nonce,
+            new_category1.version_nonce
+        );
 
         assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
@@ -2427,25 +2480,29 @@ pub mod tests {
             budget_message.categories[cat2_pos].encrypted_blob,
             category_update.encrypted_blob
         );
+        assert_eq!(
+            budget_message.categories[cat2_pos].version_nonce,
+            category_update.version_nonce
+        );
 
         assert_eq!(budget_message.entries.len(), 1);
 
         let entry_message = &budget_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
         assert_eq!(
             Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
         );
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&category_update.encrypted_blob);
-        let hash = sha1_hasher.finish();
+        let category_update_version_nonce = category_update.version_nonce;
 
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: category_update_version_nonce.wrapping_sub(1),
         };
 
         let req = TestRequest::put()
@@ -2467,7 +2524,8 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: hash.to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: category_update_version_nonce,
         };
 
         let req = TestRequest::put()
@@ -2495,6 +2553,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 2);
 
@@ -2514,6 +2573,10 @@ pub mod tests {
             budget_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
+        assert_eq!(
+            budget_message.categories[cat1_pos].version_nonce,
+            new_category1.version_nonce
+        );
 
         assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
@@ -2524,12 +2587,17 @@ pub mod tests {
             budget_message.categories[cat2_pos].encrypted_blob,
             category_update.encrypted_blob
         );
+        assert_eq!(
+            budget_message.categories[cat2_pos].version_nonce,
+            category_update.version_nonce
+        );
 
         assert_eq!(budget_message.entries.len(), 1);
 
         let entry_message = &budget_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
         assert_eq!(
             Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
@@ -2547,8 +2615,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token) = test_utils::create_user().await;
-        let (recipient, recipient_access_token) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
@@ -2719,15 +2787,14 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(&budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
 
-        let mut sha1_hasher = Sha1::new();
-        sha1_hasher.update(&budget.encrypted_blob);
-
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            expected_previous_data_hash: sha1_hasher.finish().to_vec(),
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: budget.version_nonce,
         };
 
         let req = TestRequest::put()
@@ -2771,8 +2838,10 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
         assert_eq!(budget_message.categories.len(), 0);
         assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
     }
 
     #[actix_rt::test]
@@ -2786,8 +2855,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token) = test_utils::create_user().await;
-        let (recipient, recipient_access_token) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
         let (_, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
 
         let recipient_keypair = Rsa::generate(512).unwrap();
@@ -2924,8 +2993,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token) = test_utils::create_user().await;
-        let (recipient, recipient_access_token) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
         let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
@@ -3070,8 +3139,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token) = test_utils::create_user().await;
-        let (recipient, recipient_access_token) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
