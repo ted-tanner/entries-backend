@@ -37,12 +37,13 @@ enum ErrorType {
 
     // 418
     INPUT_TOO_LARGE = 22;
+    TOO_MANY_REQUESTED = 23;
 
     // 500
-    INTERNAL_ERROR = 23;
+    INTERNAL_ERROR = 24;
 
     // Anything that Actix Web returns before the handler is reached
-    ACTIX_WEB_PREHANDLER = 24;
+    ACTIX_WEB_PREHANDLER = 25;
 }
 
 message Timestamp {

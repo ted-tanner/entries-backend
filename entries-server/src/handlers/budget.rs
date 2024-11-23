@@ -1,3 +1,4 @@
+use const_format::concatcp;
 use entries_common::messages::{
     AcceptKeyInfo, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
     EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
@@ -65,7 +66,18 @@ pub async fn get_multiple(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
+    const MAX_BUDGETS: usize = 35;
+    const MAX_BUDGETS_ERR_MSG: &str = concatcp!(
+        "You can only request up to ",
+        MAX_BUDGETS,
+        " budgets at a time"
+    );
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
+
+    if budget_access_tokens.tokens.len() > MAX_BUDGETS {
+        return Err(HttpErrorResponse::TooManyRequested(MAX_BUDGETS_ERR_MSG));
+    }
+
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
     let mut budget_ids = Vec::new();
@@ -1559,6 +1571,27 @@ pub mod tests {
             resp_budget3.entries[0].version_nonce,
             new_entry_and_category.entry_version_nonce
         );
+
+        let mut tokens = Vec::with_capacity(101);
+        for i in 0..101 {
+            tokens.push(format!("faketoken{}", i));
+        }
+        let budget_access_tokens = BudgetAccessTokenList { tokens };
+
+        let req = TestRequest::get()
+            .uri("/api/budget/multiple")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::TooManyRequested as i32);
     }
 
     #[actix_rt::test]

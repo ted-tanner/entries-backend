@@ -232,6 +232,7 @@ pub mod error {
 
         // 418
         InputTooLarge(&'static str),
+        TooManyRequested(&'static str),
 
         // 500
         InternalError(&'static str),
@@ -348,6 +349,10 @@ pub mod error {
                     err_type: ErrorType::InputTooLarge.into(),
                     err_message: format!("Input is too long: {msg}"),
                 },
+                HttpErrorResponse::TooManyRequested(msg) => ServerErrorResponse {
+                    err_type: ErrorType::TooManyRequested.into(),
+                    err_message: format!("Too many requested: {msg}"),
+                },
 
                 // 500
                 HttpErrorResponse::InternalError(msg) => ServerErrorResponse {
@@ -387,6 +392,7 @@ pub mod error {
                 HttpErrorResponse::DoesNotExist(_, _)
                 | HttpErrorResponse::ForeignKeyDoesNotExist(_) => StatusCode::NOT_FOUND,
                 HttpErrorResponse::InputTooLarge(_) => StatusCode::IM_A_TEAPOT,
+                HttpErrorResponse::TooManyRequested(_) => StatusCode::IM_A_TEAPOT,
                 HttpErrorResponse::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }
