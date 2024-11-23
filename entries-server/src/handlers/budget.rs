@@ -66,7 +66,7 @@ pub async fn get_multiple(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    const MAX_BUDGETS: usize = 35;
+    const MAX_BUDGETS: usize = 20;
     const MAX_BUDGETS_ERR_MSG: &str = concatcp!(
         "You can only request up to ",
         MAX_BUDGETS,

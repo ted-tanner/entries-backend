@@ -507,9 +507,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Inline foreign keys in `up.sql`
-* Paginate get budget responses
-* Paginate get entry responses
-* Max pagination: 1,000 items
+* Make limiter configurable by endpoint
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
   - 8,000 entries/budget
