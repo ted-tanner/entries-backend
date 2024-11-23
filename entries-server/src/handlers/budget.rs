@@ -1129,6 +1129,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 2);
 
@@ -1144,6 +1145,7 @@ pub mod tests {
                 category_ids[i],
             );
             assert_eq!(category_message.encrypted_blob, category.encrypted_blob);
+            assert_eq!(category_message.version_nonce, category.version_nonce);
 
             initial_categories.push((
                 Uuid::try_from(&category_message.id).unwrap(),
@@ -1190,6 +1192,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 3);
 
@@ -1198,6 +1201,7 @@ pub mod tests {
 
             if curr_category_id == new_category_id {
                 assert_eq!(category.encrypted_blob, new_category.value);
+                assert_eq!(category.version_nonce, new_category.version_nonce);
             } else {
                 let (_, preexisting_category_blob) = initial_categories
                     .iter()
@@ -1248,6 +1252,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 3);
 
@@ -1256,6 +1261,7 @@ pub mod tests {
 
             if curr_category_id == new_category_id {
                 assert_eq!(category.encrypted_blob, new_category.value);
+                assert_eq!(category.version_nonce, new_category.version_nonce);
             } else {
                 let (_, preexisting_category_blob) = initial_categories
                     .iter()
@@ -1279,6 +1285,10 @@ pub mod tests {
         assert_eq!(
             budget_message.entries[0].encrypted_blob,
             new_entry.encrypted_blob,
+        );
+        assert_eq!(
+            budget_message.entries[0].version_nonce,
+            new_entry.version_nonce,
         );
 
         let new_entry2 = EncryptedBlobAndCategoryId {
@@ -1330,8 +1340,10 @@ pub mod tests {
             .find(|e| Uuid::try_from(&e.id).unwrap() == new_entry2_id)
             .unwrap();
 
-        assert_eq!(first_entry.encrypted_blob, new_entry.encrypted_blob,);
-        assert_eq!(second_entry.encrypted_blob, new_entry2.encrypted_blob,);
+        assert_eq!(first_entry.encrypted_blob, new_entry.encrypted_blob);
+        assert_eq!(first_entry.version_nonce, new_entry.version_nonce);
+        assert_eq!(second_entry.encrypted_blob, new_entry2.encrypted_blob);
+        assert_eq!(second_entry.version_nonce, new_entry2.version_nonce);
 
         assert_eq!(
             Uuid::try_from(first_entry.category_id.clone().unwrap()).unwrap(),
@@ -1378,6 +1390,7 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(budget_message.version_nonce, budget.version_nonce);
 
         assert_eq!(budget_message.categories.len(), 4);
         assert_eq!(budget_message.entries.len(), 3);
@@ -1399,8 +1412,16 @@ pub mod tests {
             new_entry_and_category.category_encrypted_blob
         );
         assert_eq!(
+            new_category4.version_nonce,
+            new_entry_and_category.category_version_nonce
+        );
+        assert_eq!(
             new_entry3.encrypted_blob,
             new_entry_and_category.entry_encrypted_blob
+        );
+        assert_eq!(
+            new_entry3.version_nonce,
+            new_entry_and_category.entry_version_nonce
         );
         assert_eq!(
             Uuid::try_from(new_entry3.category_id.clone().unwrap()).unwrap(),
@@ -1485,16 +1506,19 @@ pub mod tests {
 
         assert_eq!(Uuid::try_from(resp_budget1.id.clone()).unwrap(), budget1.id);
         assert_eq!(resp_budget1.encrypted_blob, budget1.encrypted_blob);
+        assert_eq!(resp_budget1.version_nonce, budget1.version_nonce);
         assert_eq!(resp_budget1.categories.len(), 0);
         assert_eq!(resp_budget1.entries.len(), 0);
 
         assert_eq!(Uuid::try_from(resp_budget2.id.clone()).unwrap(), budget2.id);
         assert_eq!(resp_budget2.encrypted_blob, budget2.encrypted_blob);
+        assert_eq!(resp_budget2.version_nonce, budget2.version_nonce);
         assert_eq!(resp_budget2.categories.len(), 0);
         assert_eq!(resp_budget2.entries.len(), 0);
 
         assert_eq!(Uuid::try_from(resp_budget3.id.clone()).unwrap(), budget3.id);
         assert_eq!(resp_budget3.encrypted_blob, budget3.encrypted_blob);
+        assert_eq!(resp_budget3.version_nonce, budget3.version_nonce);
         assert_eq!(resp_budget3.categories.len(), 1);
         assert_eq!(resp_budget3.entries.len(), 1);
 
@@ -1509,6 +1533,10 @@ pub mod tests {
         assert_eq!(
             resp_budget3.categories[0].encrypted_blob,
             new_entry_and_category.category_encrypted_blob
+        );
+        assert_eq!(
+            resp_budget3.categories[0].version_nonce,
+            new_entry_and_category.category_version_nonce
         );
 
         assert_eq!(
@@ -1526,6 +1554,10 @@ pub mod tests {
         assert_eq!(
             resp_budget3.entries[0].encrypted_blob,
             new_entry_and_category.entry_encrypted_blob
+        );
+        assert_eq!(
+            resp_budget3.entries[0].version_nonce,
+            new_entry_and_category.entry_version_nonce
         );
     }
 

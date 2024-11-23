@@ -234,7 +234,7 @@ impl Dao {
                 budget_id,
                 id: Uuid::new_v4(),
                 encrypted_blob: &category.encrypted_blob,
-                version_nonce,
+                version_nonce: category.version_nonce,
                 modified_timestamp: current_time,
             };
 
