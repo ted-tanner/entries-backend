@@ -452,7 +452,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Budget should store (in encrypted blob) a list of all users who have accepted the share of a budget. As soon as a user accepts a budget share, the user should update the budget to add themselves to that list.
 * All encrypted fields should house encrypted JSON, even if that JSON has just a single field. This will allow those fields to be easily extensible and backwards compatible.
 * App should send release version in a header
-* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
+* Use RSA-3172 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-3172 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * `user_key_store` model on server should contain:
   - RSA private key
   - Private keys for accessing budgets
@@ -467,6 +467,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Maximum of 512 characters in a password
 * Client should handle all the "throttle" cases with a nice message explaining the user needs to wait
 * When an action will send an email (e.g. creating account, signing in, deleting account, etc.), tell users to check their spam box
+* Limit description fields to 400 chars
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -483,7 +484,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Tombstones should still exist
 * Each budget (along with its associated entries) has its own encryption key. These keys are encrypted with the user's own key and then synchronized with the server
 * Encrypt user's private key using the user's password. Public key will be shared publicly along with user info (app version)
-* Use RSA-4096 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-4096 is state-of-the-art and Kyber-1024 is quantum-resistant.
+* Use RSA-3172 + Kyber-1024 for exchanging symmetric keys. The keys will be encrypted with RSA(Kyber(Key)). RSA-3172 is state-of-the-art and Kyber-1024 is quantum-resistant.
 * When sending a budget share request, the budget's encryption key is encrypted with the recipient's public key. If the recipient accepts the invite, the server sends over the encrypted key (or just deletes the invitation and encrypted key if recipient declines). Both users save the encryption key (encrypting it with their own keys and synchronizing the encrypted keys with the server). The key gets saved in in the `user_budgets` table for the user.
   - Once the key is received, the client re-encrypts it with their ChaCha20-Poly1305 encryption key and replaces the RSA-encrypted key on the server.
 * When changing password, everything needs to be re-uploaded. This ought to be done in a single request and a single databasse transaction (otherwise, the user's data could be left in an unrecoverable state)
@@ -510,9 +511,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Make limiter configurable by endpoint
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
-  - 8,000 entries/budget
+  - 2,500 entries/budget
+  - Client will limit description fields to 600 chars
 * Enforce maximum data blob size
     - An entry shouldn't be more than 4kb, whereas a keystore should probably be limited to 80mb (5,000 budget keys at 6kb/key = ~15mb, plus budget share keys and other kinds of keys). Limits should be considered on a per-type basis.
+    - Verbiage should say the premium version has "unlimited" budgets and entries. Perhaps an asterisk will say that practical limits will be enforced
+    - Env vars are in place. Just need to add the code
 * Update readme documentation
   - Add a section for the job scheduler
   - Explanation of encryption scheme and expected role of the client in the scheme

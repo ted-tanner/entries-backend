@@ -391,8 +391,9 @@ pub mod error {
                 | HttpErrorResponse::ReadOnlyAccess(_) => StatusCode::FORBIDDEN,
                 HttpErrorResponse::DoesNotExist(_, _)
                 | HttpErrorResponse::ForeignKeyDoesNotExist(_) => StatusCode::NOT_FOUND,
-                HttpErrorResponse::InputTooLarge(_) => StatusCode::IM_A_TEAPOT,
-                HttpErrorResponse::TooManyRequested(_) => StatusCode::IM_A_TEAPOT,
+                HttpErrorResponse::InputTooLarge(_) | HttpErrorResponse::TooManyRequested(_) => {
+                    StatusCode::IM_A_TEAPOT
+                }
                 HttpErrorResponse::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }

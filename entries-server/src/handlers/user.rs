@@ -78,7 +78,55 @@ pub async fn create(
 
     if user_data.auth_string.len() > 1024 {
         return Err(HttpErrorResponse::InputTooLarge(
-            "Provided auth string is too long. Max: 1024 bytes",
+            "Auth string is too long. Max: 1024 bytes",
+        ));
+    }
+
+    if user_data.auth_string_salt.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Auth string salt is too big.",
+        ));
+    }
+
+    if user_data.password_encryption_salt.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Password encryption salt is too big.",
+        ));
+    }
+
+    if user_data.recovery_key_salt.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Recovery key salt is too big.",
+        ));
+    }
+
+    if user_data.encryption_key_encrypted_with_password.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Encryption key encrypted with password is too big.",
+        ));
+    }
+
+    if user_data.encryption_key_encrypted_with_recovery_key.len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Encryption key encrypted with recovery key is too big.",
+        ));
+    }
+
+    if user_data.public_key.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge("Public key is too big."));
+    }
+
+    if user_data.preferences_encrypted.len() > env::CONF.max_user_preferences_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "Preferences encrypted is too big.",
+        ));
+    }
+
+    if user_data.user_keystore_encrypted.len() > env::CONF.max_keystore_size {
+        return Err(HttpErrorResponse::InputTooLarge(
+            "User keystore encrypted is too big.",
         ));
     }
 
@@ -792,6 +840,7 @@ pub mod tests {
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::auth::RequestAuthTokenType;
+    use crate::middleware::Limiter;
     use crate::services::api::RouteLimiters;
 
     #[actix_web::test]
@@ -825,6 +874,206 @@ pub mod tests {
     }
 
     #[actix_web::test]
+    #[ignore]
+    async fn test_create_user_fails_with_large_input() {
+        let mut protobuf_config = ProtoBufConfig::default();
+        protobuf_config.limit(env::CONF.protobuf_max_size);
+        let mut route_limiters = RouteLimiters::default();
+        route_limiters.create_user =
+            Limiter::new(15, Duration::from_secs(1200), Duration::from_secs(3600));
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(protobuf_config)
+                .configure(|cfg| crate::services::api::configure(cfg, route_limiters)),
+        )
+        .await;
+
+        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+
+        let public_key_id = Uuid::new_v4();
+
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: gen_bytes(10),
+
+            auth_string_salt: gen_bytes(10),
+            auth_string_memory_cost_kib: 1024,
+            auth_string_parallelism_factor: 1,
+            auth_string_iters: 2,
+
+            password_encryption_salt: gen_bytes(10),
+            password_encryption_memory_cost_kib: 1024,
+            password_encryption_parallelism_factor: 1,
+            password_encryption_iters: 1,
+
+            recovery_key_salt: gen_bytes(10),
+            recovery_key_memory_cost_kib: 1024,
+            recovery_key_parallelism_factor: 1,
+            recovery_key_iters: 1,
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: rand::thread_rng().gen(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: rand::thread_rng().gen(),
+        };
+
+        let mut temp = new_user.clone();
+        temp.auth_string = gen_bytes(1025);
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.auth_string_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.password_encryption_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.recovery_key_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.encryption_key_encrypted_with_password =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.encryption_key_encrypted_with_recovery_key =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.public_key = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.preferences_encrypted = vec![0; env::CONF.max_user_preferences_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = new_user.clone();
+        temp.user_keystore_encrypted = vec![0; env::CONF.max_keystore_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::IM_A_TEAPOT);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_web::test]
     async fn test_create_user() {
         let app = test::init_service(
             App::new()
@@ -836,14 +1085,14 @@ pub mod tests {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-
         let public_key_id = Uuid::new_v4();
+
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(252144),
+            auth_string_salt: gen_bytes(10),
             auth_string_memory_cost_kib: 1024,
             auth_string_parallelism_factor: 1,
             auth_string_iters: 2,
