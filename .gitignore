@@ -15,5 +15,8 @@ dump.rdb
 **/.#*
 **/*~
 
+# VS Code config
+.vscode
+
 # .env Files
 .env
