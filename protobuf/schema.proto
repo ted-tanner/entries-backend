@@ -35,8 +35,10 @@ enum ErrorType {
     INVITATION_DOES_NOT_EXIST = 20;
     FOREIGN_KEY_DOES_NOT_EXIST = 21;
 
-    // 418
+    // 413
     INPUT_TOO_LARGE = 22;
+
+    // 418
     TOO_MANY_REQUESTED = 23;
 
     // 500

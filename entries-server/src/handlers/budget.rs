@@ -45,15 +45,15 @@ pub async fn get(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get budget data",
-                ));
+                )));
             }
         },
     };
@@ -75,7 +75,9 @@ pub async fn get_multiple(
     const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
 
     if budget_access_tokens.tokens.len() > MAX_BUDGETS {
-        return Err(HttpErrorResponse::TooManyRequested(MAX_BUDGETS_ERR_MSG));
+        return Err(HttpErrorResponse::TooManyRequested(String::from(
+            MAX_BUDGETS_ERR_MSG,
+        )));
     }
 
     let mut tokens = HashMap::new();
@@ -84,7 +86,7 @@ pub async fn get_multiple(
 
     for token in budget_access_tokens.tokens.iter() {
         let token = BudgetAccessToken::decode(token)
-            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(INVALID_ID_MSG))?;
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(String::from(INVALID_ID_MSG)))?;
 
         key_ids.push(token.claims.key_id);
         budget_ids.push(token.claims.budget_id);
@@ -104,22 +106,22 @@ pub async fn get_multiple(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    INVALID_ID_MSG,
+                    String::from(INVALID_ID_MSG),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get budget data",
-                ));
+                )));
             }
         },
     };
 
     if public_keys.len() != tokens.len() {
         return Err(HttpErrorResponse::DoesNotExist(
-            INVALID_ID_MSG,
+            String::from(INVALID_ID_MSG),
             DoesNotExistType::Budget,
         ));
     }
@@ -129,7 +131,7 @@ pub async fn get_multiple(
             Some(t) => t,
             None => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    INVALID_ID_MSG,
+                    String::from(INVALID_ID_MSG),
                     DoesNotExistType::Budget,
                 ))
             }
@@ -148,15 +150,15 @@ pub async fn get_multiple(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "One of the provided IDs did not match a budget",
+                    String::from("One of the provided IDs did not match a budget"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get budget data",
-                ));
+                )));
             }
         },
     };
@@ -175,9 +177,9 @@ pub async fn create(
     let temp_id_set = HashSet::<i32>::from_iter(budget_data.categories.iter().map(|c| c.temp_id));
 
     if temp_id_set.len() != budget_data.categories.len() {
-        return Err(HttpErrorResponse::InvalidState(
+        return Err(HttpErrorResponse::InvalidState(String::from(
             "Multiple categories with the same ID",
-        ));
+        )));
     }
 
     let new_budget = match web::block(move || {
@@ -194,7 +196,9 @@ pub async fn create(
         Ok(b) => b,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Failed to create budget"));
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to create budget",
+            )));
         }
     };
 
@@ -223,17 +227,21 @@ pub async fn edit(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
+                return Err(HttpErrorResponse::OutOfDate(String::from(
+                    "Out of date version nonce",
+                )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to edit budget"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to edit budget",
+                )));
             }
         },
     };
@@ -259,9 +267,9 @@ pub async fn invite_user(
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
     if invitation_info.recipient_user_email == user_access_token.0.user_email {
-        return Err(HttpErrorResponse::InvalidState(
+        return Err(HttpErrorResponse::InvalidState(String::from(
             "Inviter and recipient are the same",
-        ));
+        )));
     }
 
     let read_only = invitation_info.read_only;
@@ -280,15 +288,15 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No user with given email",
+                    String::from("No user with given email"),
                     DoesNotExistType::User,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get recipient user's public key",
-                ));
+                )));
             }
         },
     };
@@ -304,9 +312,9 @@ pub async fn invite_user(
             Ok(k) => k,
             Err(_) => {
                 sender
-                    .send(Err(HttpErrorResponse::IncorrectlyFormed(
+                    .send(Err(HttpErrorResponse::IncorrectlyFormed(String::from(
                         "Recipient user's public key is incorrectly formatted",
-                    )))
+                    ))))
                     .expect("Sending to channel failed");
 
                 return;
@@ -322,9 +330,9 @@ pub async fn invite_user(
             Ok(s) => s,
             Err(_) => {
                 sender
-                    .send(Err(HttpErrorResponse::InternalError(
+                    .send(Err(HttpErrorResponse::InternalError(String::from(
                         "Failed to encrypt accept key pair using recipient's public key",
-                    )))
+                    ))))
                     .expect("Sending to channel failed");
 
                 return;
@@ -398,13 +406,15 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget or invite with ID matching token",
+                    String::from("No budget or invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to share budget"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to share budget",
+                )));
             }
         },
     };
@@ -428,15 +438,15 @@ pub async fn retract_invitation(
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
-                        "No invitation with ID matching token",
+                        String::from("No invitation with ID matching token"),
                         DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(
+                    return Err(HttpErrorResponse::InternalError(String::from(
                         "Failed to get public budget access key",
-                    ));
+                    )));
                 }
             },
         };
@@ -453,15 +463,15 @@ pub async fn retract_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No share invite with ID matching token",
+                    String::from("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to delete invitation",
-                ));
+                )));
             }
         },
     }
@@ -486,21 +496,23 @@ pub async fn accept_invitation(
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
-                        "No share invite with ID matching token",
+                        String::from("No share invite with ID matching token"),
                         DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(
+                    return Err(HttpErrorResponse::InternalError(String::from(
                         "Failed to accept invitation",
-                    ));
+                    )));
                 }
             },
         };
 
     if budget_accept_key.expiration < SystemTime::now() {
-        return Err(HttpErrorResponse::OutOfDate("Invitation has expired"));
+        return Err(HttpErrorResponse::OutOfDate(String::from(
+            "Invitation has expired",
+        )));
     }
 
     accept_token.0.verify(&budget_accept_key.public_key)?;
@@ -522,15 +534,15 @@ pub async fn accept_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No share invite with ID matching token",
+                    String::from("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to accept invitation",
-                ));
+                )));
             }
         },
     };
@@ -554,15 +566,15 @@ pub async fn decline_invitation(
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
-                        "No share invite with ID matching token",
+                        String::from("No share invite with ID matching token"),
                         DoesNotExistType::Invitation,
                     ));
                 }
                 _ => {
                     log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(
+                    return Err(HttpErrorResponse::InternalError(String::from(
                         "Failed to decline invitation",
-                    ));
+                    )));
                 }
             },
         };
@@ -583,15 +595,15 @@ pub async fn decline_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No share invite with ID matching token",
+                    String::from("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to decline invitation",
-                ));
+                )));
             }
         },
     }
@@ -616,9 +628,9 @@ pub async fn get_all_pending_invitations(
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to find invitations",
-                ));
+                )));
             }
         },
     };
@@ -646,15 +658,15 @@ pub async fn leave_budget(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to remove association with budget",
-                ));
+                )));
             }
         },
     };
@@ -692,7 +704,7 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "There was an ID mismatch for the budget, entry, or category",
+                    String::from("There was an ID mismatch for the budget, entry, or category"),
                     DoesNotExistType::Entry,
                 ));
             }
@@ -700,13 +712,15 @@ pub async fn create_entry(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
             )) => {
-                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(String::from(
                     "No category matching ID",
-                ))
+                )))
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to create entry"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to create entry",
+                )));
             }
         },
     };
@@ -740,13 +754,15 @@ pub async fn create_entry_and_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to create entry"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to create entry",
+                )));
             }
         },
     };
@@ -786,11 +802,13 @@ pub async fn edit_entry(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
+                return Err(HttpErrorResponse::OutOfDate(String::from(
+                    "Out of date version nonce",
+                )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "Entry not found",
+                    String::from("Entry not found"),
                     DoesNotExistType::Entry,
                 ));
             }
@@ -798,13 +816,15 @@ pub async fn edit_entry(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
             )) => {
-                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(String::from(
                     "No category matching ID",
-                ))
+                )))
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to update entry"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to update entry",
+                )));
             }
         },
     };
@@ -832,13 +852,15 @@ pub async fn delete_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "Entry not found",
+                    String::from("Entry not found"),
                     DoesNotExistType::Entry,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to delete entry"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to delete entry",
+                )));
             }
         },
     };
@@ -868,15 +890,15 @@ pub async fn create_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to create category",
-                ));
+                )));
             }
         },
     };
@@ -911,19 +933,21 @@ pub async fn edit_category(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate("Out of date version nonce"));
+                return Err(HttpErrorResponse::OutOfDate(String::from(
+                    "Out of date version nonce",
+                )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "Category not found",
+                    String::from("Category not found"),
                     DoesNotExistType::Category,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to update category",
-                ));
+                )));
             }
         },
     };
@@ -951,15 +975,15 @@ pub async fn delete_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "Category not found",
+                    String::from("Category not found"),
                     DoesNotExistType::Category,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to delete category",
-                ));
+                )));
             }
         },
     };
@@ -978,15 +1002,15 @@ async fn obtain_public_key(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "No budget with ID matching token",
+                    String::from("No budget with ID matching token"),
                     DoesNotExistType::Budget,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get public budget access key",
-                ));
+                )));
             }
         },
     };
@@ -1003,9 +1027,9 @@ async fn verify_read_write_access<F: TokenLocation>(
     budget_access_token.0.verify(&public_key.public_key)?;
 
     if public_key.read_only {
-        return Err(HttpErrorResponse::ReadOnlyAccess(
+        return Err(HttpErrorResponse::ReadOnlyAccess(String::from(
             "User has read-only access to budget",
-        ));
+        )));
     }
 
     Ok(())

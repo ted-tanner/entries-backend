@@ -67,6 +67,7 @@ const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
 const MAX_USER_PREFERENCES_SIZE_KB_VAR: &str = "ENTRIES_MAX_USER_PREFERENCES_SIZE_KB";
 const MAX_ENCRYPTION_KEY_SIZE_KB_VAR: &str = "ENTRIES_MAX_ENCRYPTION_KEY_SIZE_KB";
+const MAX_BUDGETS_VAR: &str = "ENTRIES_MAX_BUDGETS";
 
 const HASHING_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
@@ -140,6 +141,8 @@ pub struct ConfigInner {
     pub max_user_preferences_size: usize,
     #[zeroize(skip)]
     pub max_encryption_key_size: usize,
+    #[zeroize(skip)]
+    pub max_budgets: usize,
 }
 
 pub struct Config {
@@ -237,12 +240,13 @@ impl Config {
 
             actix_worker_count: env_var_or(ACTIX_WORKER_COUNT_VAR, num_cpus::get())?,
             log_level: env_var_or(LOG_LEVEL_VAR, String::from("info"))?,
-            protobuf_max_size: env_var_or(PROTOBUF_MAX_SIZE_MB_VAR, 750)? * 1024 * 1024,
+            protobuf_max_size: env_var_or(PROTOBUF_MAX_SIZE_MB_VAR, 100)? * 1024 * 1024,
 
             max_small_object_size: env_var_or(MAX_SMALL_OBJECT_SIZE_KB_VAR, 4)? * 1024,
             max_keystore_size: env_var_or(MAX_KEYSTORE_SIZE_KB_VAR, 80_000)? * 1024,
             max_user_preferences_size: env_var_or(MAX_USER_PREFERENCES_SIZE_KB_VAR, 32)? * 1024,
-            max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 32)? * 1024,
+            max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 4)? * 1024,
+            max_budgets: env_var_or(MAX_BUDGETS_VAR, 5_000)?,
         };
 
         Ok(Config {

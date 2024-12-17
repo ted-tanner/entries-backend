@@ -18,23 +18,25 @@ impl FromRequest for AppVersion {
         let app_version = match req.headers().get("AppVersion") {
             Some(header) => header,
             None => {
-                return future::err(HttpErrorResponse::MissingHeader(NO_VERSION_HEADER_MESSAGE))
+                return future::err(HttpErrorResponse::MissingHeader(String::from(
+                    NO_VERSION_HEADER_MESSAGE,
+                )))
             }
         };
 
         let app_verion = match app_version.to_str() {
             Ok(v) => v,
             Err(_) => {
-                return future::err(HttpErrorResponse::IncorrectlyFormed(
+                return future::err(HttpErrorResponse::IncorrectlyFormed(String::from(
                     NO_VERSION_HEADER_MESSAGE,
-                ))
+                )))
             }
         };
 
         if app_version.len() > 24 {
-            return future::err(HttpErrorResponse::IncorrectlyFormed(
+            return future::err(HttpErrorResponse::IncorrectlyFormed(String::from(
                 NO_VERSION_HEADER_MESSAGE,
-            ));
+            )));
         }
 
         future::ok(AppVersion(String::from(app_verion)))

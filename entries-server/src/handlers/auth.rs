@@ -68,9 +68,9 @@ pub async fn obtain_nonce_and_auth_string_params(
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
+            return Err(HttpErrorResponse::InternalError(String::from(
                 "Failed to obtain nonce or authentication string data",
-            ));
+            )));
         }
     };
 
@@ -85,7 +85,7 @@ pub async fn sign_in(
     let credentials = Zeroizing::new(credentials.0);
 
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
-        return Err(HttpErrorResponse::IncorrectlyFormed(msg));
+        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
     }
 
     let credentials = Arc::new(credentials);
@@ -100,20 +100,22 @@ pub async fn sign_in(
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "User not found",
+                    String::from("User not found"),
                     DoesNotExistType::User,
                 ));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to obtain sign-in nonce",
-                ));
+                )));
             }
         };
 
     if nonce != credentials.nonce {
-        return Err(HttpErrorResponse::IncorrectNonce("Incorrect nonce"));
+        return Err(HttpErrorResponse::IncorrectNonce(String::from(
+            "Incorrect nonce",
+        )));
     }
 
     let credentials_ref = Arc::clone(&credentials);
@@ -127,22 +129,22 @@ pub async fn sign_in(
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
             return Err(HttpErrorResponse::DoesNotExist(
-                "User not found",
+                String::from("User not found"),
                 DoesNotExistType::User,
             ));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
+            return Err(HttpErrorResponse::InternalError(String::from(
                 "Failed to get user auth string hash",
-            ));
+            )));
         }
     };
 
     if !hash_and_status.is_user_verified {
-        return Err(HttpErrorResponse::PendingAction(
+        return Err(HttpErrorResponse::PendingAction(String::from(
             "User has not accepted verification email",
-        ));
+        )));
     }
 
     let user_id = hash_and_status.user_id;
@@ -258,9 +260,9 @@ pub async fn use_backup_code_for_signin(
     {
         Ok(_) => (),
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::IncorrectCredential(
+            return Err(HttpErrorResponse::IncorrectCredential(String::from(
                 "Backup codes was incorrect",
-            ));
+            )));
         }
         Err(e) => log::error!("{e}"),
     };
@@ -326,9 +328,9 @@ pub async fn regenerate_backup_codes(
         Ok(id) => id,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
+            return Err(HttpErrorResponse::InternalError(String::from(
                 "Failed to replace backup codes",
-            ));
+            )));
         }
     };
 
@@ -355,11 +357,15 @@ pub async fn refresh_tokens(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(HttpErrorResponse::TokenExpired("Token has expired"));
+            return Err(HttpErrorResponse::TokenExpired(String::from(
+                "Token has expired",
+            )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError("Error verifying token"));
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Error verifying token",
+            )));
         }
     };
 
@@ -406,9 +412,9 @@ pub async fn logout(
     let refresh_token_claims = refresh_token.verify()?;
 
     if refresh_token_claims.user_id != user_access_token.0.user_id {
-        return Err(HttpErrorResponse::UserDisallowed(
+        return Err(HttpErrorResponse::UserDisallowed(String::from(
             "Refresh token does not belong to user.",
-        ));
+        )));
     }
 
     match web::block(move || {
@@ -422,15 +428,15 @@ pub async fn logout(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             _,
         ))) => {
-            return Err(HttpErrorResponse::ConflictWithExisting(
+            return Err(HttpErrorResponse::ConflictWithExisting(String::from(
                 "Token already on blacklist",
-            ));
+            )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(
+            return Err(HttpErrorResponse::InternalError(String::from(
                 "Failed to blacklist token",
-            ));
+            )));
         }
     }
 

@@ -59,13 +59,17 @@ impl TokenLocation for FromHeader {
 fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, HttpErrorResponse> {
     match result {
         Ok(t) => Ok(t),
-        Err(TokenError::TokenInvalid) => {
-            Err(HttpErrorResponse::IncorrectCredential("Token is invalid"))
-        }
-        Err(TokenError::TokenExpired) => Err(HttpErrorResponse::TokenExpired("Token is expired")),
-        Err(TokenError::TokenMissing) => Err(HttpErrorResponse::TokenMissing("Token is missing")),
-        Err(TokenError::WrongTokenType) => {
-            Err(HttpErrorResponse::WrongTokenType("Incorrect token type"))
-        }
+        Err(TokenError::TokenInvalid) => Err(HttpErrorResponse::IncorrectCredential(String::from(
+            "Token is invalid",
+        ))),
+        Err(TokenError::TokenExpired) => Err(HttpErrorResponse::TokenExpired(String::from(
+            "Token is expired",
+        ))),
+        Err(TokenError::TokenMissing) => Err(HttpErrorResponse::TokenMissing(String::from(
+            "Token is missing",
+        ))),
+        Err(TokenError::WrongTokenType) => Err(HttpErrorResponse::WrongTokenType(String::from(
+            "Incorrect token type",
+        ))),
     }
 }

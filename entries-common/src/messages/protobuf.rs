@@ -476,8 +476,9 @@ pub enum ErrorType {
     CategoryDoesNotExist = 19,
     InvitationDoesNotExist = 20,
     ForeignKeyDoesNotExist = 21,
-    /// 418
+    /// 413
     InputTooLarge = 22,
+    /// 418
     TooManyRequested = 23,
     /// 500
     InternalError = 24,

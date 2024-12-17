@@ -36,13 +36,15 @@ pub mod verification {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    "User not found",
+                    String::from("User not found"),
                     DoesNotExistType::User,
                 ));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError("Failed to save OTP"));
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to save OTP",
+                )));
             }
         };
 
@@ -59,9 +61,9 @@ pub mod verification {
             Ok(_) => (),
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to send OTP to user's email address",
-                ));
+                )));
             }
         };
 
@@ -76,9 +78,9 @@ pub mod verification {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
 
         if user_email.len() > 255 || otp.len() > 8 {
-            return Err(HttpErrorResponse::IncorrectCredential(
+            return Err(HttpErrorResponse::IncorrectCredential(String::from(
                 WRONG_OR_EXPIRED_OTP_MSG,
-            ));
+            )));
         }
 
         let otp_copy = Arc::new(String::from(otp));
@@ -94,7 +96,9 @@ pub mod verification {
                 Ok(e) => e,
                 Err(e) => {
                     log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError("Failed to check OTP"));
+                    return Err(HttpErrorResponse::InternalError(String::from(
+                        "Failed to check OTP",
+                    )));
                 }
             };
 
@@ -107,9 +111,9 @@ pub mod verification {
                 }
             }
         } else {
-            return Err(HttpErrorResponse::IncorrectCredential(
+            return Err(HttpErrorResponse::IncorrectCredential(String::from(
                 WRONG_OR_EXPIRED_OTP_MSG,
-            ));
+            )));
         }
 
         Ok(())
@@ -121,9 +125,9 @@ pub mod verification {
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
         if user_email.len() > 255 || auth_string.len() > 1024 {
-            return Err(HttpErrorResponse::IncorrectCredential(
+            return Err(HttpErrorResponse::IncorrectCredential(String::from(
                 "Auth string was incorrect",
-            ));
+            )));
         }
 
         let user_email_copy = String::from(user_email);
@@ -138,9 +142,9 @@ pub mod verification {
             Ok(a) => a,
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to get user auth string",
-                ));
+                )));
             }
         };
 
@@ -166,15 +170,15 @@ pub mod verification {
         match receiver.await? {
             Ok(true) => (),
             Ok(false) => {
-                return Err(HttpErrorResponse::IncorrectCredential(
+                return Err(HttpErrorResponse::IncorrectCredential(String::from(
                     "Auth string was incorrect",
-                ));
+                )));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(
+                return Err(HttpErrorResponse::InternalError(String::from(
                     "Failed to validate auth string",
-                ));
+                )));
             }
         };
 
@@ -205,37 +209,39 @@ pub mod error {
     #[derive(Debug)]
     pub enum HttpErrorResponse {
         // 400
-        IncorrectlyFormed(&'static str),
+        IncorrectlyFormed(String),
         InvalidMessage(MessageError),
-        OutOfDate(&'static str),
-        InvalidState(&'static str),
-        MissingHeader(&'static str),
-        ConflictWithExisting(&'static str),
+        OutOfDate(String),
+        InvalidState(String),
+        MissingHeader(String),
+        ConflictWithExisting(String),
 
         // 401
-        IncorrectCredential(&'static str),
-        IncorrectNonce(&'static str),
-        BadToken(&'static str),
-        TokenExpired(&'static str),
-        TokenMissing(&'static str),
-        WrongTokenType(&'static str),
+        IncorrectCredential(String),
+        IncorrectNonce(String),
+        BadToken(String),
+        TokenExpired(String),
+        TokenMissing(String),
+        WrongTokenType(String),
 
         // 403
-        UserDisallowed(&'static str),
-        PendingAction(&'static str),
-        TooManyAttempts(&'static str),
-        ReadOnlyAccess(&'static str),
+        UserDisallowed(String),
+        PendingAction(String),
+        TooManyAttempts(String),
+        ReadOnlyAccess(String),
 
         // 404
-        DoesNotExist(&'static str, DoesNotExistType),
-        ForeignKeyDoesNotExist(&'static str),
+        DoesNotExist(String, DoesNotExistType),
+        ForeignKeyDoesNotExist(String),
+
+        // 413
+        InputTooLarge(String),
 
         // 418
-        InputTooLarge(&'static str),
-        TooManyRequested(&'static str),
+        TooManyRequested(String),
 
         // 500
-        InternalError(&'static str),
+        InternalError(String),
     }
 
     impl std::error::Error for HttpErrorResponse {}
@@ -344,11 +350,13 @@ pub mod error {
                     err_message: format!("Foreign key does not exist: {msg}"),
                 },
 
-                // 418
+                // 413
                 HttpErrorResponse::InputTooLarge(msg) => ServerErrorResponse {
                     err_type: ErrorType::InputTooLarge.into(),
                     err_message: format!("Input is too long: {msg}"),
                 },
+
+                // 418
                 HttpErrorResponse::TooManyRequested(msg) => ServerErrorResponse {
                     err_type: ErrorType::TooManyRequested.into(),
                     err_message: format!("Too many requested: {msg}"),
@@ -391,9 +399,8 @@ pub mod error {
                 | HttpErrorResponse::ReadOnlyAccess(_) => StatusCode::FORBIDDEN,
                 HttpErrorResponse::DoesNotExist(_, _)
                 | HttpErrorResponse::ForeignKeyDoesNotExist(_) => StatusCode::NOT_FOUND,
-                HttpErrorResponse::InputTooLarge(_) | HttpErrorResponse::TooManyRequested(_) => {
-                    StatusCode::IM_A_TEAPOT
-                }
+                HttpErrorResponse::InputTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
+                HttpErrorResponse::TooManyRequested(_) => StatusCode::IM_A_TEAPOT,
                 HttpErrorResponse::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }
@@ -401,19 +408,19 @@ pub mod error {
 
     impl From<actix_web::Error> for HttpErrorResponse {
         fn from(_err: actix_web::Error) -> Self {
-            HttpErrorResponse::InternalError("Failed to serialize ProtoBuf response")
+            HttpErrorResponse::InternalError(String::from("Failed to serialize ProtoBuf response"))
         }
     }
 
     impl From<actix_web::error::BlockingError> for HttpErrorResponse {
         fn from(_err: actix_web::error::BlockingError) -> Self {
-            HttpErrorResponse::InternalError("Actix thread pool failure")
+            HttpErrorResponse::InternalError(String::from("Actix thread pool failure"))
         }
     }
 
     impl From<oneshot::error::RecvError> for HttpErrorResponse {
         fn from(_err: oneshot::error::RecvError) -> Self {
-            HttpErrorResponse::InternalError("Rayon thread pool failure")
+            HttpErrorResponse::InternalError(String::from("Rayon thread pool failure"))
         }
     }
 
@@ -426,10 +433,18 @@ pub mod error {
     impl From<TokenError> for HttpErrorResponse {
         fn from(err: TokenError) -> Self {
             match err {
-                TokenError::TokenInvalid => HttpErrorResponse::BadToken("Invalid token"),
-                TokenError::TokenExpired => HttpErrorResponse::TokenExpired("Token expired"),
-                TokenError::TokenMissing => HttpErrorResponse::TokenMissing("Missing token"),
-                TokenError::WrongTokenType => HttpErrorResponse::WrongTokenType("Wrong token type"),
+                TokenError::TokenInvalid => {
+                    HttpErrorResponse::BadToken(String::from("Invalid token"))
+                }
+                TokenError::TokenExpired => {
+                    HttpErrorResponse::TokenExpired(String::from("Token expired"))
+                }
+                TokenError::TokenMissing => {
+                    HttpErrorResponse::TokenMissing(String::from("Missing token"))
+                }
+                TokenError::WrongTokenType => {
+                    HttpErrorResponse::WrongTokenType(String::from("Wrong token type"))
+                }
             }
         }
     }
