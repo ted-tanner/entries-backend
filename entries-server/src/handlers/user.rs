@@ -448,7 +448,7 @@ pub async fn change_password(
 
     if new_password_data.new_auth_string.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            String::from("Auth string is too long"),
+            "Auth string is too long",
         )));
     }
 
@@ -543,7 +543,6 @@ pub async fn change_recovery_key(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    // TODO: Test
     if new_recovery_key_data.recovery_key_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key salt is too long",
@@ -599,7 +598,6 @@ pub async fn init_delete(
     const INVALID_ID_MSG: &str =
         "One of the provided budget access tokens is invalid or has an incorrect ID";
 
-    // TODO: Test
     if budget_access_tokens.tokens.len() > env::CONF.max_budgets {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Too many budget access tokens",
@@ -2318,6 +2316,122 @@ pub mod tests {
     }
 
     #[actix_web::test]
+    #[ignore]
+    async fn test_change_recovery_key_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+
+        // Make sure an OTP is generated
+        let req = TestRequest::get()
+            .uri("/api/auth/otp")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .to_request();
+        test::call_service(&app, req).await;
+
+        let otp = user_otps
+            .select(user_otp_fields::otp)
+            .find(&user.email)
+            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let edit_recovery_key = RecoveryKeyUpdate {
+            otp: otp.clone(),
+
+            recovery_key_salt: vec![0; env::CONF.max_encryption_key_size + 1],
+
+            recovery_key_memory_cost_kib: 11,
+            recovery_key_parallelism_factor: 13,
+            recovery_key_iters: 17,
+
+            encrypted_encryption_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(edit_recovery_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let edit_recovery_key = RecoveryKeyUpdate {
+            otp: otp.clone(),
+
+            recovery_key_salt: gen_bytes(16),
+
+            recovery_key_memory_cost_kib: 11,
+            recovery_key_parallelism_factor: 13,
+            recovery_key_iters: 17,
+
+            encrypted_encryption_key: vec![0; env::CONF.max_encryption_key_size + 1],
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(edit_recovery_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_web::test]
+    #[ignore]
+    async fn test_init_delete_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let tokens = vec![String::from("test"); env::CONF.max_budgets + 1];
+
+        let budget_access_tokens = BudgetAccessTokenList { tokens };
+
+        let req = TestRequest::delete()
+            .uri("/api/user")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_web::test]
     async fn test_delete_user_no_budgets() {
         let app = test::init_service(
             App::new()
@@ -2457,7 +2571,6 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
         let (user, access_token, _, _) = test_utils::create_user().await;
 
         let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
