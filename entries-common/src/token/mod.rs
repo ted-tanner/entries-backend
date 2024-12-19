@@ -86,6 +86,12 @@ pub trait Token {
     fn token_name() -> &'static str;
 
     fn decode(token: &str) -> Result<DecodedToken<Self::Claims, Self::Verifier>, TokenError> {
+        const MAX_TOKEN_LENGTH: usize = 8192;
+
+        if token.len() > MAX_TOKEN_LENGTH {
+            return Err(TokenError::TokenInvalid);
+        }
+
         let decoded_token = b64_urlsafe
             .decode(token)
             .map_err(|_| TokenError::TokenInvalid)?;
