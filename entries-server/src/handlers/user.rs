@@ -857,7 +857,7 @@ pub mod tests {
     use super::*;
 
     use entries_common::messages::{
-        EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse,
+        EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse, UuidV4,
     };
     use entries_common::models::user::User;
     use entries_common::models::user_deletion_request::UserDeletionRequest;
@@ -932,7 +932,7 @@ pub mod tests {
         let resp_public_key = UserPublicKey::decode(resp_body).unwrap();
         assert_eq!(
             user.public_key_id,
-            (&resp_public_key.id).try_into().unwrap()
+            <&UuidV4 as TryInto<Uuid>>::try_into(&resp_public_key.id).unwrap()
         );
         assert_eq!(user.public_key, resp_public_key.value);
     }

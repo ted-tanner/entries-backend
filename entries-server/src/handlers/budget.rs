@@ -1162,7 +1162,7 @@ pub mod tests {
 
     use entries_common::messages::{
         Budget as BudgetMessage, BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList,
-        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse,
+        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse, UuidV4,
     };
     use entries_common::messages::{BudgetFrame, CategoryWithTempId};
     use entries_common::models::budget::Budget;
@@ -1341,7 +1341,7 @@ pub mod tests {
         assert_eq!(budget_message.categories.len(), 3);
 
         for category in budget_message.categories.iter() {
-            let curr_category_id = (&category.id).try_into().unwrap();
+            let curr_category_id: Uuid = (&category.id).try_into().unwrap();
 
             if curr_category_id == new_category_id {
                 assert_eq!(category.encrypted_blob, new_category.value);
@@ -1401,7 +1401,7 @@ pub mod tests {
         assert_eq!(budget_message.categories.len(), 3);
 
         for category in budget_message.categories.iter() {
-            let curr_category_id = (&category.id).try_into().unwrap();
+            let curr_category_id: Uuid = (&category.id).try_into().unwrap();
 
             if curr_category_id == new_category_id {
                 assert_eq!(category.encrypted_blob, new_category.value);
@@ -3011,15 +3011,17 @@ pub mod tests {
         assert_eq!(invites.len(), 1);
         assert_eq!(
             recipient.public_key_id,
-            (&invites[0].recipient_public_key_id_used_by_sender)
-                .try_into()
-                .unwrap()
+            <&UuidV4 as TryInto<Uuid>>::try_into(
+                &invites[0].recipient_public_key_id_used_by_sender
+            )
+            .unwrap()
         );
         assert_eq!(
             recipient.public_key_id,
-            (&invites[0].recipient_public_key_id_used_by_server)
-                .try_into()
-                .unwrap()
+            <&UuidV4 as TryInto<Uuid>>::try_into(
+                &invites[0].recipient_public_key_id_used_by_server
+            )
+            .unwrap()
         );
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
