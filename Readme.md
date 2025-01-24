@@ -507,8 +507,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Inline foreign keys in `up.sql`
-* Make limiter configurable by endpoint
+* Condense get and get_multiple budgets into one
+* Update deps
+* Don't use UUIDv4 as primary key
+  - Use UUIDv7
+* Health endpoint that reaches out to DB and gets some DB statistics
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
   - 2,500 entries/budget
@@ -532,7 +535,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Inline foreign keys in `up.sql`
+* Make limiter configurable by endpoint
 * Remove OpenSSL (use Rust hmac, ed25519_dalek, sha1, etc instead)
+  - Is there a good reason to do this?
 * Once this PR is done and merged, use it in `Token::decode()` https://github.com/rust-lang/rust/pull/112818
 * Accept SSL connections without reverse proxy, if no customers are really using
 * Add webauthn-rs and totp_rs
