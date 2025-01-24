@@ -64,7 +64,7 @@ mod tests {
     async fn test_execute() {
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -129,7 +129,7 @@ mod tests {
         user_dao.verify_user_creation(user_id).unwrap();
 
         let new_budget = NewBudget {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
             version_nonce: rand::thread_rng().gen(),
             modified_timestamp: SystemTime::now(),
@@ -141,7 +141,7 @@ mod tests {
             .unwrap();
 
         let new_budget_share_invite_exp = NewBudgetShareInvite {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             recipient_user_email: &new_user.email,
             sender_public_key: &[0; 4],
             encryption_key_encrypted: &[0; 4],
@@ -162,7 +162,7 @@ mod tests {
             .unwrap();
 
         let new_budget_accept_key_exp = NewBudgetAcceptKey {
-            key_id: Uuid::new_v4(),
+            key_id: Uuid::now_v7(),
             budget_id: new_budget.id,
             public_key: &[0; 4],
             expiration: SystemTime::now() - Duration::from_secs(100),
@@ -175,7 +175,7 @@ mod tests {
             .unwrap();
 
         let new_budget_share_invite_not_exp = NewBudgetShareInvite {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             recipient_user_email: &new_user.email,
             sender_public_key: &[0; 4],
             encryption_key_encrypted: &[0; 4],
@@ -196,7 +196,7 @@ mod tests {
             .unwrap();
 
         let new_budget_accept_key_not_exp = NewBudgetAcceptKey {
-            key_id: Uuid::new_v4(),
+            key_id: Uuid::now_v7(),
             budget_id: new_budget.id,
             public_key: &[0; 4],
             expiration: SystemTime::now() + Duration::from_secs(100),

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 pub use protobuf::*;
 pub use query::*;
 
-use uuid::Uuid;
+use uuid::Uuid as NonMessageUuid;
 
 #[derive(Debug)]
 pub enum MessageError {
@@ -27,33 +27,33 @@ impl std::fmt::Display for MessageError {
     }
 }
 
-impl From<&Uuid> for UuidV4 {
-    fn from(uuid: &Uuid) -> Self {
-        UuidV4 {
+impl From<&NonMessageUuid> for Uuid {
+    fn from(uuid: &NonMessageUuid) -> Self {
+        Uuid {
             value: Vec::from(uuid.into_bytes()),
         }
     }
 }
 
-impl From<Uuid> for UuidV4 {
-    fn from(uuid: Uuid) -> Self {
+impl From<NonMessageUuid> for Uuid {
+    fn from(uuid: NonMessageUuid) -> Self {
         (&uuid).into()
     }
 }
 
-impl TryFrom<UuidV4> for Uuid {
+impl TryFrom<Uuid> for NonMessageUuid {
     type Error = MessageError;
 
-    fn try_from(uuid: UuidV4) -> Result<Self, Self::Error> {
+    fn try_from(uuid: Uuid) -> Result<Self, Self::Error> {
         (&uuid).try_into()
     }
 }
 
-impl TryFrom<&UuidV4> for Uuid {
+impl TryFrom<&Uuid> for NonMessageUuid {
     type Error = MessageError;
 
-    fn try_from(uuid: &UuidV4) -> Result<Self, Self::Error> {
-        Ok(Uuid::from_bytes(
+    fn try_from(uuid: &Uuid) -> Result<Self, Self::Error> {
+        Ok(NonMessageUuid::from_bytes(
             uuid.value
                 .as_slice()
                 .try_into()

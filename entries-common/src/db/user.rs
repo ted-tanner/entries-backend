@@ -80,7 +80,7 @@ impl Dao {
         backup_codes: &[String],
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
 
         let email_lowercase = email.to_lowercase();
 

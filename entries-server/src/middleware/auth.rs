@@ -206,7 +206,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_verified_from_header() {
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
         let user_email = "test1234@example.com";
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
@@ -311,7 +311,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_verified_from_query() {
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
         let user_email = "test1234@example.com";
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
@@ -416,7 +416,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_unverified_from_header() {
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
         let user_email = "test1234@example.com";
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
@@ -543,7 +543,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_unverified_from_query() {
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
         let user_email = "test1234@example.com";
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)

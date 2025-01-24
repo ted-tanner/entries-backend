@@ -95,7 +95,7 @@ mod tests {
     async fn test_execute() {
         let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user1 = NewUser {
             email: format!("test_user{}@test.com", &user1_number),
 
@@ -161,7 +161,7 @@ mod tests {
 
         let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user2 = NewUser {
             email: format!("test_user{}@test.com", &user2_number),
 
@@ -224,7 +224,7 @@ mod tests {
         user_dao.verify_user_creation(user2_id).unwrap();
 
         let new_budget1 = NewBudget {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
             version_nonce: rand::thread_rng().gen(),
             modified_timestamp: SystemTime::now(),
@@ -236,7 +236,7 @@ mod tests {
             .unwrap();
 
         let new_budget2 = NewBudget {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
             version_nonce: rand::thread_rng().gen(),
             modified_timestamp: SystemTime::now(),
@@ -276,7 +276,7 @@ mod tests {
         let budget2_category_id = Uuid::try_from(out.category_id).unwrap();
 
         let new_budget1_access_key1 = NewBudgetAccessKey {
-            key_id: Uuid::new_v4(),
+            key_id: Uuid::now_v7(),
             budget_id: new_budget1.id,
             public_key: &[0; 4],
             read_only: false,
@@ -288,7 +288,7 @@ mod tests {
             .unwrap();
 
         let new_budget1_access_key2 = NewBudgetAccessKey {
-            key_id: Uuid::new_v4(),
+            key_id: Uuid::now_v7(),
             budget_id: new_budget1.id,
             public_key: &[0; 4],
             read_only: false,
@@ -300,7 +300,7 @@ mod tests {
             .unwrap();
 
         let new_budget2_access_key1 = NewBudgetAccessKey {
-            key_id: Uuid::new_v4(),
+            key_id: Uuid::now_v7(),
             budget_id: new_budget2.id,
             public_key: &[0; 4],
             read_only: false,

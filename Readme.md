@@ -511,6 +511,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Update deps
 * Don't use UUIDv4 as primary key
   - Use UUIDv7
+* Don't use public schema for Postgres
+* Throttle table shouldn't update if it doesn't have to so it doesn't lock the record (that can cause more DDoS opportunity as records get locked). Just get in one query, then update in a second query _if and only if_ an update is needed (update is not needed if already at the max)
 * Health endpoint that reaches out to DB and gets some DB statistics
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
@@ -535,6 +537,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Get rid of created_timestamp on users table and use the UUIdv7 instead
+  - The one place the timestamp matters is when clearing unverified users. Use the timestamp in the UUIDv7 to filter these
 * Inline foreign keys in `up.sql`
 * Make limiter configurable by endpoint
 * Remove OpenSSL (use Rust hmac, ed25519_dalek, sha1, etc instead)

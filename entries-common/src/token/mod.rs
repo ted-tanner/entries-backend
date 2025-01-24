@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_from_str() {
-        let id = Uuid::new_v4();
+        let id = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_decode() {
-        let id = Uuid::new_v4();
+        let id = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_verify_hmac() {
-        let id = Uuid::new_v4();
+        let id = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_verify_ed25519() {
-        let id = Uuid::new_v4();
+        let id = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()

@@ -60,7 +60,7 @@ mod tests {
     async fn test_execute() {
         let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user1 = NewUser {
             email: format!("test_user{}@test.com", &user1_number),
 
@@ -126,7 +126,7 @@ mod tests {
 
         let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user2 = NewUser {
             email: format!("test_user{}@test.com", &user2_number),
 

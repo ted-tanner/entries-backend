@@ -857,7 +857,8 @@ pub mod tests {
     use super::*;
 
     use entries_common::messages::{
-        EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse, UuidV4,
+        EntryAndCategory, EntryIdAndCategoryId, ErrorType, NewUser, ServerErrorResponse,
+        Uuid as UuidMessage,
     };
     use entries_common::models::user::User;
     use entries_common::models::user_deletion_request::UserDeletionRequest;
@@ -932,7 +933,7 @@ pub mod tests {
         let resp_public_key = UserPublicKey::decode(resp_body).unwrap();
         assert_eq!(
             user.public_key_id,
-            <&UuidV4 as TryInto<Uuid>>::try_into(&resp_public_key.id).unwrap()
+            <&UuidMessage as TryInto<Uuid>>::try_into(&resp_public_key.id).unwrap()
         );
         assert_eq!(user.public_key, resp_public_key.value);
     }
@@ -949,7 +950,7 @@ pub mod tests {
         .await;
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
 
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -1159,7 +1160,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
 
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
@@ -1353,7 +1354,7 @@ pub mod tests {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -1465,13 +1466,13 @@ pub mod tests {
 
         let (user, access_token, _, _) = test_utils::create_user().await;
 
-        let new_key_id = Uuid::new_v4();
+        let new_key_id = Uuid::now_v7();
         let new_key = [8; 30];
 
         let old_key_update = NewUserPublicKey {
             id: (&new_key_id).into(),
             value: new_key.to_vec(),
-            expected_previous_public_key_id: Uuid::new_v4().into(),
+            expected_previous_public_key_id: Uuid::now_v7().into(),
         };
 
         let req = TestRequest::put()
@@ -1540,7 +1541,7 @@ pub mod tests {
         let (user, access_token, _, _) = test_utils::create_user().await;
 
         let key_update = NewUserPublicKey {
-            id: (&Uuid::new_v4()).into(),
+            id: (&Uuid::now_v7()).into(),
             value: vec![0; env::CONF.max_encryption_key_size + 1],
             expected_previous_public_key_id: (&user.public_key_id).into(),
         };

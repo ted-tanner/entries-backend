@@ -400,7 +400,7 @@ pub async fn invite_user(
         };
         private_key_encrypted.truncate(encrypted_size);
 
-        let key_id = Uuid::new_v4();
+        let key_id = Uuid::now_v7();
 
         let mut key_id_encrypted = vec![0; recipient_public_key.size() as usize];
         let encrypted_size = recipient_public_key
@@ -1162,7 +1162,7 @@ pub mod tests {
 
     use entries_common::messages::{
         Budget as BudgetMessage, BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList,
-        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse, UuidV4,
+        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
     };
     use entries_common::messages::{BudgetFrame, CategoryWithTempId};
     use entries_common::models::budget::Budget;
@@ -2396,7 +2396,7 @@ pub mod tests {
         assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
 
         let entry_update = EntryUpdate {
-            entry_id: Uuid::new_v4().into(),
+            entry_id: Uuid::now_v7().into(),
             encrypted_blob: gen_bytes(20),
             version_nonce: rand::thread_rng().gen(),
             expected_previous_version_nonce,
@@ -2424,7 +2424,7 @@ pub mod tests {
             encrypted_blob: gen_bytes(20),
             version_nonce: rand::thread_rng().gen(),
             expected_previous_version_nonce,
-            category_id: Some(Uuid::new_v4().into()),
+            category_id: Some(Uuid::now_v7().into()),
         };
 
         let req = TestRequest::put()
@@ -2739,7 +2739,7 @@ pub mod tests {
         assert_eq!(error_message.err_type, ErrorType::OutOfDate as i32);
 
         let category_update = CategoryUpdate {
-            category_id: Uuid::new_v4().into(),
+            category_id: Uuid::now_v7().into(),
             encrypted_blob: gen_bytes(20),
             version_nonce: rand::thread_rng().gen(),
             expected_previous_version_nonce: new_category2.version_nonce,
@@ -3011,14 +3011,14 @@ pub mod tests {
         assert_eq!(invites.len(), 1);
         assert_eq!(
             recipient.public_key_id,
-            <&UuidV4 as TryInto<Uuid>>::try_into(
+            <&UuidMessage as TryInto<Uuid>>::try_into(
                 &invites[0].recipient_public_key_id_used_by_sender
             )
             .unwrap()
         );
         assert_eq!(
             recipient.public_key_id,
-            <&UuidV4 as TryInto<Uuid>>::try_into(
+            <&UuidMessage as TryInto<Uuid>>::try_into(
                 &invites[0].recipient_public_key_id_used_by_server
             )
             .unwrap()

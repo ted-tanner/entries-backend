@@ -528,7 +528,7 @@ pub mod test_utils {
 
         let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 

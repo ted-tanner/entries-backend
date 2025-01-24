@@ -44,9 +44,9 @@ mod tests {
 
     #[test]
     fn test_verify() {
-        let iid = Uuid::new_v4();
-        let kid = Uuid::new_v4();
-        let bid = Uuid::new_v4();
+        let iid = Uuid::now_v7();
+        let kid = Uuid::now_v7();
+        let bid = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()

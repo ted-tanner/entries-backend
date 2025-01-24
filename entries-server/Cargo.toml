@@ -25,7 +25,7 @@ rand_chacha = "0.3.*"
 rayon = "1.10.*"
 sha2 = "0.10.*"
 tokio = "1.43.*"
-uuid = { version = "1.12.*", features = ["v4"] }
+uuid = { version = "1.12.*", features = ["v7"] }
 zeroize = { version = "1.8.*", features = ["zeroize_derive"] }
 
 [dev-dependencies]

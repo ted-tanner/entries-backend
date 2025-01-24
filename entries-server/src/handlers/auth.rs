@@ -591,7 +591,7 @@ mod tests {
             .hash(format!("password{user_number}").as_bytes())
             .unwrap();
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
@@ -776,7 +776,7 @@ mod tests {
             .hash(format!("password{user_number}").as_bytes())
             .unwrap();
 
-        let public_key_id = Uuid::new_v4();
+        let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 

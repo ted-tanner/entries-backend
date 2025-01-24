@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_sign_and_verify() {
-        let user_id = Uuid::new_v4();
+        let user_id = Uuid::now_v7();
         let user_email = "test1234@example.com";
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::db::{DaoError, DbThreadPool};
 use crate::messages::{
-    Budget as BudgetMessage, BudgetList, EntryIdAndCategoryId, InvitationId, UuidV4,
+    Budget as BudgetMessage, BudgetList, EntryIdAndCategoryId, InvitationId, Uuid as UuidMessage,
 };
 use crate::messages::{BudgetFrame, BudgetFrameCategory, Category as CategoryMessage};
 use crate::messages::{BudgetIdAndEncryptionKey, CategoryWithTempId};
@@ -112,7 +112,7 @@ impl Dao {
                     .map(|e| EntryMessage {
                         id: e.id.into(),
                         budget_id: e.budget_id.into(),
-                        category_id: e.category_id.as_ref().map(UuidV4::from),
+                        category_id: e.category_id.as_ref().map(UuidMessage::from),
                         encrypted_blob: e.encrypted_blob,
                         version_nonce: e.version_nonce,
                         modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
@@ -171,7 +171,7 @@ impl Dao {
                         .map(|e| EntryMessage {
                             id: e.id.into(),
                             budget_id: e.budget_id.into(),
-                            category_id: e.category_id.as_ref().map(UuidV4::from),
+                            category_id: e.category_id.as_ref().map(UuidMessage::from),
                             encrypted_blob: e.encrypted_blob,
                             version_nonce: e.version_nonce,
                             modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
@@ -209,8 +209,8 @@ impl Dao {
         user_public_budget_key: &[u8],
     ) -> Result<BudgetFrame, DaoError> {
         let current_time = SystemTime::now();
-        let budget_id = Uuid::new_v4();
-        let key_id = Uuid::new_v4();
+        let budget_id = Uuid::now_v7();
+        let key_id = Uuid::now_v7();
 
         let new_budget = NewBudget {
             id: budget_id,
@@ -232,7 +232,7 @@ impl Dao {
         for category in budget_categories.iter() {
             let new_category = NewCategory {
                 budget_id,
-                id: Uuid::new_v4(),
+                id: Uuid::now_v7(),
                 encrypted_blob: &category.encrypted_blob,
                 version_nonce: category.version_nonce,
                 modified_timestamp: current_time,
@@ -368,7 +368,7 @@ impl Dao {
             .expect("Current timestamp divided by 5,000,00 should fit into an i16");
 
         let budget_share_invite = NewBudgetShareInvite {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             recipient_user_email,
             sender_public_key,
             encryption_key_encrypted,
@@ -418,7 +418,7 @@ impl Dao {
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
                 let new_budget_access_key = NewBudgetAccessKey {
-                    key_id: Uuid::new_v4(),
+                    key_id: Uuid::now_v7(),
                     budget_id,
                     public_key: recipient_budget_user_access_public_key,
                     read_only,
@@ -590,7 +590,7 @@ impl Dao {
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
-        let entry_id = Uuid::new_v4();
+        let entry_id = Uuid::now_v7();
 
         let new_entry = NewEntry {
             id: entry_id,
@@ -617,8 +617,8 @@ impl Dao {
         budget_id: Uuid,
     ) -> Result<EntryIdAndCategoryId, DaoError> {
         let current_time = SystemTime::now();
-        let category_id = Uuid::new_v4();
-        let entry_id = Uuid::new_v4();
+        let category_id = Uuid::now_v7();
+        let entry_id = Uuid::now_v7();
 
         let new_category = NewCategory {
             id: category_id,
@@ -730,7 +730,7 @@ impl Dao {
         budget_id: Uuid,
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
-        let category_id = Uuid::new_v4();
+        let category_id = Uuid::now_v7();
 
         let new_category = NewCategory {
             id: category_id,
