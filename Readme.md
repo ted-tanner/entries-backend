@@ -513,6 +513,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - Use UUIDv7
 * Don't use public schema for Postgres
 * Throttle table shouldn't update if it doesn't have to so it doesn't lock the record (that can cause more DDoS opportunity as records get locked). Just get in one query, then update in a second query _if and only if_ an update is needed (update is not needed if already at the max)
+  - Reconsider Throttle table. Can it just be a local data structure on the machine? The throttle table is a big table in terms of storage size, greatly increases request latency, and increases database impact
 * Health endpoint that reaches out to DB and gets some DB statistics
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
