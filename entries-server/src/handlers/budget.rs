@@ -1,7 +1,7 @@
 use entries_common::messages::{
-    AcceptKeyInfo, BudgetAccessTokenList, CategoryId, CategoryUpdate, EncryptedBlobAndCategoryId,
-    EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewBudget, NewEncryptedBlob,
-    PublicKey, UserInvitationToBudget,
+    AcceptKeyInfo, BudgetAccessTokenList, BudgetList, CategoryId, CategoryUpdate,
+    EncryptedBlobAndCategoryId, EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate,
+    NewBudget, NewEncryptedBlob, PublicKey, UserInvitationToBudget,
 };
 use entries_common::models::budget_access_key::BudgetAccessKey;
 use entries_common::token::budget_accept_token::BudgetAcceptToken;
@@ -30,39 +30,6 @@ use crate::middleware::special_access_token::SpecialAccessToken;
 use crate::middleware::{FromHeader, TokenLocation};
 
 pub async fn get(
-    db_thread_pool: web::Data<DbThreadPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_access(&budget_access_token, &db_thread_pool).await?;
-
-    let budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_budget(budget_access_token.0.claims.budget_id)
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
-                ));
-            }
-            _ => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get budget data",
-                )));
-            }
-        },
-    };
-
-    Ok(HttpResponse::Ok().protobuf(budget)?)
-}
-
-pub async fn get_multiple(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
@@ -94,7 +61,13 @@ pub async fn get_multiple(
 
     let budget_dao = db::budget::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
-        budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
+        if budget_ids_ref.len() == 1 && key_ids.len() == 1 {
+            vec![budget_dao.get_public_budget_key(key_ids[0], budget_ids_ref[0])]
+                .into_iter()
+                .collect()
+        } else {
+            budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
+        }
     })
     .await?
     {
@@ -138,7 +111,14 @@ pub async fn get_multiple(
 
     let budgets = match web::block(move || {
         let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_multiple_budgets_by_id(&budget_ids)
+        if budget_ids.len() == 1 {
+            let budget = budget_dao.get_budget(budget_ids[0])?;
+            Ok(BudgetList {
+                budgets: vec![budget],
+            })
+        } else {
+            budget_dao.get_multiple_budgets_by_id(&budget_ids)
+        }
     })
     .await?
     {
@@ -1154,11 +1134,11 @@ pub mod tests {
 
     use super::*;
 
-    use entries_common::messages::{
-        Budget as BudgetMessage, BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList,
-        EntryIdAndCategoryId, ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
-    };
     use entries_common::messages::{BudgetFrame, CategoryWithTempId};
+    use entries_common::messages::{
+        BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList, EntryIdAndCategoryId,
+        ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
+    };
     use entries_common::models::budget::Budget;
     use entries_common::schema::budget_access_keys as budget_access_key_fields;
     use entries_common::schema::budget_access_keys::dsl::budget_access_keys;
@@ -1253,17 +1233,22 @@ pub mod tests {
             .map(|c| Uuid::try_from(c.real_id).unwrap())
             .collect::<Vec<_>>();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -1316,17 +1301,22 @@ pub mod tests {
             .try_into()
             .unwrap();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -1376,17 +1366,22 @@ pub mod tests {
             .try_into()
             .unwrap();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -1453,17 +1448,22 @@ pub mod tests {
             .try_into()
             .unwrap();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(budget_message.entries.len(), 2);
 
@@ -1514,17 +1514,22 @@ pub mod tests {
         let new_entry3_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
         let new_category4_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -1906,7 +1911,7 @@ pub mod tests {
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget/multiple")
+            .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
@@ -1999,7 +2004,7 @@ pub mod tests {
         let budget_access_tokens = BudgetAccessTokenList { tokens };
 
         let req = TestRequest::get()
-            .uri("/api/budget/multiple")
+            .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
@@ -2033,7 +2038,7 @@ pub mod tests {
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget/multiple")
+            .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(budget_access_tokens.encode_to_vec())
@@ -2118,17 +2123,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2168,17 +2178,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2262,17 +2277,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2305,17 +2325,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_access_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2338,17 +2363,22 @@ pub mod tests {
         let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2395,17 +2425,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
@@ -2466,17 +2501,22 @@ pub mod tests {
         let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2547,17 +2587,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2674,17 +2719,22 @@ pub mod tests {
 
         expected_previous_version_nonce = entry_update.version_nonce;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.categories.len(), 2);
@@ -2741,17 +2791,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.categories.len(), 2);
@@ -2778,10 +2833,15 @@ pub mod tests {
         let (_, access_token, _, _) = test_utils::create_user().await;
         let (_, budget_token) = test_utils::create_budget(&access_token).await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2827,17 +2887,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(budget_message.entries.len(), 1);
 
@@ -2885,17 +2950,22 @@ pub mod tests {
         let (_, access_token, _, _) = test_utils::create_user().await;
         let (budget, budget_token) = test_utils::create_budget(&access_token).await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -2966,17 +3036,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -3097,17 +3172,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -3204,17 +3284,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -3284,10 +3369,15 @@ pub mod tests {
         let (_, access_token, _, _) = test_utils::create_user().await;
         let (_, budget_token) = test_utils::create_budget(&access_token).await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3316,10 +3406,15 @@ pub mod tests {
             .try_into()
             .unwrap();
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3511,26 +3606,36 @@ pub mod tests {
         let recipient_budget_token =
             gen_budget_token(budget.id, access_key_id, &access_private_key);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token[..10].to_string()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", &recipient_budget_token[..10]))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert_ne!(resp.status(), StatusCode::OK);
+
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token.clone()],
+        };
 
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(&budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
@@ -3571,17 +3676,22 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
 
         assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
         assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
@@ -4368,19 +4478,29 @@ pub mod tests {
             gen_budget_token(budget.id, access_key_id, &access_private_key);
 
         // Check both sender and recipient can access the budget
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![sender_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4412,19 +4532,29 @@ pub mod tests {
         assert_eq!(budget_access_key_count, 1);
 
         // Check recipient can access the budget but sender no longer has access
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![sender_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4453,19 +4583,29 @@ pub mod tests {
         assert_eq!(budget_access_key_count, 0);
 
         // Check both sender and recipient no longer have access to the budget
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![sender_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![recipient_budget_token.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 

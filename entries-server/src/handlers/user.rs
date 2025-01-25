@@ -3162,10 +3162,15 @@ pub mod tests {
         )
         .await;
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget2_token_user2.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", user2_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3248,10 +3253,16 @@ pub mod tests {
             1,
         );
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget2_token_user2.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", user2_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3440,10 +3451,16 @@ pub mod tests {
             1,
         );
 
+        let budget_token_list = BudgetAccessTokenList {
+            tokens: vec![budget2_token_user2.clone()],
+        };
+
         let req = TestRequest::get()
             .uri("/api/budget")
             .insert_header(("AccessToken", user2_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget2_token_user2.as_str()))
+            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(budget_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 

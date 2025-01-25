@@ -10,14 +10,9 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
             .service(
                 resource("")
                     .route(get().to(budget::get))
-                    .wrap(limiters.get_budget)
+                    .wrap(limiters.get_budgets)
                     .route(put().to(budget::edit))
                     .route(post().to(budget::create).wrap(limiters.create_budget)),
-            )
-            .service(
-                resource("/multiple")
-                    .route(get().to(budget::get_multiple))
-                    .wrap(limiters.get_multiple_budgets),
             )
             .service(
                 resource("invitation")

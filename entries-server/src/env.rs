@@ -250,7 +250,7 @@ impl Config {
             max_user_preferences_size: env_var_or(MAX_USER_PREFERENCES_SIZE_KB_VAR, 32)? * 1024,
             max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 4)? * 1024,
             max_budgets: env_var_or(MAX_BUDGETS_VAR, 5_000)?,
-            max_budget_fetch_count: env_var_or(MAX_BUDGET_FETCH_COUNT_VAR, 25)?,
+            max_budget_fetch_count: env_var_or(MAX_BUDGET_FETCH_COUNT_VAR, 10)?,
         };
 
         Ok(Config {

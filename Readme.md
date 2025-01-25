@@ -507,22 +507,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Condense get and get_multiple budgets into one
-* Update deps
-* Don't use UUIDv4 as primary key
-  - Use UUIDv7
 * Don't use public schema for Postgres
-* Throttle table shouldn't update if it doesn't have to so it doesn't lock the record (that can cause more DDoS opportunity as records get locked). Just get in one query, then update in a second query _if and only if_ an update is needed (update is not needed if already at the max)
-  - Reconsider Throttle table. Can it just be a local data structure on the machine? The throttle table is a big table in terms of storage size, greatly increases request latency, and increases database impact
 * Health endpoint that reaches out to DB and gets some DB statistics
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
   - 2,500 entries/budget
   - Client will limit description fields to 600 chars
-* Enforce maximum data blob size
-    - An entry shouldn't be more than 4kb, whereas a keystore should probably be limited to 80mb (5,000 budget keys at 6kb/key = ~15mb, plus budget share keys and other kinds of keys). Limits should be considered on a per-type basis.
-    - Verbiage should say the premium version has "unlimited" budgets and entries. Perhaps an asterisk will say that practical limits will be enforced
-    - Env vars are in place. Just need to add the code
 * Update readme documentation
   - Add a section for the job scheduler
   - Explanation of encryption scheme and expected role of the client in the scheme
