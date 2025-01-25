@@ -545,7 +545,6 @@ pub async fn accept_invitation(
     accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
     budget_user_public_key: ProtoBuf<PublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    // TODO: Test
     if budget_user_public_key.value.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Public key too large",
@@ -749,7 +748,6 @@ pub async fn create_entry(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    // TODO: Test
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encrypted blob too large",
@@ -812,7 +810,6 @@ pub async fn create_entry_and_category(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    // TODO: Test
     if entry_and_category_data.entry_encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Entry encrypted blob too large",
@@ -865,7 +862,6 @@ pub async fn edit_entry(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    // TODO: Test
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encrypted blob too large",
@@ -970,7 +966,6 @@ pub async fn create_category(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    // TODO: Test
     if category_data.value.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encrypted blob too large",
@@ -1017,7 +1012,6 @@ pub async fn edit_category(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
 
-    // TODO: Test
     if category_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encrypted blob too large",
@@ -1643,6 +1637,219 @@ pub mod tests {
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_budget.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_rt::test]
+    #[ignore]
+    async fn test_create_entry_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = Vec::from(key_pair.verifying_key().to_bytes());
+
+        let new_budget = NewBudget {
+            encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
+            categories: vec![CategoryWithTempId {
+                temp_id: 0,
+                encrypted_blob: gen_bytes(40),
+                version_nonce: rand::thread_rng().gen(),
+            }],
+            user_public_budget_key: public_key,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_budget.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+
+        let budget = budgets
+            .find(Uuid::try_from(budget_data.id).unwrap())
+            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let budget_access_token = gen_budget_token(
+            budget.id,
+            budget_data.access_key_id.try_into().unwrap(),
+            &key_pair,
+        );
+
+        let category_id: Uuid = (&budget_data.category_ids[0].real_id).try_into().unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
+            version_nonce: rand::thread_rng().gen(),
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_rt::test]
+    #[ignore]
+    async fn test_create_entry_and_category_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+
+        let new_entry_and_category = EntryAndCategory {
+            entry_encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
+            entry_version_nonce: rand::thread_rng().gen(),
+            category_encrypted_blob: gen_bytes(12),
+            category_version_nonce: rand::thread_rng().gen(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry_and_category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry_and_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let new_entry_and_category = EntryAndCategory {
+            entry_encrypted_blob: gen_bytes(30),
+            entry_version_nonce: rand::thread_rng().gen(),
+            category_encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
+            category_version_nonce: rand::thread_rng().gen(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry_and_category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry_and_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_rt::test]
+    #[ignore]
+    async fn test_create_category_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let public_key = Vec::from(key_pair.verifying_key().to_bytes());
+
+        let new_budget = NewBudget {
+            encrypted_blob: gen_bytes(32),
+            version_nonce: rand::thread_rng().gen(),
+            categories: vec![CategoryWithTempId {
+                temp_id: 0,
+                encrypted_blob: gen_bytes(40),
+                version_nonce: rand::thread_rng().gen(),
+            }],
+            user_public_budget_key: public_key,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_budget.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+
+        let budget = budgets
+            .find(Uuid::try_from(budget_data.id).unwrap())
+            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let budget_access_token = gen_budget_token(
+            budget.id,
+            budget_data.access_key_id.try_into().unwrap(),
+            &key_pair,
+        );
+
+        let new_category = NewEncryptedBlob {
+            value: vec![0; env::CONF.max_small_object_size + 1],
+            version_nonce: rand::thread_rng().gen(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2557,6 +2764,114 @@ pub mod tests {
     }
 
     #[actix_rt::test]
+    #[ignore]
+    async fn test_edit_entry_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let new_category = NewEncryptedBlob {
+            value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            version_nonce: rand::thread_rng().gen(),
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let budget_message = BudgetMessage::decode(resp_body).unwrap();
+
+        assert_eq!(budget_message.entries.len(), 1);
+
+        let entry_message = &budget_message.entries[0];
+
+        let entry_id: Uuid = (&entry_message.id).try_into().unwrap();
+        let expected_previous_version_nonce = entry_message.version_nonce;
+
+        let entry_update = EntryUpdate {
+            entry_id: entry_id.into(),
+            encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce,
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(entry_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
+
+    #[actix_rt::test]
     async fn test_edit_category() {
         let app = test::init_service(
             App::new()
@@ -2952,6 +3267,86 @@ pub mod tests {
             Uuid::try_from(entry_message.category_id.clone().unwrap()).unwrap(),
             category2_id,
         );
+    }
+
+    #[actix_rt::test]
+    #[ignore]
+    async fn test_edit_category_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let new_category = NewEncryptedBlob {
+            value: gen_bytes(40),
+            version_nonce: rand::thread_rng().gen(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let req = TestRequest::get()
+            .uri("/api/budget")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let category_update = CategoryUpdate {
+            category_id: category_id.into(),
+            encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
+            version_nonce: rand::thread_rng().gen(),
+            expected_previous_version_nonce: new_category.version_nonce,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/category")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(category_update.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
     }
 
     #[actix_rt::test]
@@ -3444,6 +3839,122 @@ pub mod tests {
         let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
 
         assert_eq!(resp_body.err_type, ErrorType::IncorrectlyFormed as i32);
+    }
+
+    #[actix_rt::test]
+    #[ignore]
+    async fn test_accept_invitation_fails_with_large_input() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, sender_access_token, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+
+        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let invite_info = UserInvitationToBudget {
+            recipient_user_email: recipient.email,
+            recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
+            recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
+            sender_public_key: gen_bytes(22),
+            encryption_key_encrypted: gen_bytes(44),
+            budget_info_encrypted: gen_bytes(20),
+            sender_info_encrypted: gen_bytes(30),
+            share_info_symmetric_key_encrypted: gen_bytes(35),
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .try_into()
+                .unwrap(),
+            read_only: true,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/budget/invitation")
+            .insert_header(("AccessToken", sender_access_token))
+            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invite_info.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = TestRequest::get()
+            .uri("/api/budget/invitation/all_pending")
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+
+        let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
+        let decrypted_size = recipient_private_key
+            .private_decrypt(
+                &invites[0].budget_accept_key_encrypted,
+                &mut accept_private_key,
+                Padding::PKCS1,
+            )
+            .unwrap();
+        accept_private_key.truncate(decrypted_size);
+
+        let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
+        let decrypted_size = recipient_private_key
+            .private_decrypt(
+                &invites[0].budget_accept_key_id_encrypted,
+                &mut accept_private_key_id,
+                Padding::PKCS1,
+            )
+            .unwrap();
+        accept_private_key_id.truncate(decrypted_size);
+
+        let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
+
+        let accept_token_claims = BudgetAcceptTokenClaims {
+            invite_id: (&invites[0].id).try_into().unwrap(),
+            key_id: accept_private_key_id,
+            budget_id: budget.id,
+            expiration: (SystemTime::now() + Duration::from_secs(10))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let accept_token_claims = serde_json::to_vec(&accept_token_claims).unwrap();
+        let accept_private_key =
+            ed25519::SigningKey::from_bytes(&accept_private_key.try_into().unwrap());
+        let mut token = accept_token_claims.clone();
+        let signature = accept_private_key.sign(&accept_token_claims).to_bytes();
+        token.extend_from_slice(&signature);
+        let accept_token = b64_urlsafe.encode(token);
+
+        let access_public_key = PublicKey {
+            value: vec![0; env::CONF.max_encryption_key_size + 1],
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/budget/invitation/accept")
+            .insert_header(("BudgetAcceptToken", accept_token))
+            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(access_public_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
     }
 
     #[actix_rt::test]

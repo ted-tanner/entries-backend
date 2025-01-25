@@ -287,7 +287,7 @@ mod tests {
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        sleep(Duration::from_millis(3)).await;
+        sleep(Duration::from_millis(2)).await;
 
         // Period has not expired
         let req = test::TestRequest::default().to_request();
