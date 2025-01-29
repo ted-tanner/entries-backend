@@ -1,6 +1,6 @@
 pub mod auth;
 pub mod budget;
-pub mod index;
+pub mod health;
 pub mod user;
 
 pub mod verification {

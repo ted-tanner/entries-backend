@@ -70,6 +70,8 @@ const MAX_ENCRYPTION_KEY_SIZE_KB_VAR: &str = "ENTRIES_MAX_ENCRYPTION_KEY_SIZE_KB
 const MAX_BUDGETS_VAR: &str = "ENTRIES_MAX_BUDGETS";
 const MAX_BUDGET_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_BUDGET_FETCH_COUNT";
 
+const HEALTH_ENDPOINT_KEY_VAR: &str = "ENTRIES_HEALTH_ENDPOINT_KEY";
+
 const HASHING_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
 
@@ -146,6 +148,8 @@ pub struct ConfigInner {
     pub max_budgets: usize,
     #[zeroize(skip)]
     pub max_budget_fetch_count: usize,
+
+    pub health_endpoint_key: String,
 }
 
 pub struct Config {
@@ -251,6 +255,8 @@ impl Config {
             max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 4)? * 1024,
             max_budgets: env_var_or(MAX_BUDGETS_VAR, 5_000)?,
             max_budget_fetch_count: env_var_or(MAX_BUDGET_FETCH_COUNT_VAR, 10)?,
+
+            health_endpoint_key: env_var(HEALTH_ENDPOINT_KEY_VAR)?,
         };
 
         Ok(Config {

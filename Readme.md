@@ -507,7 +507,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Don't use public schema for Postgres
 * Health endpoint that reaches out to DB and gets some DB statistics
 * Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user

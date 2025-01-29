@@ -151,7 +151,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(db_thread_pool.clone())
             .app_data(smtp_thread_pool.clone())
             .configure(|cfg| services::api::configure(cfg, limiters.clone()))
-            .configure(services::web::configure)
             .wrap(actix_web::middleware::Compress::default())
             .wrap(actix_web::middleware::Logger::default())
     })

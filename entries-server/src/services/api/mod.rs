@@ -6,6 +6,7 @@ use crate::middleware::Limiter;
 
 mod auth;
 mod budget;
+mod health;
 mod user;
 
 #[derive(Clone)]
@@ -44,6 +45,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
         scope("/api")
             .configure(|cfg| auth::configure(cfg, limiters.clone()))
             .configure(|cfg| budget::configure(cfg, limiters.clone()))
+            .configure(health::configure)
             .configure(|cfg| user::configure(cfg, limiters)),
     );
 }
