@@ -29,15 +29,19 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
             .service(
                 resource("/entry")
                     .route(post().to(budget::create_entry))
+                    .wrap(limiters.create_object.clone())
                     .route(put().to(budget::edit_entry))
                     .route(delete().to(budget::delete_entry)),
             )
             .service(
-                resource("/entry_and_category").route(post().to(budget::create_entry_and_category)),
+                resource("/entry_and_category")
+                    .route(post().to(budget::create_entry_and_category))
+                    .wrap(limiters.create_object.clone()),
             )
             .service(
                 resource("/category")
                     .route(post().to(budget::create_category))
+                    .wrap(limiters.create_object)
                     .route(put().to(budget::edit_category))
                     .route(delete().to(budget::delete_category)),
             ),

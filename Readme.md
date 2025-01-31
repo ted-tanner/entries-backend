@@ -1,12 +1,4 @@
-# Entries App (Server)
-
-## Cloning Repository
-
-This repository has a submodule dependency, so a simple `git clone` won't work. The repository must be cloned recursively:
-
-```
-git clone --recursive git@github.com:ted-tanner/the-budget-app-server-rust.git
-```
+# Entries App (Backend)
 
 ## Contents
 
@@ -507,11 +499,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Health endpoint that reaches out to DB and gets some DB statistics
-* Enforce practical limits on entries per budget and budgets per user
-  - 5,000 budgets/user
-  - 2,500 entries/budget
-  - Client will limit description fields to 600 chars
 * Update readme documentation
   - Add a section for the job scheduler
   - Explanation of encryption scheme and expected role of the client in the scheme
@@ -523,10 +510,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
     - 413 Request payload is too big
     - 500
     - 404
-* White paper
 
 ### Do it later
 
+* Description of EE2E scheme
 * Get rid of created_timestamp on users table and use the UUIdv7 instead
   - The one place the timestamp matters is when clearing unverified users. Use the timestamp in the UUIDv7 to filter these
 * Inline foreign keys in `up.sql`
@@ -574,6 +561,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Languages/localization
 * Budgets that are not modified for a year will be deleted?
 * Full endpoint documentation
+* On client: Enforce practical limits on entries per budget and budgets per user
+  - 5,000 budgets/user
+  - 2,500 entries/budget
+  - Client will limit description fields to 600 chars
 
 ### Note on timezones
 
