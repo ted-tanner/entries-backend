@@ -45,7 +45,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
         scope("/api")
             .configure(|cfg| auth::configure(cfg, limiters.clone()))
             .configure(|cfg| budget::configure(cfg, limiters.clone()))
-            .configure(health::configure)
-            .configure(|cfg| user::configure(cfg, limiters)),
+            .configure(|cfg| user::configure(cfg, limiters))
+            .configure(health::configure),
     );
 }
