@@ -3,7 +3,7 @@ CREATE TABLE blacklisted_tokens (
     token_expiration TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON blacklisted_tokens USING HASH (token_signature);
+CREATE INDEX ON blacklisted_tokens USING HASH(token_signature);
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
@@ -27,25 +27,28 @@ CREATE TABLE budget_accept_keys (
     expiration TIMESTAMP NOT NULL,
     read_only BOOLEAN NOT NULL,
 
-    PRIMARY KEY (key_id, budget_id)
+    PRIMARY KEY (key_id, budget_id),
+    CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_accept_keys USING HASH (key_id);
+CREATE INDEX ON budget_accept_keys (key_id);
 
 CREATE TABLE budget_access_keys (
     key_id UUID UNIQUE NOT NULL,
     budget_id UUID NOT NULL,
-    public_key BYTEA NOT NULL, -- Ed25591
+    public_key BYTEA NOT NULL, -- Ed25519
     read_only BOOLEAN NOT NULL,
-    PRIMARY KEY (key_id, budget_id)
+
+    PRIMARY KEY (key_id, budget_id),
+    CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_access_keys USING HASH (budget_id);
+CREATE INDEX ON budget_access_keys (budget_id);
 
 CREATE TABLE budget_share_invites (
     id UUID PRIMARY KEY,
 
-    recipient_user_email VARCHAR(255) NOT NULL,
+    recipient_user_email TEXT NOT NULL,
     -- The sender can sign a token to prove to the server that they are authorized to
     -- retract/delete a budget_share_invite
     sender_public_key BYTEA NOT NULL, -- Ed25519
@@ -86,10 +89,12 @@ CREATE TABLE budget_share_invites (
     -- The UNIX timestamp of creation, integer-divided by 5 million seconds. The purpose of
     -- storing this is to allow the server to delete 2-month/3-month old invites without being
     -- able to associate them with the expiration time of a budget_share_key
-    created_unix_timestamp_intdiv_five_million SMALLINT NOT NULL
+    created_unix_timestamp_intdiv_five_million SMALLINT NOT NULL,
+
+    CONSTRAINT chk_recipient_user_email_length CHECK (char_length(recipient_user_email) <= 255)
 );
 
-CREATE INDEX ON budget_share_invites USING HASH (recipient_user_email);
+CREATE INDEX ON budget_share_invites USING HASH(recipient_user_email);
 
 CREATE TABLE categories (
     id UUID PRIMARY KEY,
@@ -114,19 +119,21 @@ CREATE TABLE entries (
 );
 
 CREATE TABLE job_registry (
-    job_name VARCHAR(255) PRIMARY KEY,
+    job_name TEXT PRIMARY KEY,
     last_run_timestamp TIMESTAMP NOT NULL
 );
 
 CREATE TABLE signin_nonces (
-    user_email VARCHAR(255) PRIMARY KEY,
-    nonce INT NOT NULL
+    user_email TEXT PRIMARY KEY,
+    nonce INT NOT NULL,
+
+    CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
 CREATE TABLE users (
     id UUID PRIMARY KEY,
 
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
     is_verified BOOLEAN NOT NULL,
 
     public_key_id UUID NOT NULL,
@@ -152,14 +159,17 @@ CREATE TABLE users (
     recovery_key_iters INT NOT NULL,
 
     encryption_key_encrypted_with_password BYTEA NOT NULL,
-    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL
+    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
+
+    CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
+    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 1024)
 );
 
-CREATE INDEX ON users USING HASH (email);
+CREATE INDEX ON users USING HASH(email);
 
 CREATE TABLE user_backup_codes (
     user_id UUID NOT NULL,
-    code VARCHAR(12) NOT NULL,
+    code CHAR(12) NOT NULL,
 
     PRIMARY KEY (user_id, code)
 );
@@ -169,7 +179,7 @@ CREATE TABLE user_deletion_requests (
     ready_for_deletion_time TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON user_deletion_requests USING HASH (user_id);
+CREATE INDEX ON user_deletion_requests (user_id);
 
 CREATE TABLE user_deletion_request_budget_keys (
     key_id UUID PRIMARY KEY,
@@ -183,8 +193,8 @@ CREATE TABLE user_deletion_request_budget_keys (
     delete_me_time TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON user_deletion_request_budget_keys USING HASH (user_id);
-CREATE INDEX ON user_deletion_request_budget_keys USING BTREE (delete_me_time);
+CREATE INDEX ON user_deletion_request_budget_keys (user_id);
+CREATE INDEX ON user_deletion_request_budget_keys (delete_me_time);
 
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
@@ -193,12 +203,14 @@ CREATE TABLE user_keystores (
 );
 
 CREATE TABLE user_otps (
-    user_email VARCHAR(255) PRIMARY KEY,
-    otp VARCHAR(8) NOT NULL,
-    expiration TIMESTAMP NOT NULL
+    user_email TEXT PRIMARY KEY,
+    otp CHAR(8) NOT NULL,
+    expiration TIMESTAMP NOT NULL,
+
+    CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
-CREATE INDEX ON user_otps USING BTREE (user_email, otp);
+CREATE INDEX ON user_otps (user_email, otp);
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
@@ -208,7 +220,6 @@ CREATE TABLE user_preferences (
 
 -- Foreign keys
 
-ALTER TABLE budget_accept_keys ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_access_keys ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
