@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     future::{ready, Ready},
-    net::{IpAddr, SocketAddr, SocketAddrV4},
+    net::{IpAddr, SocketAddr},
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -124,9 +124,10 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let ip = if cfg!(test) {
+        #[cfg(test)]
+        let ip = {
             use actix_web::http::header::HeaderValue;
-            use std::net::Ipv4Addr;
+            use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
             use std::str::FromStr;
 
             let default_ip = HeaderValue::from_static("127.0.0.1");
@@ -137,12 +138,18 @@ where
                 .to_str()
                 .unwrap();
 
-            let test_ip = Ipv4Addr::from_str(test_ip).expect("Invalid test IP");
-            SocketAddr::V4(SocketAddrV4::new(test_ip, 80))
-        } else {
-            // peer_addr() only returns None in a test
-            req.peer_addr().expect("Address should always be available")
+            if test_ip.len() < 16 {
+                let test_ip = Ipv4Addr::from_str(test_ip).expect("Invalid test IP");
+                SocketAddr::V4(SocketAddrV4::new(test_ip, 80))
+            } else {
+                let test_ip = Ipv6Addr::from_str(test_ip).expect("Invalid test IP");
+                SocketAddr::V6(SocketAddrV6::new(test_ip, 80, 0, 0))
+            }
         };
+
+        // peer_addr() only returns None in a test
+        #[cfg(not(test))]
+        let ip = req.peer_addr().expect("Address should always be available");
 
         let (ip, final_octet) = match ip {
             SocketAddr::V4(ip) => {
@@ -244,7 +251,7 @@ mod tests {
     use tokio::time::sleep;
 
     #[actix_web::test]
-    async fn test_limiter() {
+    async fn test_limiter_ipv4() {
         let limiter = Limiter::new(2, Duration::from_millis(5), Duration::from_millis(8));
 
         let app =
@@ -325,6 +332,114 @@ mod tests {
         assert!(res.is_ok());
 
         let req = test::TestRequest::default().to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err());
+    }
+
+    #[actix_web::test]
+    async fn test_limiter_ipv6() {
+        let limiter = Limiter::new(2, Duration::from_millis(5), Duration::from_millis(8));
+
+        let app =
+            test::init_service(App::new().wrap(limiter).service(
+                web::resource("/").to(|| async { HttpResponse::Ok().body("Hello world") }),
+            ))
+            .await;
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err());
+
+        // Other IPs should still be able to make requests
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "e2bc:2381:8996:c56a:892f:dd59:c64e:0041"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        sleep(Duration::from_millis(5)).await;
+
+        // Period has expired, so we should be able to make another request
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err());
+
+        sleep(Duration::from_millis(2)).await;
+
+        // Period has not expired
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err());
+
+        // Make a request from a new IP a write is triggered, which will check if the table
+        // needs to be cleared (which it does). The last 4 bits of the IP must equal
+        // the last four bits of the blocked IP (b24c:089b:7a21:1aff:2d32:dec2:867d:563c) to
+        // get the same table.
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "0e43:c469:88fd:9ee4:43b9:8d21:616a:0989"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err());
+
+        // This request should trigger the clear
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "785a:ae4f:4d1a:d3be:a8bf:e109:6355:6adc"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        // Table has been cleared, so we should be able to make another request
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
     }
