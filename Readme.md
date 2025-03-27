@@ -497,8 +497,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
   - While it is technically possible for us to capture which budgets a user has access to, it is *not* possible for us to decrypt details about a budget or its entries. Those details are encrypted with a key that is only accessible with a user's password, which never leaves the user's device(s), not even during authentication.
 * To prevent revealing which email addresses use our service in the endpoint for obtaining the auth string hashing parameters, we return phony data when a user is not found. This phony data needs to change infrequently to adequately mimic a user's nonce. This is done by seeding a random number generator with the number of days since the unix epoch and then hashing the random number with the email address from the request. The nonce is a masked-off portion of the hash. To prevent timing attacks, this hashing takes place with every request to this endpoint regardless of whether or not it will be used.
 
+
 ### Minimum Viable Product
 
+* Replace "user_backup_codes." Hash recovery key on client and send to server using same params and salt as password. Server should rehash it again for storage. Recovery key decrypts data and authenticates (different salt for decryption and authentication). Must send new password (and encrypted encryption key) when authenticating with recovery key). Recovery key should be 32 capital alphanumeric chars (e.g. WJAZ-Y0G1-B1H8-Q58Z-Q9BX-NYFK-6OUN-3ETT).
+* Recover account without recovery key (fresh start as user cannot access data)
+* Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * Update readme documentation
   - Add a section for the job scheduler
   - Explanation of encryption scheme and expected role of the client in the scheme
@@ -513,6 +517,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
+* Replace OsRng with the faster ChaCha12
 * Description of EE2E scheme
 * Get rid of created_timestamp on users table and use the UUIdv7 instead
   - The one place the timestamp matters is when clearing unverified users. Use the timestamp in the UUIDv7 to filter these
