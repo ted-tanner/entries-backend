@@ -54,9 +54,9 @@ mod tests {
     use entries_common::db::user;
     use entries_common::messages::NewUser;
     use entries_common::schema::users;
+    use entries_common::threadrand::SecureRng;
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-    use rand::Rng;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let user_no_exp_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_no_exp_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user_no_exp = NewUser {
@@ -94,9 +94,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -129,7 +129,7 @@ mod tests {
             )
             .unwrap();
 
-        let user_verified_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_verified_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user_verified = NewUser {
@@ -159,9 +159,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_verified_id = user_dao
@@ -198,7 +198,7 @@ mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let user_exp_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_exp_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user_exp = NewUser {
@@ -228,9 +228,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_exp_id = user_dao

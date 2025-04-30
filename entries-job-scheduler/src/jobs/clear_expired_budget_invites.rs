@@ -52,9 +52,9 @@ mod tests {
     use entries_common::schema::budget_accept_keys;
     use entries_common::schema::budget_share_invites;
     use entries_common::schema::budgets;
+    use entries_common::threadrand::SecureRng;
 
     use diesel::{QueryDsl, RunQueryDsl};
-    use rand::Rng;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -62,7 +62,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
@@ -92,9 +92,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -131,7 +131,7 @@ mod tests {
         let new_budget = NewBudget {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 

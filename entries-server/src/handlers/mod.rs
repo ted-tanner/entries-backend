@@ -462,6 +462,7 @@ pub mod test_utils {
     use entries_common::schema::budgets::dsl::budgets;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
     use actix_protobuf::ProtoBufConfig;
@@ -480,7 +481,6 @@ pub mod test_utils {
     use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
     use prost::Message;
-    use rand::Rng;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
@@ -489,7 +489,7 @@ pub mod test_utils {
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
         (0..count)
-            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .map(|_| SecureRng::next_u8())
             .collect()
     }
 
@@ -526,7 +526,7 @@ pub mod test_utils {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
@@ -556,9 +556,9 @@ pub mod test_utils {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -628,12 +628,12 @@ pub mod test_utils {
         )
         .await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: Vec::new(),
             user_public_budget_key: Vec::from(public_key),
         };
@@ -780,7 +780,7 @@ pub mod test_utils {
         token.extend_from_slice(&signature);
         let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_private_key = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,

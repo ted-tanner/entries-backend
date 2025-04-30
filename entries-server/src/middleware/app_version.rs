@@ -49,15 +49,16 @@ mod tests {
 
     use actix_web::dev::Payload;
     use actix_web::test::TestRequest;
-    use rand::{thread_rng, Rng};
+
+    use entries_common::threadrand::SecureRng;
 
     #[actix_web::test]
     async fn test_app_version_required() {
         let app_version = format!(
             "{}.{}.{}",
-            thread_rng().gen::<u8>(),
-            thread_rng().gen::<u8>(),
-            thread_rng().gen::<u8>(),
+            SecureRng::next_u8(),
+            SecureRng::next_u8(),
+            SecureRng::next_u8(),
         );
 
         let req = TestRequest::default()

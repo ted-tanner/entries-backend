@@ -140,12 +140,12 @@ pub async fn create(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.hash_salt_length)
-            .hash_length(env::CONF.hash_length)
-            .iterations(env::CONF.hash_iterations)
-            .memory_cost_kib(env::CONF.hash_mem_cost_kib)
-            .threads(env::CONF.hash_threads)
-            .secret((&env::CONF.hashing_key).into())
+            .salt_length(env::CONF.auth_string_salt_length)
+            .hash_length(env::CONF.auth_string_length)
+            .iterations(env::CONF.auth_string_iterations)
+            .memory_cost_kib(env::CONF.auth_string_mem_cost_kib)
+            .threads(env::CONF.auth_string_threads)
+            .secret(&env::CONF.auth_string_hash_key)
             .hash(&user_data_ref.auth_string);
 
         let hash = match hash_result {
@@ -485,11 +485,11 @@ pub async fn change_password(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.hash_salt_length)
-            .hash_length(env::CONF.hash_length)
-            .iterations(env::CONF.hash_iterations)
-            .memory_cost_kib(env::CONF.hash_mem_cost_kib)
-            .threads(env::CONF.hash_threads)
+            .salt_length(env::CONF.auth_string_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
             .secret((&env::CONF.hashing_key).into())
             .hash(&new_password_data_ref.new_auth_string);
 
@@ -885,6 +885,7 @@ pub mod tests {
     use entries_common::schema::user_preferences::dsl::user_preferences;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::budget_access_token::BudgetAccessTokenClaims;
 
     use actix_protobuf::ProtoBufConfig;
@@ -899,7 +900,6 @@ pub mod tests {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
     use prost::Message;
-    use rand::Rng;
     use std::str::FromStr;
     use uuid::Uuid;
 
@@ -949,7 +949,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
         let public_key_id = Uuid::now_v7();
 
         let new_user = NewUser {
@@ -979,9 +979,9 @@ pub mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1062,7 +1062,7 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(hash_len, env::CONF.hash_length);
+        assert_eq!(hash_len, env::CONF.auth_string_hash_iterations);
 
         let salt_start_pos = user.auth_string_hash[..(hash_start_pos - 1)]
             .rfind('$')
@@ -1076,18 +1076,18 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(salt_len, env::CONF.hash_salt_length);
+        assert_eq!(salt_len, env::CONF.auth_string_hash_salt_length);
 
         assert!(user.auth_string_hash.contains("argon2id"));
         assert!(user
             .auth_string_hash
-            .contains(&format!("m={}", env::CONF.hash_mem_cost_kib)));
+            .contains(&format!("m={}", env::CONF.auth_string_hash_mem_cost_kib)));
         assert!(user
             .auth_string_hash
-            .contains(&format!("t={}", env::CONF.hash_iterations)));
+            .contains(&format!("t={}", env::CONF.auth_string_hash_iterations)));
         assert!(user
             .auth_string_hash
-            .contains(&format!("p={}", env::CONF.hash_threads)));
+            .contains(&format!("p={}", env::CONF.auth_string_hash_threads)));
 
         // Get backup codes from response
         let codes = resp_body.backup_codes;
@@ -1158,7 +1158,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
 
@@ -1189,9 +1189,9 @@ pub mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let mut temp = new_user.clone();
@@ -1352,7 +1352,7 @@ pub mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
@@ -1382,9 +1382,9 @@ pub mod tests {
             public_key: vec![8; 10],
 
             preferences_encrypted: vec![8; 10],
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: vec![8; 10],
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1576,12 +1576,12 @@ pub mod tests {
         let (user, access_token, preferences_version_nonce, _) = test_utils::create_user().await;
 
         let updated_prefs_blob: Vec<_> = (0..32)
-            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .map(|_| SecureRng::next_u8())
             .collect();
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob.clone(),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: preferences_version_nonce.wrapping_add(1),
         };
 
@@ -1614,7 +1614,7 @@ pub mod tests {
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob,
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: preferences_version_nonce,
         };
 
@@ -1659,7 +1659,7 @@ pub mod tests {
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_user_preferences_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: preferences_version_nonce,
         };
 
@@ -1693,12 +1693,12 @@ pub mod tests {
         let (user, access_token, _, keystore_version_nonce) = test_utils::create_user().await;
 
         let updated_keystore_blob: Vec<_> = (0..32)
-            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
+            .map(|_| SecureRng::next_u8())
             .collect();
 
         let updated_keystore = EncryptedBlobUpdate {
             encrypted_blob: updated_keystore_blob.clone(),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: keystore_version_nonce.wrapping_add(1),
         };
 
@@ -1734,7 +1734,7 @@ pub mod tests {
 
         let updated_keystore = EncryptedBlobUpdate {
             encrypted_blob: updated_keystore_blob,
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: keystore_version_nonce,
         };
 
@@ -1782,7 +1782,7 @@ pub mod tests {
 
         let updated_keystore = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_keystore_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: keystore_version_nonce,
         };
 
@@ -1983,7 +1983,7 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(hash_len, env::CONF.hash_length);
+        assert_eq!(hash_len, env::CONF.auth_string_hash_length);
 
         let salt_start_pos = stored_user.auth_string_hash[..(hash_start_pos - 1)]
             .rfind('$')
@@ -1997,18 +1997,18 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(salt_len, env::CONF.hash_salt_length);
+        assert_eq!(salt_len, env::CONF.auth_string_hash_salt_length);
 
         assert!(stored_user.auth_string_hash.contains("argon2id"));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("m={}", env::CONF.hash_mem_cost_kib)));
+            .contains(&format!("m={}", env::CONF.auth_string_hash_mem_cost_kib)));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("t={}", env::CONF.hash_iterations)));
+            .contains(&format!("t={}", env::CONF.auth_string_hash_iterations)));
         assert!(stored_user
             .auth_string_hash
-            .contains(&format!("p={}", env::CONF.hash_threads)));
+            .contains(&format!("p={}", env::CONF.auth_string_hash_threads)));
     }
 
     #[actix_web::test]
@@ -2579,9 +2579,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
-            entry_version_nonce: rand::thread_rng().gen(),
+            entry_version_nonce: SecureRng::next_i64(),
             category_encrypted_blob: gen_bytes(14),
-            category_version_nonce: rand::thread_rng().gen(),
+            category_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()

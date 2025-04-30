@@ -1,12 +1,13 @@
 use rand::distributions::Alphanumeric;
-use rand::rngs::OsRng;
 use rand::Rng;
+
+use crate::threadrand::SecureRng;
 
 pub struct Otp {}
 
 impl Otp {
     pub fn generate(length: usize) -> String {
-        OsRng
+        SecureRng
             .sample_iter(&Alphanumeric)
             .take(length)
             .map(|c| char::from(c).to_ascii_uppercase())

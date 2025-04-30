@@ -56,7 +56,7 @@ mod tests {
         };
         let claims = serde_json::to_vec(&claims).unwrap();
 
-        let keypair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let keypair = ed25519::SigningKey::generate(&mut crate::threadrand::SecureRng);
         let pub_key = keypair.verifying_key().to_bytes();
 
         let mut token_unencoded = claims.clone();

@@ -10,5 +10,6 @@ pub mod messages;
 pub mod models;
 pub mod otp;
 pub mod schema;
+pub mod threadrand;
 pub mod token;
 pub mod validators;

@@ -50,9 +50,9 @@ mod tests {
     use entries_common::schema::blacklisted_tokens::dsl::blacklisted_tokens;
     use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
     use entries_common::token::Token;
+    use entries_common::threadrand::SecureRng;
 
     use diesel::{dsl, RunQueryDsl};
-    use rand::Rng;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -61,7 +61,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_execute() {
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
@@ -91,9 +91,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);

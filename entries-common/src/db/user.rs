@@ -1,5 +1,4 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -12,6 +11,7 @@ use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionR
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
+use crate::threadrand::SecureRng;
 
 use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
@@ -128,7 +128,7 @@ impl Dao {
 
         let new_signin_nonce = NewSigninNonce {
             user_email: &email_lowercase,
-            nonce: OsRng.gen(),
+            nonce: SecureRng::next_i32(),
         };
 
         let backup_codes = backup_codes

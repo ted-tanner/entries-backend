@@ -83,9 +83,9 @@ mod tests {
         user_keystores, user_preferences,
     };
     use entries_common::{db::user, schema::user_deletion_requests};
+    use entries_common::threadrand::SecureRng;
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-    use rand::Rng;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user1_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user1 = NewUser {
@@ -123,9 +123,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -159,7 +159,7 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user1_id).unwrap();
 
-        let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user2_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user2 = NewUser {
@@ -189,9 +189,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user2_id = user_dao
@@ -226,7 +226,7 @@ mod tests {
         let new_budget1 = NewBudget {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
@@ -238,7 +238,7 @@ mod tests {
         let new_budget2 = NewBudget {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
@@ -252,9 +252,9 @@ mod tests {
         let out = budget_dao
             .create_entry_and_category(
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 new_budget1.id,
             )
             .unwrap();
@@ -265,9 +265,9 @@ mod tests {
         let out = budget_dao
             .create_entry_and_category(
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 new_budget2.id,
             )
             .unwrap();

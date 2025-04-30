@@ -5,13 +5,14 @@ use entries_common::messages::{
 };
 use entries_common::messages::{Otp as OtpMessage, TokenPair};
 use entries_common::otp::Otp;
+use entries_common::threadrand::SecureRng;
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
+use rand::{RngCore, SeedableRng};
+use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,9 +34,9 @@ pub async fn obtain_nonce_and_auth_string_params(
         .unwrap()
         .as_secs()
         / 86400;
-    let mut rng = ChaCha20Rng::seed_from_u64(unix_day);
+    let mut rng = seed_chacha12rng_from_u64(unix_day);
 
-    let random: u64 = rng.gen();
+    let random: u64 = rng.next_u64();
 
     let mut hasher = Sha256::new();
     hasher.update(email.email.as_bytes());
@@ -48,11 +49,12 @@ pub async fn obtain_nonce_and_auth_string_params(
     let phony_nonce =
         unsafe { i32::from_be_bytes(hash.get_unchecked(16..20).try_into().unwrap_unchecked()) };
 
+    // TODO: Use typical values for the app rather than the server values
     let phony_params = SigninNonceAndHashParams {
-        auth_string_salt: phony_salt,
-        auth_string_memory_cost_kib: 125000,
-        auth_string_parallelism_factor: 2,
-        auth_string_iters: 18,
+        auth_string_hash_salt: phony_salt,
+        auth_string_hash_mem_cost_kib: env::CONF.auth_string_hash_mem_cost_kib as _,
+        auth_string_hash_threads: env::CONF.auth_string_hash_threads as _,
+        auth_string_hash_iterations: env::CONF.auth_string_hash_iterations as _,
         nonce: phony_nonce,
     };
 
@@ -75,6 +77,16 @@ pub async fn obtain_nonce_and_auth_string_params(
     };
 
     Ok(HttpResponse::Ok().protobuf(real_params)?)
+}
+
+// TODO: This function is needed until ed25519-dalek moves to rand 0.9, at which point entries_common
+//       and entries_server can be updated to use rand 0.9 and rand_chacha can be updated to 0.9 that
+//       has seed_from_u64()
+fn seed_chacha12rng_from_u64(unix_day: u64) -> ChaCha12Rng {
+    let seed = unix_day.to_le_bytes();
+    let mut full_seed = [0u8; 32];
+    full_seed[..8].copy_from_slice(&seed);
+    ChaCha12Rng::from_seed(full_seed)
 }
 
 pub async fn sign_in(
@@ -582,7 +594,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let auth_string = argon2_kdf::Hasher::new()
             .iterations(2)
@@ -619,9 +631,9 @@ mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -767,7 +779,7 @@ mod tests {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let auth_string = argon2_kdf::Hasher::new()
             .iterations(2)
@@ -804,9 +816,9 @@ mod tests {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
