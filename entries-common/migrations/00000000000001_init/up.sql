@@ -29,18 +29,16 @@ CREATE TABLE users (
     encryption_key_encrypted_with_password BYTEA NOT NULL,
     encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
 
-    CONSTRAINT chk_email_length CHECK (char_length(email) <= 192),
-    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 256)
+    CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
+    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 128)
 );
-
-CREATE INDEX ON users(email);
 
 CREATE TABLE blacklisted_tokens (
     token_signature BYTEA PRIMARY KEY,
     token_expiration TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON blacklisted_tokens(token_signature);
+CREATE INDEX idx_blacklisted_tokens_token_signature ON blacklisted_tokens(token_signature);
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
@@ -65,11 +63,11 @@ CREATE TABLE budget_accept_keys (
     read_only BOOLEAN NOT NULL,
 
     PRIMARY KEY (key_id, budget_id),
-    CONSTRAINT budget_accept_keys_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
+    CONSTRAINT fk_budget_accept_keys_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_accept_keys(budget_id);
-CREATE INDEX ON budget_accept_keys(key_id);
+CREATE INDEX idx_budget_accept_keys_budget_id ON budget_accept_keys(budget_id);
+CREATE INDEX idx_budget_accept_keys_key_id ON budget_accept_keys(key_id);
 
 CREATE TABLE budget_access_keys (
     key_id UUID UNIQUE NOT NULL,
@@ -78,10 +76,10 @@ CREATE TABLE budget_access_keys (
     read_only BOOLEAN NOT NULL,
 
     PRIMARY KEY (key_id, budget_id),
-    CONSTRAINT budget_access_keys_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
+    CONSTRAINT fk_budget_access_keys_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_access_keys(budget_id);
+CREATE INDEX idx_budget_access_keys_budget_id ON budget_access_keys(budget_id);
 
 CREATE TABLE budget_share_invites (
     id UUID PRIMARY KEY,
@@ -129,11 +127,11 @@ CREATE TABLE budget_share_invites (
     -- able to associate them with the expiration time of a budget_share_key
     created_unix_timestamp_intdiv_five_million SMALLINT NOT NULL,
 
-    CONSTRAINT budget_share_invites_recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE,
+    CONSTRAINT fk_budget_share_invites_recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_recipient_user_email_length CHECK (char_length(recipient_user_email) <= 255)
 );
 
-CREATE INDEX ON budget_share_invites(recipient_user_email);
+CREATE INDEX idx_budget_share_invites_recipient_user_email ON budget_share_invites(recipient_user_email);
 
 CREATE TABLE categories (
     id UUID PRIMARY KEY,
@@ -144,10 +142,10 @@ CREATE TABLE categories (
 
     modified_timestamp TIMESTAMP NOT NULL,
 
-    CONSTRAINT categories_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
+    CONSTRAINT fk_categories_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON categories(budget_id);
+CREATE INDEX idx_categories_budget_id ON categories(budget_id);
 
 CREATE TABLE entries (
     id UUID PRIMARY KEY,
@@ -160,12 +158,12 @@ CREATE TABLE entries (
 
     modified_timestamp TIMESTAMP NOT NULL,
 
-    CONSTRAINT entries_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
-    CONSTRAINT entries_category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
+    CONSTRAINT fk_entries_budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_entries_category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
-CREATE INDEX ON entries(budget_id);
-CREATE INDEX ON entries(category_id);
+CREATE INDEX idx_entries_budget_id ON entries(budget_id);
+CREATE INDEX idx_entries_category_id ON entries(category_id);
 
 CREATE TABLE job_registry (
     job_name TEXT PRIMARY KEY,
@@ -176,11 +174,11 @@ CREATE TABLE signin_nonces (
     user_email TEXT PRIMARY KEY,
     nonce INT NOT NULL,
 
-    CONSTRAINT signin_nonces_user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE,
+    CONSTRAINT fk_signin_nonces_user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
-CREATE INDEX ON signin_nonces(user_email);
+CREATE INDEX idx_signin_nonces_user_email ON signin_nonces(user_email);
 
 CREATE TABLE user_backup_codes (
     user_id UUID NOT NULL,
@@ -188,19 +186,19 @@ CREATE TABLE user_backup_codes (
 
     PRIMARY KEY (user_id, code),
 
-    CONSTRAINT user_backup_codes_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_backup_codes_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_backup_codes(user_id);
+CREATE INDEX idx_user_backup_codes_user_id ON user_backup_codes(user_id);
 
 CREATE TABLE user_deletion_requests (
     user_id UUID PRIMARY KEY,
     ready_for_deletion_time TIMESTAMP NOT NULL,
 
-    CONSTRAINT user_deletion_requests_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_deletion_requests_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_deletion_requests(user_id);
+CREATE INDEX idx_user_deletion_requests_user_id ON user_deletion_requests(user_id);
 
 CREATE TABLE user_deletion_request_budget_keys (
     key_id UUID PRIMARY KEY,
@@ -213,40 +211,40 @@ CREATE TABLE user_deletion_request_budget_keys (
     -- This record should be deleted after this time
     delete_me_time TIMESTAMP NOT NULL,
 
-    CONSTRAINT user_deletion_request_budget_keys_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT user_deletion_request_budget_keys_key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE
+    CONSTRAINT fk_user_deletion_request_budget_keys_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_deletion_request_budget_keys_key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_deletion_request_budget_keys (user_id);
-CREATE INDEX ON user_deletion_request_budget_keys (delete_me_time);
+CREATE INDEX idx_user_deletion_request_budget_keys_user_id ON user_deletion_request_budget_keys(user_id);
+CREATE INDEX idx_user_deletion_request_budget_keys_delete_me_time ON user_deletion_request_budget_keys(delete_me_time);
 
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    CONSTRAINT user_keystores_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_keystores_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_keystores(user_id);
+CREATE INDEX idx_user_keystores_user_id ON user_keystores(user_id);
 
 CREATE TABLE user_otps (
     user_email TEXT PRIMARY KEY,
     otp CHAR(8) NOT NULL,
     expiration TIMESTAMP NOT NULL,
 
-    CONSTRAINT user_otps_user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE,
+    CONSTRAINT fk_user_otps_user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
-CREATE INDEX ON user_otps(user_email, otp);
+CREATE INDEX idx_user_otps_user_email_and_otp ON user_otps(user_email, otp);
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    CONSTRAINT user_preferences_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_preferences_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_preferences(user_id);
+CREATE INDEX idx_user_preferences_user_id ON user_preferences(user_id);
