@@ -156,7 +156,9 @@ pub async fn create(
             }
         };
 
-        sender.send(Ok(hash)).expect("Sending to channel failed");
+        sender
+            .send(Ok(hash.to_string()))
+            .expect("Sending to channel failed");
     });
 
     let auth_string_hash = match receiver.await? {
@@ -180,7 +182,7 @@ pub async fn create(
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.create_user(
             &user_data_ref.email,
-            &auth_string_hash.to_string(),
+            &auth_string_hash,
             &user_data_ref.auth_string_hash_salt,
             user_data_ref.auth_string_hash_mem_cost_kib,
             user_data_ref.auth_string_hash_threads,
@@ -501,7 +503,9 @@ pub async fn change_password(
             }
         };
 
-        sender.send(Ok(hash)).expect("Sending to channel failed");
+        sender
+            .send(Ok(hash.to_string()))
+            .expect("Sending to channel failed");
     });
 
     let auth_string_hash = match receiver.await? {
@@ -518,7 +522,7 @@ pub async fn change_password(
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_password(
             &new_password_data.user_email,
-            &auth_string_hash.to_string(),
+            &auth_string_hash,
             &new_password_data.auth_string_hash_salt,
             new_password_data.auth_string_hash_mem_cost_kib,
             new_password_data.auth_string_hash_threads,

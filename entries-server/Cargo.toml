@@ -8,7 +8,7 @@ edition.workspace = true
 entries_common = { path = "../entries-common" }
 actix-protobuf = "0.11.*"
 actix-web = "4.9.*"
-argon2-kdf = "1.5.*"
+argon2-kdf = "1.6.*"
 base64 = "0.22.*"
 diesel = { version = "2.2.*", features = ["postgres", "uuid", "r2d2"] }
 ed25519-dalek = { version = "2.1.*", features = ["rand_core"] }

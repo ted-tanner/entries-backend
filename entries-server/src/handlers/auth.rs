@@ -622,11 +622,12 @@ mod tests {
 
         let user_number = SecureRng::next_u128();
 
+        let password = format!("password{user_number}");
         let auth_string = argon2_kdf::Hasher::new()
             .iterations(2)
             .memory_cost_kib(128)
             .threads(1)
-            .hash(format!("password{user_number}").as_bytes())
+            .hash(password.as_bytes())
             .unwrap();
 
         let public_key_id = Uuid::now_v7();
@@ -807,11 +808,12 @@ mod tests {
 
         let user_number = SecureRng::next_u128();
 
+        let password = format!("password{user_number}");
         let auth_string = argon2_kdf::Hasher::new()
             .iterations(2)
             .memory_cost_kib(128)
             .threads(1)
-            .hash(format!("password{user_number}").as_bytes())
+            .hash(password.as_bytes())
             .unwrap();
 
         let public_key_id = Uuid::now_v7();
