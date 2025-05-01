@@ -1,4 +1,3 @@
-use entries_common::threadrand::SecureRng;
 use entries_common::token::{DecodedToken, Token, TokenError};
 
 use actix_web::dev::Payload;
@@ -57,6 +56,7 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::{
         budget_access_token::{BudgetAccessToken, BudgetAccessTokenClaims},
         budget_invite_sender_token::{BudgetInviteSenderToken, BudgetInviteSenderTokenClaims},

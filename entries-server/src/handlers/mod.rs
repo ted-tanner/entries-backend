@@ -160,7 +160,7 @@ pub mod verification {
             };
 
             let does_auth_string_match_hash =
-                hash.verify_with_secret(&auth_string, (&env::CONF.hashing_key).into());
+                hash.verify_with_secret(&auth_string, (&env::CONF.auth_string_hash_key).into());
 
             sender
                 .send(Ok(does_auth_string_match_hash))
@@ -488,9 +488,7 @@ pub mod test_utils {
     use crate::services::api::RouteLimiters;
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
-        (0..count)
-            .map(|_| SecureRng::next_u8())
-            .collect()
+        (0..count).map(|_| SecureRng::next_u8()).collect()
     }
 
     pub fn gen_budget_token(
@@ -534,20 +532,20 @@ pub mod test_utils {
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(10),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: gen_bytes(10),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),

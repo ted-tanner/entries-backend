@@ -1,5 +1,5 @@
-use rand::{CryptoRng, Rng, RngCore};
 use rand::rngs::OsRng;
+use rand::{CryptoRng, Rng, RngCore};
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 use std::cell::UnsafeCell;

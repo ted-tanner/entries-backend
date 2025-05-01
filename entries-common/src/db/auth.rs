@@ -238,7 +238,7 @@ impl Dao {
             .select((
                 user_fields::auth_string_hash_salt,
                 user_fields::auth_string_hash_mem_cost_kib,
-                user_fields::auth_string_hash_parallelism_factor,
+                user_fields::auth_string_hash_threads,
                 user_fields::auth_string_hash_iterations,
                 signin_nonce_fields::nonce.nullable(),
             ))

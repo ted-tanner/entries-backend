@@ -5,7 +5,6 @@ use entries_common::messages::{
 };
 use entries_common::messages::{Otp as OtpMessage, TokenPair};
 use entries_common::otp::Otp;
-use entries_common::threadrand::SecureRng;
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::validators::{self, Validity};
 
@@ -49,12 +48,11 @@ pub async fn obtain_nonce_and_auth_string_params(
     let phony_nonce =
         unsafe { i32::from_be_bytes(hash.get_unchecked(16..20).try_into().unwrap_unchecked()) };
 
-    // TODO: Use typical values for the app rather than the server values
     let phony_params = SigninNonceAndHashParams {
         auth_string_hash_salt: phony_salt,
-        auth_string_hash_mem_cost_kib: env::CONF.auth_string_hash_mem_cost_kib as _,
-        auth_string_hash_threads: env::CONF.auth_string_hash_threads as _,
-        auth_string_hash_iterations: env::CONF.auth_string_hash_iterations as _,
+        auth_string_hash_mem_cost_kib: env::CONF.client_auth_string_hash_mem_cost_kib as _,
+        auth_string_hash_threads: env::CONF.client_auth_string_hash_threads as _,
+        auth_string_hash_iterations: env::CONF.client_auth_string_hash_iterations as _,
         nonce: phony_nonce,
     };
 
@@ -464,6 +462,7 @@ mod tests {
     use entries_common::messages::{ErrorType, NewUser, ServerErrorResponse};
     use entries_common::models::user_otp::UserOtp;
     use entries_common::schema::{signin_nonces, user_otps, users};
+    use entries_common::threadrand::SecureRng;
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -497,10 +496,10 @@ mod tests {
 
         diesel::update(users::table.find(user.id))
             .set((
-                users::auth_string_salt.eq(&salt),
-                users::auth_string_memory_cost_kib.eq(10),
-                users::auth_string_parallelism_factor.eq(10),
-                users::auth_string_iters.eq(10),
+                users::auth_string_hash_salt.eq(&salt),
+                users::auth_string_hash_mem_cost_kib.eq(10),
+                users::auth_string_hash_threads.eq(10),
+                users::auth_string_hash_iterations.eq(10),
             ))
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
@@ -525,10 +524,10 @@ mod tests {
         let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
 
         assert_eq!(resp_body.nonce, nonce);
-        assert_eq!(resp_body.auth_string_salt, salt);
-        assert_eq!(resp_body.auth_string_memory_cost_kib, 10);
-        assert_eq!(resp_body.auth_string_parallelism_factor, 10);
-        assert_eq!(resp_body.auth_string_iters, 10);
+        assert_eq!(resp_body.auth_string_hash_salt, salt);
+        assert_eq!(resp_body.auth_string_hash_mem_cost_kib, 10);
+        assert_eq!(resp_body.auth_string_hash_threads, 10);
+        assert_eq!(resp_body.auth_string_hash_iterations, 10);
 
         // Fake user
         let req = TestRequest::get()
@@ -541,12 +540,21 @@ mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
 
-        let first_salt = resp_body.auth_string_salt.clone();
+        let first_salt = resp_body.auth_string_hash_salt.clone();
         let first_nonce = resp_body.nonce;
 
-        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
-        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
-        assert_eq!(resp_body.auth_string_iters, 18);
+        assert_eq!(
+            resp_body.auth_string_hash_mem_cost_kib,
+            env::CONF.client_auth_string_hash_mem_cost_kib
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_threads,
+            env::CONF.client_auth_string_hash_threads
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_iterations,
+            env::CONF.client_auth_string_hash_iterations
+        );
 
         // Should be the same nonce and salt, even for a fake user
         let req = TestRequest::get()
@@ -560,10 +568,19 @@ mod tests {
         let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
 
         assert_eq!(resp_body.nonce, first_nonce);
-        assert_eq!(resp_body.auth_string_salt, first_salt);
-        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
-        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
-        assert_eq!(resp_body.auth_string_iters, 18);
+        assert_eq!(resp_body.auth_string_hash_salt, first_salt);
+        assert_eq!(
+            resp_body.auth_string_hash_mem_cost_kib,
+            env::CONF.client_auth_string_hash_mem_cost_kib
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_threads,
+            env::CONF.client_auth_string_hash_threads
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_iterations,
+            env::CONF.client_auth_string_hash_iterations
+        );
 
         // Different fake email should have a different nonce and salt
         let req = TestRequest::get()
@@ -577,10 +594,19 @@ mod tests {
         let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
 
         assert_ne!(resp_body.nonce, first_nonce);
-        assert_ne!(resp_body.auth_string_salt, first_salt);
-        assert_eq!(resp_body.auth_string_memory_cost_kib, 125000);
-        assert_eq!(resp_body.auth_string_parallelism_factor, 2);
-        assert_eq!(resp_body.auth_string_iters, 18);
+        assert_ne!(resp_body.auth_string_hash_salt, first_salt);
+        assert_eq!(
+            resp_body.auth_string_hash_mem_cost_kib,
+            env::CONF.client_auth_string_hash_mem_cost_kib
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_threads,
+            env::CONF.client_auth_string_hash_threads
+        );
+        assert_eq!(
+            resp_body.auth_string_hash_iterations,
+            env::CONF.client_auth_string_hash_iterations
+        );
     }
 
     #[actix_web::test]
@@ -609,20 +635,20 @@ mod tests {
 
             auth_string: Vec::from(auth_string.as_bytes()),
 
-            auth_string_salt: Vec::from(auth_string.salt_bytes()),
-            auth_string_memory_cost_kib: 128,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -794,20 +820,20 @@ mod tests {
 
             auth_string: Vec::from(auth_string.as_bytes()),
 
-            auth_string_salt: Vec::from(auth_string.salt_bytes()),
-            auth_string_memory_cost_kib: 128,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),

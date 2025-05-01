@@ -41,6 +41,11 @@ const AUTH_STRING_HASH_MEM_COST_KIB_VAR: &str = "ENTRIES_AUTH_STRING_HASH_MEM_CO
 const AUTH_STRING_HASH_THREADS_VAR: &str = "ENTRIES_AUTH_STRING_HASH_THREADS";
 const AUTH_STRING_HASH_SALT_LENGTH_VAR: &str = "ENTRIES_AUTH_STRING_HASH_SALT_LENGTH";
 
+const CLIENT_AUTH_STRING_HASH_ITERATIONS_VAR: &str = "ENTRIES_CLIENT_AUTH_STRING_HASH_ITERATIONS";
+const CLIENT_AUTH_STRING_HASH_MEM_COST_KIB_VAR: &str =
+    "ENTRIES_CLIENT_AUTH_STRING_HASH_MEM_COST_KIB";
+const CLIENT_AUTH_STRING_HASH_THREADS_VAR: &str = "ENTRIES_CLIENT_AUTH_STRING_HASH_THREADS";
+
 const EMAIL_ENABLED_VAR: &str = "ENTRIES_EMAIL_ENABLED";
 const EMAIL_FROM_ADDR: &str = "ENTRIES_EMAIL_FROM_ADDR";
 const EMAIL_REPLY_TO_ADDR: &str = "ENTRIES_EMAIL_REPLY_TO_ADDR";
@@ -97,6 +102,10 @@ pub struct ConfigInner {
     pub auth_string_hash_mem_cost_kib: u32,
     pub auth_string_hash_threads: u32,
     pub auth_string_hash_salt_length: u32,
+
+    pub client_auth_string_hash_iterations: i32,
+    pub client_auth_string_hash_mem_cost_kib: i32,
+    pub client_auth_string_hash_threads: i32,
 
     pub email_enabled: bool,
     #[zeroize(skip)]
@@ -212,6 +221,12 @@ impl Config {
             auth_string_hash_mem_cost_kib: env_var(AUTH_STRING_HASH_MEM_COST_KIB_VAR)?,
             auth_string_hash_threads: env_var(AUTH_STRING_HASH_THREADS_VAR)?,
             auth_string_hash_salt_length: env_var(AUTH_STRING_HASH_SALT_LENGTH_VAR)?,
+
+            client_auth_string_hash_iterations: env_var(CLIENT_AUTH_STRING_HASH_ITERATIONS_VAR)?,
+            client_auth_string_hash_mem_cost_kib: env_var(
+                CLIENT_AUTH_STRING_HASH_MEM_COST_KIB_VAR,
+            )?,
+            client_auth_string_hash_threads: env_var(CLIENT_AUTH_STRING_HASH_THREADS_VAR)?,
 
             email_enabled: if cfg!(test) {
                 false

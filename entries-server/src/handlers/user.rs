@@ -82,19 +82,19 @@ pub async fn create(
         )));
     }
 
-    if user_data.auth_string_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string salt is too big",
         )));
     }
 
-    if user_data.password_encryption_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Password encryption salt is too big",
         )));
     }
 
-    if user_data.recovery_key_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.recovery_key_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key salt is too big",
         )));
@@ -140,12 +140,12 @@ pub async fn create(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.auth_string_salt_length)
-            .hash_length(env::CONF.auth_string_length)
-            .iterations(env::CONF.auth_string_iterations)
-            .memory_cost_kib(env::CONF.auth_string_mem_cost_kib)
-            .threads(env::CONF.auth_string_threads)
-            .secret(&env::CONF.auth_string_hash_key)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
             .hash(&user_data_ref.auth_string);
 
         let hash = match hash_result {
@@ -181,18 +181,18 @@ pub async fn create(
         user_dao.create_user(
             &user_data_ref.email,
             &auth_string_hash.to_string(),
-            &user_data_ref.auth_string_salt,
-            user_data_ref.auth_string_memory_cost_kib,
-            user_data_ref.auth_string_parallelism_factor,
-            user_data_ref.auth_string_iters,
-            &user_data_ref.password_encryption_salt,
-            user_data_ref.password_encryption_memory_cost_kib,
-            user_data_ref.password_encryption_parallelism_factor,
-            user_data_ref.password_encryption_iters,
-            &user_data_ref.recovery_key_salt,
-            user_data_ref.recovery_key_memory_cost_kib,
-            user_data_ref.recovery_key_parallelism_factor,
-            user_data_ref.recovery_key_iters,
+            &user_data_ref.auth_string_hash_salt,
+            user_data_ref.auth_string_hash_mem_cost_kib,
+            user_data_ref.auth_string_hash_threads,
+            user_data_ref.auth_string_hash_iterations,
+            &user_data_ref.password_encryption_key_salt,
+            user_data_ref.password_encryption_key_mem_cost_kib,
+            user_data_ref.password_encryption_key_threads,
+            user_data_ref.password_encryption_key_iterations,
+            &user_data_ref.recovery_key_hash_salt,
+            user_data_ref.recovery_key_hash_mem_cost_kib,
+            user_data_ref.recovery_key_hash_threads,
+            user_data_ref.recovery_key_hash_iterations,
             &user_data_ref.encryption_key_encrypted_with_password,
             &user_data_ref.encryption_key_encrypted_with_recovery_key,
             user_public_key_id,
@@ -452,13 +452,13 @@ pub async fn change_password(
         )));
     }
 
-    if new_password_data.auth_string_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string salt is too long",
         )));
     }
 
-    if new_password_data.password_encryption_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Password encryption salt is too long",
         )));
@@ -485,12 +485,12 @@ pub async fn change_password(
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
-            .salt_length(env::CONF.auth_string_salt_length)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
             .hash_length(env::CONF.auth_string_hash_length)
             .iterations(env::CONF.auth_string_hash_iterations)
             .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
             .threads(env::CONF.auth_string_hash_threads)
-            .secret((&env::CONF.hashing_key).into())
+            .secret((&env::CONF.auth_string_hash_key).into())
             .hash(&new_password_data_ref.new_auth_string);
 
         let hash = match hash_result {
@@ -519,14 +519,14 @@ pub async fn change_password(
         user_dao.update_password(
             &new_password_data.user_email,
             &auth_string_hash.to_string(),
-            &new_password_data.auth_string_salt,
-            new_password_data.auth_string_memory_cost_kib,
-            new_password_data.auth_string_parallelism_factor,
-            new_password_data.auth_string_iters,
-            &new_password_data.password_encryption_salt,
-            new_password_data.password_encryption_memory_cost_kib,
-            new_password_data.password_encryption_parallelism_factor,
-            new_password_data.password_encryption_iters,
+            &new_password_data.auth_string_hash_salt,
+            new_password_data.auth_string_hash_mem_cost_kib,
+            new_password_data.auth_string_hash_threads,
+            new_password_data.auth_string_hash_iterations,
+            &new_password_data.password_encryption_key_salt,
+            new_password_data.password_encryption_key_mem_cost_kib,
+            new_password_data.password_encryption_key_threads,
+            new_password_data.password_encryption_key_iterations,
             &new_password_data.encrypted_encryption_key,
         )
     })
@@ -543,7 +543,7 @@ pub async fn change_recovery_key(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    if new_recovery_key_data.recovery_key_salt.len() > env::CONF.max_encryption_key_size {
+    if new_recovery_key_data.recovery_key_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key salt is too long",
         )));
@@ -568,10 +568,10 @@ pub async fn change_recovery_key(
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_recovery_key(
             user_id,
-            &new_recovery_key_data.recovery_key_salt,
-            new_recovery_key_data.recovery_key_memory_cost_kib,
-            new_recovery_key_data.recovery_key_parallelism_factor,
-            new_recovery_key_data.recovery_key_iters,
+            &new_recovery_key_data.recovery_key_hash_salt,
+            new_recovery_key_data.recovery_key_hash_mem_cost_kib,
+            new_recovery_key_data.recovery_key_hash_threads,
+            new_recovery_key_data.recovery_key_hash_iterations,
             &new_recovery_key_data.encrypted_encryption_key,
         )
     })
@@ -957,20 +957,20 @@ pub mod tests {
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(10),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: gen_bytes(10),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -1002,42 +1002,48 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(user.email, new_user.email);
-        assert_eq!(user.auth_string_salt, new_user.auth_string_salt);
+        assert_eq!(user.auth_string_hash_salt, new_user.auth_string_hash_salt);
         assert_eq!(
-            user.auth_string_memory_cost_kib,
-            new_user.auth_string_memory_cost_kib
+            user.auth_string_hash_mem_cost_kib,
+            new_user.auth_string_hash_mem_cost_kib
         );
         assert_eq!(
-            user.auth_string_parallelism_factor,
-            new_user.auth_string_parallelism_factor
-        );
-        assert_eq!(user.auth_string_iters, new_user.auth_string_iters);
-        assert_eq!(
-            user.password_encryption_salt,
-            new_user.password_encryption_salt
+            user.auth_string_hash_threads,
+            new_user.auth_string_hash_threads
         );
         assert_eq!(
-            user.password_encryption_memory_cost_kib,
-            new_user.password_encryption_memory_cost_kib
+            user.auth_string_hash_iterations,
+            new_user.auth_string_hash_iterations
         );
         assert_eq!(
-            user.password_encryption_parallelism_factor,
-            new_user.password_encryption_parallelism_factor
+            user.password_encryption_key_salt,
+            new_user.password_encryption_key_salt
         );
         assert_eq!(
-            user.password_encryption_iters,
-            new_user.password_encryption_iters
-        );
-        assert_eq!(user.recovery_key_salt, new_user.recovery_key_salt);
-        assert_eq!(
-            user.recovery_key_memory_cost_kib,
-            new_user.recovery_key_memory_cost_kib
+            user.password_encryption_key_mem_cost_kib,
+            new_user.password_encryption_key_mem_cost_kib
         );
         assert_eq!(
-            user.recovery_key_parallelism_factor,
-            new_user.recovery_key_parallelism_factor
+            user.password_encryption_key_threads,
+            new_user.password_encryption_key_threads
         );
-        assert_eq!(user.recovery_key_iters, new_user.recovery_key_iters);
+        assert_eq!(
+            user.password_encryption_key_iterations,
+            new_user.password_encryption_key_iterations
+        );
+        assert_eq!(user.recovery_key_hash_salt, new_user.recovery_key_hash_salt);
+        assert_eq!(
+            user.recovery_key_hash_mem_cost_kib,
+            new_user.recovery_key_hash_mem_cost_kib
+        );
+        assert_eq!(
+            user.recovery_key_hash_threads,
+            new_user.recovery_key_hash_threads
+        );
+        assert_eq!(
+            user.recovery_key_hash_iterations,
+            new_user.recovery_key_hash_iterations
+        );
         assert_eq!(
             user.encryption_key_encrypted_with_password,
             new_user.encryption_key_encrypted_with_password
@@ -1051,7 +1057,10 @@ pub mod tests {
 
         assert!(argon2_kdf::Hash::from_str(&user.auth_string_hash)
             .unwrap()
-            .verify_with_secret(&new_user.auth_string, (&env::CONF.hashing_key).into()));
+            .verify_with_secret(
+                &new_user.auth_string,
+                (&env::CONF.auth_string_hash_key).into()
+            ));
 
         // Test password was hashed with correct params
         let hash_start_pos = user.auth_string_hash.rfind('$').unwrap() + 1;
@@ -1062,7 +1071,7 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        assert_eq!(hash_len, env::CONF.auth_string_hash_iterations);
+        assert_eq!(hash_len, env::CONF.auth_string_hash_length);
 
         let salt_start_pos = user.auth_string_hash[..(hash_start_pos - 1)]
             .rfind('$')
@@ -1167,20 +1176,20 @@ pub mod tests {
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(10),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: gen_bytes(10),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -1211,7 +1220,7 @@ pub mod tests {
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
         let mut temp = new_user.clone();
-        temp.auth_string_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        temp.auth_string_hash_salt = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
             .uri("/api/user")
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1227,7 +1236,7 @@ pub mod tests {
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
         let mut temp = new_user.clone();
-        temp.password_encryption_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        temp.password_encryption_key_salt = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
             .uri("/api/user")
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1243,7 +1252,7 @@ pub mod tests {
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
         let mut temp = new_user.clone();
-        temp.recovery_key_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        temp.recovery_key_hash_salt = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
             .uri("/api/user")
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1360,20 +1369,20 @@ pub mod tests {
 
             auth_string: vec![8; 10],
 
-            auth_string_salt: vec![8; 10],
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: vec![8; 10],
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: vec![8; 10],
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: vec![8; 10],
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: vec![8; 10],
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: vec![8; 10],
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: vec![8; 10],
             encryption_key_encrypted_with_recovery_key: vec![8; 10],
@@ -1575,9 +1584,7 @@ pub mod tests {
 
         let (user, access_token, preferences_version_nonce, _) = test_utils::create_user().await;
 
-        let updated_prefs_blob: Vec<_> = (0..32)
-            .map(|_| SecureRng::next_u8())
-            .collect();
+        let updated_prefs_blob: Vec<_> = (0..32).map(|_| SecureRng::next_u8()).collect();
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: updated_prefs_blob.clone(),
@@ -1692,9 +1699,7 @@ pub mod tests {
 
         let (user, access_token, _, keystore_version_nonce) = test_utils::create_user().await;
 
-        let updated_keystore_blob: Vec<_> = (0..32)
-            .map(|_| SecureRng::next_u8())
-            .collect();
+        let updated_keystore_blob: Vec<_> = (0..32).map(|_| SecureRng::next_u8()).collect();
 
         let updated_keystore = EncryptedBlobUpdate {
             encrypted_blob: updated_keystore_blob.clone(),
@@ -1829,8 +1834,8 @@ pub mod tests {
             .unwrap();
 
         let updated_auth_string: Vec<_> = gen_bytes(256);
-        let updated_auth_string_salt: Vec<_> = gen_bytes(16);
-        let updated_password_encryption_salt: Vec<_> = gen_bytes(16);
+        let updated_auth_string_hash_salt: Vec<_> = gen_bytes(16);
+        let updated_password_encryption_key_salt: Vec<_> = gen_bytes(16);
         let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
         let mut edit_password = AuthStringAndEncryptedPasswordUpdate {
@@ -1839,17 +1844,17 @@ pub mod tests {
 
             new_auth_string: updated_auth_string.clone(),
 
-            auth_string_salt: updated_auth_string_salt.clone(),
+            auth_string_hash_salt: updated_auth_string_hash_salt.clone(),
 
-            auth_string_memory_cost_kib: 11,
-            auth_string_parallelism_factor: 13,
-            auth_string_iters: 17,
+            auth_string_hash_mem_cost_kib: 11,
+            auth_string_hash_threads: 13,
+            auth_string_hash_iterations: 17,
 
-            password_encryption_salt: updated_password_encryption_salt.clone(),
+            password_encryption_key_salt: updated_password_encryption_key_salt.clone(),
 
-            password_encryption_memory_cost_kib: 13,
-            password_encryption_parallelism_factor: 17,
-            password_encryption_iters: 19,
+            password_encryption_key_mem_cost_kib: 13,
+            password_encryption_key_threads: 17,
+            password_encryption_key_iterations: 19,
 
             encrypted_encryption_key: updated_encrypted_encryption_key,
         };
@@ -1877,38 +1882,41 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                (&env::CONF.hashing_key).into()
+                (&env::CONF.auth_string_hash_key).into()
             ));
 
-        assert_ne!(stored_user.auth_string_salt, edit_password.auth_string_salt);
         assert_ne!(
-            stored_user.auth_string_memory_cost_kib,
-            edit_password.auth_string_memory_cost_kib
+            stored_user.auth_string_hash_salt,
+            edit_password.auth_string_hash_salt
         );
         assert_ne!(
-            stored_user.auth_string_parallelism_factor,
-            edit_password.auth_string_parallelism_factor
+            stored_user.auth_string_hash_mem_cost_kib,
+            edit_password.auth_string_hash_mem_cost_kib
         );
         assert_ne!(
-            stored_user.auth_string_iters,
-            edit_password.auth_string_iters
+            stored_user.auth_string_hash_threads,
+            edit_password.auth_string_hash_threads
+        );
+        assert_ne!(
+            stored_user.auth_string_hash_iterations,
+            edit_password.auth_string_hash_iterations
         );
 
         assert_ne!(
-            stored_user.password_encryption_salt,
-            edit_password.password_encryption_salt
+            stored_user.password_encryption_key_salt,
+            edit_password.password_encryption_key_salt
         );
         assert_ne!(
-            stored_user.password_encryption_memory_cost_kib,
-            edit_password.password_encryption_memory_cost_kib
+            stored_user.password_encryption_key_mem_cost_kib,
+            edit_password.password_encryption_key_mem_cost_kib
         );
         assert_ne!(
-            stored_user.password_encryption_parallelism_factor,
-            edit_password.password_encryption_parallelism_factor
+            stored_user.password_encryption_key_threads,
+            edit_password.password_encryption_key_threads
         );
         assert_ne!(
-            stored_user.password_encryption_iters,
-            edit_password.password_encryption_iters
+            stored_user.password_encryption_key_iterations,
+            edit_password.password_encryption_key_iterations
         );
 
         assert_ne!(
@@ -1936,38 +1944,41 @@ pub mod tests {
             .unwrap()
             .verify_with_secret(
                 &edit_password.new_auth_string,
-                (&env::CONF.hashing_key).into()
+                (&env::CONF.auth_string_hash_key).into()
             ));
 
-        assert_eq!(stored_user.auth_string_salt, edit_password.auth_string_salt);
         assert_eq!(
-            stored_user.auth_string_memory_cost_kib,
-            edit_password.auth_string_memory_cost_kib
+            stored_user.auth_string_hash_salt,
+            edit_password.auth_string_hash_salt
         );
         assert_eq!(
-            stored_user.auth_string_parallelism_factor,
-            edit_password.auth_string_parallelism_factor
+            stored_user.auth_string_hash_mem_cost_kib,
+            edit_password.auth_string_hash_mem_cost_kib
         );
         assert_eq!(
-            stored_user.auth_string_iters,
-            edit_password.auth_string_iters
+            stored_user.auth_string_hash_threads,
+            edit_password.auth_string_hash_threads
+        );
+        assert_eq!(
+            stored_user.auth_string_hash_iterations,
+            edit_password.auth_string_hash_iterations
         );
 
         assert_eq!(
-            stored_user.password_encryption_salt,
-            edit_password.password_encryption_salt
+            stored_user.password_encryption_key_salt,
+            edit_password.password_encryption_key_salt
         );
         assert_eq!(
-            stored_user.password_encryption_memory_cost_kib,
-            edit_password.password_encryption_memory_cost_kib
+            stored_user.password_encryption_key_mem_cost_kib,
+            edit_password.password_encryption_key_mem_cost_kib
         );
         assert_eq!(
-            stored_user.password_encryption_parallelism_factor,
-            edit_password.password_encryption_parallelism_factor
+            stored_user.password_encryption_key_threads,
+            edit_password.password_encryption_key_threads
         );
         assert_eq!(
-            stored_user.password_encryption_iters,
-            edit_password.password_encryption_iters
+            stored_user.password_encryption_key_iterations,
+            edit_password.password_encryption_key_iterations
         );
 
         assert_eq!(
@@ -2046,52 +2057,17 @@ pub mod tests {
 
             new_auth_string: vec![0; env::CONF.max_encryption_key_size + 1],
 
-            auth_string_salt: gen_bytes(16),
+            auth_string_hash_salt: gen_bytes(16),
 
-            auth_string_memory_cost_kib: 11,
-            auth_string_parallelism_factor: 13,
-            auth_string_iters: 17,
+            auth_string_hash_mem_cost_kib: 11,
+            auth_string_hash_threads: 13,
+            auth_string_hash_iterations: 17,
 
-            password_encryption_salt: gen_bytes(16),
+            password_encryption_key_salt: gen_bytes(16),
 
-            password_encryption_memory_cost_kib: 13,
-            password_encryption_parallelism_factor: 17,
-            password_encryption_iters: 19,
-
-            encrypted_encryption_key: gen_bytes(48),
-        };
-
-        let req = TestRequest::put()
-            .uri("/api/user/password")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(edit_password.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
-
-        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
-
-        let edit_password = AuthStringAndEncryptedPasswordUpdate {
-            user_email: user.email.clone(),
-            otp: otp.clone(),
-
-            new_auth_string: gen_bytes(32),
-
-            auth_string_salt: vec![0; env::CONF.max_encryption_key_size + 1],
-
-            auth_string_memory_cost_kib: 11,
-            auth_string_parallelism_factor: 13,
-            auth_string_iters: 17,
-
-            password_encryption_salt: gen_bytes(16),
-
-            password_encryption_memory_cost_kib: 13,
-            password_encryption_parallelism_factor: 17,
-            password_encryption_iters: 19,
+            password_encryption_key_mem_cost_kib: 13,
+            password_encryption_key_threads: 17,
+            password_encryption_key_iterations: 19,
 
             encrypted_encryption_key: gen_bytes(48),
         };
@@ -2116,17 +2092,17 @@ pub mod tests {
 
             new_auth_string: gen_bytes(32),
 
-            auth_string_salt: gen_bytes(16),
+            auth_string_hash_salt: vec![0; env::CONF.max_encryption_key_size + 1],
 
-            auth_string_memory_cost_kib: 11,
-            auth_string_parallelism_factor: 13,
-            auth_string_iters: 17,
+            auth_string_hash_mem_cost_kib: 11,
+            auth_string_hash_threads: 13,
+            auth_string_hash_iterations: 17,
 
-            password_encryption_salt: vec![0; env::CONF.max_encryption_key_size + 1],
+            password_encryption_key_salt: gen_bytes(16),
 
-            password_encryption_memory_cost_kib: 13,
-            password_encryption_parallelism_factor: 17,
-            password_encryption_iters: 19,
+            password_encryption_key_mem_cost_kib: 13,
+            password_encryption_key_threads: 17,
+            password_encryption_key_iterations: 19,
 
             encrypted_encryption_key: gen_bytes(48),
         };
@@ -2151,17 +2127,52 @@ pub mod tests {
 
             new_auth_string: gen_bytes(32),
 
-            auth_string_salt: gen_bytes(16),
+            auth_string_hash_salt: gen_bytes(16),
 
-            auth_string_memory_cost_kib: 11,
-            auth_string_parallelism_factor: 13,
-            auth_string_iters: 17,
+            auth_string_hash_mem_cost_kib: 11,
+            auth_string_hash_threads: 13,
+            auth_string_hash_iterations: 17,
 
-            password_encryption_salt: gen_bytes(16),
+            password_encryption_key_salt: vec![0; env::CONF.max_encryption_key_size + 1],
 
-            password_encryption_memory_cost_kib: 13,
-            password_encryption_parallelism_factor: 17,
-            password_encryption_iters: 19,
+            password_encryption_key_mem_cost_kib: 13,
+            password_encryption_key_threads: 17,
+            password_encryption_key_iterations: 19,
+
+            encrypted_encryption_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/password")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(edit_password.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let edit_password = AuthStringAndEncryptedPasswordUpdate {
+            user_email: user.email.clone(),
+            otp: otp.clone(),
+
+            new_auth_string: gen_bytes(32),
+
+            auth_string_hash_salt: gen_bytes(16),
+
+            auth_string_hash_mem_cost_kib: 11,
+            auth_string_hash_threads: 13,
+            auth_string_hash_iterations: 17,
+
+            password_encryption_key_salt: gen_bytes(16),
+
+            password_encryption_key_mem_cost_kib: 13,
+            password_encryption_key_threads: 17,
+            password_encryption_key_iterations: 19,
 
             encrypted_encryption_key: vec![0; env::CONF.max_encryption_key_size + 1],
         };
@@ -2207,17 +2218,17 @@ pub mod tests {
             .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let updated_recovery_key_salt: Vec<_> = gen_bytes(16);
+        let updated_recovery_key_hash_salt: Vec<_> = gen_bytes(16);
         let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
         let mut edit_recovery_key = RecoveryKeyUpdate {
             otp: String::from("ABCDEFGH"),
 
-            recovery_key_salt: updated_recovery_key_salt.clone(),
+            recovery_key_hash_salt: updated_recovery_key_hash_salt.clone(),
 
-            recovery_key_memory_cost_kib: 11,
-            recovery_key_parallelism_factor: 13,
-            recovery_key_iters: 17,
+            recovery_key_hash_mem_cost_kib: 11,
+            recovery_key_hash_threads: 13,
+            recovery_key_hash_iterations: 17,
 
             encrypted_encryption_key: updated_encrypted_encryption_key,
         };
@@ -2259,20 +2270,20 @@ pub mod tests {
             .unwrap();
 
         assert_ne!(
-            stored_user.recovery_key_salt,
-            edit_recovery_key.recovery_key_salt
+            stored_user.recovery_key_hash_salt,
+            edit_recovery_key.recovery_key_hash_salt
         );
         assert_ne!(
-            stored_user.recovery_key_memory_cost_kib,
-            edit_recovery_key.recovery_key_memory_cost_kib
+            stored_user.recovery_key_hash_mem_cost_kib,
+            edit_recovery_key.recovery_key_hash_mem_cost_kib
         );
         assert_ne!(
-            stored_user.recovery_key_parallelism_factor,
-            edit_recovery_key.recovery_key_parallelism_factor
+            stored_user.recovery_key_hash_threads,
+            edit_recovery_key.recovery_key_hash_threads
         );
         assert_ne!(
-            stored_user.recovery_key_iters,
-            edit_recovery_key.recovery_key_iters
+            stored_user.recovery_key_hash_iterations,
+            edit_recovery_key.recovery_key_hash_iterations
         );
         assert_ne!(
             stored_user.encryption_key_encrypted_with_recovery_key,
@@ -2295,20 +2306,20 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(
-            stored_user.recovery_key_salt,
-            edit_recovery_key.recovery_key_salt
+            stored_user.recovery_key_hash_salt,
+            edit_recovery_key.recovery_key_hash_salt
         );
         assert_eq!(
-            stored_user.recovery_key_memory_cost_kib,
-            edit_recovery_key.recovery_key_memory_cost_kib
+            stored_user.recovery_key_hash_mem_cost_kib,
+            edit_recovery_key.recovery_key_hash_mem_cost_kib
         );
         assert_eq!(
-            stored_user.recovery_key_parallelism_factor,
-            edit_recovery_key.recovery_key_parallelism_factor
+            stored_user.recovery_key_hash_threads,
+            edit_recovery_key.recovery_key_hash_threads
         );
         assert_eq!(
-            stored_user.recovery_key_iters,
-            edit_recovery_key.recovery_key_iters
+            stored_user.recovery_key_hash_iterations,
+            edit_recovery_key.recovery_key_hash_iterations
         );
         assert_eq!(
             stored_user.encryption_key_encrypted_with_recovery_key,
@@ -2346,11 +2357,11 @@ pub mod tests {
         let edit_recovery_key = RecoveryKeyUpdate {
             otp: otp.clone(),
 
-            recovery_key_salt: vec![0; env::CONF.max_encryption_key_size + 1],
+            recovery_key_hash_salt: vec![0; env::CONF.max_encryption_key_size + 1],
 
-            recovery_key_memory_cost_kib: 11,
-            recovery_key_parallelism_factor: 13,
-            recovery_key_iters: 17,
+            recovery_key_hash_mem_cost_kib: 11,
+            recovery_key_hash_threads: 13,
+            recovery_key_hash_iterations: 17,
 
             encrypted_encryption_key: gen_bytes(48),
         };
@@ -2373,11 +2384,11 @@ pub mod tests {
         let edit_recovery_key = RecoveryKeyUpdate {
             otp: otp.clone(),
 
-            recovery_key_salt: gen_bytes(16),
+            recovery_key_hash_salt: gen_bytes(16),
 
-            recovery_key_memory_cost_kib: 11,
-            recovery_key_parallelism_factor: 13,
-            recovery_key_iters: 17,
+            recovery_key_hash_mem_cost_kib: 11,
+            recovery_key_hash_threads: 13,
+            recovery_key_hash_iterations: 17,
 
             encrypted_encryption_key: vec![0; env::CONF.max_encryption_key_size + 1],
         };

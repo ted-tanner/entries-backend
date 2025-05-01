@@ -4,10 +4,10 @@ use entries_common::messages::{
     NewBudget, NewEncryptedBlob, PublicKey, UserInvitationToBudget,
 };
 use entries_common::models::budget_access_key::BudgetAccessKey;
+use entries_common::threadrand::SecureRng;
 use entries_common::token::budget_accept_token::BudgetAcceptToken;
 use entries_common::token::budget_access_token::BudgetAccessToken;
 use entries_common::token::budget_invite_sender_token::BudgetInviteSenderToken;
-use entries_common::threadrand::SecureRng;
 use entries_common::token::Token;
 use entries_common::validators::{self, Validity};
 use entries_common::{db, db::DaoError, db::DbThreadPool};
@@ -2066,7 +2066,7 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519::SigningKey::generate();
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
