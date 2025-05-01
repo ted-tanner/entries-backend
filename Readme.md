@@ -501,7 +501,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 ### Minimum Viable Product
 
 * Replace "user_backup_codes." Hash recovery key on client and send to server using same params and salt as password. Server should rehash it again for storage. Recovery key decrypts data and authenticates (different salt for decryption and authentication). Must send new password (and encrypted encryption key) when authenticating with recovery key). Recovery key should be 32 capital alphanumeric chars (e.g. WJAZ-Y0G1-B1H8-Q58Z-Q9BX-NYFK-6OUN-3ETT).
-* Recover account without recovery key (fresh start as user cannot access data)
 * Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * Update readme documentation
   - Add a section for the job scheduler
@@ -522,11 +521,10 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Replace OsRng with the faster ChaCha12
+* Recover account without recovery key (fresh start as user cannot access data)
 * Description of EE2E scheme
 * Get rid of created_timestamp on users table and use the UUIdv7 instead
   - The one place the timestamp matters is when clearing unverified users. Use the timestamp in the UUIDv7 to filter these
-* Inline foreign keys in `up.sql`
 * Make limiter configurable by endpoint
 * Remove OpenSSL (use Rust hmac, ed25519_dalek, sha1, etc instead)
   - Is there a good reason to do this?

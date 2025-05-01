@@ -1,21 +1,21 @@
 use rand::rngs::OsRng;
 use rand::{CryptoRng, Rng, RngCore};
 use rand_chacha::rand_core::SeedableRng;
-use rand_chacha::ChaCha12Rng;
+use rand_chacha::ChaCha20Rng;
 use std::cell::UnsafeCell;
 
 thread_local! {
     // TODO: Once ed25519_dalek is updated to use rand 0.9, we can update rand, rand_core,
     //       and rand_chacha dependencies to version 0.9 where we can use
-    //       ChaCha12Rng::from_os_rng() with the os_rng feature on the rand_chacha crate
-    // static RNG: UnsafeCell<ChaCha12Rng> = UnsafeCell::new(ChaCha12Rng::from_os_rng());
-    static RNG: UnsafeCell<ChaCha12Rng> = UnsafeCell::new(ChaCha12Rng::from_seed(OsRng.gen()));
+    //       ChaCha20Rng::from_os_rng() with the os_rng feature on the rand_chacha crate
+    // static RNG: UnsafeCell<ChaCha20Rng> = UnsafeCell::new(ChaCha20Rng::from_os_rng());
+    static RNG: UnsafeCell<ChaCha20Rng> = UnsafeCell::new(ChaCha20Rng::from_seed(OsRng.gen()));
 }
 
 pub struct SecureRng;
 
 impl SecureRng {
-    pub fn get_ref() -> &'static mut ChaCha12Rng {
+    pub fn get_ref() -> &'static mut ChaCha20Rng {
         unsafe { RNG.with(|rng| &mut *rng.get()) }
     }
 
@@ -85,7 +85,7 @@ impl SecureRng {
 // TODO: Once ed25519_dalek is updated to use rand 0.9, we can update rand, rand_core, and
 //       rand_chacha dependencies to version 0.9 where TryRngCore can be implemented
 // impl TryRngCore for SecureRng {
-//     type Error = <ChaCha12Rng as TryRngCore>::Error;
+//     type Error = <ChaCha20Rng as TryRngCore>::Error;
 
 //     #[inline]
 //     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
@@ -119,7 +119,7 @@ impl RngCore for SecureRng {
     }
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
-        // try_fill_bytes is infallible for ChaCha12Rng
+        // try_fill_bytes is infallible for ChaCha20Rng
         RNG.with(|rng| unsafe {
             let _ = (*rng.get()).try_fill_bytes(dest);
         });
