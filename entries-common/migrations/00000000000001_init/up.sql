@@ -30,7 +30,7 @@ CREATE TABLE users (
     encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
 
     CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
-    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 1024)
+    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 256)
 );
 
 CREATE INDEX ON users(email);
