@@ -1,9 +1,46 @@
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+
+    email TEXT UNIQUE NOT NULL,
+    is_verified BOOLEAN NOT NULL,
+
+    public_key_id UUID NOT NULL,
+    public_key BYTEA NOT NULL,
+
+    created_timestamp TIMESTAMP NOT NULL,
+
+    auth_string_hash TEXT NOT NULL,
+
+    auth_string_hash_salt BYTEA NOT NULL,
+    auth_string_hash_mem_cost_kib INT NOT NULL,
+    auth_string_hash_threads INT NOT NULL,
+    auth_string_hash_iterations INT NOT NULL,
+
+    password_encryption_key_salt BYTEA NOT NULL,
+    password_encryption_key_mem_cost_kib INT NOT NULL,
+    password_encryption_key_threads INT NOT NULL,
+    password_encryption_key_iterations INT NOT NULL,
+
+    recovery_key_hash_salt BYTEA NOT NULL,
+    recovery_key_hash_mem_cost_kib INT NOT NULL,
+    recovery_key_hash_threads INT NOT NULL,
+    recovery_key_hash_iterations INT NOT NULL,
+
+    encryption_key_encrypted_with_password BYTEA NOT NULL,
+    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
+
+    CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
+    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 1024)
+);
+
+CREATE INDEX ON users(email);
+
 CREATE TABLE blacklisted_tokens (
     token_signature BYTEA PRIMARY KEY,
     token_expiration TIMESTAMP NOT NULL
 );
 
-CREATE INDEX ON blacklisted_tokens USING HASH(token_signature);
+CREATE INDEX ON blacklisted_tokens(token_signature);
 
 CREATE TABLE budgets (
     id UUID PRIMARY KEY,
@@ -31,7 +68,8 @@ CREATE TABLE budget_accept_keys (
     CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_accept_keys (key_id);
+CREATE INDEX ON budget_accept_keys(budget_id);
+CREATE INDEX ON budget_accept_keys(key_id);
 
 CREATE TABLE budget_access_keys (
     key_id UUID UNIQUE NOT NULL,
@@ -43,7 +81,7 @@ CREATE TABLE budget_access_keys (
     CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON budget_access_keys (budget_id);
+CREATE INDEX ON budget_access_keys(budget_id);
 
 CREATE TABLE budget_share_invites (
     id UUID PRIMARY KEY,
@@ -91,10 +129,11 @@ CREATE TABLE budget_share_invites (
     -- able to associate them with the expiration time of a budget_share_key
     created_unix_timestamp_intdiv_five_million SMALLINT NOT NULL,
 
+    CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE,
     CONSTRAINT chk_recipient_user_email_length CHECK (char_length(recipient_user_email) <= 255)
 );
 
-CREATE INDEX ON budget_share_invites USING HASH(recipient_user_email);
+CREATE INDEX ON budget_share_invites(recipient_user_email);
 
 CREATE TABLE categories (
     id UUID PRIMARY KEY,
@@ -103,8 +142,12 @@ CREATE TABLE categories (
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    modified_timestamp TIMESTAMP NOT NULL
+    modified_timestamp TIMESTAMP NOT NULL,
+
+    CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE
 );
+
+CREATE INDEX ON categories(budget_id);
 
 CREATE TABLE entries (
     id UUID PRIMARY KEY,
@@ -115,8 +158,14 @@ CREATE TABLE entries (
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    modified_timestamp TIMESTAMP NOT NULL
+    modified_timestamp TIMESTAMP NOT NULL,
+
+    CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+    CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
+
+CREATE INDEX ON entries(budget_id);
+CREATE INDEX ON entries(category_id);
 
 CREATE TABLE job_registry (
     job_name TEXT PRIMARY KEY,
@@ -127,59 +176,31 @@ CREATE TABLE signin_nonces (
     user_email TEXT PRIMARY KEY,
     nonce INT NOT NULL,
 
+    CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE,
     CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
-CREATE TABLE users (
-    id UUID PRIMARY KEY,
-
-    email TEXT UNIQUE NOT NULL,
-    is_verified BOOLEAN NOT NULL,
-
-    public_key_id UUID NOT NULL,
-    public_key BYTEA NOT NULL,
-
-    created_timestamp TIMESTAMP NOT NULL,
-
-    auth_string_hash TEXT NOT NULL,
-
-    auth_string_hash_salt BYTEA NOT NULL,
-    auth_string_hash_mem_cost_kib INT NOT NULL,
-    auth_string_hash_threads INT NOT NULL,
-    auth_string_hash_iterations INT NOT NULL,
-
-    password_encryption_key_salt BYTEA NOT NULL,
-    password_encryption_key_mem_cost_kib INT NOT NULL,
-    password_encryption_key_threads INT NOT NULL,
-    password_encryption_key_iterations INT NOT NULL,
-
-    recovery_key_hash_salt BYTEA NOT NULL,
-    recovery_key_hash_mem_cost_kib INT NOT NULL,
-    recovery_key_hash_threads INT NOT NULL,
-    recovery_key_hash_iterations INT NOT NULL,
-
-    encryption_key_encrypted_with_password BYTEA NOT NULL,
-    encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
-
-    CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
-    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 1024)
-);
-
-CREATE INDEX ON users USING HASH(email);
+CREATE INDEX ON signin_nonces(user_email);
 
 CREATE TABLE user_backup_codes (
     user_id UUID NOT NULL,
     code CHAR(12) NOT NULL,
 
-    PRIMARY KEY (user_id, code)
+    PRIMARY KEY (user_id, code),
+
+    CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX ON user_backup_codes(user_id);
 
 CREATE TABLE user_deletion_requests (
     user_id UUID PRIMARY KEY,
-    ready_for_deletion_time TIMESTAMP NOT NULL
+    ready_for_deletion_time TIMESTAMP NOT NULL,
+
+    CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX ON user_deletion_requests (user_id);
+CREATE INDEX ON user_deletion_requests(user_id);
 
 CREATE TABLE user_deletion_request_budget_keys (
     key_id UUID PRIMARY KEY,
@@ -190,7 +211,10 @@ CREATE TABLE user_deletion_request_budget_keys (
     -- the user_deletion_requests table indirectly by joining on user_id for both tables.
     user_id UUID NOT NULL,
     -- This record should be deleted after this time
-    delete_me_time TIMESTAMP NOT NULL
+    delete_me_time TIMESTAMP NOT NULL,
+
+    CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE
 );
 
 CREATE INDEX ON user_deletion_request_budget_keys (user_id);
@@ -199,36 +223,30 @@ CREATE INDEX ON user_deletion_request_budget_keys (delete_me_time);
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    version_nonce BIGINT NOT NULL
+    version_nonce BIGINT NOT NULL,
+
+    CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX ON user_keystores(user_id);
 
 CREATE TABLE user_otps (
     user_email TEXT PRIMARY KEY,
     otp CHAR(8) NOT NULL,
     expiration TIMESTAMP NOT NULL,
 
+    CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE,
     CONSTRAINT chk_user_email_length CHECK (char_length(user_email) <= 255)
 );
 
-CREATE INDEX ON user_otps (user_email, otp);
+CREATE INDEX ON user_otps(user_email, otp);
 
 CREATE TABLE user_preferences (
     user_id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
-    version_nonce BIGINT NOT NULL
+    version_nonce BIGINT NOT NULL,
+
+    CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Foreign keys
-
-ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
-ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
-ALTER TABLE entries ADD CONSTRAINT category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL;
-ALTER TABLE signin_nonces ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
-ALTER TABLE user_deletion_requests ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_deletion_request_budget_keys ADD CONSTRAINT key_key FOREIGN KEY(key_id) REFERENCES budget_access_keys(key_id) ON DELETE CASCADE;
-ALTER TABLE user_keystores ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_otps ADD CONSTRAINT user_key FOREIGN KEY(user_email) REFERENCES users(email) ON DELETE CASCADE;
-ALTER TABLE user_preferences ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE user_backup_codes ADD CONSTRAINT user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE;
+CREATE INDEX ON user_preferences(user_id);

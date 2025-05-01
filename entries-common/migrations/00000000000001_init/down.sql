@@ -1,33 +1,21 @@
 -- This file should undo everything in `up.sql`
 
-ALTER TABLE budget_accept_keys DROP CONSTRAINT budget_key;
-ALTER TABLE budget_access_keys DROP CONSTRAINT budget_key;
-ALTER TABLE budget_share_invites DROP CONSTRAINT recipient_key;
-ALTER TABLE categories DROP CONSTRAINT budget_key;
-ALTER TABLE entries DROP CONSTRAINT budget_key;
-ALTER TABLE entries DROP CONSTRAINT category_key;
-ALTER TABLE signin_nonces DROP CONSTRAINT user_key;
-ALTER TABLE user_backup_codes DROP CONSTRAINT user_key;
-ALTER TABLE user_deletion_requests DROP CONSTRAINT user_key;
-ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT user_key;
-ALTER TABLE user_deletion_request_budget_keys DROP CONSTRAINT key_key;
-ALTER TABLE user_keystores DROP CONSTRAINT user_key;
-ALTER TABLE user_otps DROP CONSTRAINT user_key;
-ALTER TABLE user_preferences DROP CONSTRAINT user_key;
+DROP TABLE IF EXISTS budget_accept_keys CASCADE;
+DROP TABLE IF EXISTS budget_access_keys CASCADE;
+DROP TABLE IF EXISTS budget_share_invites CASCADE;
+DROP TABLE IF EXISTS categories CASCADE;
+DROP TABLE IF EXISTS entries CASCADE;
 
-DROP TABLE blacklisted_tokens;
-DROP TABLE budgets;
-DROP TABLE budget_accept_keys;
-DROP TABLE budget_access_keys;
-DROP TABLE budget_share_invites;
-DROP TABLE categories;
-DROP TABLE entries;
-DROP TABLE job_registry;
-DROP TABLE signin_nonces;
-DROP TABLE users;
-DROP TABLE user_backup_codes;
-DROP TABLE user_deletion_requests;
-DROP TABLE user_deletion_request_budget_keys;
-DROP TABLE user_keystores;
-DROP TABLE user_otps;
-DROP TABLE user_preferences;
+DROP TABLE IF EXISTS signin_nonces CASCADE;
+DROP TABLE IF EXISTS user_backup_codes CASCADE;
+DROP TABLE IF EXISTS user_deletion_request_budget_keys CASCADE;
+DROP TABLE IF EXISTS user_deletion_requests CASCADE;
+DROP TABLE IF EXISTS user_keystores CASCADE;
+DROP TABLE IF EXISTS user_otps CASCADE;
+DROP TABLE IF EXISTS user_preferences CASCADE;
+
+DROP TABLE IF EXISTS users CASCADE;
+
+DROP TABLE IF EXISTS job_registry CASCADE;
+DROP TABLE IF EXISTS budgets CASCADE;
+DROP TABLE IF EXISTS blacklisted_tokens CASCADE;
