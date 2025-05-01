@@ -4,6 +4,7 @@ use entries_common::messages::{
     NewBudget, NewEncryptedBlob, PublicKey, UserInvitationToBudget,
 };
 use entries_common::models::budget_access_key::BudgetAccessKey;
+use entries_common::threadrand::SecureRng;
 use entries_common::token::budget_accept_token::BudgetAcceptToken;
 use entries_common::token::budget_access_token::BudgetAccessToken;
 use entries_common::token::budget_invite_sender_token::BudgetInviteSenderToken;
@@ -16,7 +17,6 @@ use actix_web::{web, HttpResponse};
 use ed25519_dalek as ed25519;
 use openssl::rsa::{Padding, Rsa};
 use prost::Message;
-use rand::rngs::OsRng;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -344,7 +344,7 @@ pub async fn invite_user(
     let (sender, receiver) = oneshot::channel();
 
     rayon::spawn(move || {
-        let accept_key_pair = ed25519::SigningKey::generate(&mut OsRng);
+        let accept_key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let accept_public_key = accept_key_pair.verifying_key().to_bytes();
         let accept_private_key = accept_key_pair.as_bytes();
 
@@ -1157,10 +1157,10 @@ pub mod tests {
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::budget_accept_token::BudgetAcceptTokenClaims;
     use entries_common::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
     use prost::Message;
-    use rand::Rng;
 
     use crate::env;
     use crate::handlers::test_utils::{self, gen_budget_token, gen_bytes};
@@ -1179,22 +1179,22 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![
                 CategoryWithTempId {
                     temp_id: 0,
                     encrypted_blob: gen_bytes(40),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
                 CategoryWithTempId {
                     temp_id: 1,
                     encrypted_blob: gen_bytes(60),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
             ],
             user_public_budget_key: public_key,
@@ -1280,7 +1280,7 @@ pub mod tests {
 
         let new_category = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1344,7 +1344,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(new_category_id.into()),
         };
 
@@ -1426,7 +1426,7 @@ pub mod tests {
 
         let new_entry2 = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: None,
         };
 
@@ -1492,9 +1492,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
-            entry_version_nonce: rand::thread_rng().gen(),
+            entry_version_nonce: SecureRng::next_i64(),
             category_encrypted_blob: gen_bytes(12),
-            category_version_nonce: rand::thread_rng().gen(),
+            category_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1588,17 +1588,17 @@ pub mod tests {
 
         let new_budget = NewBudget {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![
                 CategoryWithTempId {
                     temp_id: 0,
                     encrypted_blob: gen_bytes(40),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
                 CategoryWithTempId {
                     temp_id: 1,
                     encrypted_blob: gen_bytes(60),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
             ],
             user_public_budget_key: gen_bytes(40),
@@ -1621,17 +1621,17 @@ pub mod tests {
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![
                 CategoryWithTempId {
                     temp_id: 0,
                     encrypted_blob: gen_bytes(40),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
                 CategoryWithTempId {
                     temp_id: 1,
                     encrypted_blob: gen_bytes(60),
-                    version_nonce: rand::thread_rng().gen(),
+                    version_nonce: SecureRng::next_i64(),
                 },
             ],
             user_public_budget_key: vec![0; env::CONF.max_encryption_key_size + 1],
@@ -1667,16 +1667,16 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
-                version_nonce: rand::thread_rng().gen(),
+                version_nonce: SecureRng::next_i64(),
             }],
             user_public_budget_key: public_key,
         };
@@ -1709,7 +1709,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category_id.into()),
         };
 
@@ -1747,9 +1747,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            entry_version_nonce: rand::thread_rng().gen(),
+            entry_version_nonce: SecureRng::next_i64(),
             category_encrypted_blob: gen_bytes(12),
-            category_version_nonce: rand::thread_rng().gen(),
+            category_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1770,9 +1770,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
-            entry_version_nonce: rand::thread_rng().gen(),
+            entry_version_nonce: SecureRng::next_i64(),
             category_encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            category_version_nonce: rand::thread_rng().gen(),
+            category_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1806,16 +1806,16 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
-                version_nonce: rand::thread_rng().gen(),
+                version_nonce: SecureRng::next_i64(),
             }],
             user_public_budget_key: public_key,
         };
@@ -1846,7 +1846,7 @@ pub mod tests {
 
         let new_category = NewEncryptedBlob {
             value: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -1884,9 +1884,9 @@ pub mod tests {
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
-            entry_version_nonce: rand::thread_rng().gen(),
+            entry_version_nonce: SecureRng::next_i64(),
             category_encrypted_blob: gen_bytes(12),
-            category_version_nonce: rand::thread_rng().gen(),
+            category_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -2066,16 +2066,16 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
-                version_nonce: rand::thread_rng().gen(),
+                version_nonce: SecureRng::next_i64(),
             }],
             user_public_budget_key: public_key,
         };
@@ -2108,7 +2108,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category_id.into()),
         };
 
@@ -2220,16 +2220,16 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let key_pair = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519_dalek::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes().to_vec();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
                 temp_id: 0,
                 encrypted_blob: gen_bytes(40),
-                version_nonce: rand::thread_rng().gen(),
+                version_nonce: SecureRng::next_i64(),
             }],
             user_public_budget_key: public_key,
         };
@@ -2262,7 +2262,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category_id.into()),
         };
 
@@ -2388,7 +2388,7 @@ pub mod tests {
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: budget.version_nonce.wrapping_add(1),
         };
 
@@ -2410,7 +2410,7 @@ pub mod tests {
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: budget.version_nonce,
         };
 
@@ -2466,7 +2466,7 @@ pub mod tests {
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: budget.version_nonce,
         };
 
@@ -2526,7 +2526,7 @@ pub mod tests {
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -2549,7 +2549,7 @@ pub mod tests {
 
         let new_category2 = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -2572,7 +2572,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category2_id.into()),
         };
 
@@ -2626,7 +2626,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: expected_previous_version_nonce.wrapping_sub(1),
             category_id: Some(category1_id.into()),
         };
@@ -2650,7 +2650,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: Uuid::now_v7().into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce,
             category_id: Some(category1_id.into()),
         };
@@ -2674,7 +2674,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce,
             category_id: Some(Uuid::now_v7().into()),
         };
@@ -2701,7 +2701,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce,
             category_id: Some(category1_id.into()),
         };
@@ -2751,7 +2751,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: expected_previous_version_nonce.wrapping_add(1),
             category_id: None,
         };
@@ -2775,7 +2775,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce,
             category_id: None,
         };
@@ -2849,7 +2849,7 @@ pub mod tests {
 
         let new_category = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -2872,7 +2872,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category_id.into()),
         };
 
@@ -2914,7 +2914,7 @@ pub mod tests {
         let entry_update = EntryUpdate {
             entry_id: entry_id.into(),
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce,
             category_id: Some(category_id.into()),
         };
@@ -2975,7 +2975,7 @@ pub mod tests {
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -2998,7 +2998,7 @@ pub mod tests {
 
         let new_category2 = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -3021,7 +3021,7 @@ pub mod tests {
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             category_id: Some(category2_id.into()),
         };
 
@@ -3108,7 +3108,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: new_category2.version_nonce.wrapping_add(1),
         };
 
@@ -3131,7 +3131,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: Uuid::now_v7().into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: new_category2.version_nonce,
         };
 
@@ -3157,7 +3157,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: new_category2.version_nonce,
         };
 
@@ -3246,7 +3246,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: category_update_version_nonce.wrapping_sub(1),
         };
 
@@ -3269,7 +3269,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category2_id.into(),
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: category_update_version_nonce,
         };
 
@@ -3385,7 +3385,7 @@ pub mod tests {
 
         let new_category = NewEncryptedBlob {
             value: gen_bytes(40),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -3423,7 +3423,7 @@ pub mod tests {
         let category_update = CategoryUpdate {
             category_id: category_id.into(),
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: new_category.version_nonce,
         };
 
@@ -3555,7 +3555,7 @@ pub mod tests {
         let mut bad_token = token.clone();
         let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_private_key = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
@@ -3645,7 +3645,7 @@ pub mod tests {
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             expected_previous_version_nonce: budget.version_nonce,
         };
 
@@ -4090,7 +4090,7 @@ pub mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let invite_sender_keypair = ed25519::SigningKey::generate(&mut OsRng);
+        let invite_sender_keypair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let invite_sender_pub_key = invite_sender_keypair.verifying_key().to_bytes();
 
         let invite_info = UserInvitationToBudget {
@@ -4300,7 +4300,7 @@ pub mod tests {
         let mut bad_token = token.clone();
         let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_private_key = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = Vec::from(access_private_key.to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,
@@ -4446,7 +4446,7 @@ pub mod tests {
         token.extend_from_slice(&signature);
         let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_private_key = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,

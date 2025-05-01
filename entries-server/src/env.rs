@@ -30,16 +30,21 @@ const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
 const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
 const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
 
-const HASHING_KEY_VAR: &str = "ENTRIES_HASHING_KEY_B64";
+const AUTH_STRING_HASH_KEY_VAR: &str = "ENTRIES_AUTH_STRING_HASH_KEY_B64";
 const TOKEN_SIGNING_KEY_VAR: &str = "ENTRIES_TOKEN_SIGNING_KEY_B64";
 const AMAZON_SES_USERNAME_VAR: &str = "ENTRIES_AMAZON_SES_USERNAME";
 const AMAZON_SES_KEY_VAR: &str = "ENTRIES_AMAZON_SES_KEY";
 
-const HASH_LENGTH_VAR: &str = "ENTRIES_HASH_LENGTH";
-const HASH_ITERATIONS_VAR: &str = "ENTRIES_HASH_ITERATIONS";
-const HASH_MEM_COST_KIB_VAR: &str = "ENTRIES_HASH_MEM_COST_KIB";
-const HASH_THREADS_VAR: &str = "ENTRIES_HASH_THREADS";
-const HASH_SALT_LENGTH_VAR: &str = "ENTRIES_HASH_SALT_LENGTH";
+const AUTH_STRING_HASH_LENGTH_VAR: &str = "ENTRIES_AUTH_STRING_HASH_LENGTH";
+const AUTH_STRING_HASH_ITERATIONS_VAR: &str = "ENTRIES_AUTH_STRING_HASH_ITERATIONS";
+const AUTH_STRING_HASH_MEM_COST_KIB_VAR: &str = "ENTRIES_AUTH_STRING_HASH_MEM_COST_KIB";
+const AUTH_STRING_HASH_THREADS_VAR: &str = "ENTRIES_AUTH_STRING_HASH_THREADS";
+const AUTH_STRING_HASH_SALT_LENGTH_VAR: &str = "ENTRIES_AUTH_STRING_HASH_SALT_LENGTH";
+
+const CLIENT_AUTH_STRING_HASH_ITERATIONS_VAR: &str = "ENTRIES_CLIENT_AUTH_STRING_HASH_ITERATIONS";
+const CLIENT_AUTH_STRING_HASH_MEM_COST_KIB_VAR: &str =
+    "ENTRIES_CLIENT_AUTH_STRING_HASH_MEM_COST_KIB";
+const CLIENT_AUTH_STRING_HASH_THREADS_VAR: &str = "ENTRIES_CLIENT_AUTH_STRING_HASH_THREADS";
 
 const EMAIL_ENABLED_VAR: &str = "ENTRIES_EMAIL_ENABLED";
 const EMAIL_FROM_ADDR: &str = "ENTRIES_EMAIL_FROM_ADDR";
@@ -72,7 +77,7 @@ const MAX_BUDGET_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_BUDGET_FETCH_COUNT";
 
 const HEALTH_ENDPOINT_KEY_VAR: &str = "ENTRIES_HEALTH_ENDPOINT_KEY";
 
-const HASHING_KEY_SIZE: usize = 32;
+const AUTH_STRING_AUTH_STRING_HASH_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
 
 #[derive(Zeroize)]
@@ -87,16 +92,20 @@ pub struct ConfigInner {
     #[zeroize(skip)]
     pub db_idle_timeout: Duration,
 
-    pub hashing_key: [u8; HASHING_KEY_SIZE],
+    pub auth_string_hash_key: [u8; AUTH_STRING_AUTH_STRING_HASH_KEY_SIZE],
     pub token_signing_key: [u8; TOKEN_SIGNING_KEY_SIZE],
     pub amazon_ses_username: String,
     pub amazon_ses_key: String,
 
-    pub hash_length: u32,
-    pub hash_iterations: u32,
-    pub hash_mem_cost_kib: u32,
-    pub hash_threads: u32,
-    pub hash_salt_length: u32,
+    pub auth_string_hash_length: u32,
+    pub auth_string_hash_iterations: u32,
+    pub auth_string_hash_mem_cost_kib: u32,
+    pub auth_string_hash_threads: u32,
+    pub auth_string_hash_salt_length: u32,
+
+    pub client_auth_string_hash_iterations: i32,
+    pub client_auth_string_hash_mem_cost_kib: i32,
+    pub client_auth_string_hash_threads: i32,
 
     pub email_enabled: bool,
     #[zeroize(skip)]
@@ -170,13 +179,13 @@ unsafe impl Sync for Config {}
 
 impl Config {
     pub fn from_env() -> Result<Config, ConfigError> {
-        let hashing_key = Zeroizing::new(
-            b64.decode(env_var::<String>(HASHING_KEY_VAR)?.as_bytes())
-                .map_err(|_| ConfigError::InvalidVar(HASHING_KEY_VAR))?,
+        let auth_string_hash_key = Zeroizing::new(
+            b64.decode(env_var::<String>(AUTH_STRING_HASH_KEY_VAR)?.as_bytes())
+                .map_err(|_| ConfigError::InvalidVar(AUTH_STRING_HASH_KEY_VAR))?,
         );
-        let hashing_key = hashing_key[..HASHING_KEY_SIZE]
+        let auth_string_hash_key = auth_string_hash_key[..AUTH_STRING_AUTH_STRING_HASH_KEY_SIZE]
             .try_into()
-            .map_err(|_| ConfigError::InvalidVar(HASHING_KEY_VAR))?;
+            .map_err(|_| ConfigError::InvalidVar(AUTH_STRING_HASH_KEY_VAR))?;
 
         let token_signing_key = Zeroizing::new(
             b64.decode(env_var::<String>(TOKEN_SIGNING_KEY_VAR)?.as_bytes())
@@ -202,16 +211,22 @@ impl Config {
             db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
             db_idle_timeout: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
 
-            hashing_key,
+            auth_string_hash_key,
             token_signing_key,
             amazon_ses_username: env_var(AMAZON_SES_USERNAME_VAR)?,
             amazon_ses_key: env_var(AMAZON_SES_KEY_VAR)?,
 
-            hash_length: env_var(HASH_LENGTH_VAR)?,
-            hash_iterations: env_var(HASH_ITERATIONS_VAR)?,
-            hash_mem_cost_kib: env_var(HASH_MEM_COST_KIB_VAR)?,
-            hash_threads: env_var(HASH_THREADS_VAR)?,
-            hash_salt_length: env_var(HASH_SALT_LENGTH_VAR)?,
+            auth_string_hash_length: env_var(AUTH_STRING_HASH_LENGTH_VAR)?,
+            auth_string_hash_iterations: env_var(AUTH_STRING_HASH_ITERATIONS_VAR)?,
+            auth_string_hash_mem_cost_kib: env_var(AUTH_STRING_HASH_MEM_COST_KIB_VAR)?,
+            auth_string_hash_threads: env_var(AUTH_STRING_HASH_THREADS_VAR)?,
+            auth_string_hash_salt_length: env_var(AUTH_STRING_HASH_SALT_LENGTH_VAR)?,
+
+            client_auth_string_hash_iterations: env_var(CLIENT_AUTH_STRING_HASH_ITERATIONS_VAR)?,
+            client_auth_string_hash_mem_cost_kib: env_var(
+                CLIENT_AUTH_STRING_HASH_MEM_COST_KIB_VAR,
+            )?,
+            client_auth_string_hash_threads: env_var(CLIENT_AUTH_STRING_HASH_THREADS_VAR)?,
 
             email_enabled: if cfg!(test) {
                 false

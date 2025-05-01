@@ -56,6 +56,7 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::{
         budget_access_token::{BudgetAccessToken, BudgetAccessTokenClaims},
         budget_invite_sender_token::{BudgetInviteSenderToken, BudgetInviteSenderTokenClaims},
@@ -81,7 +82,7 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let mut token = claims.clone();
 
-        let access_key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = access_key_pair.verifying_key().to_bytes();
         let signature = access_key_pair.sign(&claims).to_bytes();
         token.extend_from_slice(&signature);
@@ -202,7 +203,7 @@ mod tests {
         let claims = serde_json::to_vec(&claims).unwrap();
         let mut token = claims.clone();
 
-        let invite_key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let invite_key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let invite_public_key = invite_key_pair.verifying_key().to_bytes();
         let signature = invite_key_pair.sign(&claims).to_bytes();
         token.extend_from_slice(&signature);

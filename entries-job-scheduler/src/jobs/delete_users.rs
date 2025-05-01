@@ -82,10 +82,10 @@ mod tests {
         budget_access_keys, budgets, categories, entries, user_deletion_request_budget_keys,
         user_keystores, user_preferences,
     };
+    use entries_common::threadrand::SecureRng;
     use entries_common::{db::user, schema::user_deletion_requests};
 
     use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-    use rand::Rng;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let user1_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user1_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user1 = NewUser {
@@ -101,20 +101,20 @@ mod tests {
 
             auth_string: Vec::new(),
 
-            auth_string_salt: Vec::new(),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: Vec::new(),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: Vec::new(),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 2,
+            password_encryption_key_salt: Vec::new(),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 2,
 
-            recovery_key_salt: Vec::new(),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 2,
+            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 2,
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -123,9 +123,9 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
@@ -134,18 +134,18 @@ mod tests {
             .create_user(
                 &new_user1.email,
                 "",
-                &new_user1.auth_string_salt,
-                new_user1.auth_string_memory_cost_kib,
-                new_user1.auth_string_parallelism_factor,
-                new_user1.auth_string_iters,
-                &new_user1.password_encryption_salt,
-                new_user1.password_encryption_memory_cost_kib,
-                new_user1.password_encryption_parallelism_factor,
-                new_user1.password_encryption_iters,
-                &new_user1.recovery_key_salt,
-                new_user1.recovery_key_memory_cost_kib,
-                new_user1.recovery_key_parallelism_factor,
-                new_user1.recovery_key_iters,
+                &new_user1.auth_string_hash_salt,
+                new_user1.auth_string_hash_mem_cost_kib,
+                new_user1.auth_string_hash_threads,
+                new_user1.auth_string_hash_iterations,
+                &new_user1.password_encryption_key_salt,
+                new_user1.password_encryption_key_mem_cost_kib,
+                new_user1.password_encryption_key_threads,
+                new_user1.password_encryption_key_iterations,
+                &new_user1.recovery_key_hash_salt,
+                new_user1.recovery_key_hash_mem_cost_kib,
+                new_user1.recovery_key_hash_threads,
+                new_user1.recovery_key_hash_iterations,
                 &new_user1.encryption_key_encrypted_with_password,
                 &new_user1.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -159,7 +159,7 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user1_id).unwrap();
 
-        let user2_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user2_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user2 = NewUser {
@@ -167,20 +167,20 @@ mod tests {
 
             auth_string: Vec::new(),
 
-            auth_string_salt: Vec::new(),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: Vec::new(),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: Vec::new(),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 2,
+            password_encryption_key_salt: Vec::new(),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 2,
 
-            recovery_key_salt: Vec::new(),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 2,
+            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 2,
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -189,27 +189,27 @@ mod tests {
             public_key: Vec::new(),
 
             preferences_encrypted: Vec::new(),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: Vec::new(),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let user2_id = user_dao
             .create_user(
                 &new_user2.email,
                 "",
-                &new_user2.auth_string_salt,
-                new_user2.auth_string_memory_cost_kib,
-                new_user2.auth_string_parallelism_factor,
-                new_user2.auth_string_iters,
-                &new_user2.password_encryption_salt,
-                new_user2.password_encryption_memory_cost_kib,
-                new_user2.password_encryption_parallelism_factor,
-                new_user2.password_encryption_iters,
-                &new_user2.recovery_key_salt,
-                new_user2.recovery_key_memory_cost_kib,
-                new_user2.recovery_key_parallelism_factor,
-                new_user2.recovery_key_iters,
+                &new_user2.auth_string_hash_salt,
+                new_user2.auth_string_hash_mem_cost_kib,
+                new_user2.auth_string_hash_threads,
+                new_user2.auth_string_hash_iterations,
+                &new_user2.password_encryption_key_salt,
+                new_user2.password_encryption_key_mem_cost_kib,
+                new_user2.password_encryption_key_threads,
+                new_user2.password_encryption_key_iterations,
+                &new_user2.recovery_key_hash_salt,
+                new_user2.recovery_key_hash_mem_cost_kib,
+                new_user2.recovery_key_hash_threads,
+                new_user2.recovery_key_hash_iterations,
                 &new_user2.encryption_key_encrypted_with_password,
                 &new_user2.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -226,7 +226,7 @@ mod tests {
         let new_budget1 = NewBudget {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
@@ -238,7 +238,7 @@ mod tests {
         let new_budget2 = NewBudget {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
@@ -252,9 +252,9 @@ mod tests {
         let out = budget_dao
             .create_entry_and_category(
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 new_budget1.id,
             )
             .unwrap();
@@ -265,9 +265,9 @@ mod tests {
         let out = budget_dao
             .create_entry_and_category(
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 &[0],
-                rand::thread_rng().gen(),
+                SecureRng::next_i64(),
                 new_budget2.id,
             )
             .unwrap();

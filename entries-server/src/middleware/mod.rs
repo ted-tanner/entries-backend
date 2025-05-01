@@ -22,10 +22,7 @@ pub struct FromHeader {}
 impl TokenLocation for FromQuery {
     fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
         let query_string = req.query_string();
-        let pos = match query_string.find(key) {
-            Some(p) => p,
-            None => return None,
-        };
+        let pos = query_string.find(key)?;
 
         if query_string.len() < (pos + key.len() + 2) {
             return None;
@@ -43,15 +40,8 @@ impl TokenLocation for FromQuery {
 
 impl TokenLocation for FromHeader {
     fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
-        let header = match req.headers().get(key) {
-            Some(header) => header,
-            None => return None,
-        };
-
-        match header.to_str() {
-            Ok(h) => Some(h),
-            Err(_) => None,
-        }
+        let header = req.headers().get(key)?;
+        header.to_str().ok()
     }
 }
 

@@ -82,15 +82,15 @@ message AuthStringAndEncryptedPasswordUpdate {
 
     required bytes new_auth_string = 3;
 
-    required bytes auth_string_salt = 4;
-    required int32 auth_string_memory_cost_kib = 5;
-    required int32 auth_string_parallelism_factor = 6;
-    required int32 auth_string_iters = 7;
+    required bytes auth_string_hash_salt = 4;
+    required int32 auth_string_hash_mem_cost_kib = 5;
+    required int32 auth_string_hash_threads = 6;
+    required int32 auth_string_hash_iterations = 7;
 
-    required bytes password_encryption_salt = 8;
-    required int32 password_encryption_memory_cost_kib = 9;
-    required int32 password_encryption_parallelism_factor = 10;
-    required int32 password_encryption_iters = 11;
+    required bytes password_encryption_key_salt = 8;
+    required int32 password_encryption_key_mem_cost_kib = 9;
+    required int32 password_encryption_key_threads = 10;
+    required int32 password_encryption_key_iterations = 11;
 
     required bytes encrypted_encryption_key = 12;
 }
@@ -174,20 +174,20 @@ message NewUser {
 
     required bytes auth_string = 2;
 
-    required bytes auth_string_salt = 3;
-    required int32 auth_string_memory_cost_kib = 4;
-    required int32 auth_string_parallelism_factor = 5;
-    required int32 auth_string_iters = 6;
+    required bytes auth_string_hash_salt = 3;
+    required int32 auth_string_hash_mem_cost_kib = 4;
+    required int32 auth_string_hash_threads = 5;
+    required int32 auth_string_hash_iterations = 6;
 
-    required bytes password_encryption_salt = 7;
-    required int32 password_encryption_memory_cost_kib = 8;
-    required int32 password_encryption_parallelism_factor = 9;
-    required int32 password_encryption_iters = 10;
+    required bytes password_encryption_key_salt = 7;
+    required int32 password_encryption_key_mem_cost_kib = 8;
+    required int32 password_encryption_key_threads = 9;
+    required int32 password_encryption_key_iterations = 10;
 
-    required bytes recovery_key_salt = 11;
-    required int32 recovery_key_memory_cost_kib = 12;
-    required int32 recovery_key_parallelism_factor = 13;
-    required int32 recovery_key_iters = 14;
+    required bytes recovery_key_hash_salt = 11;
+    required int32 recovery_key_hash_mem_cost_kib = 12;
+    required int32 recovery_key_hash_threads = 13;
+    required int32 recovery_key_hash_iterations = 14;
 
     required bytes encryption_key_encrypted_with_password = 15;
     required bytes encryption_key_encrypted_with_recovery_key = 16;
@@ -218,10 +218,10 @@ message PublicKey {
 message RecoveryKeyUpdate {
     required string otp = 1;
 
-    required bytes recovery_key_salt = 2;
-    required int32 recovery_key_memory_cost_kib = 3;
-    required int32 recovery_key_parallelism_factor = 4;
-    required int32 recovery_key_iters = 5;
+    required bytes recovery_key_hash_salt = 2;
+    required int32 recovery_key_hash_mem_cost_kib = 3;
+    required int32 recovery_key_hash_threads = 4;
+    required int32 recovery_key_hash_iterations = 5;
 
     required bytes encrypted_encryption_key = 6;
 }
@@ -329,10 +329,10 @@ message ServerErrorResponse {
 }
 
 message SigninNonceAndHashParams {
-    required bytes auth_string_salt = 1;
-    required int32 auth_string_memory_cost_kib = 2;
-    required int32 auth_string_parallelism_factor = 3;
-    required int32 auth_string_iters = 4;
+    required bytes auth_string_hash_salt = 1;
+    required int32 auth_string_hash_mem_cost_kib = 2;
+    required int32 auth_string_hash_threads = 3;
+    required int32 auth_string_hash_iterations = 4;
 
     required int32 nonce = 5;
 }

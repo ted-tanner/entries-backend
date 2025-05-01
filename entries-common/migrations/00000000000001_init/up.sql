@@ -143,20 +143,20 @@ CREATE TABLE users (
 
     auth_string_hash TEXT NOT NULL,
 
-    auth_string_salt BYTEA NOT NULL,
-    auth_string_memory_cost_kib INT NOT NULL,   
-    auth_string_parallelism_factor INT NOT NULL,
-    auth_string_iters INT NOT NULL,
+    auth_string_hash_salt BYTEA NOT NULL,
+    auth_string_hash_mem_cost_kib INT NOT NULL,
+    auth_string_hash_threads INT NOT NULL,
+    auth_string_hash_iterations INT NOT NULL,
 
-    password_encryption_salt BYTEA NOT NULL,
-    password_encryption_memory_cost_kib INT NOT NULL,
-    password_encryption_parallelism_factor INT NOT NULL,
-    password_encryption_iters INT NOT NULL,
+    password_encryption_key_salt BYTEA NOT NULL,
+    password_encryption_key_mem_cost_kib INT NOT NULL,
+    password_encryption_key_threads INT NOT NULL,
+    password_encryption_key_iterations INT NOT NULL,
 
-    recovery_key_salt BYTEA NOT NULL,
-    recovery_key_memory_cost_kib INT NOT NULL,
-    recovery_key_parallelism_factor INT NOT NULL,
-    recovery_key_iters INT NOT NULL,
+    recovery_key_hash_salt BYTEA NOT NULL,
+    recovery_key_hash_mem_cost_kib INT NOT NULL,
+    recovery_key_hash_threads INT NOT NULL,
+    recovery_key_hash_iterations INT NOT NULL,
 
     encryption_key_encrypted_with_password BYTEA NOT NULL,
     encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
@@ -220,7 +220,6 @@ CREATE TABLE user_preferences (
 
 -- Foreign keys
 
-ALTER TABLE budget_access_keys ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE budget_share_invites ADD CONSTRAINT recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE;
 ALTER TABLE categories ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;
 ALTER TABLE entries ADD CONSTRAINT budget_key FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE;

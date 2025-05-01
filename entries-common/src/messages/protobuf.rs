@@ -50,21 +50,21 @@ pub struct AuthStringAndEncryptedPasswordUpdate {
     #[prost(bytes = "vec", required, tag = "3")]
     pub new_auth_string: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "4")]
-    pub auth_string_salt: ::prost::alloc::vec::Vec<u8>,
+    pub auth_string_hash_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "5")]
-    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_hash_mem_cost_kib: i32,
     #[prost(int32, required, tag = "6")]
-    pub auth_string_parallelism_factor: i32,
+    pub auth_string_hash_threads: i32,
     #[prost(int32, required, tag = "7")]
-    pub auth_string_iters: i32,
+    pub auth_string_hash_iterations: i32,
     #[prost(bytes = "vec", required, tag = "8")]
-    pub password_encryption_salt: ::prost::alloc::vec::Vec<u8>,
+    pub password_encryption_key_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "9")]
-    pub password_encryption_memory_cost_kib: i32,
+    pub password_encryption_key_mem_cost_kib: i32,
     #[prost(int32, required, tag = "10")]
-    pub password_encryption_parallelism_factor: i32,
+    pub password_encryption_key_threads: i32,
     #[prost(int32, required, tag = "11")]
-    pub password_encryption_iters: i32,
+    pub password_encryption_key_iterations: i32,
     #[prost(bytes = "vec", required, tag = "12")]
     pub encrypted_encryption_key: ::prost::alloc::vec::Vec<u8>,
 }
@@ -184,29 +184,29 @@ pub struct NewUser {
     #[prost(bytes = "vec", required, tag = "2")]
     pub auth_string: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "3")]
-    pub auth_string_salt: ::prost::alloc::vec::Vec<u8>,
+    pub auth_string_hash_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "4")]
-    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_hash_mem_cost_kib: i32,
     #[prost(int32, required, tag = "5")]
-    pub auth_string_parallelism_factor: i32,
+    pub auth_string_hash_threads: i32,
     #[prost(int32, required, tag = "6")]
-    pub auth_string_iters: i32,
+    pub auth_string_hash_iterations: i32,
     #[prost(bytes = "vec", required, tag = "7")]
-    pub password_encryption_salt: ::prost::alloc::vec::Vec<u8>,
+    pub password_encryption_key_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "8")]
-    pub password_encryption_memory_cost_kib: i32,
+    pub password_encryption_key_mem_cost_kib: i32,
     #[prost(int32, required, tag = "9")]
-    pub password_encryption_parallelism_factor: i32,
+    pub password_encryption_key_threads: i32,
     #[prost(int32, required, tag = "10")]
-    pub password_encryption_iters: i32,
+    pub password_encryption_key_iterations: i32,
     #[prost(bytes = "vec", required, tag = "11")]
-    pub recovery_key_salt: ::prost::alloc::vec::Vec<u8>,
+    pub recovery_key_hash_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "12")]
-    pub recovery_key_memory_cost_kib: i32,
+    pub recovery_key_hash_mem_cost_kib: i32,
     #[prost(int32, required, tag = "13")]
-    pub recovery_key_parallelism_factor: i32,
+    pub recovery_key_hash_threads: i32,
     #[prost(int32, required, tag = "14")]
-    pub recovery_key_iters: i32,
+    pub recovery_key_hash_iterations: i32,
     #[prost(bytes = "vec", required, tag = "15")]
     pub encryption_key_encrypted_with_password: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", required, tag = "16")]
@@ -248,13 +248,13 @@ pub struct RecoveryKeyUpdate {
     #[prost(string, required, tag = "1")]
     pub otp: ::prost::alloc::string::String,
     #[prost(bytes = "vec", required, tag = "2")]
-    pub recovery_key_salt: ::prost::alloc::vec::Vec<u8>,
+    pub recovery_key_hash_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "3")]
-    pub recovery_key_memory_cost_kib: i32,
+    pub recovery_key_hash_mem_cost_kib: i32,
     #[prost(int32, required, tag = "4")]
-    pub recovery_key_parallelism_factor: i32,
+    pub recovery_key_hash_threads: i32,
     #[prost(int32, required, tag = "5")]
-    pub recovery_key_iters: i32,
+    pub recovery_key_hash_iterations: i32,
     #[prost(bytes = "vec", required, tag = "6")]
     pub encrypted_encryption_key: ::prost::alloc::vec::Vec<u8>,
 }
@@ -409,13 +409,13 @@ pub struct ServerErrorResponse {
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct SigninNonceAndHashParams {
     #[prost(bytes = "vec", required, tag = "1")]
-    pub auth_string_salt: ::prost::alloc::vec::Vec<u8>,
+    pub auth_string_hash_salt: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, required, tag = "2")]
-    pub auth_string_memory_cost_kib: i32,
+    pub auth_string_hash_mem_cost_kib: i32,
     #[prost(int32, required, tag = "3")]
-    pub auth_string_parallelism_factor: i32,
+    pub auth_string_hash_threads: i32,
     #[prost(int32, required, tag = "4")]
-    pub auth_string_iters: i32,
+    pub auth_string_hash_iterations: i32,
     #[prost(int32, required, tag = "5")]
     pub nonce: i32,
 }

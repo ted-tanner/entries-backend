@@ -330,7 +330,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key = ed25519::SigningKey::generate(&mut crate::threadrand::SecureRng);
 
         let pub_key = key.verifying_key().to_bytes();
 

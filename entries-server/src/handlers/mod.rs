@@ -160,7 +160,7 @@ pub mod verification {
             };
 
             let does_auth_string_match_hash =
-                hash.verify_with_secret(&auth_string, (&env::CONF.hashing_key).into());
+                hash.verify_with_secret(&auth_string, (&env::CONF.auth_string_hash_key).into());
 
             sender
                 .send(Ok(does_auth_string_match_hash))
@@ -462,6 +462,7 @@ pub mod test_utils {
     use entries_common::schema::budgets::dsl::budgets;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
+    use entries_common::threadrand::SecureRng;
     use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 
     use actix_protobuf::ProtoBufConfig;
@@ -480,7 +481,6 @@ pub mod test_utils {
     use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
     use prost::Message;
-    use rand::Rng;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
@@ -488,9 +488,7 @@ pub mod test_utils {
     use crate::services::api::RouteLimiters;
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
-        (0..count)
-            .map(|_| rand::thread_rng().gen_range(u8::MIN..u8::MAX))
-            .collect()
+        (0..count).map(|_| SecureRng::next_u8()).collect()
     }
 
     pub fn gen_budget_token(
@@ -526,7 +524,7 @@ pub mod test_utils {
         )
         .await;
 
-        let user_number = rand::thread_rng().gen_range::<u128, _>(u128::MIN..u128::MAX);
+        let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
         let new_user = NewUser {
@@ -534,20 +532,20 @@ pub mod test_utils {
 
             auth_string: gen_bytes(10),
 
-            auth_string_salt: gen_bytes(10),
-            auth_string_memory_cost_kib: 1024,
-            auth_string_parallelism_factor: 1,
-            auth_string_iters: 2,
+            auth_string_hash_salt: gen_bytes(10),
+            auth_string_hash_mem_cost_kib: 1024,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
 
-            password_encryption_salt: gen_bytes(10),
-            password_encryption_memory_cost_kib: 1024,
-            password_encryption_parallelism_factor: 1,
-            password_encryption_iters: 1,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
 
-            recovery_key_salt: gen_bytes(10),
-            recovery_key_memory_cost_kib: 1024,
-            recovery_key_parallelism_factor: 1,
-            recovery_key_iters: 1,
+            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -556,9 +554,9 @@ pub mod test_utils {
             public_key: gen_bytes(10),
 
             preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: rand::thread_rng().gen(),
+            preferences_version_nonce: SecureRng::next_i64(),
             user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: rand::thread_rng().gen(),
+            user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
         let req = TestRequest::post()
@@ -628,12 +626,12 @@ pub mod test_utils {
         )
         .await;
 
-        let key_pair = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes();
 
         let new_budget = NewBudget {
             encrypted_blob: gen_bytes(32),
-            version_nonce: rand::thread_rng().gen(),
+            version_nonce: SecureRng::next_i64(),
             categories: Vec::new(),
             user_public_budget_key: Vec::from(public_key),
         };
@@ -780,7 +778,7 @@ pub mod test_utils {
         token.extend_from_slice(&signature);
         let accept_token = b64_urlsafe.encode(token);
 
-        let access_private_key = ed25519::SigningKey::generate(&mut rand::rngs::OsRng);
+        let access_private_key = ed25519::SigningKey::generate(SecureRng::get_ref());
         let access_public_key = Vec::from(access_private_key.verifying_key().to_bytes());
         let access_public_key = PublicKey {
             value: access_public_key,

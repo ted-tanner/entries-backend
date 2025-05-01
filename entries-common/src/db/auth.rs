@@ -1,5 +1,4 @@
 use diesel::{dsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl};
-use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -18,6 +17,7 @@ use crate::schema::user_otps as user_otp_fields;
 use crate::schema::user_otps::dsl::user_otps;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
+use crate::threadrand::SecureRng;
 
 pub struct UserAuthStringHashAndStatus {
     pub user_id: Uuid,
@@ -219,7 +219,7 @@ impl Dao {
                     .get_result::<i32>(conn)?;
 
                 dsl::update(signin_nonces.find(user_email))
-                    .set(signin_nonce_fields::nonce.eq(OsRng.gen::<i32>()))
+                    .set(signin_nonce_fields::nonce.eq(SecureRng::next_i32()))
                     .execute(conn)?;
 
                 Ok(nonce)
@@ -236,20 +236,20 @@ impl Dao {
             .left_join(signin_nonces.on(signin_nonce_fields::user_email.eq(user_fields::email)))
             .filter(user_fields::email.eq(user_email))
             .select((
-                user_fields::auth_string_salt,
-                user_fields::auth_string_memory_cost_kib,
-                user_fields::auth_string_parallelism_factor,
-                user_fields::auth_string_iters,
+                user_fields::auth_string_hash_salt,
+                user_fields::auth_string_hash_mem_cost_kib,
+                user_fields::auth_string_hash_threads,
+                user_fields::auth_string_hash_iterations,
                 signin_nonce_fields::nonce.nullable(),
             ))
             .first::<(Vec<u8>, i32, i32, i32, Option<i32>)>(&mut self.db_thread_pool.get()?)?;
 
         if let Some(n) = nonce {
             Ok(SigninNonceAndHashParams {
-                auth_string_salt: salt,
-                auth_string_memory_cost_kib: mem_cost,
-                auth_string_parallelism_factor: parallel,
-                auth_string_iters: iters,
+                auth_string_hash_salt: salt,
+                auth_string_hash_mem_cost_kib: mem_cost,
+                auth_string_hash_threads: parallel,
+                auth_string_hash_iterations: iters,
                 nonce: n,
             })
         } else {

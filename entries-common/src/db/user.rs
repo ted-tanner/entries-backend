@@ -1,5 +1,4 @@
 use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
-use rand::{rngs::OsRng, Rng};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -12,6 +11,7 @@ use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionR
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
+use crate::threadrand::SecureRng;
 
 use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
@@ -57,18 +57,18 @@ impl Dao {
         &self,
         email: &str,
         auth_string_hash: &str,
-        auth_string_salt: &[u8],
-        auth_string_memory_cost_kib: i32,
-        auth_string_parallelism_factor: i32,
-        auth_string_iters: i32,
-        password_encryption_salt: &[u8],
-        password_encryption_memory_cost_kib: i32,
-        password_encryption_parallelism_factor: i32,
-        password_encryption_iters: i32,
-        recovery_key_salt: &[u8],
-        recovery_key_memory_cost_kib: i32,
-        recovery_key_parallelism_factor: i32,
-        recovery_key_iters: i32,
+        auth_string_hash_salt: &[u8],
+        auth_string_hash_mem_cost_kib: i32,
+        auth_string_hash_threads: i32,
+        auth_string_hash_iterations: i32,
+        password_encryption_key_salt: &[u8],
+        password_encryption_key_mem_cost_kib: i32,
+        password_encryption_key_threads: i32,
+        password_encryption_key_iterations: i32,
+        recovery_key_hash_salt: &[u8],
+        recovery_key_hash_mem_cost_kib: i32,
+        recovery_key_hash_threads: i32,
+        recovery_key_hash_iterations: i32,
         encryption_key_encrypted_with_password: &[u8],
         encryption_key_encrypted_with_recovery_key: &[u8],
         public_key_id: Uuid,
@@ -95,20 +95,20 @@ impl Dao {
             public_key,
 
             auth_string_hash,
-            auth_string_salt,
-            auth_string_memory_cost_kib,
-            auth_string_parallelism_factor,
-            auth_string_iters,
+            auth_string_hash_salt,
+            auth_string_hash_mem_cost_kib,
+            auth_string_hash_threads,
+            auth_string_hash_iterations,
 
-            password_encryption_salt,
-            password_encryption_memory_cost_kib,
-            password_encryption_parallelism_factor,
-            password_encryption_iters,
+            password_encryption_key_salt,
+            password_encryption_key_mem_cost_kib,
+            password_encryption_key_threads,
+            password_encryption_key_iterations,
 
-            recovery_key_salt,
-            recovery_key_memory_cost_kib,
-            recovery_key_parallelism_factor,
-            recovery_key_iters,
+            recovery_key_hash_salt,
+            recovery_key_hash_mem_cost_kib,
+            recovery_key_hash_threads,
+            recovery_key_hash_iterations,
 
             encryption_key_encrypted_with_password,
             encryption_key_encrypted_with_recovery_key,
@@ -128,7 +128,7 @@ impl Dao {
 
         let new_signin_nonce = NewSigninNonce {
             user_email: &email_lowercase,
-            nonce: OsRng.gen(),
+            nonce: SecureRng::next_i32(),
         };
 
         let backup_codes = backup_codes
@@ -336,29 +336,30 @@ impl Dao {
         &self,
         user_email: &str,
         new_auth_string_hash: &str,
-        new_auth_string_salt: &[u8],
-        new_auth_string_memory_cost_kib: i32,
-        new_auth_string_parallelism_factor: i32,
-        new_auth_string_iters: i32,
-        new_password_encryption_salt: &[u8],
-        new_password_encryption_memory_cost_kib: i32,
-        new_password_encryption_parallelism_factor: i32,
-        new_password_encryption_iters: i32,
+        new_auth_string_hash_salt: &[u8],
+        new_auth_string_hash_mem_cost_kib: i32,
+        new_auth_string_hash_threads: i32,
+        new_auth_string_hash_iterations: i32,
+        new_password_encryption_key_salt: &[u8],
+        new_password_encryption_key_mem_cost_kib: i32,
+        new_password_encryption_key_threads: i32,
+        new_password_encryption_key_iterations: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(users.filter(user_fields::email.eq(user_email)))
             .set((
                 user_fields::auth_string_hash.eq(new_auth_string_hash),
-                user_fields::auth_string_salt.eq(new_auth_string_salt),
-                user_fields::auth_string_memory_cost_kib.eq(new_auth_string_memory_cost_kib),
-                user_fields::auth_string_parallelism_factor.eq(new_auth_string_parallelism_factor),
-                user_fields::auth_string_iters.eq(new_auth_string_iters),
-                user_fields::password_encryption_salt.eq(new_password_encryption_salt),
-                user_fields::password_encryption_memory_cost_kib
-                    .eq(new_password_encryption_memory_cost_kib),
-                user_fields::password_encryption_parallelism_factor
-                    .eq(new_password_encryption_parallelism_factor),
-                user_fields::password_encryption_iters.eq(new_password_encryption_iters),
+                user_fields::auth_string_hash_salt.eq(new_auth_string_hash_salt),
+                user_fields::auth_string_hash_mem_cost_kib.eq(new_auth_string_hash_mem_cost_kib),
+                user_fields::auth_string_hash_threads.eq(new_auth_string_hash_threads),
+                user_fields::auth_string_hash_iterations.eq(new_auth_string_hash_iterations),
+                user_fields::password_encryption_key_salt.eq(new_password_encryption_key_salt),
+                user_fields::password_encryption_key_mem_cost_kib
+                    .eq(new_password_encryption_key_mem_cost_kib),
+                user_fields::password_encryption_key_threads
+                    .eq(new_password_encryption_key_threads),
+                user_fields::password_encryption_key_iterations
+                    .eq(new_password_encryption_key_iterations),
                 user_fields::encryption_key_encrypted_with_password.eq(encrypted_encryption_key),
             ))
             .execute(&mut self.db_thread_pool.get()?)?;
@@ -369,19 +370,18 @@ impl Dao {
     pub fn update_recovery_key(
         &self,
         user_id: Uuid,
-        new_recovery_key_salt: &[u8],
-        new_recovery_key_memory_cost_kib: i32,
-        new_recovery_key_parallelism_factor: i32,
-        new_recovery_key_iters: i32,
+        new_recovery_key_hash_salt: &[u8],
+        new_recovery_key_hash_mem_cost_kib: i32,
+        new_recovery_key_hash_threads: i32,
+        new_recovery_key_hash_iterations: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(users.find(user_id))
             .set((
-                user_fields::recovery_key_salt.eq(new_recovery_key_salt),
-                user_fields::recovery_key_memory_cost_kib.eq(new_recovery_key_memory_cost_kib),
-                user_fields::recovery_key_parallelism_factor
-                    .eq(new_recovery_key_parallelism_factor),
-                user_fields::recovery_key_iters.eq(new_recovery_key_iters),
+                user_fields::recovery_key_hash_salt.eq(new_recovery_key_hash_salt),
+                user_fields::recovery_key_hash_mem_cost_kib.eq(new_recovery_key_hash_mem_cost_kib),
+                user_fields::recovery_key_hash_threads.eq(new_recovery_key_hash_threads),
+                user_fields::recovery_key_hash_iterations.eq(new_recovery_key_hash_iterations),
                 user_fields::encryption_key_encrypted_with_recovery_key
                     .eq(encrypted_encryption_key),
             ))
