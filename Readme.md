@@ -505,6 +505,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * Update readme documentation
   - Add a section for the job scheduler
+  - Needed for compilation:
+    - `brew install protobuf`
+    - `brew install libpq`
+    - `brew link --force libpq`
+    - `export PQ_LIB_DIR="$(brew --prefix libpq)/lib"`
   - Explanation of encryption scheme and expected role of the client in the scheme
   - Explanation of versioning of encrypted blobs, version_nonce fields, and the role of the client in handling versioning
   - Guide to all endpoints (requests and responses)
