@@ -8,11 +8,10 @@ use entries_common::html::templates::{
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
 use entries_common::messages::{
-    AuthStringAndEncryptedPasswordUpdate, BackupCodesAndVerificationEmailSent,
-    BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate, IsUserListedForDeletion, NewUser,
-    NewUserPublicKey, RecoveryKeyUpdate, UserPublicKey, VerificationEmailSent,
+    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate,
+    IsUserListedForDeletion, NewUser, NewUserPublicKey, RecoveryKeyUpdate, UserPublicKey,
+    VerificationEmailSent,
 };
-use entries_common::otp::Otp;
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::token::budget_access_token::BudgetAccessToken;
 use entries_common::token::{Token, TokenError};
@@ -20,6 +19,7 @@ use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
+use futures::future;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -94,9 +94,22 @@ pub async fn create(
         )));
     }
 
-    if user_data.recovery_key_hash_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.recovery_key_hash_salt_for_encryption.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Recovery key salt is too big",
+            "Recovery key salt for encryption is too big",
+        )));
+    }
+
+    if user_data.recovery_key_hash_salt_for_recovery_auth.len() > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Recovery key salt for recovery auth is too big",
+        )));
+    }
+
+    if user_data.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Recovery key auth hash is too long",
         )));
     }
 
@@ -133,10 +146,13 @@ pub async fn create(
     }
 
     let user_data = Arc::new(user_data);
-    let user_data_ref = Arc::clone(&user_data);
+    let user_data_ref1 = Arc::clone(&user_data);
+    let user_data_ref2 = Arc::clone(&user_data);
 
-    let (sender, receiver) = oneshot::channel();
+    let (sender_auth_string, receiver_auth_string) = oneshot::channel();
+    let (sender_recovery_key, receiver_recovery_key) = oneshot::channel();
 
+    // Hash auth string
     rayon::spawn(move || {
         let hash_result = argon2_kdf::Hasher::default()
             .algorithm(argon2_kdf::Algorithm::Argon2id)
@@ -146,22 +162,54 @@ pub async fn create(
             .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
             .threads(env::CONF.auth_string_hash_threads)
             .secret((&env::CONF.auth_string_hash_key).into())
-            .hash(&user_data_ref.auth_string);
+            .hash(&user_data_ref1.auth_string);
 
         let hash = match hash_result {
             Ok(h) => h,
             Err(e) => {
-                sender.send(Err(e)).expect("Sending to channel failed");
+                sender_auth_string
+                    .send(Err(e))
+                    .expect("Sending to channel failed");
                 return;
             }
         };
 
-        sender
+        sender_auth_string
             .send(Ok(hash.to_string()))
             .expect("Sending to channel failed");
     });
 
-    let auth_string_hash = match receiver.await? {
+    // Hash recovery key auth hash
+    rayon::spawn(move || {
+        let hash_result = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&user_data_ref2.recovery_key_auth_hash);
+
+        let hash = match hash_result {
+            Ok(h) => h,
+            Err(e) => {
+                sender_recovery_key
+                    .send(Err(e))
+                    .expect("Sending to channel failed");
+                return;
+            }
+        };
+
+        sender_recovery_key
+            .send(Ok(hash.to_string()))
+            .expect("Sending to channel failed");
+    });
+
+    let (auth_string_hash, recovery_key_rehashed) =
+        future::join(receiver_auth_string, receiver_recovery_key).await;
+
+    let auth_string_hash = match auth_string_hash? {
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
@@ -171,11 +219,17 @@ pub async fn create(
         }
     };
 
-    let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
-    let backup_codes_ref = Arc::clone(&backup_codes);
+    let recovery_key_rehashed = match recovery_key_rehashed? {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to rehash recovery key auth hash",
+            )));
+        }
+    };
 
     let user_public_key_id = (&user_data.public_key_id).try_into()?;
-
     let user_data_ref = Arc::clone(&user_data);
 
     let user_id = match web::block(move || {
@@ -191,10 +245,12 @@ pub async fn create(
             user_data_ref.password_encryption_key_mem_cost_kib,
             user_data_ref.password_encryption_key_threads,
             user_data_ref.password_encryption_key_iterations,
-            &user_data_ref.recovery_key_hash_salt,
+            &user_data_ref.recovery_key_hash_salt_for_encryption,
+            &user_data_ref.recovery_key_hash_salt_for_recovery_auth,
             user_data_ref.recovery_key_hash_mem_cost_kib,
             user_data_ref.recovery_key_hash_threads,
             user_data_ref.recovery_key_hash_iterations,
+            &recovery_key_rehashed,
             &user_data_ref.encryption_key_encrypted_with_password,
             &user_data_ref.encryption_key_encrypted_with_recovery_key,
             user_public_key_id,
@@ -203,7 +259,6 @@ pub async fn create(
             user_data_ref.preferences_version_nonce,
             &user_data_ref.user_keystore_encrypted,
             user_data_ref.user_keystore_version_nonce,
-            &backup_codes_ref,
         )
     })
     .await?
@@ -263,13 +318,9 @@ pub async fn create(
         }
     };
 
-    let backup_codes = Arc::into_inner(backup_codes)
-        .expect("Multiple references exist to data that should only have one reference");
-
-    let resp_body = HttpResponse::Created().protobuf(BackupCodesAndVerificationEmailSent {
+    let resp_body = HttpResponse::Created().protobuf(VerificationEmailSent {
         email_sent: true,
         email_token_lifetime_hours: env::CONF.user_creation_token_lifetime.as_secs() / 3600,
-        backup_codes,
     })?;
 
     Ok(resp_body)
@@ -547,9 +598,29 @@ pub async fn change_recovery_key(
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    if new_recovery_key_data.recovery_key_hash_salt.len() > env::CONF.max_encryption_key_size {
+    if new_recovery_key_data
+        .recovery_key_hash_salt_for_encryption
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Recovery key salt is too long",
+            "Recovery key salt for encryption is too long",
+        )));
+    }
+
+    if new_recovery_key_data
+        .recovery_key_hash_salt_for_recovery_auth
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Recovery key salt for recovery auth is too long",
+        )));
+    }
+
+    if new_recovery_key_data.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Recovery key auth hash is too long",
         )));
     }
 
@@ -568,14 +639,56 @@ pub async fn change_recovery_key(
     )
     .await?;
 
+    // Rehash recovery key auth hash for storage
+    let new_recovery_key_data = Arc::new(new_recovery_key_data);
+    let new_recovery_key_ref = Arc::clone(&new_recovery_key_data);
+
+    let (sender, receiver) = oneshot::channel();
+
+    rayon::spawn(move || {
+        let hash_result = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&new_recovery_key_ref.recovery_key_auth_hash);
+
+        let hash = match hash_result {
+            Ok(h) => h,
+            Err(e) => {
+                sender.send(Err(e)).expect("Sending to channel failed");
+                return;
+            }
+        };
+
+        sender
+            .send(Ok(hash.to_string()))
+            .expect("Sending to channel failed");
+    });
+
+    let rehashed_recovery_key_auth_hash = match receiver.await? {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to rehash recovery key auth hash",
+            )));
+        }
+    };
+
     match web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.update_recovery_key(
             user_id,
-            &new_recovery_key_data.recovery_key_hash_salt,
+            &new_recovery_key_data.recovery_key_hash_salt_for_encryption,
+            &new_recovery_key_data.recovery_key_hash_salt_for_recovery_auth,
             new_recovery_key_data.recovery_key_hash_mem_cost_kib,
             new_recovery_key_data.recovery_key_hash_threads,
             new_recovery_key_data.recovery_key_hash_iterations,
+            &rehashed_recovery_key_auth_hash,
             &new_recovery_key_data.encrypted_encryption_key,
         )
     })
@@ -875,8 +988,6 @@ pub mod tests {
     use entries_common::schema::entries as entry_fields;
     use entries_common::schema::entries::dsl::entries;
     use entries_common::schema::signin_nonces::dsl::signin_nonces;
-    use entries_common::schema::user_backup_codes as user_backup_code_fields;
-    use entries_common::schema::user_backup_codes::dsl::user_backup_codes;
     use entries_common::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
     use entries_common::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
     use entries_common::schema::user_deletion_requests as user_deletion_request_fields;
@@ -971,10 +1082,13 @@ pub mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -998,7 +1112,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = BackupCodesAndVerificationEmailSent::decode(resp_body).unwrap();
+        VerificationEmailSent::decode(resp_body).unwrap();
 
         let user = users
             .filter(user_fields::email.eq(&new_user.email))
@@ -1035,7 +1149,14 @@ pub mod tests {
             user.password_encryption_key_iterations,
             new_user.password_encryption_key_iterations
         );
-        assert_eq!(user.recovery_key_hash_salt, new_user.recovery_key_hash_salt);
+        assert_eq!(
+            user.recovery_key_hash_salt_for_encryption,
+            new_user.recovery_key_hash_salt_for_encryption
+        );
+        assert_eq!(
+            user.recovery_key_hash_salt_for_recovery_auth,
+            new_user.recovery_key_hash_salt_for_recovery_auth
+        );
         assert_eq!(
             user.recovery_key_hash_mem_cost_kib,
             new_user.recovery_key_hash_mem_cost_kib
@@ -1101,23 +1222,6 @@ pub mod tests {
         assert!(user
             .auth_string_hash
             .contains(&format!("p={}", env::CONF.auth_string_hash_threads)));
-
-        // Get backup codes from response
-        let codes = resp_body.backup_codes;
-
-        let codes_from_db = user_backup_codes
-            .select(user_backup_code_fields::code)
-            .filter(user_backup_code_fields::user_id.eq(user.id))
-            .get_results::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
-
-        let mut count = 0;
-        for code in codes {
-            assert!(codes_from_db.iter().any(|c| c == &code));
-            count += 1;
-        }
-
-        assert_eq!(count, codes_from_db.len());
 
         let (keystore, keystore_version_nonce) = user_keystores
             .select((
@@ -1190,10 +1294,13 @@ pub mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -1256,7 +1363,30 @@ pub mod tests {
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
         let mut temp = new_user.clone();
-        temp.recovery_key_hash_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        temp.recovery_key_hash_salt_for_encryption = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let mut temp = new_user.clone();
+        temp.recovery_key_hash_salt_for_recovery_auth =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let mut temp = new_user.clone();
+        temp.recovery_key_auth_hash = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
             .uri("/api/user")
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1383,10 +1513,13 @@ pub mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: vec![8; 10],
+            recovery_key_hash_salt_for_encryption: vec![8; 16],
+            recovery_key_hash_salt_for_recovery_auth: vec![8; 16],
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: vec![8; 32],
 
             encryption_key_encrypted_with_password: vec![8; 10],
             encryption_key_encrypted_with_recovery_key: vec![8; 10],
@@ -2222,17 +2355,24 @@ pub mod tests {
             .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let updated_recovery_key_hash_salt: Vec<_> = gen_bytes(16);
+        let updated_recovery_key_hash_salt_for_encryption: Vec<_> = gen_bytes(16);
+        let updated_recovery_key_hash_salt_for_recovery_auth: Vec<_> = gen_bytes(16);
+        let updated_recovery_key_auth_hash: Vec<_> = gen_bytes(32);
         let updated_encrypted_encryption_key: Vec<_> = gen_bytes(48);
 
         let mut edit_recovery_key = RecoveryKeyUpdate {
             otp: String::from("ABCDEFGH"),
 
-            recovery_key_hash_salt: updated_recovery_key_hash_salt.clone(),
+            recovery_key_hash_salt_for_encryption: updated_recovery_key_hash_salt_for_encryption
+                .clone(),
+            recovery_key_hash_salt_for_recovery_auth:
+                updated_recovery_key_hash_salt_for_recovery_auth.clone(),
 
             recovery_key_hash_mem_cost_kib: 11,
             recovery_key_hash_threads: 13,
             recovery_key_hash_iterations: 17,
+
+            recovery_key_auth_hash: updated_recovery_key_auth_hash,
 
             encrypted_encryption_key: updated_encrypted_encryption_key,
         };
@@ -2274,8 +2414,12 @@ pub mod tests {
             .unwrap();
 
         assert_ne!(
-            stored_user.recovery_key_hash_salt,
-            edit_recovery_key.recovery_key_hash_salt
+            stored_user.recovery_key_hash_salt_for_encryption,
+            edit_recovery_key.recovery_key_hash_salt_for_encryption
+        );
+        assert_ne!(
+            stored_user.recovery_key_hash_salt_for_recovery_auth,
+            edit_recovery_key.recovery_key_hash_salt_for_recovery_auth
         );
         assert_ne!(
             stored_user.recovery_key_hash_mem_cost_kib,
@@ -2310,8 +2454,12 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(
-            stored_user.recovery_key_hash_salt,
-            edit_recovery_key.recovery_key_hash_salt
+            stored_user.recovery_key_hash_salt_for_encryption,
+            edit_recovery_key.recovery_key_hash_salt_for_encryption
+        );
+        assert_eq!(
+            stored_user.recovery_key_hash_salt_for_recovery_auth,
+            edit_recovery_key.recovery_key_hash_salt_for_recovery_auth
         );
         assert_eq!(
             stored_user.recovery_key_hash_mem_cost_kib,
@@ -2361,11 +2509,14 @@ pub mod tests {
         let edit_recovery_key = RecoveryKeyUpdate {
             otp: otp.clone(),
 
-            recovery_key_hash_salt: vec![0; env::CONF.max_encryption_key_size + 1],
+            recovery_key_hash_salt_for_encryption: vec![0; env::CONF.max_encryption_key_size + 1],
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
 
             recovery_key_hash_mem_cost_kib: 11,
             recovery_key_hash_threads: 13,
             recovery_key_hash_iterations: 17,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encrypted_encryption_key: gen_bytes(48),
         };
@@ -2388,11 +2539,77 @@ pub mod tests {
         let edit_recovery_key = RecoveryKeyUpdate {
             otp: otp.clone(),
 
-            recovery_key_hash_salt: gen_bytes(16),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: vec![
+                0;
+                env::CONF.max_encryption_key_size + 1
+            ],
 
             recovery_key_hash_mem_cost_kib: 11,
             recovery_key_hash_threads: 13,
             recovery_key_hash_iterations: 17,
+
+            recovery_key_auth_hash: gen_bytes(32),
+
+            encrypted_encryption_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(edit_recovery_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let edit_recovery_key = RecoveryKeyUpdate {
+            otp: otp.clone(),
+
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+
+            recovery_key_hash_mem_cost_kib: 11,
+            recovery_key_hash_threads: 13,
+            recovery_key_hash_iterations: 17,
+
+            recovery_key_auth_hash: vec![0; env::CONF.max_encryption_key_size + 1],
+
+            encrypted_encryption_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/recovery_key")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(edit_recovery_key.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let edit_recovery_key = RecoveryKeyUpdate {
+            otp: otp.clone(),
+
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+
+            recovery_key_hash_mem_cost_kib: 11,
+            recovery_key_hash_threads: 13,
+            recovery_key_hash_iterations: 17,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encrypted_encryption_key: vec![0; env::CONF.max_encryption_key_size + 1],
         };

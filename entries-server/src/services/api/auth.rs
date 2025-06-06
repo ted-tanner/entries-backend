@@ -20,24 +20,10 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .wrap(limiters.password.clone()),
             )
             .service(
-                resource("/backup_code/use").route(
-                    post()
-                        .to(auth::use_backup_code_for_signin)
-                        .wrap(limiters.password),
-                ),
-            )
-            .service(
                 resource("/otp/verify").route(
                     post()
                         .to(auth::verify_otp_for_signin)
                         .wrap(limiters.verify_otp),
-                ),
-            )
-            .service(
-                resource("/backup_code/regenerate").route(
-                    put()
-                        .to(auth::regenerate_backup_codes)
-                        .wrap(limiters.create_user),
                 ),
             )
             .service(resource("/otp").route(get().to(auth::obtain_otp).wrap(limiters.email)))

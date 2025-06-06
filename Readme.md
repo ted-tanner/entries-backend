@@ -460,6 +460,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Client should handle all the "throttle" cases with a nice message explaining the user needs to wait
 * When an action will send an email (e.g. creating account, signing in, deleting account, etc.), tell users to check their spam box
 * Limit description fields to 400 chars
+* Recovery key should be 24 capital alphanumeric chars (e.g. WJAZ-Y0G1-B1H8-Q58Z-Q9BX-NYFK).
 
 #### IMPORTANT Data Syncronization Stuff
 * Synchronize all data with a hash. When client goes to update data, the client must provide a hash of the encrypted data that it thinks the server has. If the hash doesn't match what the server has, the update is rejected by the server. The client must pull what the server has and redo the update.
@@ -500,8 +501,12 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Replace "user_backup_codes." Hash recovery key on client and send to server using same params and salt as password. Server should rehash it again for storage. Recovery key decrypts data and authenticates (different salt for decryption and authentication). Must send new password (and encrypted encryption key) when authenticating with recovery key). Recovery key should be 32 capital alphanumeric chars (e.g. WJAZ-Y0G1-B1H8-Q58Z-Q9BX-NYFK-6OUN-3ETT).
+* Replace "user_backup_codes." Hash recovery key on client and send to server using same params and salt as password. Server should rehash it again for storage. Recovery key decrypts data and authenticates (different salt for decryption and authentication). Must send new password (and encrypted encryption key) when authenticating with recovery key).
+   * TODO: Create recovery endpoint (creates new key, too)
+   * TODO: Update recovery key endpoint
 * Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
+* BYTEA fields in db should have length limit check
+* Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add
 * Update readme documentation
   - Add a section for the job scheduler
   - Needed for compilation:
@@ -569,6 +574,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * Languages/localization
 * Budgets that are not modified for a year will be deleted?
 * Full endpoint documentation
+* Should limiter sometimes be user-based? Some endpoints cannot be user based, but those that can be maybe should be
 * On client: Enforce practical limits on entries per budget and budgets per user
   - 5,000 budgets/user
   - 2,500 entries/budget

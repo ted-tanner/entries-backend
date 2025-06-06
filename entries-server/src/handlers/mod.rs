@@ -542,10 +542,13 @@ pub mod test_utils {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),

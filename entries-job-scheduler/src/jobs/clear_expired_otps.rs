@@ -76,10 +76,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 2,
 
-            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_salt_for_encryption: Vec::new(),
+            recovery_key_hash_salt_for_recovery_auth: Vec::new(),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 2,
+
+            recovery_key_auth_hash: Vec::new(),
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -107,10 +110,12 @@ mod tests {
                 new_user1.password_encryption_key_mem_cost_kib,
                 new_user1.password_encryption_key_threads,
                 new_user1.password_encryption_key_iterations,
-                &new_user1.recovery_key_hash_salt,
+                &new_user1.recovery_key_hash_salt_for_encryption,
+                &new_user1.recovery_key_hash_salt_for_recovery_auth,
                 new_user1.recovery_key_hash_mem_cost_kib,
                 new_user1.recovery_key_hash_threads,
                 new_user1.recovery_key_hash_iterations,
+                "",
                 &new_user1.encryption_key_encrypted_with_password,
                 &new_user1.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -119,7 +124,6 @@ mod tests {
                 new_user1.preferences_version_nonce,
                 &new_user1.user_keystore_encrypted,
                 new_user1.user_keystore_version_nonce,
-                &Vec::new(),
             )
             .unwrap();
         user_dao.verify_user_creation(user1_id).unwrap();
@@ -142,10 +146,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 2,
 
-            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_salt_for_encryption: Vec::new(),
+            recovery_key_hash_salt_for_recovery_auth: Vec::new(),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 2,
+
+            recovery_key_auth_hash: Vec::new(),
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -173,10 +180,12 @@ mod tests {
                 new_user2.password_encryption_key_mem_cost_kib,
                 new_user2.password_encryption_key_threads,
                 new_user2.password_encryption_key_iterations,
-                &new_user2.recovery_key_hash_salt,
+                &new_user2.recovery_key_hash_salt_for_encryption,
+                &new_user2.recovery_key_hash_salt_for_recovery_auth,
                 new_user2.recovery_key_hash_mem_cost_kib,
                 new_user2.recovery_key_hash_threads,
                 new_user2.recovery_key_hash_iterations,
+                "",
                 &new_user2.encryption_key_encrypted_with_password,
                 &new_user2.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -185,7 +194,6 @@ mod tests {
                 new_user2.preferences_version_nonce,
                 &new_user2.user_keystore_encrypted,
                 new_user2.user_keystore_version_nonce,
-                &[String::from("Test")],
             )
             .unwrap();
         user_dao.verify_user_creation(user2_id).unwrap();

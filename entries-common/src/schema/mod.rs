@@ -153,10 +153,12 @@ diesel::table! {
         password_encryption_key_mem_cost_kib -> Int4,
         password_encryption_key_threads -> Int4,
         password_encryption_key_iterations -> Int4,
-        recovery_key_hash_salt -> Bytea,
+        recovery_key_hash_salt_for_encryption -> Bytea,
+        recovery_key_hash_salt_for_recovery_auth -> Bytea,
         recovery_key_hash_mem_cost_kib -> Int4,
         recovery_key_hash_threads -> Int4,
         recovery_key_hash_iterations -> Int4,
+        recovery_key_auth_hash_rehashed_with_auth_string_params -> Text,
         encryption_key_encrypted_with_password -> Bytea,
         encryption_key_encrypted_with_recovery_key -> Bytea,
     }

@@ -1,10 +1,7 @@
 use entries_common::db::{self, DaoError, DbThreadPool};
 use entries_common::email::EmailSender;
-use entries_common::messages::{
-    BackupCode, BackupCodeList, CredentialPair, EmailQuery, SigninNonceAndHashParams, SigninToken,
-};
+use entries_common::messages::{CredentialPair, EmailQuery, SigninNonceAndHashParams, SigninToken};
 use entries_common::messages::{Otp as OtpMessage, TokenPair};
-use entries_common::otp::Otp;
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::validators::{self, Validity};
 
@@ -250,106 +247,6 @@ pub async fn obtain_otp(
     .await?;
 
     Ok(HttpResponse::Ok().finish())
-}
-
-pub async fn use_backup_code_for_signin(
-    db_thread_pool: web::Data<DbThreadPool>,
-    signin_token: UnverifiedToken<SignIn, FromHeader>,
-    code: ProtoBuf<BackupCode>,
-) -> Result<HttpResponse, HttpErrorResponse> {
-    let code = Zeroizing::new(code.0);
-
-    let claims = signin_token.verify()?;
-    let user_id = claims.user_id;
-
-    match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.delete_backup_code(&code.value, user_id)
-    })
-    .await?
-    {
-        Ok(_) => (),
-        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::IncorrectCredential(String::from(
-                "Backup codes was incorrect",
-            )));
-        }
-        Err(e) => log::error!("{e}"),
-    };
-
-    let now = SystemTime::now();
-
-    let refresh_token_claims = NewAuthTokenClaims {
-        user_id: claims.user_id,
-        user_email: &claims.user_email,
-        expiration: (now + env::CONF.refresh_token_lifetime)
-            .duration_since(UNIX_EPOCH)
-            .expect("System time should be after Unix Epoch")
-            .as_secs(),
-        token_type: AuthTokenType::Refresh,
-    };
-
-    let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
-
-    let access_token_claims = NewAuthTokenClaims {
-        user_id: claims.user_id,
-        user_email: &claims.user_email,
-        expiration: (now + env::CONF.access_token_lifetime)
-            .duration_since(UNIX_EPOCH)
-            .expect("System time should be after Unix Epoch")
-            .as_secs(),
-        token_type: AuthTokenType::Access,
-    };
-
-    let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
-
-    let token_pair = TokenPair {
-        access_token,
-        refresh_token,
-        server_time: SystemTime::now().try_into()?,
-    };
-
-    Ok(HttpResponse::Ok().protobuf(token_pair)?)
-}
-
-pub async fn regenerate_backup_codes(
-    db_thread_pool: web::Data<DbThreadPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    otp: ProtoBuf<OtpMessage>,
-) -> Result<HttpResponse, HttpErrorResponse> {
-    let user_id = user_access_token.0.user_id;
-
-    handlers::verification::verify_otp(
-        &otp.value,
-        &user_access_token.0.user_email,
-        &db_thread_pool,
-    )
-    .await?;
-
-    let backup_codes = Arc::new(Otp::generate_multiple(12, 8));
-    let backup_codes_ref = Arc::clone(&backup_codes);
-
-    match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.replace_backup_codes(user_id, &backup_codes_ref)
-    })
-    .await?
-    {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
-                "Failed to replace backup codes",
-            )));
-        }
-    };
-
-    let backup_codes = Arc::into_inner(backup_codes)
-        .expect("Multiple references exist to data that should only have one reference");
-
-    let resp_body = BackupCodeList { backup_codes };
-
-    Ok(HttpResponse::Ok().protobuf(resp_body)?)
 }
 
 pub async fn refresh_tokens(
@@ -646,10 +543,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),
@@ -832,10 +732,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 1,
 
-            recovery_key_hash_salt: gen_bytes(10),
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
 
             encryption_key_encrypted_with_password: gen_bytes(10),
             encryption_key_encrypted_with_recovery_key: gen_bytes(10),

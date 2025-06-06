@@ -95,10 +95,6 @@ message AuthStringAndEncryptedPasswordUpdate {
     required bytes encrypted_encryption_key = 12;
 }
 
-message BackupCode {
-    required string value = 1;
-}
-
 message BudgetAccessTokenList {
     repeated string tokens = 1;
 }
@@ -184,21 +180,24 @@ message NewUser {
     required int32 password_encryption_key_threads = 9;
     required int32 password_encryption_key_iterations = 10;
 
-    required bytes recovery_key_hash_salt = 11;
-    required int32 recovery_key_hash_mem_cost_kib = 12;
-    required int32 recovery_key_hash_threads = 13;
-    required int32 recovery_key_hash_iterations = 14;
+    required bytes recovery_key_hash_salt_for_encryption = 11;
+    required bytes recovery_key_hash_salt_for_recovery_auth = 12;
+    required int32 recovery_key_hash_mem_cost_kib = 13;
+    required int32 recovery_key_hash_threads = 14;
+    required int32 recovery_key_hash_iterations = 15;
 
-    required bytes encryption_key_encrypted_with_password = 15;
-    required bytes encryption_key_encrypted_with_recovery_key = 16;
+    required bytes recovery_key_auth_hash = 16;
 
-	required Uuid public_key_id = 17;
-    required bytes public_key = 18;
+    required bytes encryption_key_encrypted_with_password = 17;
+    required bytes encryption_key_encrypted_with_recovery_key = 18;
 
-    required bytes preferences_encrypted = 19;
-    required int64 preferences_version_nonce = 20;
-    required bytes user_keystore_encrypted = 21;
-    required int64 user_keystore_version_nonce = 22;
+	required Uuid public_key_id = 19;
+    required bytes public_key = 20;
+
+    required bytes preferences_encrypted = 21;
+    required int64 preferences_version_nonce = 22;
+    required bytes user_keystore_encrypted = 23;
+    required int64 user_keystore_version_nonce = 24;
 }
 
 message NewUserPublicKey {
@@ -218,12 +217,14 @@ message PublicKey {
 message RecoveryKeyUpdate {
     required string otp = 1;
 
-    required bytes recovery_key_hash_salt = 2;
-    required int32 recovery_key_hash_mem_cost_kib = 3;
-    required int32 recovery_key_hash_threads = 4;
-    required int32 recovery_key_hash_iterations = 5;
+    required bytes recovery_key_hash_salt_for_encryption = 2;
+    required bytes recovery_key_hash_salt_for_recovery_auth = 3;
+    required int32 recovery_key_hash_mem_cost_kib = 4;
+    required int32 recovery_key_hash_threads = 5;
+    required int32 recovery_key_hash_iterations = 6;
+    required bytes recovery_key_auth_hash = 7;
 
-    required bytes encrypted_encryption_key = 6;
+    required bytes encrypted_encryption_key = 8;
 }
 
 message UserInvitationToBudget {
@@ -247,16 +248,6 @@ message UserInvitationToBudget {
 message AcceptKeyInfo {
     required bool read_only = 1;
     required uint64 expiration = 2;
-}
-
-message BackupCodesAndVerificationEmailSent {
-    required bool email_sent = 1;
-    required uint64 email_token_lifetime_hours = 2;
-    repeated string backup_codes = 3;
-}
-
-message BackupCodeList {
-    repeated string backup_codes = 1;
 }
 
 message Budget {

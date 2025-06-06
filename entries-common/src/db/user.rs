@@ -6,7 +6,6 @@ use crate::db::{DaoError, DbThreadPool};
 use crate::messages::UserPublicKey;
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
-use crate::models::user_backup_code::NewUserBackupCode;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
 use crate::models::user_keystore::NewUserKeystore;
@@ -17,7 +16,6 @@ use crate::schema::budget_access_keys as budget_access_key_fields;
 use crate::schema::budget_access_keys::dsl::budget_access_keys;
 use crate::schema::budgets::dsl::budgets;
 use crate::schema::signin_nonces::dsl::signin_nonces;
-use crate::schema::user_backup_codes::dsl::user_backup_codes;
 use crate::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
 use crate::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
@@ -65,10 +63,12 @@ impl Dao {
         password_encryption_key_mem_cost_kib: i32,
         password_encryption_key_threads: i32,
         password_encryption_key_iterations: i32,
-        recovery_key_hash_salt: &[u8],
+        recovery_key_hash_salt_for_encryption: &[u8],
+        recovery_key_hash_salt_for_recovery_auth: &[u8],
         recovery_key_hash_mem_cost_kib: i32,
         recovery_key_hash_threads: i32,
         recovery_key_hash_iterations: i32,
+        recovery_key_auth_hash_rehashed_with_auth_string_params: &str,
         encryption_key_encrypted_with_password: &[u8],
         encryption_key_encrypted_with_recovery_key: &[u8],
         public_key_id: Uuid,
@@ -77,7 +77,6 @@ impl Dao {
         preferences_version_nonce: i64,
         user_keystore_encrypted: &[u8],
         user_keystore_version_nonce: i64,
-        backup_codes: &[String],
     ) -> Result<Uuid, DaoError> {
         let current_time = SystemTime::now();
         let user_id = Uuid::now_v7();
@@ -105,10 +104,13 @@ impl Dao {
             password_encryption_key_threads,
             password_encryption_key_iterations,
 
-            recovery_key_hash_salt,
+            recovery_key_hash_salt_for_encryption,
+            recovery_key_hash_salt_for_recovery_auth,
             recovery_key_hash_mem_cost_kib,
             recovery_key_hash_threads,
             recovery_key_hash_iterations,
+
+            recovery_key_auth_hash_rehashed_with_auth_string_params,
 
             encryption_key_encrypted_with_password,
             encryption_key_encrypted_with_recovery_key,
@@ -131,11 +133,6 @@ impl Dao {
             nonce: SecureRng::next_i32(),
         };
 
-        let backup_codes = backup_codes
-            .iter()
-            .map(|code| NewUserBackupCode { user_id, code })
-            .collect::<Vec<_>>();
-
         let mut db_connection = self.db_thread_pool.get()?;
 
         db_connection
@@ -153,10 +150,6 @@ impl Dao {
 
                 dsl::insert_into(signin_nonces)
                     .values(&new_signin_nonce)
-                    .execute(conn)?;
-
-                dsl::insert_into(user_backup_codes)
-                    .values(&backup_codes)
                     .execute(conn)?;
 
                 Ok(())
@@ -367,21 +360,29 @@ impl Dao {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_recovery_key(
         &self,
         user_id: Uuid,
-        new_recovery_key_hash_salt: &[u8],
+        new_recovery_key_hash_salt_for_encryption: &[u8],
+        new_recovery_key_hash_salt_for_recovery_auth: &[u8],
         new_recovery_key_hash_mem_cost_kib: i32,
         new_recovery_key_hash_threads: i32,
         new_recovery_key_hash_iterations: i32,
+        new_recovery_key_auth_hash_rehashed_with_auth_string_params: &str,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
         dsl::update(users.find(user_id))
             .set((
-                user_fields::recovery_key_hash_salt.eq(new_recovery_key_hash_salt),
+                user_fields::recovery_key_hash_salt_for_encryption
+                    .eq(new_recovery_key_hash_salt_for_encryption),
+                user_fields::recovery_key_hash_salt_for_recovery_auth
+                    .eq(new_recovery_key_hash_salt_for_recovery_auth),
                 user_fields::recovery_key_hash_mem_cost_kib.eq(new_recovery_key_hash_mem_cost_kib),
                 user_fields::recovery_key_hash_threads.eq(new_recovery_key_hash_threads),
                 user_fields::recovery_key_hash_iterations.eq(new_recovery_key_hash_iterations),
+                user_fields::recovery_key_auth_hash_rehashed_with_auth_string_params
+                    .eq(new_recovery_key_auth_hash_rehashed_with_auth_string_params),
                 user_fields::encryption_key_encrypted_with_recovery_key
                     .eq(encrypted_encryption_key),
             ))

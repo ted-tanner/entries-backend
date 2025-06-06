@@ -82,10 +82,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 2,
 
-            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_salt_for_encryption: Vec::new(),
+            recovery_key_hash_salt_for_recovery_auth: Vec::new(),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 2,
+
+            recovery_key_auth_hash: Vec::new(),
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -113,10 +116,12 @@ mod tests {
                 new_user_no_exp.password_encryption_key_mem_cost_kib,
                 new_user_no_exp.password_encryption_key_threads,
                 new_user_no_exp.password_encryption_key_iterations,
-                &new_user_no_exp.recovery_key_hash_salt,
+                &new_user_no_exp.recovery_key_hash_salt_for_encryption,
+                &new_user_no_exp.recovery_key_hash_salt_for_recovery_auth,
                 new_user_no_exp.recovery_key_hash_mem_cost_kib,
                 new_user_no_exp.recovery_key_hash_threads,
                 new_user_no_exp.recovery_key_hash_iterations,
+                "",
                 &new_user_no_exp.encryption_key_encrypted_with_password,
                 &new_user_no_exp.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -125,7 +130,6 @@ mod tests {
                 new_user_no_exp.preferences_version_nonce,
                 &new_user_no_exp.user_keystore_encrypted,
                 new_user_no_exp.user_keystore_version_nonce,
-                &Vec::new(),
             )
             .unwrap();
 
@@ -147,10 +151,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 2,
 
-            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_salt_for_encryption: Vec::new(),
+            recovery_key_hash_salt_for_recovery_auth: Vec::new(),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 2,
+
+            recovery_key_auth_hash: Vec::new(),
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -176,10 +183,12 @@ mod tests {
                 new_user_verified.password_encryption_key_mem_cost_kib,
                 new_user_verified.password_encryption_key_threads,
                 new_user_verified.password_encryption_key_iterations,
-                &new_user_verified.recovery_key_hash_salt,
+                &new_user_verified.recovery_key_hash_salt_for_encryption,
+                &new_user_verified.recovery_key_hash_salt_for_recovery_auth,
                 new_user_verified.recovery_key_hash_mem_cost_kib,
                 new_user_verified.recovery_key_hash_threads,
                 new_user_verified.recovery_key_hash_iterations,
+                "",
                 &new_user_verified.encryption_key_encrypted_with_password,
                 &new_user_verified.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -188,7 +197,6 @@ mod tests {
                 new_user_verified.preferences_version_nonce,
                 &new_user_verified.user_keystore_encrypted,
                 new_user_verified.user_keystore_version_nonce,
-                &Vec::new(),
             )
             .unwrap();
         user_dao.verify_user_creation(user_verified_id).unwrap();
@@ -216,10 +224,13 @@ mod tests {
             password_encryption_key_threads: 1,
             password_encryption_key_iterations: 2,
 
-            recovery_key_hash_salt: Vec::new(),
+            recovery_key_hash_salt_for_encryption: Vec::new(),
+            recovery_key_hash_salt_for_recovery_auth: Vec::new(),
             recovery_key_hash_mem_cost_kib: 1024,
             recovery_key_hash_threads: 1,
             recovery_key_hash_iterations: 2,
+
+            recovery_key_auth_hash: Vec::new(),
 
             encryption_key_encrypted_with_password: Vec::new(),
             encryption_key_encrypted_with_recovery_key: Vec::new(),
@@ -245,10 +256,12 @@ mod tests {
                 new_user_exp.password_encryption_key_mem_cost_kib,
                 new_user_exp.password_encryption_key_threads,
                 new_user_exp.password_encryption_key_iterations,
-                &new_user_exp.recovery_key_hash_salt,
+                &new_user_exp.recovery_key_hash_salt_for_encryption,
+                &new_user_exp.recovery_key_hash_salt_for_recovery_auth,
                 new_user_exp.recovery_key_hash_mem_cost_kib,
                 new_user_exp.recovery_key_hash_threads,
                 new_user_exp.recovery_key_hash_iterations,
+                "",
                 &new_user_exp.encryption_key_encrypted_with_password,
                 &new_user_exp.encryption_key_encrypted_with_recovery_key,
                 public_key_id,
@@ -257,7 +270,6 @@ mod tests {
                 new_user_exp.preferences_version_nonce,
                 &new_user_exp.user_keystore_encrypted,
                 new_user_exp.user_keystore_version_nonce,
-                &Vec::new(),
             )
             .unwrap();
 

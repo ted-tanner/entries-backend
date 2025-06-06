@@ -30,10 +30,13 @@ pub struct User {
     pub password_encryption_key_threads: i32,
     pub password_encryption_key_iterations: i32,
 
-    pub recovery_key_hash_salt: Vec<u8>,
+    pub recovery_key_hash_salt_for_encryption: Vec<u8>,
+    pub recovery_key_hash_salt_for_recovery_auth: Vec<u8>,
     pub recovery_key_hash_mem_cost_kib: i32,
     pub recovery_key_hash_threads: i32,
     pub recovery_key_hash_iterations: i32,
+
+    pub recovery_key_auth_hash_rehashed_with_auth_string_params: String,
 
     pub encryption_key_encrypted_with_password: Vec<u8>,
     pub encryption_key_encrypted_with_recovery_key: Vec<u8>,
@@ -64,10 +67,13 @@ pub struct NewUser<'a> {
     pub password_encryption_key_threads: i32,
     pub password_encryption_key_iterations: i32,
 
-    pub recovery_key_hash_salt: &'a [u8],
+    pub recovery_key_hash_salt_for_encryption: &'a [u8],
+    pub recovery_key_hash_salt_for_recovery_auth: &'a [u8],
     pub recovery_key_hash_mem_cost_kib: i32,
     pub recovery_key_hash_threads: i32,
     pub recovery_key_hash_iterations: i32,
+
+    pub recovery_key_auth_hash_rehashed_with_auth_string_params: &'a str,
 
     pub encryption_key_encrypted_with_password: &'a [u8],
     pub encryption_key_encrypted_with_recovery_key: &'a [u8],

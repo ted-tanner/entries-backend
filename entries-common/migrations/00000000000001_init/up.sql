@@ -21,16 +21,26 @@ CREATE TABLE users (
     password_encryption_key_threads INT NOT NULL,
     password_encryption_key_iterations INT NOT NULL,
 
-    recovery_key_hash_salt BYTEA NOT NULL,
+    -- Recovery key gets hashed on the client twice with different salts. One hash is used
+    -- to encrypt the account encryption key so it can be recovered. This hash is NOT sent
+    -- to the server (but the encryption key it encrypts is). The other hash is used as an
+    -- auth string to authenticate with the server in the recovery flow. This hash IS sent
+    -- to the server and the server then rehashes it for storage using the same parameters
+    -- used to hash the auth string (but with a different salt).
+    recovery_key_hash_salt_for_encryption BYTEA NOT NULL,
+    recovery_key_hash_salt_for_recovery_auth BYTEA NOT NULL,
     recovery_key_hash_mem_cost_kib INT NOT NULL,
     recovery_key_hash_threads INT NOT NULL,
     recovery_key_hash_iterations INT NOT NULL,
+
+    recovery_key_auth_hash_rehashed_with_auth_string_params TEXT NOT NULL,
 
     encryption_key_encrypted_with_password BYTEA NOT NULL,
     encryption_key_encrypted_with_recovery_key BYTEA NOT NULL,
 
     CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
-    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 128)
+    CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 128),
+    CONSTRAINT chk_recovery_key_auth_hash_rehashed_with_auth_string_params_length CHECK (char_length(recovery_key_auth_hash_rehashed_with_auth_string_params) <= 128)
 );
 
 CREATE TABLE blacklisted_tokens (
