@@ -24,7 +24,7 @@ impl FromRequest for AppVersion {
             }
         };
 
-        let app_verion = match app_version.to_str() {
+        let app_version = match app_version.to_str() {
             Ok(v) => v,
             Err(_) => {
                 return future::err(HttpErrorResponse::IncorrectlyFormed(String::from(
@@ -39,7 +39,7 @@ impl FromRequest for AppVersion {
             )));
         }
 
-        future::ok(AppVersion(String::from(app_verion)))
+        future::ok(AppVersion(String::from(app_version)))
     }
 }
 

@@ -122,11 +122,19 @@ pub mod verification {
     pub async fn verify_auth_string(
         auth_string: &[u8],
         user_email: &str,
+        verify_using_recovery_key: bool,
         db_thread_pool: &DbThreadPool,
     ) -> Result<(), HttpErrorResponse> {
+        let auth_string_error_text = if verify_using_recovery_key {
+            "recovery key hash"
+        } else {
+            "auth string"
+        };
+
         if user_email.len() > 255 || auth_string.len() > 1024 {
-            return Err(HttpErrorResponse::IncorrectCredential(String::from(
-                "Auth string was incorrect",
+            return Err(HttpErrorResponse::IncorrectCredential(format!(
+                "The {} was incorrect",
+                auth_string_error_text,
             )));
         }
 
@@ -134,24 +142,35 @@ pub mod verification {
         let auth_string = Zeroizing::new(Vec::from(auth_string));
 
         let auth_dao = db::auth::Dao::new(db_thread_pool);
-        let hash = match web::block(move || {
-            auth_dao.get_user_auth_string_hash_and_status(&user_email_copy)
+        let hash_and_status = match web::block(move || {
+            if verify_using_recovery_key {
+                auth_dao.get_user_recovery_auth_string_hash_and_status(&user_email_copy)
+            } else {
+                auth_dao.get_user_auth_string_hash_and_status(&user_email_copy)
+            }
         })
         .await?
         {
             Ok(a) => a,
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get user auth string",
+                return Err(HttpErrorResponse::InternalError(format!(
+                    "Failed to get user {}",
+                    auth_string_error_text,
                 )));
             }
         };
 
+        if !hash_and_status.is_user_verified {
+            return Err(HttpErrorResponse::InvalidState(String::from(
+                "User is not verified",
+            )));
+        }
+
         let (sender, receiver) = oneshot::channel();
 
         rayon::spawn(move || {
-            let hash = match argon2_kdf::Hash::from_str(&hash.auth_string_hash) {
+            let hash = match argon2_kdf::Hash::from_str(&hash_and_status.auth_string_hash) {
                 Ok(h) => h,
                 Err(e) => {
                     sender.send(Err(e)).expect("Sending to channel failed");
@@ -170,14 +189,16 @@ pub mod verification {
         match receiver.await? {
             Ok(true) => (),
             Ok(false) => {
-                return Err(HttpErrorResponse::IncorrectCredential(String::from(
-                    "Auth string was incorrect",
+                return Err(HttpErrorResponse::IncorrectCredential(format!(
+                    "The {} was incorrect",
+                    auth_string_error_text,
                 )));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to validate auth string",
+                return Err(HttpErrorResponse::InternalError(format!(
+                    "Failed to validate {}",
+                    auth_string_error_text,
                 )));
             }
         };

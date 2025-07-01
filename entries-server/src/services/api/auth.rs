@@ -20,6 +20,11 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .wrap(limiters.password.clone()),
             )
             .service(
+                resource("/recover_with_recovery_key")
+                    .route(post().to(auth::recover_with_recovery_key))
+                    .wrap(limiters.recovery.clone()),
+            )
+            .service(
                 resource("/otp/verify").route(
                     post()
                         .to(auth::verify_otp_for_signin)

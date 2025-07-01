@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::db::{DaoError, DbThreadPool};
 use crate::messages::SigninNonceAndHashParams;
 use crate::models::blacklisted_token::NewBlacklistedToken;
+use crate::models::user::User;
 use crate::models::user_backup_code::NewUserBackupCode;
 use crate::models::user_otp::NewUserOtp;
 use crate::schema::blacklisted_tokens as blacklisted_token_fields;
@@ -61,6 +62,34 @@ impl Dao {
             user_id,
             is_user_verified,
             auth_string_hash,
+        })
+    }
+
+    pub fn get_user_recovery_auth_string_hash_and_status(
+        &self,
+        user_email: &str,
+    ) -> Result<UserAuthStringHashAndStatus, DaoError> {
+        let (user_id, is_user_verified, recovery_key_auth_hash_rehashed) = users
+            .select((
+                user_fields::id,
+                user_fields::is_verified,
+                user_fields::recovery_key_auth_hash_rehashed_with_auth_string_params,
+            ))
+            .filter(user_fields::email.eq(user_email))
+            .get_result::<(Uuid, bool, String)>(&mut self.db_thread_pool.get()?)?;
+
+        if !is_user_verified {
+            return Ok(UserAuthStringHashAndStatus {
+                user_id,
+                is_user_verified,
+                auth_string_hash: String::new(),
+            });
+        }
+
+        Ok(UserAuthStringHashAndStatus {
+            user_id,
+            is_user_verified,
+            auth_string_hash: recovery_key_auth_hash_rehashed,
         })
     }
 
@@ -255,5 +284,75 @@ impl Dao {
         } else {
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound))
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_recovery_key_and_auth_string_and_email(
+        &self,
+        user_email: &str,
+        new_user_email: Option<&str>,
+        rehashed_new_auth_string: &str,
+        new_auth_string_hash_salt: &[u8],
+        new_auth_string_hash_mem_cost_kib: i32,
+        new_auth_string_hash_threads: i32,
+        new_auth_string_hash_iterations: i32,
+        new_recovery_key_hash_salt_for_encryption: &[u8],
+        new_recovery_key_hash_salt_for_recovery_auth: &[u8],
+        new_recovery_key_hash_mem_cost_kib: i32,
+        new_recovery_key_hash_threads: i32,
+        new_recovery_key_hash_iterations: i32,
+        rehashed_recovery_key_auth_hash: &str,
+        encryption_key_encrypted_with_new_password: &[u8],
+        encryption_key_encrypted_with_new_recovery_key: &[u8],
+    ) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                let user: User = users
+                    .filter(user_fields::email.eq(user_email))
+                    .first(conn)?;
+
+                diesel::update(users.filter(user_fields::id.eq(user.id)))
+                    .set((
+                        user_fields::auth_string_hash.eq(rehashed_new_auth_string),
+                        user_fields::auth_string_hash_salt.eq(new_auth_string_hash_salt),
+                        user_fields::auth_string_hash_mem_cost_kib
+                            .eq(new_auth_string_hash_mem_cost_kib),
+                        user_fields::auth_string_hash_threads.eq(new_auth_string_hash_threads),
+                        user_fields::auth_string_hash_iterations
+                            .eq(new_auth_string_hash_iterations),
+                        user_fields::encryption_key_encrypted_with_password
+                            .eq(encryption_key_encrypted_with_new_password),
+                    ))
+                    .execute(conn)?;
+
+                diesel::update(users.filter(user_fields::id.eq(user.id)))
+                    .set((
+                        user_fields::recovery_key_hash_salt_for_encryption
+                            .eq(new_recovery_key_hash_salt_for_encryption),
+                        user_fields::recovery_key_hash_salt_for_recovery_auth
+                            .eq(new_recovery_key_hash_salt_for_recovery_auth),
+                        user_fields::recovery_key_hash_mem_cost_kib
+                            .eq(new_recovery_key_hash_mem_cost_kib),
+                        user_fields::recovery_key_hash_threads.eq(new_recovery_key_hash_threads),
+                        user_fields::recovery_key_hash_iterations
+                            .eq(new_recovery_key_hash_iterations),
+                        user_fields::recovery_key_auth_hash_rehashed_with_auth_string_params
+                            .eq(rehashed_recovery_key_auth_hash),
+                        user_fields::encryption_key_encrypted_with_recovery_key
+                            .eq(encryption_key_encrypted_with_new_recovery_key),
+                    ))
+                    .execute(conn)?;
+
+                if let Some(new_email) = new_user_email {
+                    diesel::update(users.filter(user_fields::id.eq(user.id)))
+                        .set(user_fields::email.eq(new_email))
+                        .execute(conn)?;
+                }
+
+                Ok(())
+            })
     }
 }

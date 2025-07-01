@@ -1,6 +1,9 @@
 use entries_common::db::{self, DaoError, DbThreadPool};
 use entries_common::email::EmailSender;
-use entries_common::messages::{CredentialPair, EmailQuery, SigninNonceAndHashParams, SigninToken};
+use entries_common::messages::{
+    CredentialPair, EmailQuery, RecoveryKeyAuthAndPasswordUpdate, SigninNonceAndHashParams,
+    SigninToken,
+};
 use entries_common::messages::{Otp as OtpMessage, TokenPair};
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::validators::{self, Validity};
@@ -159,6 +162,7 @@ pub async fn sign_in(
     handlers::verification::verify_auth_string(
         &credentials.auth_string,
         &credentials.email,
+        false,
         &db_thread_pool,
     )
     .await?;
@@ -309,6 +313,179 @@ pub async fn refresh_tokens(
     };
 
     Ok(HttpResponse::Ok().protobuf(token_pair)?)
+}
+
+pub async fn recover_with_recovery_key(
+    db_thread_pool: web::Data<DbThreadPool>,
+    recovery_key_data: ProtoBuf<RecoveryKeyAuthAndPasswordUpdate>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    if let Validity::Invalid(msg) =
+        validators::validate_email_address(&recovery_key_data.user_email)
+    {
+        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+    }
+
+    if let Some(email) = &recovery_key_data.new_user_email {
+        if let Validity::Invalid(msg) = validators::validate_email_address(email) {
+            return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        }
+    }
+
+    if recovery_key_data.new_auth_string.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(
+            "New auth string is too long",
+        )));
+    }
+
+    if recovery_key_data.new_auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "New auth string salt is too big",
+        )));
+    }
+
+    if recovery_key_data
+        .new_recovery_key_hash_salt_for_encryption
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "New recovery key hash salt for encryption is too big",
+        )));
+    }
+
+    if recovery_key_data
+        .new_recovery_key_hash_salt_for_recovery_auth
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "New recovery key hash salt for recovery auth is too big",
+        )));
+    }
+
+    if recovery_key_data.new_recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "New recovery key auth hash is too big",
+        )));
+    }
+
+    if recovery_key_data
+        .encryption_key_encrypted_with_new_password
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Encryption key encrypted with new password is too big",
+        )));
+    }
+
+    if recovery_key_data
+        .encryption_key_encrypted_with_new_recovery_key
+        .len()
+        > env::CONF.max_encryption_key_size
+    {
+        return Err(HttpErrorResponse::InputTooLarge(String::from(
+            "Encryption key encrypted with new recovery key is too big",
+        )));
+    }
+
+    handlers::verification::verify_auth_string(
+        &recovery_key_data.recovery_key_hash_for_recovery_auth,
+        &recovery_key_data.user_email,
+        true,
+        &db_thread_pool,
+    )
+    .await?;
+
+    let recovery_key_data = Arc::new(recovery_key_data);
+
+    let recovery_key_data_for_auth = Arc::clone(&recovery_key_data);
+    let (sender_auth, receiver_auth) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let hash_result = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&recovery_key_data_for_auth.new_auth_string);
+        let result = hash_result.map(|h| h.to_string());
+        sender_auth
+            .send(result)
+            .expect("Failed to send auth hash result");
+    });
+
+    let recovery_key_data_for_recovery = Arc::clone(&recovery_key_data);
+    let (sender_recovery, receiver_recovery) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let hash_result = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&recovery_key_data_for_recovery.new_recovery_key_auth_hash);
+        let result = hash_result.map(|h| h.to_string());
+        sender_recovery
+            .send(result)
+            .expect("Failed to send recovery hash result");
+    });
+
+    let (rehashed_auth_string_result, rehashed_recovery_key_auth_hash_result) =
+        futures::join!(receiver_auth, receiver_recovery);
+
+    let rehashed_auth_string = match rehashed_auth_string_result? {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to hash new auth string",
+            )));
+        }
+    };
+    let rehashed_recovery_key_auth_hash = match rehashed_recovery_key_auth_hash_result? {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to hash recovery key auth hash",
+            )));
+        }
+    };
+
+    let recovery_key_data_for_db = Arc::clone(&recovery_key_data);
+    let save_result = web::block(move || {
+        let auth_dao = db::auth::Dao::new(&db_thread_pool);
+        auth_dao.update_recovery_key_and_auth_string_and_email(
+            &recovery_key_data_for_db.user_email,
+            recovery_key_data_for_db.new_user_email.as_deref(),
+            &rehashed_auth_string,
+            &recovery_key_data_for_db.new_auth_string_hash_salt,
+            recovery_key_data_for_db.new_auth_string_hash_mem_cost_kib,
+            recovery_key_data_for_db.new_auth_string_hash_threads,
+            recovery_key_data_for_db.new_auth_string_hash_iterations,
+            &recovery_key_data_for_db.new_recovery_key_hash_salt_for_encryption,
+            &recovery_key_data_for_db.new_recovery_key_hash_salt_for_recovery_auth,
+            recovery_key_data_for_db.new_recovery_key_hash_mem_cost_kib,
+            recovery_key_data_for_db.new_recovery_key_hash_threads,
+            recovery_key_data_for_db.new_recovery_key_hash_iterations,
+            &rehashed_recovery_key_auth_hash,
+            &recovery_key_data_for_db.encryption_key_encrypted_with_new_password,
+            &recovery_key_data_for_db.encryption_key_encrypted_with_new_recovery_key,
+        )
+    })
+    .await;
+
+    match save_result {
+        Ok(Ok(())) => Ok(HttpResponse::Ok().finish()),
+        _ => Err(HttpErrorResponse::InternalError(String::from(
+            "Failed to update user data during recovery",
+        ))),
+    }
 }
 
 pub async fn logout(
@@ -918,4 +1095,6 @@ mod tests {
         assert!(!resp_body.contains(&new_otp.otp));
         assert!(old_otp.otp != new_otp.otp);
     }
+
+    // TODO: Add tests for recover_with_recovery_key
 }
