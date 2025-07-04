@@ -131,7 +131,7 @@ pub mod verification {
             "auth string"
         };
 
-        if user_email.len() > 255 || auth_string.len() > 1024 {
+        if user_email.len() > 255 || auth_string.len() > env::CONF.max_auth_string_length {
             return Err(HttpErrorResponse::IncorrectCredential(format!(
                 "The {} was incorrect",
                 auth_string_error_text,

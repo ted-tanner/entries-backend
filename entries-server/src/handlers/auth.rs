@@ -331,7 +331,7 @@ pub async fn recover_with_recovery_key(
         }
     }
 
-    if recovery_key_data.new_auth_string.len() > env::CONF.max_encryption_key_size {
+    if recovery_key_data.new_auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(
             "New auth string is too long",
         )));
@@ -1603,7 +1603,7 @@ mod tests {
         };
 
         let mut temp = recovery_key_data.clone();
-        temp.new_auth_string = vec![0; env::CONF.max_encryption_key_size + 1];
+        temp.new_auth_string = vec![0; env::CONF.max_auth_string_length + 1];
         let req = TestRequest::post()
             .uri("/api/auth/recover_with_recovery_key")
             .insert_header(("Content-Type", "application/protobuf"))

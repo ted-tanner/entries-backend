@@ -74,6 +74,7 @@ const MAX_USER_PREFERENCES_SIZE_KB_VAR: &str = "ENTRIES_MAX_USER_PREFERENCES_SIZ
 const MAX_ENCRYPTION_KEY_SIZE_KB_VAR: &str = "ENTRIES_MAX_ENCRYPTION_KEY_SIZE_KB";
 const MAX_BUDGETS_VAR: &str = "ENTRIES_MAX_BUDGETS";
 const MAX_BUDGET_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_BUDGET_FETCH_COUNT";
+const MAX_AUTH_STRING_LENGTH_VAR: &str = "ENTRIES_MAX_AUTH_STRING_LENGTH";
 
 const HEALTH_ENDPOINT_KEY_VAR: &str = "ENTRIES_HEALTH_ENDPOINT_KEY";
 
@@ -157,6 +158,8 @@ pub struct ConfigInner {
     pub max_budgets: usize,
     #[zeroize(skip)]
     pub max_budget_fetch_count: usize,
+    #[zeroize(skip)]
+    pub max_auth_string_length: usize,
 
     pub health_endpoint_key: String,
 }
@@ -270,6 +273,7 @@ impl Config {
             max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 4)? * 1024,
             max_budgets: env_var_or(MAX_BUDGETS_VAR, 5_000)?,
             max_budget_fetch_count: env_var_or(MAX_BUDGET_FETCH_COUNT_VAR, 50)?,
+            max_auth_string_length: env_var_or(MAX_AUTH_STRING_LENGTH_VAR, 1024)?,
 
             health_endpoint_key: env_var(HEALTH_ENDPOINT_KEY_VAR)?,
         };

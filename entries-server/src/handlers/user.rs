@@ -76,7 +76,7 @@ pub async fn create(
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
     }
 
-    if user_data.auth_string.len() > env::CONF.max_encryption_key_size {
+    if user_data.auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string is too long",
         )));
@@ -499,7 +499,7 @@ pub async fn change_password(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let new_password_data = Zeroizing::new(new_password_data.0);
 
-    if new_password_data.new_auth_string.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.new_auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string is too long",
         )));
@@ -1315,7 +1315,7 @@ pub mod tests {
         };
 
         let mut temp = new_user.clone();
-        temp.auth_string = gen_bytes(env::CONF.max_encryption_key_size + 1);
+        temp.auth_string = gen_bytes(env::CONF.max_auth_string_length + 1);
         let req = TestRequest::post()
             .uri("/api/user")
             .insert_header(("Content-Type", "application/protobuf"))
@@ -2192,7 +2192,7 @@ pub mod tests {
             user_email: user.email.clone(),
             otp: otp.clone(),
 
-            new_auth_string: vec![0; env::CONF.max_encryption_key_size + 1],
+            new_auth_string: vec![0; env::CONF.max_auth_string_length + 1],
 
             auth_string_hash_salt: gen_bytes(16),
 
