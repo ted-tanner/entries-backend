@@ -152,6 +152,13 @@ pub mod verification {
         .await?
         {
             Ok(a) => a,
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+                // Return IncorrectCredential to prevent user enumeration attacks
+                return Err(HttpErrorResponse::IncorrectCredential(format!(
+                    "The {} was incorrect",
+                    auth_string_error_text,
+                )));
+            }
             Err(e) => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(format!(

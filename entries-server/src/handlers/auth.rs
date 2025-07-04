@@ -9,7 +9,7 @@ use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenCl
 use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, App, HttpResponse};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
@@ -534,7 +534,7 @@ mod tests {
     use super::*;
 
     use entries_common::messages::{ErrorType, NewUser, ServerErrorResponse};
-    use entries_common::models::user_otp::UserOtp;
+    use entries_common::models::{user::User, user_otp::UserOtp};
     use entries_common::schema::{signin_nonces, user_otps, users};
     use entries_common::threadrand::SecureRng;
 
@@ -543,13 +543,14 @@ mod tests {
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
-    use actix_web::App;
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use entries_common::token::Token;
     use prost::Message;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
+    use crate::middleware::Limiter;
     use crate::services::api::RouteLimiters;
 
     #[actix_web::test]
@@ -1096,5 +1097,625 @@ mod tests {
         assert!(old_otp.otp != new_otp.otp);
     }
 
-    // TODO: Add tests for recover_with_recovery_key
+    #[actix_web::test]
+    #[ignore]
+    async fn test_recover_with_recovery_key_success() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Simulate client-side hash (arbitrary params that the client uses)
+        let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
+        let client_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(recovery_key.as_bytes())
+            .unwrap();
+
+        // Simulate server-side rehash (configured params)
+        let server_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(client_hash.as_bytes())
+            .unwrap();
+
+        // Update user's recovery key hash in database
+        diesel::update(users::table.find(user.id))
+            .set(
+                users::recovery_key_auth_hash_rehashed_with_auth_string_params
+                    .eq(server_hash.to_string()),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        // Create new password and recovery key
+        let new_password = format!("new_password_{}", SecureRng::next_u128());
+        let new_recovery_key = format!("new_recovery_key_{}", SecureRng::next_u128());
+
+        let new_auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_password.as_bytes())
+            .unwrap();
+
+        let new_recovery_key_auth_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_recovery_key.as_bytes())
+            .unwrap();
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: Vec::from(client_hash.as_bytes()),
+            user_email: user.email.clone(),
+            new_user_email: None,
+            new_auth_string: Vec::from(new_auth_string.as_bytes()),
+            new_auth_string_hash_salt: Vec::from(new_auth_string.salt_bytes()),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: Vec::from(
+                new_recovery_key_auth_hash.salt_bytes(),
+            ),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: Vec::from(new_recovery_key_auth_hash.as_bytes()),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify the user data was updated in the database
+        let updated_user = users::table
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        // Check that the new auth string hash can be verified with the new password
+        assert!(argon2_kdf::Hash::from_str(&updated_user.auth_string_hash)
+            .unwrap()
+            .verify_with_secret(
+                new_auth_string.as_bytes(),
+                (&env::CONF.auth_string_hash_key).into()
+            ));
+
+        // Check that the new recovery key hash can be verified with the new recovery key
+        assert!(argon2_kdf::Hash::from_str(
+            &updated_user.recovery_key_auth_hash_rehashed_with_auth_string_params
+        )
+        .unwrap()
+        .verify_with_secret(
+            new_recovery_key_auth_hash.as_bytes(),
+            (&env::CONF.auth_string_hash_key).into()
+        ));
+    }
+
+    #[actix_web::test]
+    #[ignore]
+    async fn test_recover_with_recovery_key_with_email_change() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Simulate client-side hash (arbitrary params that the client uses)
+        let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
+        let client_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(recovery_key.as_bytes())
+            .unwrap();
+
+        // Simulate server-side rehash (configured params)
+        let server_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(client_hash.as_bytes())
+            .unwrap();
+
+        // Update user's recovery key hash in database
+        diesel::update(users::table.find(user.id))
+            .set(
+                users::recovery_key_auth_hash_rehashed_with_auth_string_params
+                    .eq(server_hash.to_string()),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_email = format!("new_email_{}@test.com", SecureRng::next_u128());
+        let new_password = format!("new_password_{}", SecureRng::next_u128());
+        let new_recovery_key = format!("new_recovery_key_{}", SecureRng::next_u128());
+
+        let new_auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_password.as_bytes())
+            .unwrap();
+
+        let new_recovery_key_auth_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_recovery_key.as_bytes())
+            .unwrap();
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: Vec::from(client_hash.as_bytes()),
+            user_email: user.email.clone(),
+            new_user_email: Some(new_email.clone()),
+            new_auth_string: Vec::from(new_auth_string.as_bytes()),
+            new_auth_string_hash_salt: Vec::from(new_auth_string.salt_bytes()),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: Vec::from(
+                new_recovery_key_auth_hash.salt_bytes(),
+            ),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: Vec::from(new_recovery_key_auth_hash.as_bytes()),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify the user email was updated
+        let updated_user = users::table
+            .find(user.id)
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, new_email);
+    }
+
+    #[actix_web::test]
+    #[ignore]
+    async fn test_recover_with_recovery_key_fails_with_invalid_recovery_key() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Simulate client-side hash (arbitrary params that the client uses)
+        let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
+        let client_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(recovery_key.as_bytes())
+            .unwrap();
+
+        // Simulate server-side rehash (configured params)
+        let server_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(client_hash.as_bytes())
+            .unwrap();
+
+        // Update user's recovery key hash in database
+        diesel::update(users::table.find(user.id))
+            .set(
+                users::recovery_key_auth_hash_rehashed_with_auth_string_params
+                    .eq(server_hash.to_string()),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let new_password = format!("new_password_{}", SecureRng::next_u128());
+        let new_recovery_key = format!("new_recovery_key_{}", SecureRng::next_u128());
+
+        let new_auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_password.as_bytes())
+            .unwrap();
+
+        let new_recovery_key_auth_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_recovery_key.as_bytes())
+            .unwrap();
+
+        // Use wrong recovery key hash
+        let wrong_recovery_key_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash("wrong_recovery_key".as_bytes())
+            .unwrap();
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: Vec::from(wrong_recovery_key_hash.as_bytes()),
+            user_email: user.email.clone(),
+            new_user_email: None,
+            new_auth_string: Vec::from(new_auth_string.as_bytes()),
+            new_auth_string_hash_salt: Vec::from(new_auth_string.salt_bytes()),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: Vec::from(
+                new_recovery_key_auth_hash.salt_bytes(),
+            ),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: Vec::from(new_recovery_key_auth_hash.as_bytes()),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_recover_with_recovery_key_fails_with_invalid_email() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: gen_bytes(32),
+            user_email: "invalid_email".to_string(),
+            new_user_email: None,
+            new_auth_string: gen_bytes(32),
+            new_auth_string_hash_salt: gen_bytes(16),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectlyFormed as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_recover_with_recovery_key_fails_with_invalid_new_email() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: gen_bytes(32),
+            user_email: user.email.clone(),
+            new_user_email: Some("invalid_new_email".to_string()),
+            new_auth_string: gen_bytes(32),
+            new_auth_string_hash_salt: gen_bytes(16),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectlyFormed as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_recover_with_recovery_key_fails_with_nonexistent_user() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: gen_bytes(32),
+            user_email: "nonexistent@test.com".to_string(),
+            new_user_email: None,
+            new_auth_string: gen_bytes(32),
+            new_auth_string_hash_salt: gen_bytes(16),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+    }
+
+    #[actix_web::test]
+    #[ignore]
+    async fn test_recover_with_recovery_key_fails_with_large_input() {
+        let mut protobuf_config = ProtoBufConfig::default();
+        protobuf_config.limit(env::CONF.protobuf_max_size);
+
+        let route_limiters = RouteLimiters {
+            recovery: Limiter::new(100, Duration::from_secs(1), Duration::from_secs(10)),
+            ..Default::default()
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(protobuf_config)
+                .configure(|cfg| crate::services::api::configure(cfg, route_limiters)),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: gen_bytes(32),
+            user_email: user.email.clone(),
+            new_user_email: None,
+            new_auth_string: gen_bytes(32),
+            new_auth_string_hash_salt: gen_bytes(16),
+            new_auth_string_hash_mem_cost_kib: 1024,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            new_recovery_key_hash_mem_cost_kib: 1024,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let mut temp = recovery_key_data.clone();
+        temp.new_auth_string = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::IncorrectlyFormed as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.new_auth_string_hash_salt = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.new_recovery_key_hash_salt_for_encryption =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.new_recovery_key_hash_salt_for_recovery_auth =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.new_recovery_key_auth_hash = vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.encryption_key_encrypted_with_new_password =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+
+        let mut temp = recovery_key_data.clone();
+        temp.encryption_key_encrypted_with_new_recovery_key =
+            vec![0; env::CONF.max_encryption_key_size + 1];
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(temp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
+    }
 }
