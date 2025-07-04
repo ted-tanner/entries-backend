@@ -227,11 +227,12 @@ impl Dao {
     }
 
     pub fn clear_all_expired_tokens(&self) -> Result<usize, DaoError> {
-        // Add two minutes to current time to prevent slight clock differences/inaccuracies from
+        // Subtract two minutes from current time to prevent slight clock differences/inaccuracies from
         // opening a window for an attacker to use an expired refresh token
+        let current_time_minus_two_minutes = SystemTime::now() - Duration::from_secs(120);
         Ok(diesel::delete(
             blacklisted_tokens
-                .filter(blacklisted_token_fields::token_expiration.lt(SystemTime::now())),
+                .filter(blacklisted_token_fields::token_expiration.lt(current_time_minus_two_minutes)),
         )
         .execute(&mut self.db_thread_pool.get()?)?)
     }
