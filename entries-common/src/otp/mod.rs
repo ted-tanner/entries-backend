@@ -14,15 +14,6 @@ impl Otp {
             .collect()
     }
 
-    pub fn generate_multiple(length: usize, count: usize) -> Vec<String> {
-        let mut backup_codes = Vec::with_capacity(count);
-        for _ in 0..count {
-            backup_codes.push(Self::generate(length));
-        }
-
-        backup_codes
-    }
-
     pub fn are_equal(given: &str, saved: &str) -> bool {
         let given = given.as_bytes();
         let saved = saved.as_bytes();
@@ -58,17 +49,5 @@ mod tests {
         let mut longer_otp = String::from(&otp);
         longer_otp.push('A');
         assert!(!Otp::are_equal(&otp, &longer_otp));
-
-        let otps = Otp::generate_multiple(9, 5);
-
-        for otp in otps {
-            assert!(Otp::are_equal(&otp, &otp));
-            assert!(!Otp::are_equal(&otp, "ABCDEFGHI"));
-            assert!(!Otp::are_equal(&otp, &otp[..8]));
-
-            let mut longer_otp = String::from(&otp);
-            longer_otp.push('A');
-            assert!(!Otp::are_equal(&otp, &longer_otp));
-        }
     }
 }

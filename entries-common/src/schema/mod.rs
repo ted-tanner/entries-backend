@@ -89,14 +89,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_backup_codes (user_id, code) {
-        user_id -> Uuid,
-        #[max_length = 12]
-        code -> Bpchar,
-    }
-}
-
-diesel::table! {
     user_deletion_request_budget_keys (key_id) {
         key_id -> Uuid,
         user_id -> Uuid,
@@ -169,7 +161,6 @@ diesel::joinable!(budget_access_keys -> budgets (budget_id));
 diesel::joinable!(categories -> budgets (budget_id));
 diesel::joinable!(entries -> budgets (budget_id));
 diesel::joinable!(entries -> categories (category_id));
-diesel::joinable!(user_backup_codes -> users (user_id));
 diesel::joinable!(user_deletion_request_budget_keys -> users (user_id));
 diesel::joinable!(user_deletion_requests -> users (user_id));
 diesel::joinable!(user_keystores -> users (user_id));
@@ -185,7 +176,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     entries,
     job_registry,
     signin_nonces,
-    user_backup_codes,
     user_deletion_request_budget_keys,
     user_deletion_requests,
     user_keystores,

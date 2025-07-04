@@ -190,16 +190,7 @@ CREATE TABLE signin_nonces (
 
 CREATE INDEX idx_signin_nonces_user_email ON signin_nonces(user_email);
 
-CREATE TABLE user_backup_codes (
-    user_id UUID NOT NULL,
-    code CHAR(12) NOT NULL,
 
-    PRIMARY KEY (user_id, code),
-
-    CONSTRAINT fk_user_backup_codes_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_user_backup_codes_user_id ON user_backup_codes(user_id);
 
 CREATE TABLE user_deletion_requests (
     user_id UUID PRIMARY KEY,

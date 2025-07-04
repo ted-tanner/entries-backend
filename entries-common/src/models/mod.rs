@@ -8,7 +8,6 @@ pub mod entry;
 pub mod job_registry_item;
 pub mod signin_nonce;
 pub mod user;
-pub mod user_backup_code;
 pub mod user_deletion_request;
 pub mod user_deletion_request_budget_key;
 pub mod user_keystore;
