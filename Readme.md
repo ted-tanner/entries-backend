@@ -215,6 +215,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Client
 
+* Remember that users can change their email addresses. Email addresses stored in E2EE blobs may become invalid
 * When sending bytes, consider endianness
 * Before user leaves budget, check if user is the only user with write priviledges. If so, suggest to user that they give someone write priviledges before leaving the budget
 * Follow password guidelines from NIST (perhaps require more characters given that user data is encrypted using the given password)
@@ -294,11 +295,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Allow user to change their email address
-  - May be changing email address because no longer have access to email. Don't require OTP to do this, just password and access token
 * Have Cursor determine whether Zeroizing needs to be used anywhere else
-* How to handle budget shares when email can change? Probably use username (need to add) rather than email for the invite. Or, perhaps better, update email address in all tables.
-  - On client, will need to remember that email can change
 * Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * BYTEA fields in db should have length limit check
 * Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add

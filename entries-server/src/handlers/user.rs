@@ -24,7 +24,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
-use zeroize::Zeroizing;
 
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
@@ -70,56 +69,56 @@ pub async fn create(
     smtp_thread_pool: web::Data<EmailSender>,
     user_data: ProtoBuf<NewUser>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let user_data = Zeroizing::new(user_data.0);
-
-    if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.email) {
+    if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.0.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
     }
 
-    if user_data.auth_string.len() > env::CONF.max_auth_string_length {
+    if user_data.0.auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string is too long",
         )));
     }
 
-    if user_data.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string salt is too big",
         )));
     }
 
-    if user_data.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Password encryption salt is too big",
         )));
     }
 
-    if user_data.recovery_key_hash_salt_for_encryption.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.recovery_key_hash_salt_for_encryption.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key salt for encryption is too big",
         )));
     }
 
-    if user_data.recovery_key_hash_salt_for_recovery_auth.len() > env::CONF.max_encryption_key_size
+    if user_data.0.recovery_key_hash_salt_for_recovery_auth.len()
+        > env::CONF.max_encryption_key_size
     {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key salt for recovery auth is too big",
         )));
     }
 
-    if user_data.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Recovery key auth hash is too long",
         )));
     }
 
-    if user_data.encryption_key_encrypted_with_password.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.encryption_key_encrypted_with_password.len() > env::CONF.max_encryption_key_size
+    {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encryption key encrypted with password is too big",
         )));
     }
 
-    if user_data.encryption_key_encrypted_with_recovery_key.len()
+    if user_data.0.encryption_key_encrypted_with_recovery_key.len()
         > env::CONF.max_encryption_key_size
     {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -127,25 +126,25 @@ pub async fn create(
         )));
     }
 
-    if user_data.public_key.len() > env::CONF.max_encryption_key_size {
+    if user_data.0.public_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Public key is too big",
         )));
     }
 
-    if user_data.preferences_encrypted.len() > env::CONF.max_user_preferences_size {
+    if user_data.0.preferences_encrypted.len() > env::CONF.max_user_preferences_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Preferences encrypted is too big",
         )));
     }
 
-    if user_data.user_keystore_encrypted.len() > env::CONF.max_keystore_size {
+    if user_data.0.user_keystore_encrypted.len() > env::CONF.max_keystore_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "User keystore encrypted is too big",
         )));
     }
 
-    let user_data = Arc::new(user_data);
+    let user_data = Arc::new(user_data.0);
     let user_data_ref1 = Arc::clone(&user_data);
     let user_data_ref2 = Arc::clone(&user_data);
 
@@ -497,40 +496,38 @@ pub async fn change_password(
     db_thread_pool: web::Data<DbThreadPool>,
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let new_password_data = Zeroizing::new(new_password_data.0);
-
-    if new_password_data.new_auth_string.len() > env::CONF.max_auth_string_length {
+    if new_password_data.0.new_auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string is too long",
         )));
     }
 
-    if new_password_data.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.0.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Auth string salt is too long",
         )));
     }
 
-    if new_password_data.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.0.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Password encryption salt is too long",
         )));
     }
 
-    if new_password_data.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
+    if new_password_data.0.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Encrypted encryption key is too long",
         )));
     }
 
     handlers::verification::verify_otp(
-        &new_password_data.otp,
-        &new_password_data.user_email,
+        &new_password_data.0.otp,
+        &new_password_data.0.user_email,
         &db_thread_pool,
     )
     .await?;
 
-    let new_password_data = Arc::new(new_password_data);
+    let new_password_data = Arc::new(new_password_data.0);
     let new_password_data_ref = Arc::clone(&new_password_data);
 
     let (sender, receiver) = oneshot::channel();
@@ -711,15 +708,14 @@ pub async fn change_email(
     user_access_token: VerifiedToken<Access, FromHeader>,
     email_change_data: ProtoBuf<EmailChangeRequest>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let email_change_data = Zeroizing::new(email_change_data.0);
-
-    if let Validity::Invalid(msg) = validators::validate_email_address(&email_change_data.new_email)
+    if let Validity::Invalid(msg) =
+        validators::validate_email_address(&email_change_data.0.new_email)
     {
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
     }
 
     handlers::verification::verify_auth_string(
-        &email_change_data.auth_string,
+        &email_change_data.0.auth_string,
         &user_access_token.0.user_email,
         false,
         &db_thread_pool,
@@ -727,7 +723,7 @@ pub async fn change_email(
     .await?;
 
     // Check if the new email is already in use
-    let new_email = email_change_data.new_email.clone();
+    let new_email = email_change_data.0.new_email.clone();
     let db_thread_pool_check = db_thread_pool.clone();
     let new_email_exists = web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool_check);

@@ -15,7 +15,6 @@ use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zeroize::Zeroizing;
 
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
@@ -92,13 +91,11 @@ pub async fn sign_in(
     smtp_thread_pool: web::Data<EmailSender>,
     credentials: ProtoBuf<CredentialPair>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let credentials = Zeroizing::new(credentials.0);
-
-    if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.email) {
+    if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.0.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
     }
 
-    let credentials = Arc::new(credentials);
+    let credentials = Arc::new(credentials.0);
     let credentials_ref = Arc::clone(&credentials);
 
     let auth_dao = db::auth::Dao::new(&db_thread_pool);
