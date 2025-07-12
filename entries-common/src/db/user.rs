@@ -391,6 +391,14 @@ impl Dao {
         Ok(())
     }
 
+    pub fn update_email(&self, user_id: Uuid, new_email: &str) -> Result<(), DaoError> {
+        dsl::update(users.find(user_id))
+            .set(user_fields::email.eq(new_email))
+            .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
     pub fn save_user_deletion_budget_keys(
         &self,
         budget_access_key_ids: &[Uuid],

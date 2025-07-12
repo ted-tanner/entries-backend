@@ -294,14 +294,11 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Replace "user_backup_codes." Hash recovery key on client and send to server using same params and salt as password. Server should rehash it again for storage. Recovery key decrypts data and authenticates (different salt for decryption and authentication). Must send new password (and encrypted encryption key) when authenticating with recovery key).
-  - TODO: Write tests for recover_with_recovery_key() in auth handler
-  - TODO: Endpoint to update a recovery key. Need password + OTP
-  - TODO: Replace 1024 magic number max length for auth hashes with a real value
-  - TODO: Test that a user cannot authenticate via normal means if not verified 
-  - TODO: Test that a user cannot authenticate via recovery key if not verified 
 * Allow user to change their email address
-  - May be changing email address because no longer have access to email. Don't require OTP to do this, just password
+  - May be changing email address because no longer have access to email. Don't require OTP to do this, just password and access token
+* Have Cursor determine whether Zeroizing needs to be used anywhere else
+* How to handle budget shares when email can change? Probably use username (need to add) rather than email for the invite. Or, perhaps better, update email address in all tables.
+  - On client, will need to remember that email can change
 * Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * BYTEA fields in db should have length limit check
 * Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add

@@ -36,6 +36,9 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .route(put().to(user::change_recovery_key).wrap(limiters.password)),
             )
             .service(
+                resource("/email").route(put().to(user::change_email).wrap(limiters.change_email)),
+            )
+            .service(
                 resource("/deletion")
                     .route(get().to(user::is_listed_for_deletion))
                     .route(delete().to(user::cancel_delete)),

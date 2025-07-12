@@ -22,6 +22,7 @@ pub struct RouteLimiters {
     pub verify_otp: Limiter,
     pub email: Limiter,
     pub refresh_tokens: Limiter,
+    pub change_email: Limiter,
 }
 
 impl Default for RouteLimiters {
@@ -40,6 +41,7 @@ impl Default for RouteLimiters {
             verify_otp: Limiter::new(6, Duration::from_secs(60), CLEAR_FREQUENCY),
             email: Limiter::new(6, Duration::from_secs(360), CLEAR_FREQUENCY),
             refresh_tokens: Limiter::new(20, Duration::from_secs(180), CLEAR_FREQUENCY),
+            change_email: Limiter::new(5, Duration::from_secs(1200), CLEAR_FREQUENCY),
         }
     }
 }

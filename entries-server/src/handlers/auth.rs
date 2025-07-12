@@ -1718,4 +1718,268 @@ mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
     }
+
+    #[actix_web::test]
+    async fn test_sign_in_fails_for_unverified_user() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let user_number = SecureRng::next_u128();
+
+        let password = format!("password{user_number}");
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(password.as_bytes())
+            .unwrap();
+
+        let public_key_id = Uuid::now_v7();
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::from(auth_string.as_bytes()),
+
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
+
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
+
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: SecureRng::next_i64(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Ensure user is not verified (this should be the default state)
+        let user = users::table
+            .filter(users::email.eq(&new_user.email))
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert!(!user.is_verified);
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: new_user.email,
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::PendingAction as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_recovery_key_fails_for_unverified_user() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let user_number = SecureRng::next_u128();
+
+        let password = format!("password{user_number}");
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(password.as_bytes())
+            .unwrap();
+
+        let public_key_id = Uuid::now_v7();
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::from(auth_string.as_bytes()),
+
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
+
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
+
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: SecureRng::next_i64(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Ensure user is not verified (this should be the default state)
+        let user = users::table
+            .filter(users::email.eq(&new_user.email))
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert!(!user.is_verified);
+
+        // Simulate client-side hash (arbitrary params that the client uses)
+        let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
+        let client_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(recovery_key.as_bytes())
+            .unwrap();
+
+        // Simulate server-side rehash (configured params)
+        let server_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(client_hash.as_bytes())
+            .unwrap();
+
+        // Update user's recovery key hash in database
+        diesel::update(users::table.find(user.id))
+            .set(
+                users::recovery_key_auth_hash_rehashed_with_auth_string_params
+                    .eq(server_hash.to_string()),
+            )
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        // Create new password and recovery key
+        let new_password = format!("new_password_{}", SecureRng::next_u128());
+        let new_recovery_key = format!("new_recovery_key_{}", SecureRng::next_u128());
+
+        let new_auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_password.as_bytes())
+            .unwrap();
+
+        let new_recovery_key_auth_hash = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(new_recovery_key.as_bytes())
+            .unwrap();
+
+        let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
+            recovery_key_hash_for_recovery_auth: Vec::from(client_hash.as_bytes()),
+            user_email: user.email.clone(),
+            new_user_email: None,
+            new_auth_string: Vec::from(new_auth_string.as_bytes()),
+            new_auth_string_hash_salt: Vec::from(new_auth_string.salt_bytes()),
+            new_auth_string_hash_mem_cost_kib: 128,
+            new_auth_string_hash_threads: 1,
+            new_auth_string_hash_iterations: 2,
+            new_recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            new_recovery_key_hash_salt_for_recovery_auth: Vec::from(
+                new_recovery_key_auth_hash.salt_bytes(),
+            ),
+            new_recovery_key_hash_mem_cost_kib: 128,
+            new_recovery_key_hash_threads: 1,
+            new_recovery_key_hash_iterations: 2,
+            new_recovery_key_auth_hash: Vec::from(new_recovery_key_auth_hash.as_bytes()),
+            encryption_key_encrypted_with_new_password: gen_bytes(48),
+            encryption_key_encrypted_with_new_recovery_key: gen_bytes(48),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/recover_with_recovery_key")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(recovery_key_data.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_err.err_type, ErrorType::InvalidState as i32);
+    }
 }

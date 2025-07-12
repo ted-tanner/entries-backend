@@ -8,9 +8,9 @@ use entries_common::html::templates::{
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
 use entries_common::messages::{
-    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailQuery, EncryptedBlobUpdate,
-    IsUserListedForDeletion, NewUser, NewUserPublicKey, RecoveryKeyUpdate, UserPublicKey,
-    VerificationEmailSent,
+    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailChangeRequest, EmailQuery,
+    EncryptedBlobUpdate, IsUserListedForDeletion, NewUser, NewUserPublicKey, RecoveryKeyUpdate,
+    UserPublicKey, VerificationEmailSent,
 };
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::token::budget_access_token::BudgetAccessToken;
@@ -698,10 +698,82 @@ pub async fn change_recovery_key(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(String::from(
-                "Failed to update recovery key data",
+                "Failed to update recovery key",
+            )));
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn change_email(
+    db_thread_pool: web::Data<DbThreadPool>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    email_change_data: ProtoBuf<EmailChangeRequest>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let email_change_data = Zeroizing::new(email_change_data.0);
+
+    if let Validity::Invalid(msg) = validators::validate_email_address(&email_change_data.new_email)
+    {
+        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+    }
+
+    handlers::verification::verify_auth_string(
+        &email_change_data.auth_string,
+        &user_access_token.0.user_email,
+        false,
+        &db_thread_pool,
+    )
+    .await?;
+
+    // Check if the new email is already in use
+    let new_email = email_change_data.new_email.clone();
+    let db_thread_pool_check = db_thread_pool.clone();
+    let new_email_exists = web::block(move || {
+        let user_dao = db::user::Dao::new(&db_thread_pool_check);
+
+        // All users have a public key, so if we can't find one, the email doesn't exist
+        match user_dao.get_user_public_key(&new_email) {
+            Ok(_) => Ok(true), // Email exists
+            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    })
+    .await?;
+
+    let new_email_exists = match new_email_exists {
+        Ok(b) => b,
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to check if email exists",
             )));
         }
     };
+
+    if new_email_exists {
+        return Err(HttpErrorResponse::ConflictWithExisting(String::from(
+            "A user with the given email address already exists",
+        )));
+    }
+
+    let new_email = email_change_data.new_email.clone();
+    let user_id = user_access_token.0.user_id;
+    let db_thread_pool_update = db_thread_pool.clone();
+    match web::block(move || {
+        let user_dao = db::user::Dao::new(&db_thread_pool_update);
+        user_dao.update_email(user_id, &new_email)
+    })
+    .await?
+    {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(String::from(
+                "Failed to update email",
+            )));
+        }
+    }
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -3988,5 +4060,319 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_success() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+        let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
+
+        // Hash a known auth string and update the user's auth string hash in the database
+        let known_auth_string = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let auth_string_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&known_auth_string)
+            .unwrap()
+            .to_string();
+
+        dsl::update(users.find(user.id))
+            .set(user_fields::auth_string_hash.eq(auth_string_hash))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let email_change_request = EmailChangeRequest {
+            new_email: new_email.clone(),
+            auth_string: known_auth_string,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify the email was actually changed in the database
+        let updated_user = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, new_email);
+        assert_ne!(updated_user.email, user.email);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_fails_with_incorrect_auth_string() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+        let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
+
+        // Hash a known auth string and update the user's auth string hash in the database
+        let known_auth_string = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let auth_string_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&known_auth_string)
+            .unwrap()
+            .to_string();
+
+        dsl::update(users.find(user.id))
+            .set(user_fields::auth_string_hash.eq(auth_string_hash))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let email_change_request = EmailChangeRequest {
+            new_email: new_email.clone(),
+            auth_string: gen_bytes(10), // Incorrect auth string
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+
+        // Verify the email was not changed
+        let updated_user = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, user.email);
+        assert_ne!(updated_user.email, new_email);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_fails_with_existing_email() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user1, access_token1, _, _) = test_utils::create_user().await;
+        let (user2, _, _, _) = test_utils::create_user().await;
+
+        // Hash a known auth string and update user1's auth string hash in the database
+        let known_auth_string = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let auth_string_hash = argon2_kdf::Hasher::default()
+            .algorithm(argon2_kdf::Algorithm::Argon2id)
+            .salt_length(env::CONF.auth_string_hash_salt_length)
+            .hash_length(env::CONF.auth_string_hash_length)
+            .iterations(env::CONF.auth_string_hash_iterations)
+            .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+            .threads(env::CONF.auth_string_hash_threads)
+            .secret((&env::CONF.auth_string_hash_key).into())
+            .hash(&known_auth_string)
+            .unwrap()
+            .to_string();
+
+        dsl::update(users.find(user1.id))
+            .set(user_fields::auth_string_hash.eq(auth_string_hash))
+            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let email_change_request = EmailChangeRequest {
+            new_email: user2.email.clone(),
+            auth_string: known_auth_string,
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("AccessToken", access_token1.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::ConflictWithExisting as i32);
+
+        // Verify the email was not changed
+        let updated_user = users
+            .find(user1.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, user1.email);
+        assert_ne!(updated_user.email, user2.email);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_fails_with_invalid_email_format() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+
+        let email_change_request = EmailChangeRequest {
+            new_email: "invalid-email-format".to_string(),
+            auth_string: gen_bytes(10),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectlyFormed as i32);
+
+        // Verify the email was not changed
+        let updated_user = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, user.email);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_fails_without_access_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+        let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
+
+        let email_change_request = EmailChangeRequest {
+            new_email: new_email.clone(),
+            auth_string: gen_bytes(10),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Verify the email was not changed
+        let updated_user = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, user.email);
+        assert_ne!(updated_user.email, new_email);
+    }
+
+    #[actix_web::test]
+    async fn test_change_email_fails_with_expired_access_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+        let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
+
+        // Create an expired access token
+        let expired_access_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() - Duration::from_secs(3600)) // 1 hour ago
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Access,
+        };
+
+        let expired_access_token =
+            AuthToken::sign_new(expired_access_token_claims, &env::CONF.token_signing_key);
+
+        let email_change_request = EmailChangeRequest {
+            new_email: new_email.clone(),
+            auth_string: gen_bytes(10),
+        };
+
+        let req = TestRequest::put()
+            .uri("/api/user/email")
+            .insert_header(("AccessToken", expired_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(email_change_request.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Verify the email was not changed
+        let updated_user = users
+            .find(user.id)
+            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        assert_eq!(updated_user.email, user.email);
+        assert_ne!(updated_user.email, new_email);
     }
 }

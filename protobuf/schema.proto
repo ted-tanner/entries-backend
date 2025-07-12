@@ -134,6 +134,11 @@ message EncryptedBlobUpdate {
     required int64 expected_previous_version_nonce = 3;
 }
 
+message EmailChangeRequest {
+    required string new_email = 1;
+    required bytes auth_string = 2;
+}
+
 message EntryAndCategory {
     required bytes entry_encrypted_blob = 1;
     required int64 entry_version_nonce = 2;
