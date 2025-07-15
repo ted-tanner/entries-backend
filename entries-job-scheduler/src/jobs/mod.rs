@@ -1,11 +1,11 @@
-mod clear_expired_budget_invites;
+mod clear_expired_container_invites;
 mod clear_expired_otps;
 mod clear_old_user_deletion_requests;
 mod clear_unverified_users;
 mod delete_users;
 mod unblacklist_expired_tokens;
 
-pub use clear_expired_budget_invites::ClearExpiredBudgetInvitesJob;
+pub use clear_expired_container_invites::ClearExpiredContainerInvitesJob;
 pub use clear_expired_otps::ClearExpiredOtpsJob;
 pub use clear_old_user_deletion_requests::ClearOldUserDeletionRequestsJob;
 pub use clear_unverified_users::ClearUnverifiedUsersJob;

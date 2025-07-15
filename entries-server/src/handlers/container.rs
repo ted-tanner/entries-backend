@@ -1,13 +1,13 @@
 use entries_common::messages::{
-    AcceptKeyInfo, BudgetAccessTokenList, BudgetList, CategoryId, CategoryUpdate,
+    AcceptKeyInfo, ContainerAccessTokenList, ContainerList, CategoryId, CategoryUpdate,
     EncryptedBlobAndCategoryId, EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate,
-    NewBudget, NewEncryptedBlob, PublicKey, UserInvitationToBudget,
+    NewContainer, NewEncryptedBlob, PublicKey, UserInvitationToContainer,
 };
-use entries_common::models::budget_access_key::BudgetAccessKey;
+use entries_common::models::container_access_key::ContainerAccessKey;
 use entries_common::threadrand::SecureRng;
-use entries_common::token::budget_accept_token::BudgetAcceptToken;
-use entries_common::token::budget_access_token::BudgetAccessToken;
-use entries_common::token::budget_invite_sender_token::BudgetInviteSenderToken;
+use entries_common::token::container_accept_token::ContainerAcceptToken;
+use entries_common::token::container_access_token::ContainerAccessToken;
+use entries_common::token::container_invite_sender_token::ContainerInviteSenderToken;
 use entries_common::token::Token;
 use entries_common::validators::{self, Validity};
 use entries_common::{db, db::DaoError, db::DbThreadPool};
@@ -32,41 +32,41 @@ use crate::middleware::{FromHeader, TokenLocation};
 pub async fn get(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
+    container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    const INVALID_ID_MSG: &str = "One of the provided budget access tokens had an invalid ID";
+    const INVALID_ID_MSG: &str = "One of the provided container access tokens had an invalid ID";
 
-    if budget_access_tokens.tokens.len() > env::CONF.max_budget_fetch_count {
+    if container_access_tokens.tokens.len() > env::CONF.max_container_fetch_count {
         return Err(HttpErrorResponse::TooManyRequested(format!(
-            "Cannot fetch more than {} budgets at once",
-            env::CONF.max_budget_fetch_count,
+            "Cannot fetch more than {} containers at once",
+            env::CONF.max_container_fetch_count,
         )));
     }
 
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
-    let mut budget_ids = Vec::new();
+    let mut container_ids = Vec::new();
 
-    for token in budget_access_tokens.tokens.iter() {
-        let token = BudgetAccessToken::decode(token)
+    for token in container_access_tokens.tokens.iter() {
+        let token = ContainerAccessToken::decode(token)
             .map_err(|_| HttpErrorResponse::IncorrectlyFormed(String::from(INVALID_ID_MSG)))?;
 
         key_ids.push(token.claims.key_id);
-        budget_ids.push(token.claims.budget_id);
+        container_ids.push(token.claims.container_id);
         tokens.insert(token.claims.key_id, token);
     }
 
-    let budget_ids = Arc::new(budget_ids);
-    let budget_ids_ref = Arc::clone(&budget_ids);
+    let container_ids = Arc::new(container_ids);
+    let container_ids_ref = Arc::clone(&container_ids);
 
-    let budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let container_dao = db::container::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
-        if budget_ids_ref.len() == 1 && key_ids.len() == 1 {
-            vec![budget_dao.get_public_budget_key(key_ids[0], budget_ids_ref[0])]
+        if container_ids_ref.len() == 1 && key_ids.len() == 1 {
+            vec![container_dao.get_public_container_key(key_ids[0], container_ids_ref[0])]
                 .into_iter()
                 .collect()
         } else {
-            budget_dao.get_multiple_public_budget_keys(&key_ids, &budget_ids_ref)
+            container_dao.get_multiple_public_container_keys(&key_ids, &container_ids_ref)
         }
     })
     .await?
@@ -76,13 +76,13 @@ pub async fn get(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     String::from(INVALID_ID_MSG),
-                    DoesNotExistType::Budget,
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get budget data",
+                    "Failed to get container data",
                 )));
             }
         },
@@ -91,7 +91,7 @@ pub async fn get(
     if public_keys.len() != tokens.len() {
         return Err(HttpErrorResponse::DoesNotExist(
             String::from(INVALID_ID_MSG),
-            DoesNotExistType::Budget,
+            DoesNotExistType::Container,
         ));
     }
 
@@ -101,7 +101,7 @@ pub async fn get(
             None => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     String::from(INVALID_ID_MSG),
-                    DoesNotExistType::Budget,
+                    DoesNotExistType::Container,
                 ))
             }
         };
@@ -109,15 +109,15 @@ pub async fn get(
         token.verify(&key.public_key)?;
     }
 
-    let budgets = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        if budget_ids.len() == 1 {
-            let budget = budget_dao.get_budget(budget_ids[0])?;
-            Ok(BudgetList {
-                budgets: vec![budget],
+    let containers = match web::block(move || {
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        if container_ids.len() == 1 {
+            let container = container_dao.get_container(container_ids[0])?;
+            Ok(ContainerList {
+                containers: vec![container],
             })
         } else {
-            budget_dao.get_multiple_budgets_by_id(&budget_ids)
+            container_dao.get_multiple_containers_by_id(&container_ids)
         }
     })
     .await?
@@ -126,40 +126,40 @@ pub async fn get(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("One of the provided IDs did not match a budget"),
-                    DoesNotExistType::Budget,
+                    String::from("One of the provided IDs did not match a container"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get budget data",
+                    "Failed to get container data",
                 )));
             }
         },
     };
 
-    Ok(HttpResponse::Ok().protobuf(budgets)?)
+    Ok(HttpResponse::Ok().protobuf(containers)?)
 }
 
 pub async fn create(
     db_thread_pool: web::Data<DbThreadPool>,
-    budget_data: ProtoBuf<NewBudget>,
+    container_data: ProtoBuf<NewContainer>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    if budget_data.encrypted_blob.len() > env::CONF.max_small_object_size {
+    if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Budget encrypted blob too large",
+            "Container encrypted blob too large",
         )));
     }
 
-    if budget_data.user_public_budget_key.len() > env::CONF.max_encryption_key_size {
+    if container_data.user_public_container_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "User public key too large",
         )));
     }
 
-    for category in budget_data.categories.iter() {
+    for category in container_data.categories.iter() {
         if category.encrypted_blob.len() > env::CONF.max_small_object_size {
             return Err(HttpErrorResponse::InputTooLarge(format!(
                 "Category encrypted blob too large for category with temp ID {}",
@@ -171,21 +171,21 @@ pub async fn create(
     // temp_id is an ID the client generates that allows the server to differentiate between
     // categories when multiple are sent to the server simultaneously. The server doesn't have any
     // other way of differentiating them because they are encrypted.
-    let temp_id_set = HashSet::<i32>::from_iter(budget_data.categories.iter().map(|c| c.temp_id));
+    let temp_id_set = HashSet::<i32>::from_iter(container_data.categories.iter().map(|c| c.temp_id));
 
-    if temp_id_set.len() != budget_data.categories.len() {
+    if temp_id_set.len() != container_data.categories.len() {
         return Err(HttpErrorResponse::InvalidState(String::from(
             "Multiple categories with the same ID",
         )));
     }
 
-    let new_budget = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_budget(
-            &budget_data.encrypted_blob,
-            budget_data.version_nonce,
-            &budget_data.categories,
-            &budget_data.user_public_budget_key,
+    let new_container = match web::block(move || {
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.create_container(
+            &container_data.encrypted_blob,
+            container_data.version_nonce,
+            &container_data.categories,
+            &container_data.user_public_container_key,
         )
     })
     .await?
@@ -194,35 +194,35 @@ pub async fn create(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(String::from(
-                "Failed to create budget",
+                "Failed to create container",
             )));
         }
     };
 
-    Ok(HttpResponse::Created().protobuf(new_budget)?)
+    Ok(HttpResponse::Created().protobuf(new_container)?)
 }
 
 pub async fn edit(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    budget_data: ProtoBuf<EncryptedBlobUpdate>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    container_data: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
-    if budget_data.encrypted_blob.len() > env::CONF.max_small_object_size {
+    if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Budget encrypted blob too large",
+            "Container encrypted blob too large",
         )));
     }
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_budget(
-            budget_access_token.0.claims.budget_id,
-            &budget_data.encrypted_blob,
-            budget_data.version_nonce,
-            budget_data.expected_previous_version_nonce,
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.update_container(
+            container_access_token.0.claims.container_id,
+            &container_data.encrypted_blob,
+            container_data.version_nonce,
+            container_data.expected_previous_version_nonce,
         )
     })
     .await?
@@ -236,14 +236,14 @@ pub async fn edit(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
+                    String::from("No container with ID matching token"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to edit budget",
+                    "Failed to edit container",
                 )));
             }
         },
@@ -264,10 +264,10 @@ pub struct AcceptKey {
 pub async fn invite_user(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
-    invitation_info: ProtoBuf<UserInvitationToBudget>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    invitation_info: ProtoBuf<UserInvitationToContainer>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if invitation_info.sender_public_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -281,9 +281,9 @@ pub async fn invite_user(
         )));
     }
 
-    if invitation_info.budget_info_encrypted.len() > env::CONF.max_small_object_size {
+    if invitation_info.container_info_encrypted.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Budget info encrypted too large",
+            "Container info encrypted too large",
         )));
     }
 
@@ -420,17 +420,17 @@ pub async fn invite_user(
         (&invitation_info.recipient_public_key_id_used_by_sender).try_into()?;
 
     let invite_id = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.invite_user(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.invite_user(
             &invitation_info.recipient_user_email,
             &invitation_info.sender_public_key,
             &invitation_info.encryption_key_encrypted,
-            &invitation_info.budget_info_encrypted,
+            &invitation_info.container_info_encrypted,
             &invitation_info.sender_info_encrypted,
             &invitation_info.share_info_symmetric_key_encrypted,
             recipient_pub_key_id_used_by_sender,
             recipient_pub_key_id,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
             expiration,
             invitation_info.read_only,
             accept_key_data.key_id,
@@ -446,14 +446,14 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget or invite with ID matching token"),
+                    String::from("No container or invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to share budget",
+                    "Failed to share container",
                 )));
             }
         },
@@ -465,13 +465,13 @@ pub async fn invite_user(
 pub async fn retract_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    invite_sender_token: SpecialAccessToken<BudgetInviteSenderToken, FromHeader>,
+    invite_sender_token: SpecialAccessToken<ContainerInviteSenderToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invitation_id = invite_sender_token.0.claims.invite_id;
 
-    let budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let container_dao = db::container::Dao::new(&db_thread_pool);
     let invite_sender_public_key =
-        match web::block(move || budget_dao.get_budget_invite_sender_public_key(invitation_id))
+        match web::block(move || container_dao.get_container_invite_sender_public_key(invitation_id))
             .await?
         {
             Ok(k) => k,
@@ -485,7 +485,7 @@ pub async fn retract_invitation(
                 _ => {
                     log::error!("{e}");
                     return Err(HttpErrorResponse::InternalError(String::from(
-                        "Failed to get public budget access key",
+                        "Failed to get public container access key",
                     )));
                 }
             },
@@ -494,8 +494,8 @@ pub async fn retract_invitation(
     invite_sender_token.0.verify(&invite_sender_public_key)?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_invitation(invite_sender_token.0.claims.invite_id)
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.delete_invitation(invite_sender_token.0.claims.invite_id)
     })
     .await?
     {
@@ -522,21 +522,21 @@ pub async fn retract_invitation(
 pub async fn accept_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
-    budget_user_public_key: ProtoBuf<PublicKey>,
+    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
+    container_user_public_key: ProtoBuf<PublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    if budget_user_public_key.value.len() > env::CONF.max_encryption_key_size {
+    if container_user_public_key.value.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
             "Public key too large",
         )));
     }
 
     let key_id = accept_token.0.claims.key_id;
-    let budget_id = accept_token.0.claims.budget_id;
+    let container_id = accept_token.0.claims.container_id;
 
-    let budget_dao = db::budget::Dao::new(&db_thread_pool);
-    let budget_accept_key =
-        match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
+    let container_dao = db::container::Dao::new(&db_thread_pool);
+    let container_accept_key =
+        match web::block(move || container_dao.get_container_accept_public_key(key_id, container_id)).await?
         {
             Ok(key) => key,
             Err(e) => match e {
@@ -555,23 +555,23 @@ pub async fn accept_invitation(
             },
         };
 
-    if budget_accept_key.expiration < SystemTime::now() {
+    if container_accept_key.expiration < SystemTime::now() {
         return Err(HttpErrorResponse::OutOfDate(String::from(
             "Invitation has expired",
         )));
     }
 
-    accept_token.0.verify(&budget_accept_key.public_key)?;
+    accept_token.0.verify(&container_accept_key.public_key)?;
 
-    let budget_keys = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.accept_invitation(
-            budget_accept_key.key_id,
-            budget_accept_key.budget_id,
-            budget_accept_key.read_only,
+    let container_keys = match web::block(move || {
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.accept_invitation(
+            container_accept_key.key_id,
+            container_accept_key.container_id,
+            container_accept_key.read_only,
             accept_token.0.claims.invite_id,
             &user_access_token.0.user_email,
-            &budget_user_public_key.value,
+            &container_user_public_key.value,
         )
     })
     .await?
@@ -593,20 +593,20 @@ pub async fn accept_invitation(
         },
     };
 
-    Ok(HttpResponse::Ok().protobuf(budget_keys)?)
+    Ok(HttpResponse::Ok().protobuf(container_keys)?)
 }
 
 pub async fn decline_invitation(
     db_thread_pool: web::Data<DbThreadPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    accept_token: SpecialAccessToken<BudgetAcceptToken, FromHeader>,
+    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.claims.key_id;
-    let budget_id = accept_token.0.claims.budget_id;
+    let container_id = accept_token.0.claims.container_id;
 
-    let budget_dao = db::budget::Dao::new(&db_thread_pool);
-    let budget_accept_key =
-        match web::block(move || budget_dao.get_budget_accept_public_key(key_id, budget_id)).await?
+    let container_dao = db::container::Dao::new(&db_thread_pool);
+    let container_accept_key =
+        match web::block(move || container_dao.get_container_accept_public_key(key_id, container_id)).await?
         {
             Ok(key) => key,
             Err(e) => match e {
@@ -625,11 +625,11 @@ pub async fn decline_invitation(
             },
         };
 
-    accept_token.0.verify(&budget_accept_key.public_key)?;
+    accept_token.0.verify(&container_accept_key.public_key)?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.reject_invitation(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.reject_invitation(
             accept_token.0.claims.invite_id,
             accept_token.0.claims.key_id,
             &user_access_token.0.user_email,
@@ -662,15 +662,15 @@ pub async fn get_all_pending_invitations(
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invites = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.get_all_pending_invitations(&user_access_token.0.user_email)
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.get_all_pending_invitations(&user_access_token.0.user_email)
     })
     .await?
     {
         Ok(invites) => invites,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Ok(HttpResponse::Ok().protobuf(BudgetAccessTokenList::default())?);
+                return Ok(HttpResponse::Ok().protobuf(ContainerAccessTokenList::default())?);
             }
             _ => {
                 log::error!("{e}");
@@ -684,18 +684,18 @@ pub async fn get_all_pending_invitations(
     Ok(HttpResponse::Ok().protobuf(invites)?)
 }
 
-pub async fn leave_budget(
+pub async fn leave_container(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_access(&container_access_token, &db_thread_pool).await?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.leave_budget(
-            budget_access_token.0.claims.budget_id,
-            budget_access_token.0.claims.key_id,
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.leave_container(
+            container_access_token.0.claims.container_id,
+            container_access_token.0.claims.key_id,
         )
     })
     .await?
@@ -704,14 +704,14 @@ pub async fn leave_budget(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
+                    String::from("No container with ID matching token"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to remove association with budget",
+                    "Failed to remove association with container",
                 )));
             }
         },
@@ -723,10 +723,10 @@ pub async fn leave_budget(
 pub async fn create_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_data: ProtoBuf<EncryptedBlobAndCategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -742,12 +742,12 @@ pub async fn create_entry(
         .transpose()?;
 
     let entry_id = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.create_entry(
             &entry_data.0.encrypted_blob,
             entry_data.0.version_nonce,
             category_id,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
         )
     })
     .await?
@@ -756,7 +756,7 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("There was an ID mismatch for the budget, entry, or category"),
+                    String::from("There was an ID mismatch for the container, entry, or category"),
                     DoesNotExistType::Entry,
                 ));
             }
@@ -785,10 +785,10 @@ pub async fn create_entry(
 pub async fn create_entry_and_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_and_category_data: ProtoBuf<EntryAndCategory>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_and_category_data.entry_encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -803,13 +803,13 @@ pub async fn create_entry_and_category(
     }
 
     let entry_and_category_ids = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_entry_and_category(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.create_entry_and_category(
             &entry_and_category_data.entry_encrypted_blob,
             entry_and_category_data.entry_version_nonce,
             &entry_and_category_data.category_encrypted_blob,
             entry_and_category_data.category_version_nonce,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
         )
     })
     .await?
@@ -818,8 +818,8 @@ pub async fn create_entry_and_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
+                    String::from("No container with ID matching token"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
@@ -837,10 +837,10 @@ pub async fn create_entry_and_category(
 pub async fn edit_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_data: ProtoBuf<EntryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -857,14 +857,14 @@ pub async fn edit_entry(
     let entry_id = (&entry_data.entry_id).try_into()?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_entry(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.update_entry(
             entry_id,
             &entry_data.encrypted_blob,
             entry_data.version_nonce,
             entry_data.expected_previous_version_nonce,
             category_id,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
         )
     })
     .await?
@@ -905,16 +905,16 @@ pub async fn edit_entry(
 pub async fn delete_entry(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_id: ProtoBuf<EntryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     let entry_id = (&entry_id.value).try_into()?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_entry(entry_id, budget_access_token.0.claims.budget_id)
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.delete_entry(entry_id, container_access_token.0.claims.container_id)
     })
     .await?
     {
@@ -941,10 +941,10 @@ pub async fn delete_entry(
 pub async fn create_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_data: ProtoBuf<NewEncryptedBlob>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if category_data.value.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -953,11 +953,11 @@ pub async fn create_category(
     }
 
     let category_id = match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.create_category(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.create_category(
             &category_data.value,
             category_data.version_nonce,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
         )
     })
     .await?
@@ -966,8 +966,8 @@ pub async fn create_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
+                    String::from("No container with ID matching token"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
@@ -987,10 +987,10 @@ pub async fn create_category(
 pub async fn edit_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_data: ProtoBuf<CategoryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if category_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
@@ -1001,13 +1001,13 @@ pub async fn edit_category(
     let category_id = (&category_data.category_id).try_into()?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.update_category(
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.update_category(
             category_id,
             &category_data.encrypted_blob,
             category_data.version_nonce,
             category_data.expected_previous_version_nonce,
-            budget_access_token.0.claims.budget_id,
+            container_access_token.0.claims.container_id,
         )
     })
     .await?
@@ -1040,16 +1040,16 @@ pub async fn edit_category(
 pub async fn delete_category(
     db_thread_pool: web::Data<DbThreadPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_token: SpecialAccessToken<BudgetAccessToken, FromHeader>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_id: ProtoBuf<CategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&budget_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     let category_id = (&category_id.value).try_into()?;
 
     match web::block(move || {
-        let budget_dao = db::budget::Dao::new(&db_thread_pool);
-        budget_dao.delete_category(category_id, budget_access_token.0.claims.budget_id)
+        let container_dao = db::container::Dao::new(&db_thread_pool);
+        container_dao.delete_category(category_id, container_access_token.0.claims.container_id)
     })
     .await?
     {
@@ -1075,23 +1075,23 @@ pub async fn delete_category(
 
 async fn obtain_public_key(
     key_id: Uuid,
-    budget_id: Uuid,
+    container_id: Uuid,
     db_thread_pool: &DbThreadPool,
-) -> Result<BudgetAccessKey, HttpErrorResponse> {
-    let budget_dao = db::budget::Dao::new(db_thread_pool);
-    let key = match web::block(move || budget_dao.get_public_budget_key(key_id, budget_id)).await? {
+) -> Result<ContainerAccessKey, HttpErrorResponse> {
+    let container_dao = db::container::Dao::new(db_thread_pool);
+    let key = match web::block(move || container_dao.get_public_container_key(key_id, container_id)).await? {
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No budget with ID matching token"),
-                    DoesNotExistType::Budget,
+                    String::from("No container with ID matching token"),
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get public budget access key",
+                    "Failed to get public container access key",
                 )));
             }
         },
@@ -1101,16 +1101,16 @@ async fn obtain_public_key(
 }
 
 async fn verify_read_write_access<F: TokenLocation>(
-    budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+    container_access_token: &SpecialAccessToken<ContainerAccessToken, F>,
     db_thread_pool: &DbThreadPool,
 ) -> Result<(), HttpErrorResponse> {
-    let claims = &budget_access_token.0.claims;
-    let public_key = obtain_public_key(claims.key_id, claims.budget_id, db_thread_pool).await?;
-    budget_access_token.0.verify(&public_key.public_key)?;
+    let claims = &container_access_token.0.claims;
+    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_thread_pool).await?;
+    container_access_token.0.verify(&public_key.public_key)?;
 
     if public_key.read_only {
         return Err(HttpErrorResponse::ReadOnlyAccess(String::from(
-            "User has read-only access to budget",
+            "User has read-only access to container",
         )));
     }
 
@@ -1118,12 +1118,12 @@ async fn verify_read_write_access<F: TokenLocation>(
 }
 
 async fn verify_read_access<F: TokenLocation>(
-    budget_access_token: &SpecialAccessToken<BudgetAccessToken, F>,
+    container_access_token: &SpecialAccessToken<ContainerAccessToken, F>,
     db_thread_pool: &DbThreadPool,
 ) -> Result<(), HttpErrorResponse> {
-    let claims = &budget_access_token.0.claims;
-    let public_key = obtain_public_key(claims.key_id, claims.budget_id, db_thread_pool).await?;
-    budget_access_token.0.verify(&public_key.public_key)?;
+    let claims = &container_access_token.0.claims;
+    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_thread_pool).await?;
+    container_access_token.0.verify(&public_key.public_key)?;
 
     Ok(())
 }
@@ -1134,15 +1134,15 @@ pub mod tests {
 
     use super::*;
 
-    use entries_common::messages::{BudgetFrame, CategoryWithTempId};
+    use entries_common::messages::{ContainerFrame, CategoryWithTempId};
     use entries_common::messages::{
-        BudgetIdAndEncryptionKey, BudgetList, BudgetShareInviteList, EntryIdAndCategoryId,
+        ContainerIdAndEncryptionKey, ContainerList, ContainerShareInviteList, EntryIdAndCategoryId,
         ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
     };
-    use entries_common::models::budget::Budget;
-    use entries_common::schema::budget_access_keys as budget_access_key_fields;
-    use entries_common::schema::budget_access_keys::dsl::budget_access_keys;
-    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::models::container::Container;
+    use entries_common::schema::container_access_keys as container_access_key_fields;
+    use entries_common::schema::container_access_keys::dsl::container_access_keys;
+    use entries_common::schema::containers::dsl::containers;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
 
@@ -1158,16 +1158,16 @@ pub mod tests {
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
     use entries_common::threadrand::SecureRng;
-    use entries_common::token::budget_accept_token::BudgetAcceptTokenClaims;
-    use entries_common::token::budget_invite_sender_token::BudgetInviteSenderTokenClaims;
+    use entries_common::token::container_accept_token::ContainerAcceptTokenClaims;
+    use entries_common::token::container_invite_sender_token::ContainerInviteSenderTokenClaims;
     use prost::Message;
 
     use crate::env;
-    use crate::handlers::test_utils::{self, gen_budget_token, gen_bytes};
+    use crate::handlers::test_utils::{self, gen_container_token, gen_bytes};
     use crate::services::api::RouteLimiters;
 
     #[actix_rt::test]
-    async fn test_create_and_get_budget_and_entry_and_category() {
+    async fn test_create_and_get_container_and_entry_and_category() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -1182,7 +1182,7 @@ pub mod tests {
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![
@@ -1197,69 +1197,69 @@ pub mod tests {
                     version_nonce: SecureRng::next_i64(),
                 },
             ],
-            user_public_budget_key: public_key,
+            user_public_container_key: public_key,
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let mut budget_data = BudgetFrame::decode(resp_body).unwrap();
-        budget_data
+        let mut container_data = ContainerFrame::decode(resp_body).unwrap();
+        container_data
             .category_ids
             .sort_unstable_by(|a, b| a.temp_id.cmp(&b.temp_id));
 
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
-        let category_ids = budget_data
+        let category_ids = container_data
             .category_ids
             .into_iter()
             .map(|c| Uuid::try_from(c.real_id).unwrap())
             .collect::<Vec<_>>();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(container_message.categories.len(), 2);
 
-        let categories_iter = budget_message
+        let categories_iter = container_message
             .categories
             .iter()
-            .zip(new_budget.categories.iter());
+            .zip(new_container.categories.iter());
 
         let mut initial_categories = Vec::new();
         for (i, (category_message, category)) in categories_iter.enumerate() {
@@ -1276,7 +1276,7 @@ pub mod tests {
             ));
         }
 
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let new_category = NewEncryptedBlob {
             value: gen_bytes(40),
@@ -1284,9 +1284,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
             .to_request();
@@ -1301,30 +1301,30 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 3);
+        assert_eq!(container_message.categories.len(), 3);
 
-        for category in budget_message.categories.iter() {
+        for category in container_message.categories.iter() {
             let curr_category_id: Uuid = (&category.id).try_into().unwrap();
 
             if curr_category_id == new_category_id {
@@ -1340,7 +1340,7 @@ pub mod tests {
             }
         }
 
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
@@ -1349,9 +1349,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -1366,30 +1366,30 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 3);
+        assert_eq!(container_message.categories.len(), 3);
 
-        for category in budget_message.categories.iter() {
+        for category in container_message.categories.iter() {
             let curr_category_id: Uuid = (&category.id).try_into().unwrap();
 
             if curr_category_id == new_category_id {
@@ -1405,22 +1405,22 @@ pub mod tests {
             }
         }
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
         assert_eq!(
-            Uuid::try_from(&budget_message.entries[0].id).unwrap(),
+            Uuid::try_from(&container_message.entries[0].id).unwrap(),
             new_entry_id,
         );
         assert_eq!(
-            Uuid::try_from(budget_message.entries[0].category_id.clone().unwrap()).unwrap(),
+            Uuid::try_from(container_message.entries[0].category_id.clone().unwrap()).unwrap(),
             new_category_id,
         );
         assert_eq!(
-            budget_message.entries[0].encrypted_blob,
+            container_message.entries[0].encrypted_blob,
             new_entry.encrypted_blob,
         );
         assert_eq!(
-            budget_message.entries[0].version_nonce,
+            container_message.entries[0].version_nonce,
             new_entry.version_nonce,
         );
 
@@ -1431,9 +1431,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry2.encode_to_vec())
             .to_request();
@@ -1448,31 +1448,31 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(budget_message.entries.len(), 2);
+        assert_eq!(container_message.entries.len(), 2);
 
-        let first_entry = budget_message
+        let first_entry = container_message
             .entries
             .iter()
             .find(|e| Uuid::try_from(&e.id).unwrap() == new_entry_id)
             .unwrap();
-        let second_entry = budget_message
+        let second_entry = container_message
             .entries
             .iter()
             .find(|e| Uuid::try_from(&e.id).unwrap() == new_entry2_id)
@@ -1498,9 +1498,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry_and_category")
+            .uri("/api/container/entry_and_category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();
@@ -1514,37 +1514,37 @@ pub mod tests {
         let new_entry3_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
         let new_category4_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 4);
-        assert_eq!(budget_message.entries.len(), 3);
+        assert_eq!(container_message.categories.len(), 4);
+        assert_eq!(container_message.entries.len(), 3);
 
-        let new_category4 = budget_message
+        let new_category4 = container_message
             .categories
             .iter()
             .find(|c| Uuid::try_from(&c.id).unwrap() == new_category4_id)
             .unwrap();
 
-        let new_entry3 = budget_message
+        let new_entry3 = container_message
             .entries
             .iter()
             .find(|e| Uuid::try_from(&e.id).unwrap() == new_entry3_id)
@@ -1574,7 +1574,7 @@ pub mod tests {
 
     #[actix_rt::test]
     #[ignore]
-    async fn test_create_budget_fails_with_large_input() {
+    async fn test_create_container_fails_with_large_input() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -1586,7 +1586,7 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
             version_nonce: SecureRng::next_i64(),
             categories: vec![
@@ -1601,14 +1601,14 @@ pub mod tests {
                     version_nonce: SecureRng::next_i64(),
                 },
             ],
-            user_public_budget_key: gen_bytes(40),
+            user_public_container_key: gen_bytes(40),
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1619,7 +1619,7 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![
@@ -1634,14 +1634,14 @@ pub mod tests {
                     version_nonce: SecureRng::next_i64(),
                 },
             ],
-            user_public_budget_key: vec![0; env::CONF.max_encryption_key_size + 1],
+            user_public_container_key: vec![0; env::CONF.max_encryption_key_size + 1],
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1670,7 +1670,7 @@ pub mod tests {
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
@@ -1678,34 +1678,34 @@ pub mod tests {
                 encrypted_blob: gen_bytes(40),
                 version_nonce: SecureRng::next_i64(),
             }],
-            user_public_budget_key: public_key,
+            user_public_container_key: public_key,
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
-        let category_id: Uuid = (&budget_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
@@ -1714,9 +1714,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -1743,7 +1743,7 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+        let (_, container_token) = test_utils::create_container(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
@@ -1753,9 +1753,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry_and_category")
+            .uri("/api/container/entry_and_category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();
@@ -1776,9 +1776,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry_and_category")
+            .uri("/api/container/entry_and_category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();
@@ -1809,7 +1809,7 @@ pub mod tests {
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
@@ -1817,30 +1817,30 @@ pub mod tests {
                 encrypted_blob: gen_bytes(40),
                 version_nonce: SecureRng::next_i64(),
             }],
-            user_public_budget_key: public_key,
+            user_public_container_key: public_key,
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
@@ -1850,9 +1850,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
             .to_request();
@@ -1867,7 +1867,7 @@ pub mod tests {
     }
 
     #[actix_rt::test]
-    async fn test_get_multiple_budgets() {
+    async fn test_get_multiple_containers() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -1878,9 +1878,9 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
-        let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
-        let (budget3, budget3_token) = test_utils::create_budget(&access_token).await;
+        let (container1, container1_token) = test_utils::create_container(&access_token).await;
+        let (container2, container2_token) = test_utils::create_container(&access_token).await;
+        let (container3, container3_token) = test_utils::create_container(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
@@ -1890,9 +1890,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry_and_category")
+            .uri("/api/container/entry_and_category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget3_token.as_str()))
+            .insert_header(("ContainerAccessToken", container3_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();
@@ -1906,94 +1906,94 @@ pub mod tests {
         let new_entry_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
         let new_category_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
 
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget1_token, budget2_token, budget3_token],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container1_token, container2_token, container3_token],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_list = BudgetList::decode(resp_body).unwrap();
+        let container_list = ContainerList::decode(resp_body).unwrap();
 
-        let resp_budget1 = budget_list
-            .budgets
+        let resp_container1 = container_list
+            .containers
             .iter()
-            .find(|b| Uuid::try_from(&b.id).unwrap() == budget1.id)
+            .find(|b| Uuid::try_from(&b.id).unwrap() == container1.id)
             .unwrap();
-        let resp_budget2 = budget_list
-            .budgets
+        let resp_container2 = container_list
+            .containers
             .iter()
-            .find(|b| Uuid::try_from(&b.id).unwrap() == budget2.id)
+            .find(|b| Uuid::try_from(&b.id).unwrap() == container2.id)
             .unwrap();
-        let resp_budget3 = budget_list
-            .budgets
+        let resp_container3 = container_list
+            .containers
             .iter()
-            .find(|b| Uuid::try_from(&b.id).unwrap() == budget3.id)
+            .find(|b| Uuid::try_from(&b.id).unwrap() == container3.id)
             .unwrap();
 
-        assert_eq!(budget_list.budgets.len(), 3);
+        assert_eq!(container_list.containers.len(), 3);
 
-        assert_eq!(Uuid::try_from(resp_budget1.id.clone()).unwrap(), budget1.id);
-        assert_eq!(resp_budget1.encrypted_blob, budget1.encrypted_blob);
-        assert_eq!(resp_budget1.version_nonce, budget1.version_nonce);
-        assert_eq!(resp_budget1.categories.len(), 0);
-        assert_eq!(resp_budget1.entries.len(), 0);
+        assert_eq!(Uuid::try_from(resp_container1.id.clone()).unwrap(), container1.id);
+        assert_eq!(resp_container1.encrypted_blob, container1.encrypted_blob);
+        assert_eq!(resp_container1.version_nonce, container1.version_nonce);
+        assert_eq!(resp_container1.categories.len(), 0);
+        assert_eq!(resp_container1.entries.len(), 0);
 
-        assert_eq!(Uuid::try_from(resp_budget2.id.clone()).unwrap(), budget2.id);
-        assert_eq!(resp_budget2.encrypted_blob, budget2.encrypted_blob);
-        assert_eq!(resp_budget2.version_nonce, budget2.version_nonce);
-        assert_eq!(resp_budget2.categories.len(), 0);
-        assert_eq!(resp_budget2.entries.len(), 0);
+        assert_eq!(Uuid::try_from(resp_container2.id.clone()).unwrap(), container2.id);
+        assert_eq!(resp_container2.encrypted_blob, container2.encrypted_blob);
+        assert_eq!(resp_container2.version_nonce, container2.version_nonce);
+        assert_eq!(resp_container2.categories.len(), 0);
+        assert_eq!(resp_container2.entries.len(), 0);
 
-        assert_eq!(Uuid::try_from(resp_budget3.id.clone()).unwrap(), budget3.id);
-        assert_eq!(resp_budget3.encrypted_blob, budget3.encrypted_blob);
-        assert_eq!(resp_budget3.version_nonce, budget3.version_nonce);
-        assert_eq!(resp_budget3.categories.len(), 1);
-        assert_eq!(resp_budget3.entries.len(), 1);
+        assert_eq!(Uuid::try_from(resp_container3.id.clone()).unwrap(), container3.id);
+        assert_eq!(resp_container3.encrypted_blob, container3.encrypted_blob);
+        assert_eq!(resp_container3.version_nonce, container3.version_nonce);
+        assert_eq!(resp_container3.categories.len(), 1);
+        assert_eq!(resp_container3.entries.len(), 1);
 
         assert_eq!(
-            Uuid::try_from(&resp_budget3.categories[0].id).unwrap(),
+            Uuid::try_from(&resp_container3.categories[0].id).unwrap(),
             new_category_id
         );
         assert_eq!(
-            Uuid::try_from(&resp_budget3.categories[0].budget_id).unwrap(),
-            budget3.id
+            Uuid::try_from(&resp_container3.categories[0].container_id).unwrap(),
+            container3.id
         );
         assert_eq!(
-            resp_budget3.categories[0].encrypted_blob,
+            resp_container3.categories[0].encrypted_blob,
             new_entry_and_category.category_encrypted_blob
         );
         assert_eq!(
-            resp_budget3.categories[0].version_nonce,
+            resp_container3.categories[0].version_nonce,
             new_entry_and_category.category_version_nonce
         );
 
         assert_eq!(
-            Uuid::try_from(&resp_budget3.entries[0].id).unwrap(),
+            Uuid::try_from(&resp_container3.entries[0].id).unwrap(),
             new_entry_id
         );
         assert_eq!(
-            Uuid::try_from(&resp_budget3.entries[0].budget_id).unwrap(),
-            budget3.id
+            Uuid::try_from(&resp_container3.entries[0].container_id).unwrap(),
+            container3.id
         );
         assert_eq!(
-            Uuid::try_from(resp_budget3.entries[0].category_id.as_ref().unwrap()).unwrap(),
+            Uuid::try_from(resp_container3.entries[0].category_id.as_ref().unwrap()).unwrap(),
             new_category_id
         );
         assert_eq!(
-            resp_budget3.entries[0].encrypted_blob,
+            resp_container3.entries[0].encrypted_blob,
             new_entry_and_category.entry_encrypted_blob
         );
         assert_eq!(
-            resp_budget3.entries[0].version_nonce,
+            resp_container3.entries[0].version_nonce,
             new_entry_and_category.entry_version_nonce
         );
 
@@ -2001,13 +2001,13 @@ pub mod tests {
         for i in 0..101 {
             tokens.push(format!("faketoken{}", i));
         }
-        let budget_access_tokens = BudgetAccessTokenList { tokens };
+        let container_access_tokens = ContainerAccessTokenList { tokens };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2021,7 +2021,7 @@ pub mod tests {
 
     #[actix_rt::test]
     #[ignore]
-    async fn test_get_multiple_budgets_fails_with_too_many_tokens() {
+    async fn test_get_multiple_containers_fails_with_too_many_tokens() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2033,15 +2033,15 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![String::from("test"); env::CONF.max_budget_fetch_count + 1],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![String::from("test"); env::CONF.max_container_fetch_count + 1],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2069,7 +2069,7 @@ pub mod tests {
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
@@ -2077,34 +2077,34 @@ pub mod tests {
                 encrypted_blob: gen_bytes(40),
                 version_nonce: SecureRng::next_i64(),
             }],
-            user_public_budget_key: public_key,
+            user_public_container_key: public_key,
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
-        let category_id: Uuid = (&budget_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
@@ -2113,9 +2113,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -2123,39 +2123,39 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
-        assert_eq!(budget_message.categories.len(), 1);
+        assert_eq!(container_message.categories.len(), 1);
 
-        let category_message = &budget_message.categories[0];
+        let category_message = &container_message.categories[0];
 
         assert_eq!(Uuid::try_from(&category_message.id).unwrap(), category_id,);
         assert_eq!(
             category_message.encrypted_blob,
-            new_budget.categories[0].encrypted_blob
+            new_container.categories[0].encrypted_blob
         );
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(
@@ -2168,9 +2168,9 @@ pub mod tests {
         };
 
         let req = TestRequest::delete()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_id_message.encode_to_vec())
             .to_request();
@@ -2178,30 +2178,30 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert!(entry_message.category_id.is_none());
@@ -2223,7 +2223,7 @@ pub mod tests {
         let key_pair = ed25519_dalek::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes().to_vec();
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: vec![CategoryWithTempId {
@@ -2231,34 +2231,34 @@ pub mod tests {
                 encrypted_blob: gen_bytes(40),
                 version_nonce: SecureRng::next_i64(),
             }],
-            user_public_budget_key: public_key,
+            user_public_container_key: public_key,
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_data = BudgetFrame::decode(resp_body).unwrap();
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
-        let category_id: Uuid = (&budget_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
@@ -2267,9 +2267,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -2277,30 +2277,30 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
-        assert_eq!(budget_message.categories.len(), 1);
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.categories.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(
@@ -2315,9 +2315,9 @@ pub mod tests {
         };
 
         let req = TestRequest::delete()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_id_message.encode_to_vec())
             .to_request();
@@ -2325,32 +2325,32 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_access_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
-        assert_eq!(budget_message.categories.len(), 1);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(container_message.categories.len(), 1);
+        assert_eq!(container_message.entries.len(), 0);
     }
 
     #[actix_rt::test]
-    async fn test_edit_budget() {
+    async fn test_edit_container() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2361,41 +2361,41 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+        let (container, container_token) = test_utils::create_container(&access_token).await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
             version_nonce: SecureRng::next_i64(),
-            expected_previous_version_nonce: budget.version_nonce.wrapping_add(1),
+            expected_previous_version_nonce: container.version_nonce.wrapping_add(1),
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
             .to_request();
@@ -2411,13 +2411,13 @@ pub mod tests {
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
             version_nonce: SecureRng::next_i64(),
-            expected_previous_version_nonce: budget.version_nonce,
+            expected_previous_version_nonce: container.version_nonce,
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
             .to_request();
@@ -2425,33 +2425,33 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, blob_update.encrypted_blob);
+        assert_eq!(container_message.version_nonce, blob_update.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
     }
 
     #[actix_rt::test]
     #[ignore]
-    async fn test_edit_budget_fails_with_large_input() {
+    async fn test_edit_container_fails_with_large_input() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2462,18 +2462,18 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+        let (container, container_token) = test_utils::create_container(&access_token).await;
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
             version_nonce: SecureRng::next_i64(),
-            expected_previous_version_nonce: budget.version_nonce,
+            expected_previous_version_nonce: container.version_nonce,
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
             .to_request();
@@ -2499,30 +2499,30 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+        let (container, container_token) = test_utils::create_container(&access_token).await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
@@ -2530,9 +2530,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category1.encode_to_vec())
             .to_request();
@@ -2553,9 +2553,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category2.encode_to_vec())
             .to_request();
@@ -2577,9 +2577,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -2587,31 +2587,31 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 2);
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.categories.len(), 2);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
@@ -2632,9 +2632,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2656,9 +2656,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2680,9 +2680,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2707,9 +2707,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2719,28 +2719,28 @@ pub mod tests {
 
         expected_previous_version_nonce = entry_update.version_nonce;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.categories.len(), 2);
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.categories.len(), 2);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, entry_update.encrypted_blob);
         assert_eq!(
@@ -2757,9 +2757,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2781,9 +2781,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2791,28 +2791,28 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.categories.len(), 2);
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.categories.len(), 2);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, entry_update.encrypted_blob);
         assert!(entry_message.category_id.is_none());
@@ -2831,17 +2831,17 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+        let (_, container_token) = test_utils::create_container(&access_token).await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2853,9 +2853,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
             .to_request();
@@ -2877,9 +2877,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -2887,26 +2887,26 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         let entry_id: Uuid = (&entry_message.id).try_into().unwrap();
         let expected_previous_version_nonce = entry_message.version_nonce;
@@ -2920,9 +2920,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
             .to_request();
@@ -2948,30 +2948,30 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (budget, budget_token) = test_utils::create_budget(&access_token).await;
+        let (container, container_token) = test_utils::create_container(&access_token).await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let new_category1 = NewEncryptedBlob {
             value: gen_bytes(40),
@@ -2979,9 +2979,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category1.encode_to_vec())
             .to_request();
@@ -3002,9 +3002,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category2.encode_to_vec())
             .to_request();
@@ -3026,9 +3026,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry")
+            .uri("/api/container/entry")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
             .to_request();
@@ -3036,67 +3036,67 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(container_message.categories.len(), 2);
 
-        let cat1_pos = budget_message
+        let cat1_pos = container_message
             .categories
             .iter()
             .position(|c| c.id == category1_id.into())
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
         assert_eq!(
-            budget_message.categories[cat1_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat1_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].encrypted_blob,
+            container_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].version_nonce,
+            container_message.categories[cat1_pos].version_nonce,
             new_category1.version_nonce
         );
 
-        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
-            budget_message.categories[cat2_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat2_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].encrypted_blob,
+            container_message.categories[cat2_pos].encrypted_blob,
             new_category2.value
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].version_nonce,
+            container_message.categories[cat2_pos].version_nonce,
             new_category2.version_nonce
         );
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
@@ -3113,9 +3113,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3136,9 +3136,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3162,9 +3162,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3172,67 +3172,67 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(container_message.categories.len(), 2);
 
-        let cat1_pos = budget_message
+        let cat1_pos = container_message
             .categories
             .iter()
             .position(|c| c.id == category1_id.into())
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
         assert_eq!(
-            budget_message.categories[cat1_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat1_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].encrypted_blob,
+            container_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].version_nonce,
+            container_message.categories[cat1_pos].version_nonce,
             new_category1.version_nonce
         );
 
-        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
-            budget_message.categories[cat2_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat2_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].encrypted_blob,
+            container_message.categories[cat2_pos].encrypted_blob,
             category_update.encrypted_blob
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].version_nonce,
+            container_message.categories[cat2_pos].version_nonce,
             category_update.version_nonce
         );
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
@@ -3251,9 +3251,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3274,9 +3274,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3284,67 +3284,67 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
 
-        assert_eq!(budget_message.categories.len(), 2);
+        assert_eq!(container_message.categories.len(), 2);
 
-        let cat1_pos = budget_message
+        let cat1_pos = container_message
             .categories
             .iter()
             .position(|c| c.id == category1_id.into())
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(budget_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
         assert_eq!(
-            budget_message.categories[cat1_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat1_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].encrypted_blob,
+            container_message.categories[cat1_pos].encrypted_blob,
             new_category1.value
         );
         assert_eq!(
-            budget_message.categories[cat1_pos].version_nonce,
+            container_message.categories[cat1_pos].version_nonce,
             new_category1.version_nonce
         );
 
-        assert_eq!(budget_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
         assert_eq!(
-            budget_message.categories[cat2_pos].budget_id,
-            budget.id.into()
+            container_message.categories[cat2_pos].container_id,
+            container.id.into()
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].encrypted_blob,
+            container_message.categories[cat2_pos].encrypted_blob,
             category_update.encrypted_blob
         );
         assert_eq!(
-            budget_message.categories[cat2_pos].version_nonce,
+            container_message.categories[cat2_pos].version_nonce,
             category_update.version_nonce
         );
 
-        assert_eq!(budget_message.entries.len(), 1);
+        assert_eq!(container_message.entries.len(), 1);
 
-        let entry_message = &budget_message.entries[0];
+        let entry_message = &container_message.entries[0];
 
         assert_eq!(entry_message.encrypted_blob, new_entry.encrypted_blob);
         assert_eq!(entry_message.version_nonce, new_entry.version_nonce);
@@ -3367,17 +3367,17 @@ pub mod tests {
         .await;
 
         let (_, access_token, _, _) = test_utils::create_user().await;
-        let (_, budget_token) = test_utils::create_budget(&access_token).await;
+        let (_, container_token) = test_utils::create_container(&access_token).await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3389,9 +3389,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
             .to_request();
@@ -3406,15 +3406,15 @@ pub mod tests {
             .try_into()
             .unwrap();
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3428,9 +3428,9 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/category")
+            .uri("/api/container/category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
             .to_request();
@@ -3460,14 +3460,14 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
-        let invite_info = UserInvitationToBudget {
+        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3477,9 +3477,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3488,7 +3488,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -3496,7 +3496,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         assert_eq!(invites.len(), 1);
         assert_eq!(
@@ -3517,7 +3517,7 @@ pub mod tests {
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_encrypted,
+                &invites[0].container_accept_key_encrypted,
                 &mut accept_private_key,
                 Padding::PKCS1,
             )
@@ -3527,7 +3527,7 @@ pub mod tests {
         let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_id_encrypted,
+                &invites[0].container_accept_key_id_encrypted,
                 &mut accept_private_key_id,
                 Padding::PKCS1,
             )
@@ -3536,10 +3536,10 @@ pub mod tests {
 
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
-        let accept_token_claims = BudgetAcceptTokenClaims {
+        let accept_token_claims = ContainerAcceptTokenClaims {
             invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
-            budget_id: budget.id,
+            container_id: container.id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -3571,8 +3571,8 @@ pub mod tests {
         let bad_token = b64_urlsafe.encode(bad_token);
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/accept")
-            .insert_header(("BudgetAcceptToken", bad_token))
+            .uri("/api/container/invitation/accept")
+            .insert_header(("ContainerAcceptToken", bad_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -3582,8 +3582,8 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/accept")
-            .insert_header(("BudgetAcceptToken", accept_token))
+            .uri("/api/container/invitation/accept")
+            .insert_header(("ContainerAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -3593,66 +3593,66 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let message = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
+        let message = ContainerIdAndEncryptionKey::decode(resp_body).unwrap();
 
-        assert_eq!(message.budget_id, budget.id.into());
+        assert_eq!(message.container_id, container.id.into());
         assert_eq!(
             message.encryption_key_encrypted,
             invite_info.encryption_key_encrypted
         );
         assert_eq!(message.read_only, invite_info.read_only);
 
-        let access_key_id = Uuid::try_from(message.budget_access_key_id).unwrap();
-        let recipient_budget_token =
-            gen_budget_token(budget.id, access_key_id, &access_private_key);
+        let access_key_id = Uuid::try_from(message.container_access_key_id).unwrap();
+        let recipient_container_token =
+            gen_container_token(container.id, access_key_id, &access_private_key);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token[..10].to_string()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token[..10].to_string()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_ne!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(&budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, budget.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, budget.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
+        assert_eq!(Uuid::try_from(&container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
+        assert_eq!(container_message.version_nonce, container.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
 
         let blob_update = EncryptedBlobUpdate {
             encrypted_blob: gen_bytes(20),
             version_nonce: SecureRng::next_i64(),
-            expected_previous_version_nonce: budget.version_nonce,
+            expected_previous_version_nonce: container.version_nonce,
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
             .to_request();
@@ -3660,15 +3660,15 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-        diesel::update(budget_access_keys.find((access_key_id, budget.id)))
-            .set(budget_access_key_fields::read_only.eq(false))
+        diesel::update(container_access_keys.find((access_key_id, container.id)))
+            .set(container_access_key_fields::read_only.eq(false))
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
         let req = TestRequest::put()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
             .to_request();
@@ -3676,29 +3676,29 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_message = BudgetList::decode(resp_body).unwrap().budgets[0].clone();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
 
-        assert_eq!(Uuid::try_from(budget_message.id).unwrap(), budget.id);
-        assert_eq!(budget_message.encrypted_blob, blob_update.encrypted_blob);
-        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
-        assert_eq!(budget_message.categories.len(), 0);
-        assert_eq!(budget_message.entries.len(), 0);
-        assert_eq!(budget_message.version_nonce, blob_update.version_nonce);
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        assert_eq!(container_message.encrypted_blob, blob_update.encrypted_blob);
+        assert_eq!(container_message.version_nonce, blob_update.version_nonce);
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
+        assert_eq!(container_message.version_nonce, blob_update.version_nonce);
     }
 
     #[actix_rt::test]
@@ -3715,15 +3715,15 @@ pub mod tests {
 
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, _, _, _) = test_utils::create_user().await;
-        let (_, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email.clone(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: vec![0; env::CONF.max_encryption_key_size + 1],
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3733,9 +3733,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.clone()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.clone()))
+            .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3748,13 +3748,13 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email.clone(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: vec![0; env::CONF.max_encryption_key_size + 1],
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3764,9 +3764,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.clone()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.clone()))
+            .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3779,13 +3779,13 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email.clone(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: vec![0; env::CONF.max_small_object_size + 1],
+            container_info_encrypted: vec![0; env::CONF.max_small_object_size + 1],
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3795,9 +3795,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.clone()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.clone()))
+            .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3810,13 +3810,13 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email.clone(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: vec![0; env::CONF.max_small_object_size + 1],
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3826,9 +3826,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.clone()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.clone()))
+            .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3841,13 +3841,13 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email.clone(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: vec![0; env::CONF.max_small_object_size + 1],
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3857,9 +3857,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.clone()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.clone()))
+            .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3872,13 +3872,13 @@ pub mod tests {
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: vec![0; env::CONF.max_encryption_key_size + 1],
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3888,9 +3888,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3917,15 +3917,15 @@ pub mod tests {
 
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, _, _, _) = test_utils::create_user().await;
-        let (_, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: "invalid_email_address".to_string(),
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(20),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3935,9 +3935,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3968,14 +3968,14 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
-        let invite_info = UserInvitationToBudget {
+        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -3985,9 +3985,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -3996,7 +3996,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4004,12 +4004,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_encrypted,
+                &invites[0].container_accept_key_encrypted,
                 &mut accept_private_key,
                 Padding::PKCS1,
             )
@@ -4019,7 +4019,7 @@ pub mod tests {
         let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_id_encrypted,
+                &invites[0].container_accept_key_id_encrypted,
                 &mut accept_private_key_id,
                 Padding::PKCS1,
             )
@@ -4028,10 +4028,10 @@ pub mod tests {
 
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
-        let accept_token_claims = BudgetAcceptTokenClaims {
+        let accept_token_claims = ContainerAcceptTokenClaims {
             invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
-            budget_id: budget.id,
+            container_id: container.id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -4051,8 +4051,8 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/accept")
-            .insert_header(("BudgetAcceptToken", accept_token))
+            .uri("/api/container/invitation/accept")
+            .insert_header(("ContainerAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -4080,7 +4080,7 @@ pub mod tests {
 
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
-        let (_, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
         let recipient_keypair = Rsa::generate(512).unwrap();
         let recipient_public_key = recipient_keypair.public_key_to_der().unwrap();
@@ -4093,13 +4093,13 @@ pub mod tests {
         let invite_sender_keypair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let invite_sender_pub_key = invite_sender_keypair.verifying_key().to_bytes();
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: invite_sender_pub_key.to_vec(),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(60))
@@ -4109,7 +4109,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4119,9 +4119,9 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4133,7 +4133,7 @@ pub mod tests {
         let invite_id = InvitationId::decode(resp_body).unwrap();
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4141,11 +4141,11 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         assert_eq!(invites.len(), 1);
 
-        let claims = BudgetInviteSenderTokenClaims {
+        let claims = ContainerInviteSenderTokenClaims {
             invite_id: invite_id.value.try_into().unwrap(),
             expiration: (SystemTime::now() + Duration::from_secs(100))
                 .duration_since(UNIX_EPOCH)
@@ -4160,7 +4160,7 @@ pub mod tests {
         let invite_sender_token = b64_urlsafe.encode(token);
 
         let req = TestRequest::delete()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4170,9 +4170,9 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::delete()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetInviteSenderToken", sender_budget_token.as_str()))
+            .insert_header(("ContainerInviteSenderToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4181,9 +4181,9 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::delete()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetInviteSenderToken", invite_sender_token.as_str()))
+            .insert_header(("ContainerInviteSenderToken", invite_sender_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4192,7 +4192,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4200,7 +4200,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         assert!(invites.is_empty());
     }
@@ -4220,15 +4220,15 @@ pub mod tests {
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
-        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -4238,9 +4238,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_token))
+            .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4249,7 +4249,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4257,12 +4257,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_encrypted,
+                &invites[0].container_accept_key_encrypted,
                 &mut accept_private_key,
                 Padding::PKCS1,
             )
@@ -4272,7 +4272,7 @@ pub mod tests {
         let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_id_encrypted,
+                &invites[0].container_accept_key_id_encrypted,
                 &mut accept_private_key_id,
                 Padding::PKCS1,
             )
@@ -4281,10 +4281,10 @@ pub mod tests {
 
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
-        let accept_token_claims = BudgetAcceptTokenClaims {
+        let accept_token_claims = ContainerAcceptTokenClaims {
             invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
-            budget_id: budget.id,
+            container_id: container.id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -4316,8 +4316,8 @@ pub mod tests {
         let bad_token = b64_urlsafe.encode(bad_token);
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/decline")
-            .insert_header(("BudgetAcceptToken", bad_token))
+            .uri("/api/container/invitation/decline")
+            .insert_header(("ContainerAcceptToken", bad_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -4327,8 +4327,8 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/decline")
-            .insert_header(("BudgetAcceptToken", accept_token))
+            .uri("/api/container/invitation/decline")
+            .insert_header(("ContainerAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -4338,7 +4338,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4346,13 +4346,13 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         assert!(invites.is_empty());
     }
 
     #[actix_rt::test]
-    async fn test_leave_budget() {
+    async fn test_leave_container() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -4367,15 +4367,15 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (budget, sender_budget_token) = test_utils::create_budget(&sender_access_token).await;
+        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
             recipient_public_key_id_used_by_server: recipient.public_key_id.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -4385,9 +4385,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4396,7 +4396,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4404,12 +4404,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_encrypted,
+                &invites[0].container_accept_key_encrypted,
                 &mut accept_private_key,
                 Padding::PKCS1,
             )
@@ -4419,7 +4419,7 @@ pub mod tests {
         let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_id_encrypted,
+                &invites[0].container_accept_key_id_encrypted,
                 &mut accept_private_key_id,
                 Padding::PKCS1,
             )
@@ -4428,10 +4428,10 @@ pub mod tests {
 
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
-        let accept_token_claims = BudgetAcceptTokenClaims {
+        let accept_token_claims = ContainerAcceptTokenClaims {
             invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
-            budget_id: budget.id,
+            container_id: container.id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -4453,8 +4453,8 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/accept")
-            .insert_header(("BudgetAcceptToken", accept_token))
+            .uri("/api/container/invitation/accept")
+            .insert_header(("ContainerAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -4464,156 +4464,156 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let message = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
+        let message = ContainerIdAndEncryptionKey::decode(resp_body).unwrap();
 
-        assert_eq!(message.budget_id, budget.id.into());
+        assert_eq!(message.container_id, container.id.into());
         assert_eq!(
             message.encryption_key_encrypted,
             invite_info.encryption_key_encrypted
         );
         assert_eq!(message.read_only, invite_info.read_only);
 
-        let access_key_id = Uuid::try_from(message.budget_access_key_id).unwrap();
-        let recipient_budget_token =
-            gen_budget_token(budget.id, access_key_id, &access_private_key);
+        let access_key_id = Uuid::try_from(message.container_access_key_id).unwrap();
+        let recipient_container_token =
+            gen_container_token(container.id, access_key_id, &access_private_key);
 
-        // Check both sender and recipient can access the budget
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![sender_budget_token.clone()],
+        // Check both sender and recipient can access the container
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![sender_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_access_key_count = budget_access_keys
-            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+        let container_access_key_count = container_access_keys
+            .filter(container_access_key_fields::container_id.eq(container.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(budget_access_key_count, 2);
+        assert_eq!(container_access_key_count, 2);
 
         let req = TestRequest::delete()
-            .uri("/api/budget/leave")
+            .uri("/api/container/leave")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", sender_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_access_key_count = budget_access_keys
-            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+        let container_access_key_count = container_access_keys
+            .filter(container_access_key_fields::container_id.eq(container.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(budget_access_key_count, 1);
+        assert_eq!(container_access_key_count, 1);
 
-        // Check recipient can access the budget but sender no longer has access
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![sender_budget_token.clone()],
+        // Check recipient can access the container but sender no longer has access
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![sender_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        assert!(budgets
-            .find(budget.id)
-            .first::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        assert!(containers
+            .find(container.id)
+            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .is_ok());
 
         let req = TestRequest::delete()
-            .uri("/api/budget/leave")
+            .uri("/api/container/leave")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
-            .insert_header(("BudgetAccessToken", recipient_budget_token.as_str()))
+            .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_access_key_count = budget_access_keys
-            .filter(budget_access_key_fields::budget_id.eq(budget.id))
+        let container_access_key_count = container_access_keys
+            .filter(container_access_key_fields::container_id.eq(container.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(budget_access_key_count, 0);
+        assert_eq!(container_access_key_count, 0);
 
-        // Check both sender and recipient no longer have access to the budget
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![sender_budget_token.clone()],
+        // Check both sender and recipient no longer have access to the container
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![sender_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![recipient_budget_token.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![recipient_container_token.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-        assert!(budgets
-            .find(budget.id)
-            .first::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        assert!(containers
+            .find(container.id)
+            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .is_err());
     }
 }

@@ -3,24 +3,24 @@ use serde::{Deserialize, Serialize};
 
 use uuid::Uuid;
 
-use crate::schema::budget_share_invites;
+use crate::schema::container_share_invites;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[diesel(table_name = budget_share_invites)]
+#[diesel(table_name = container_share_invites)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct BudgetShareInvite {
+pub struct ContainerShareInvite {
     pub id: Uuid,
 
     pub recipient_user_email: String,
     pub sender_public_key: Vec<u8>,
 
     pub encryption_key_encrypted: Vec<u8>,
-    pub budget_accept_private_key_encrypted: Vec<u8>,
+    pub container_accept_private_key_encrypted: Vec<u8>,
 
-    pub budget_info_encrypted: Vec<u8>,
+    pub container_info_encrypted: Vec<u8>,
     pub sender_info_encrypted: Vec<u8>,
-    pub budget_accept_key_info_encrypted: Vec<u8>,
-    pub budget_accept_key_id_encrypted: Vec<u8>,
+    pub container_accept_key_info_encrypted: Vec<u8>,
+    pub container_accept_key_id_encrypted: Vec<u8>,
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 
     pub recipient_public_key_id_used_by_sender: Uuid,
@@ -30,21 +30,21 @@ pub struct BudgetShareInvite {
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = budget_share_invites)]
+#[diesel(table_name = container_share_invites)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewBudgetShareInvite<'a> {
+pub struct NewContainerShareInvite<'a> {
     pub id: Uuid,
 
     pub recipient_user_email: &'a str,
     pub sender_public_key: &'a [u8],
 
     pub encryption_key_encrypted: &'a [u8],
-    pub budget_accept_private_key_encrypted: &'a [u8],
+    pub container_accept_private_key_encrypted: &'a [u8],
 
-    pub budget_info_encrypted: &'a [u8],
+    pub container_info_encrypted: &'a [u8],
     pub sender_info_encrypted: &'a [u8],
-    pub budget_accept_key_info_encrypted: &'a [u8],
-    pub budget_accept_key_id_encrypted: &'a [u8],
+    pub container_accept_key_info_encrypted: &'a [u8],
+    pub container_accept_key_id_encrypted: &'a [u8],
     pub share_info_symmetric_key_encrypted: &'a [u8],
 
     pub recipient_public_key_id_used_by_sender: Uuid,
@@ -54,16 +54,16 @@ pub struct NewBudgetShareInvite<'a> {
 }
 
 #[derive(Debug, Queryable)]
-pub struct BudgetShareInvitePublicData {
+pub struct ContainerShareInvitePublicData {
     pub id: Uuid,
 
-    pub budget_info_encrypted: Vec<u8>,
+    pub container_info_encrypted: Vec<u8>,
     pub sender_info_encrypted: Vec<u8>,
     pub share_info_symmetric_key_encrypted: Vec<u8>,
 
-    pub budget_accept_key_info_encrypted: Vec<u8>,
-    pub budget_accept_key_encrypted: Vec<u8>,
-    pub budget_accept_key_id_encrypted: Vec<u8>,
+    pub container_accept_key_info_encrypted: Vec<u8>,
+    pub container_accept_key_encrypted: Vec<u8>,
+    pub container_accept_key_id_encrypted: Vec<u8>,
 
     pub recipient_public_key_id_used_by_sender: Uuid,
     pub recipient_public_key_id_used_by_server: Uuid,

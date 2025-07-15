@@ -12,7 +12,7 @@ worker_threads = 2
 # If omitted, defaults to 512
 max_blocking_threads = 60
 
-[clear_expired_budget_invites_job]
+[clear_expired_container_invites_job]
 job_frequency_secs = 43200
 
 [clear_expired_otps_job]

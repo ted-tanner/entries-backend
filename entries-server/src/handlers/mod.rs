@@ -1,5 +1,5 @@
 pub mod auth;
-pub mod budget;
+pub mod container;
 pub mod health;
 pub mod user;
 
@@ -228,7 +228,7 @@ pub mod error {
     pub enum DoesNotExistType {
         User,
         Key,
-        Budget,
+        Container,
         Entry,
         Category,
         Invitation,
@@ -365,7 +365,7 @@ pub mod error {
                     err_type: match dne_type {
                         DoesNotExistType::User => ErrorType::UserDoesNotExist,
                         DoesNotExistType::Key => ErrorType::KeyDoesNotExist,
-                        DoesNotExistType::Budget => ErrorType::BudgetDoesNotExist,
+                        DoesNotExistType::Container => ErrorType::ContainerDoesNotExist,
                         DoesNotExistType::Entry => ErrorType::EntryDoesNotExist,
                         DoesNotExistType::Category => ErrorType::CategoryDoesNotExist,
                         DoesNotExistType::Invitation => ErrorType::InvitationDoesNotExist,
@@ -482,12 +482,12 @@ pub mod error {
 pub mod test_utils {
     use entries_common::db;
     use entries_common::messages::{
-        BudgetFrame, BudgetIdAndEncryptionKey, BudgetShareInviteList, NewBudget, NewUser,
-        PublicKey, UserInvitationToBudget,
+        ContainerFrame, ContainerIdAndEncryptionKey, ContainerShareInviteList, NewContainer, NewUser,
+        PublicKey, UserInvitationToContainer,
     };
-    use entries_common::models::budget::Budget;
+    use entries_common::models::container::Container;
     use entries_common::models::user::User;
-    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::schema::containers::dsl::containers;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
     use entries_common::threadrand::SecureRng;
@@ -504,8 +504,8 @@ pub mod test_utils {
     use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
-    use entries_common::token::budget_accept_token::BudgetAcceptTokenClaims;
-    use entries_common::token::budget_access_token::BudgetAccessTokenClaims;
+    use entries_common::token::container_accept_token::ContainerAcceptTokenClaims;
+    use entries_common::token::container_access_token::ContainerAccessTokenClaims;
     use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
     use prost::Message;
@@ -519,17 +519,17 @@ pub mod test_utils {
         (0..count).map(|_| SecureRng::next_u8()).collect()
     }
 
-    pub fn gen_budget_token(
-        budget_id: Uuid,
+    pub fn gen_container_token(
+        container_id: Uuid,
         key_id: Uuid,
         signing_key: &ed25519::SigningKey,
     ) -> String {
         let expiration = SystemTime::now() + Duration::from_secs(10);
         let expiration = expiration.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-        let claims = BudgetAccessTokenClaims {
+        let claims = ContainerAccessTokenClaims {
             key_id,
-            budget_id,
+            container_id,
             expiration,
         };
 
@@ -647,7 +647,7 @@ pub mod test_utils {
         keypair
     }
 
-    pub async fn create_budget(access_token: &str) -> (Budget, String) {
+    pub async fn create_container(access_token: &str) -> (Container, String) {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -660,46 +660,46 @@ pub mod test_utils {
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes();
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             encrypted_blob: gen_bytes(32),
             version_nonce: SecureRng::next_i64(),
             categories: Vec::new(),
-            user_public_budget_key: Vec::from(public_key),
+            user_public_container_key: Vec::from(public_key),
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", access_token))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_budget.encode_to_vec())
+            .set_payload(new_container.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let budget_data = BudgetFrame::decode(resp_body).unwrap();
-        let budget = budgets
-            .find(Uuid::try_from(budget_data.id).unwrap())
-            .get_result::<Budget>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let budget_access_token = gen_budget_token(
-            budget.id,
-            budget_data.access_key_id.try_into().unwrap(),
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
             &key_pair,
         );
 
-        (budget, budget_access_token)
+        (container, container_access_token)
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn share_budget(
-        budget_id: Uuid,
+    pub async fn share_container(
+        container_id: Uuid,
         recipient_email: &str,
         recipient_private_key: &[u8],
         read_only: bool,
-        sender_budget_access_token: &str,
+        sender_container_access_token: &str,
         sender_access_token: &str,
         recipient_public_key_id_used_by_sender: Uuid,
         recipient_public_key_id_used_by_server: Uuid,
@@ -713,13 +713,13 @@ pub mod test_utils {
         )
         .await;
 
-        let invite_info = UserInvitationToBudget {
+        let invite_info = UserInvitationToContainer {
             recipient_user_email: String::from(recipient_email),
             recipient_public_key_id_used_by_sender: recipient_public_key_id_used_by_sender.into(),
             recipient_public_key_id_used_by_server: recipient_public_key_id_used_by_server.into(),
             sender_public_key: gen_bytes(22),
             encryption_key_encrypted: gen_bytes(44),
-            budget_info_encrypted: gen_bytes(20),
+            container_info_encrypted: gen_bytes(20),
             sender_info_encrypted: gen_bytes(30),
             share_info_symmetric_key_encrypted: gen_bytes(35),
             expiration: (SystemTime::now() + Duration::from_secs(10))
@@ -729,9 +729,9 @@ pub mod test_utils {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/invitation")
+            .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token))
-            .insert_header(("BudgetAccessToken", sender_budget_access_token))
+            .insert_header(("ContainerAccessToken", sender_container_access_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -757,7 +757,7 @@ pub mod test_utils {
             AuthToken::sign_new(recipient_access_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
-            .uri("/api/budget/invitation/all_pending")
+            .uri("/api/container/invitation/all_pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -765,14 +765,14 @@ pub mod test_utils {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let invites = BudgetShareInviteList::decode(resp_body).unwrap().invites;
+        let invites = ContainerShareInviteList::decode(resp_body).unwrap().invites;
 
         let recipient_private_key = Rsa::private_key_from_der(recipient_private_key).unwrap();
 
         let mut accept_private_key = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_encrypted,
+                &invites[0].container_accept_key_encrypted,
                 &mut accept_private_key,
                 Padding::PKCS1,
             )
@@ -782,7 +782,7 @@ pub mod test_utils {
         let mut accept_private_key_id = vec![0; recipient_private_key.size() as usize];
         let decrypted_size = recipient_private_key
             .private_decrypt(
-                &invites[0].budget_accept_key_id_encrypted,
+                &invites[0].container_accept_key_id_encrypted,
                 &mut accept_private_key_id,
                 Padding::PKCS1,
             )
@@ -791,10 +791,10 @@ pub mod test_utils {
 
         let accept_private_key_id = Uuid::from_bytes(accept_private_key_id.try_into().unwrap());
 
-        let accept_token_claims = BudgetAcceptTokenClaims {
+        let accept_token_claims = ContainerAcceptTokenClaims {
             invite_id: (&invites[0].id).try_into().unwrap(),
             key_id: accept_private_key_id,
-            budget_id,
+            container_id,
             expiration: (SystemTime::now() + Duration::from_secs(10))
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -816,8 +816,8 @@ pub mod test_utils {
         };
 
         let req = TestRequest::put()
-            .uri("/api/budget/invitation/accept")
-            .insert_header(("BudgetAcceptToken", accept_token))
+            .uri("/api/container/invitation/accept")
+            .insert_header(("ContainerAcceptToken", accept_token))
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
@@ -827,9 +827,9 @@ pub mod test_utils {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let access_key_id = BudgetIdAndEncryptionKey::decode(resp_body).unwrap();
-        let access_key_id = Uuid::try_from(access_key_id.budget_access_key_id).unwrap();
+        let access_key_id = ContainerIdAndEncryptionKey::decode(resp_body).unwrap();
+        let access_key_id = Uuid::try_from(access_key_id.container_access_key_id).unwrap();
 
-        gen_budget_token(budget_id, access_key_id, &access_private_key)
+        gen_container_token(container_id, access_key_id, &access_private_key)
     }
 }

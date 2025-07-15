@@ -1,7 +1,7 @@
 pub mod auth_token;
-pub mod budget_accept_token;
-pub mod budget_access_token;
-pub mod budget_invite_sender_token;
+pub mod container_accept_token;
+pub mod container_access_token;
+pub mod container_invite_sender_token;
 
 use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
 use base64::Engine;

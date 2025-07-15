@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-use crate::schema::budgets;
+use crate::schema::containers;
 
 #[derive(Debug, Serialize, Deserialize, Identifiable, Queryable, QueryableByName)]
-#[diesel(table_name = budgets)]
+#[diesel(table_name = containers)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Budget {
+pub struct Container {
     pub id: Uuid,
     pub encrypted_blob: Vec<u8>,
     pub version_nonce: i64,
@@ -16,9 +16,9 @@ pub struct Budget {
 }
 
 #[derive(Debug, Insertable)]
-#[diesel(table_name = budgets)]
+#[diesel(table_name = containers)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewBudget<'a> {
+pub struct NewContainer<'a> {
     pub id: Uuid,
     pub encrypted_blob: &'a [u8],
     pub version_nonce: i64,

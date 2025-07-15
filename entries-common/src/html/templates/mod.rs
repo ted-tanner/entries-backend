@@ -160,7 +160,7 @@ impl VerifyUserSuccessPage {
                  <h1>User verified</h1>
                  <h3>User email address: {}</h3>
                  <h2>You can now sign into the app using your email address and password.</h2>
-                 <h2>Happy budgeting!</h2>
+                 <h2>Happy containering!</h2>
                </body>
              </html>",
             user_email,

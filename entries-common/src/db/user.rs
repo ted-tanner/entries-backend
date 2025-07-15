@@ -7,17 +7,17 @@ use crate::messages::UserPublicKey;
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
-use crate::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
+use crate::models::user_deletion_request_container_key::NewUserDeletionRequestContainerKey;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
 use crate::threadrand::SecureRng;
 
-use crate::schema::budget_access_keys as budget_access_key_fields;
-use crate::schema::budget_access_keys::dsl::budget_access_keys;
-use crate::schema::budgets::dsl::budgets;
+use crate::schema::container_access_keys as container_access_key_fields;
+use crate::schema::container_access_keys::dsl::container_access_keys;
+use crate::schema::containers::dsl::containers;
 use crate::schema::signin_nonces::dsl::signin_nonces;
-use crate::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
-use crate::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
+use crate::schema::user_deletion_request_container_keys as user_deletion_request_container_key_fields;
+use crate::schema::user_deletion_request_container_keys::dsl::user_deletion_request_container_keys;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
 use crate::schema::user_keystores as user_keystore_fields;
@@ -399,23 +399,23 @@ impl Dao {
         Ok(())
     }
 
-    pub fn save_user_deletion_budget_keys(
+    pub fn save_user_deletion_container_keys(
         &self,
-        budget_access_key_ids: &[Uuid],
+        container_access_key_ids: &[Uuid],
         user_id: Uuid,
         delete_me_time: SystemTime,
     ) -> Result<(), DaoError> {
-        let deletion_request_budget_keys = budget_access_key_ids
+        let deletion_request_container_keys = container_access_key_ids
             .iter()
-            .map(|key_id| NewUserDeletionRequestBudgetKey {
+            .map(|key_id| NewUserDeletionRequestContainerKey {
                 key_id: *key_id,
                 user_id,
                 delete_me_time,
             })
             .collect::<Vec<_>>();
 
-        dsl::insert_into(user_deletion_request_budget_keys)
-            .values(&deletion_request_budget_keys)
+        dsl::insert_into(user_deletion_request_container_keys)
+            .values(&deletion_request_container_keys)
             .execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
@@ -451,29 +451,29 @@ impl Dao {
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let budget_key_ids = user_deletion_request_budget_keys
-                    .select(user_deletion_request_budget_key_fields::key_id)
+                let container_key_ids = user_deletion_request_container_keys
+                    .select(user_deletion_request_container_key_fields::key_id)
                     .filter(
-                        user_deletion_request_budget_key_fields::user_id
+                        user_deletion_request_container_key_fields::user_id
                             .eq(user_deletion_request.user_id),
                     )
                     .load::<Uuid>(conn)?;
 
-                let budget_ids = diesel::delete(
-                    budget_access_keys
-                        .filter(budget_access_key_fields::key_id.eq_any(budget_key_ids)),
+                let container_ids = diesel::delete(
+                    container_access_keys
+                        .filter(container_access_key_fields::key_id.eq_any(container_key_ids)),
                 )
-                .returning(budget_access_key_fields::budget_id)
+                .returning(container_access_key_fields::container_id)
                 .load::<Uuid>(conn)?;
 
-                for budget_id in budget_ids {
-                    let users_remaining_in_budget = budget_access_keys
-                        .filter(budget_access_key_fields::budget_id.eq(budget_id))
+                for container_id in container_ids {
+                    let users_remaining_in_container = container_access_keys
+                        .filter(container_access_key_fields::container_id.eq(container_id))
                         .count()
                         .get_result::<i64>(conn)?;
 
-                    if users_remaining_in_budget == 0 {
-                        diesel::delete(budgets.find(budget_id)).execute(conn)?;
+                    if users_remaining_in_container == 0 {
+                        diesel::delete(containers.find(container_id)).execute(conn)?;
                     }
                 }
 
@@ -502,10 +502,13 @@ impl Dao {
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let user_ids = diesel::delete(user_deletion_request_budget_keys.filter(
-                    user_deletion_request_budget_key_fields::delete_me_time.le(SystemTime::now()),
-                ))
-                .returning(user_deletion_request_budget_key_fields::user_id)
+                let user_ids = diesel::delete(
+                    user_deletion_request_container_keys.filter(
+                        user_deletion_request_container_key_fields::delete_me_time
+                            .le(SystemTime::now()),
+                    ),
+                )
+                .returning(user_deletion_request_container_key_fields::user_id)
                 .get_results::<Uuid>(conn)?;
 
                 diesel::delete(

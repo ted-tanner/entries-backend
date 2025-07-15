@@ -18,8 +18,8 @@ const UPDATE_FREQUENCY_MS_VAR: &str = "ENTRIES_JOB_RUNNER_UPDATE_FREQUENCY_MS";
 const WORKER_THREADS_VAR: &str = "ENTRIES_JOB_RUNNER_WORKER_THREADS";
 const MAX_BLOCKING_THREADS_VAR: &str = "ENTRIES_JOB_RUNNER_MAX_BLOCKING_THREADS";
 
-const CLEAR_EXPIRED_BUDGET_INVITES_JOB_FREQUENCY_SECS_VAR: &str =
-    "ENTRIES_CLEAR_EXPIRED_BUDGET_INVITES_JOB_FREQUENCY_SECS";
+const CLEAR_EXPIRED_CONTAINER_INVITES_JOB_FREQUENCY_SECS_VAR: &str =
+    "ENTRIES_CLEAR_EXPIRED_CONTAINER_INVITES_JOB_FREQUENCY_SECS";
 const CLEAR_EXPIRED_OTPS_JOB_FREQUENCY_SECS_VAR: &str =
     "ENTRIES_CLEAR_EXPIRED_OTPS_JOB_FREQUENCY_SECS";
 const CLEAR_OLD_USER_DELETION_REQUESTS_JOB_FREQUENCY_SECS_VAR: &str =
@@ -67,7 +67,7 @@ pub struct ConfigInner {
     pub max_blocking_threads: usize,
 
     #[zeroize(skip)]
-    pub clear_expired_budget_invites_job_frequency: Duration,
+    pub clear_expired_container_invites_job_frequency: Duration,
     #[zeroize(skip)]
     pub clear_expired_otps_job_frequency: Duration,
     #[zeroize(skip)]
@@ -116,8 +116,8 @@ impl Config {
             worker_threads: env_var_or(WORKER_THREADS_VAR, num_cpus::get())?,
             max_blocking_threads: env_var_or(MAX_BLOCKING_THREADS_VAR, 40)?,
 
-            clear_expired_budget_invites_job_frequency: Duration::from_secs(env_var(
-                CLEAR_EXPIRED_BUDGET_INVITES_JOB_FREQUENCY_SECS_VAR,
+            clear_expired_container_invites_job_frequency: Duration::from_secs(env_var(
+                CLEAR_EXPIRED_CONTAINER_INVITES_JOB_FREQUENCY_SECS_VAR,
             )?),
             clear_expired_otps_job_frequency: Duration::from_secs(env_var(
                 CLEAR_EXPIRED_OTPS_JOB_FREQUENCY_SECS_VAR,

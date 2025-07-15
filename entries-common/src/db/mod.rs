@@ -4,7 +4,7 @@ use std::fmt;
 use std::time::Duration;
 
 pub mod auth;
-pub mod budget;
+pub mod container;
 pub mod job_registry;
 pub mod user;
 

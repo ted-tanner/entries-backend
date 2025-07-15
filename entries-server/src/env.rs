@@ -72,8 +72,8 @@ const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
 const MAX_USER_PREFERENCES_SIZE_KB_VAR: &str = "ENTRIES_MAX_USER_PREFERENCES_SIZE_KB";
 const MAX_ENCRYPTION_KEY_SIZE_KB_VAR: &str = "ENTRIES_MAX_ENCRYPTION_KEY_SIZE_KB";
-const MAX_BUDGETS_VAR: &str = "ENTRIES_MAX_BUDGETS";
-const MAX_BUDGET_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_BUDGET_FETCH_COUNT";
+const MAX_CONTAINERS_VAR: &str = "ENTRIES_MAX_CONTAINERS";
+const MAX_CONTAINER_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_CONTAINER_FETCH_COUNT";
 const MAX_AUTH_STRING_LENGTH_VAR: &str = "ENTRIES_MAX_AUTH_STRING_LENGTH";
 
 const HEALTH_ENDPOINT_KEY_VAR: &str = "ENTRIES_HEALTH_ENDPOINT_KEY";
@@ -155,9 +155,9 @@ pub struct ConfigInner {
     #[zeroize(skip)]
     pub max_encryption_key_size: usize,
     #[zeroize(skip)]
-    pub max_budgets: usize,
+    pub max_containers: usize,
     #[zeroize(skip)]
-    pub max_budget_fetch_count: usize,
+    pub max_container_fetch_count: usize,
     #[zeroize(skip)]
     pub max_auth_string_length: usize,
 
@@ -271,8 +271,8 @@ impl Config {
             max_keystore_size: env_var_or(MAX_KEYSTORE_SIZE_KB_VAR, 80_000)? * 1024,
             max_user_preferences_size: env_var_or(MAX_USER_PREFERENCES_SIZE_KB_VAR, 32)? * 1024,
             max_encryption_key_size: env_var_or(MAX_ENCRYPTION_KEY_SIZE_KB_VAR, 4)? * 1024,
-            max_budgets: env_var_or(MAX_BUDGETS_VAR, 5_000)?,
-            max_budget_fetch_count: env_var_or(MAX_BUDGET_FETCH_COUNT_VAR, 50)?,
+            max_containers: env_var_or(MAX_CONTAINERS_VAR, 5_000)?,
+            max_container_fetch_count: env_var_or(MAX_CONTAINER_FETCH_COUNT_VAR, 50)?,
             max_auth_string_length: env_var_or(MAX_AUTH_STRING_LENGTH_VAR, 1024)?,
 
             health_endpoint_key: env_var(HEALTH_ENDPOINT_KEY_VAR)?,

@@ -58,8 +58,8 @@ mod tests {
 
     use entries_common::threadrand::SecureRng;
     use entries_common::token::{
-        budget_access_token::{BudgetAccessToken, BudgetAccessTokenClaims},
-        budget_invite_sender_token::{BudgetInviteSenderToken, BudgetInviteSenderTokenClaims},
+        container_access_token::{ContainerAccessToken, ContainerAccessTokenClaims},
+        container_invite_sender_token::{ContainerInviteSenderToken, ContainerInviteSenderTokenClaims},
     };
 
     use crate::middleware::{FromHeader, FromQuery};
@@ -73,9 +73,9 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenClaims {
+        let claims = ContainerAccessTokenClaims {
             key_id: kid,
-            budget_id: bid,
+            container_id: bid,
             expiration: exp,
         };
 
@@ -89,11 +89,11 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("BudgetAccessToken", token.as_str()))
+            .insert_header(("ContainerAccessToken", token.as_str()))
             .to_http_request();
 
         assert!(
-            SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -101,7 +101,7 @@ mod tests {
             .is_ok()
         );
         assert!(
-            SpecialAccessToken::<BudgetInviteSenderToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerInviteSenderToken, FromHeader>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -109,7 +109,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            SpecialAccessToken::<BudgetAccessToken, FromQuery>::from_request(
+            SpecialAccessToken::<ContainerAccessToken, FromQuery>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -117,7 +117,7 @@ mod tests {
             .is_err()
         );
 
-        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -127,7 +127,7 @@ mod tests {
         let c = t.0.verify(&access_public_key).unwrap();
 
         assert_eq!(c.key_id, kid);
-        assert_eq!(c.budget_id, bid);
+        assert_eq!(c.container_id, bid);
         assert_eq!(c.expiration, exp);
 
         let mut signature = Vec::from(access_key_pair.sign(&claims).to_bytes());
@@ -145,10 +145,10 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("BudgetAccessToken", token.as_str()))
+            .insert_header(("ContainerAccessToken", token.as_str()))
             .to_http_request();
 
-        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -162,9 +162,9 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetAccessTokenClaims {
+        let claims = ContainerAccessTokenClaims {
             key_id: kid,
-            budget_id: bid,
+            container_id: bid,
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
@@ -175,10 +175,10 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("BudgetAccessToken", token.as_str()))
+            .insert_header(("ContainerAccessToken", token.as_str()))
             .to_http_request();
 
-        let t = SpecialAccessToken::<BudgetAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -196,7 +196,7 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims {
+        let claims = ContainerInviteSenderTokenClaims {
             invite_id: iid,
             expiration: exp,
         };
@@ -210,11 +210,11 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
             .to_http_request();
 
         assert!(
-            SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+            SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -222,7 +222,7 @@ mod tests {
             .is_ok()
         );
         assert!(
-            SpecialAccessToken::<BudgetAccessToken, FromQuery>::from_request(
+            SpecialAccessToken::<ContainerAccessToken, FromQuery>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -230,7 +230,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            SpecialAccessToken::<BudgetInviteSenderToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerInviteSenderToken, FromHeader>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -238,7 +238,7 @@ mod tests {
             .is_err()
         );
 
-        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+        let t = SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -262,10 +262,10 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
             .to_http_request();
 
-        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+        let t = SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -279,7 +279,7 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims {
+        let claims = ContainerInviteSenderTokenClaims {
             invite_id: iid,
             expiration: exp,
         };
@@ -291,10 +291,10 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?BudgetInviteSenderToken={}", &token))
+            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
             .to_http_request();
 
-        let t = SpecialAccessToken::<BudgetInviteSenderToken, FromQuery>::from_request(
+        let t = SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
             &req,
             &mut Payload::None,
         )

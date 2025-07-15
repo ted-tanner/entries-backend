@@ -1,16 +1,16 @@
-use entries_common::db::budget::Dao as BudgetDao;
+use entries_common::db::container::Dao as ContainerDao;
 use entries_common::db::DbThreadPool;
 
 use async_trait::async_trait;
 
 use crate::jobs::{Job, JobError};
 
-pub struct ClearExpiredBudgetInvitesJob {
+pub struct ClearExpiredContainerInvitesJob {
     db_thread_pool: DbThreadPool,
     is_running: bool,
 }
 
-impl ClearExpiredBudgetInvitesJob {
+impl ClearExpiredContainerInvitesJob {
     pub fn new(db_thread_pool: DbThreadPool) -> Self {
         Self {
             db_thread_pool,
@@ -20,9 +20,9 @@ impl ClearExpiredBudgetInvitesJob {
 }
 
 #[async_trait]
-impl Job for ClearExpiredBudgetInvitesJob {
+impl Job for ClearExpiredContainerInvitesJob {
     fn name(&self) -> &'static str {
-        "Clear Expired Budget Invites"
+        "Clear Expired Container Invites"
     }
 
     fn is_ready(&self) -> bool {
@@ -32,7 +32,7 @@ impl Job for ClearExpiredBudgetInvitesJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let dao = BudgetDao::new(&self.db_thread_pool);
+        let dao = ContainerDao::new(&self.db_thread_pool);
         tokio::task::spawn_blocking(move || dao.delete_all_expired_invitations()).await??;
 
         self.is_running = false;
@@ -46,12 +46,12 @@ mod tests {
 
     use entries_common::db::user;
     use entries_common::messages::NewUser;
-    use entries_common::models::budget::NewBudget;
-    use entries_common::models::budget_accept_key::NewBudgetAcceptKey;
-    use entries_common::models::budget_share_invite::NewBudgetShareInvite;
-    use entries_common::schema::budget_accept_keys;
-    use entries_common::schema::budget_share_invites;
-    use entries_common::schema::budgets;
+    use entries_common::models::container::NewContainer;
+    use entries_common::models::container_accept_key::NewContainerAcceptKey;
+    use entries_common::models::container_share_invite::NewContainerShareInvite;
+    use entries_common::schema::container_accept_keys;
+    use entries_common::schema::container_share_invites;
+    use entries_common::schema::containers;
     use entries_common::threadrand::SecureRng;
 
     use diesel::{QueryDsl, RunQueryDsl};
@@ -132,115 +132,115 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user_id).unwrap();
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
             version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
-        diesel::insert_into(budgets::table)
-            .values(&new_budget)
+        diesel::insert_into(containers::table)
+            .values(&new_container)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_share_invite_exp = NewBudgetShareInvite {
+        let new_container_share_invite_exp = NewContainerShareInvite {
             id: Uuid::now_v7(),
             recipient_user_email: &new_user.email,
             sender_public_key: &[0; 4],
             encryption_key_encrypted: &[0; 4],
-            budget_accept_private_key_encrypted: &[0; 4],
-            budget_info_encrypted: &[0; 4],
+            container_accept_private_key_encrypted: &[0; 4],
+            container_info_encrypted: &[0; 4],
             sender_info_encrypted: &[0; 4],
-            budget_accept_key_info_encrypted: &[0; 4],
-            budget_accept_key_id_encrypted: &[0; 4],
+            container_accept_key_info_encrypted: &[0; 4],
+            container_accept_key_id_encrypted: &[0; 4],
             share_info_symmetric_key_encrypted: &[0; 4],
             recipient_public_key_id_used_by_sender: (&new_user.public_key_id).try_into().unwrap(),
             recipient_public_key_id_used_by_server: (&new_user.public_key_id).try_into().unwrap(),
             created_unix_timestamp_intdiv_five_million: 100,
         };
 
-        diesel::insert_into(budget_share_invites::table)
-            .values(&new_budget_share_invite_exp)
+        diesel::insert_into(container_share_invites::table)
+            .values(&new_container_share_invite_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_accept_key_exp = NewBudgetAcceptKey {
+        let new_container_accept_key_exp = NewContainerAcceptKey {
             key_id: Uuid::now_v7(),
-            budget_id: new_budget.id,
+            container_id: new_container.id,
             public_key: &[0; 4],
             expiration: SystemTime::now() - Duration::from_secs(100),
             read_only: false,
         };
 
-        diesel::insert_into(budget_accept_keys::table)
-            .values(&new_budget_accept_key_exp)
+        diesel::insert_into(container_accept_keys::table)
+            .values(&new_container_accept_key_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_share_invite_not_exp = NewBudgetShareInvite {
+        let new_container_share_invite_not_exp = NewContainerShareInvite {
             id: Uuid::now_v7(),
             recipient_user_email: &new_user.email,
             sender_public_key: &[0; 4],
             encryption_key_encrypted: &[0; 4],
-            budget_accept_private_key_encrypted: &[0; 4],
-            budget_info_encrypted: &[0; 4],
+            container_accept_private_key_encrypted: &[0; 4],
+            container_info_encrypted: &[0; 4],
             sender_info_encrypted: &[0; 4],
-            budget_accept_key_info_encrypted: &[0; 4],
-            budget_accept_key_id_encrypted: &[0; 4],
+            container_accept_key_info_encrypted: &[0; 4],
+            container_accept_key_id_encrypted: &[0; 4],
             share_info_symmetric_key_encrypted: &[0; 4],
             recipient_public_key_id_used_by_sender: (&new_user.public_key_id).try_into().unwrap(),
             recipient_public_key_id_used_by_server: (&new_user.public_key_id).try_into().unwrap(),
             created_unix_timestamp_intdiv_five_million: i16::MAX,
         };
 
-        diesel::insert_into(budget_share_invites::table)
-            .values(&new_budget_share_invite_not_exp)
+        diesel::insert_into(container_share_invites::table)
+            .values(&new_container_share_invite_not_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_accept_key_not_exp = NewBudgetAcceptKey {
+        let new_container_accept_key_not_exp = NewContainerAcceptKey {
             key_id: Uuid::now_v7(),
-            budget_id: new_budget.id,
+            container_id: new_container.id,
             public_key: &[0; 4],
             expiration: SystemTime::now() + Duration::from_secs(100),
             read_only: false,
         };
 
-        diesel::insert_into(budget_accept_keys::table)
-            .values(&new_budget_accept_key_not_exp)
+        diesel::insert_into(container_accept_keys::table)
+            .values(&new_container_accept_key_not_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let mut job = ClearExpiredBudgetInvitesJob::new(env::testing::DB_THREAD_POOL.clone());
+        let mut job = ClearExpiredContainerInvitesJob::new(env::testing::DB_THREAD_POOL.clone());
 
         assert_eq!(
-            budget_share_invites::table
-                .find(new_budget_share_invite_exp.id)
+            container_share_invites::table
+                .find(new_container_share_invite_exp.id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
 
         assert_eq!(
-            budget_accept_keys::table
-                .find((new_budget_accept_key_exp.key_id, new_budget.id))
+            container_accept_keys::table
+                .find((new_container_accept_key_exp.key_id, new_container.id))
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
 
         assert_eq!(
-            budget_share_invites::table
-                .find(new_budget_share_invite_not_exp.id)
+            container_share_invites::table
+                .find(new_container_share_invite_not_exp.id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
 
         assert_eq!(
-            budget_accept_keys::table
-                .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
+            container_accept_keys::table
+                .find((new_container_accept_key_not_exp.key_id, new_container.id))
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
@@ -249,32 +249,32 @@ mod tests {
         job.execute().await.unwrap();
 
         assert_eq!(
-            budget_share_invites::table
-                .find(new_budget_share_invite_exp.id)
+            container_share_invites::table
+                .find(new_container_share_invite_exp.id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
 
         assert_eq!(
-            budget_accept_keys::table
-                .find((new_budget_accept_key_exp.key_id, new_budget.id))
+            container_accept_keys::table
+                .find((new_container_accept_key_exp.key_id, new_container.id))
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             0
         );
 
         assert_eq!(
-            budget_share_invites::table
-                .find(new_budget_share_invite_not_exp.id)
+            container_share_invites::table
+                .find(new_container_share_invite_not_exp.id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1
         );
 
         assert_eq!(
-            budget_accept_keys::table
-                .find((new_budget_accept_key_not_exp.key_id, new_budget.id))
+            container_accept_keys::table
+                .find((new_container_accept_key_not_exp.key_id, new_container.id))
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1

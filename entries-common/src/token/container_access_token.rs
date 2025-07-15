@@ -4,27 +4,29 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BudgetInviteSenderTokenClaims {
-    #[serde(rename = "iid")]
-    pub invite_id: Uuid,
+pub struct ContainerAccessTokenClaims {
+    #[serde(rename = "kid")]
+    pub key_id: Uuid, // Container Access Key ID
+    #[serde(rename = "bid")]
+    pub container_id: Uuid,
     #[serde(rename = "exp")]
     pub expiration: u64,
 }
 
-impl Expiring for BudgetInviteSenderTokenClaims {
+impl Expiring for ContainerAccessTokenClaims {
     fn expiration(&self) -> u64 {
         self.expiration
     }
 }
 
-pub struct BudgetInviteSenderToken {}
+pub struct ContainerAccessToken {}
 
-impl Token for BudgetInviteSenderToken {
-    type Claims = BudgetInviteSenderTokenClaims;
+impl Token for ContainerAccessToken {
+    type Claims = ContainerAccessTokenClaims;
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
-        "BudgetInviteSenderToken"
+        "ContainerAccessToken"
     }
 }
 
@@ -40,14 +42,16 @@ mod tests {
 
     #[test]
     fn test_verify() {
-        let iid = Uuid::now_v7();
+        let kid = Uuid::now_v7();
+        let bid = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims {
-            invite_id: iid,
+        let claims = ContainerAccessTokenClaims {
+            key_id: kid,
+            container_id: bid,
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
@@ -61,14 +65,16 @@ mod tests {
         token_unencoded.extend_from_slice(&signature.to_bytes());
 
         let token = b64_urlsafe.encode(&token_unencoded);
-        let t = BudgetInviteSenderToken::decode(&token).unwrap();
+        let t = ContainerAccessToken::decode(&token).unwrap();
 
-        assert_eq!(t.claims.invite_id, iid);
+        assert_eq!(t.claims.key_id, kid);
+        assert_eq!(t.claims.container_id, bid);
         assert_eq!(t.claims.expiration, exp);
 
         let verified_claims = t.verify(&pub_key).unwrap();
 
-        assert_eq!(verified_claims.invite_id, iid);
+        assert_eq!(verified_claims.key_id, kid);
+        assert_eq!(verified_claims.container_id, bid);
         assert_eq!(verified_claims.expiration, exp);
 
         let mut token = claims.clone();
@@ -83,7 +89,7 @@ mod tests {
         }
 
         let token = b64_urlsafe.encode(&token);
-        assert!(BudgetInviteSenderToken::decode(&token)
+        assert!(ContainerAccessToken::decode(&token)
             .unwrap()
             .verify(&pub_key)
             .is_err());
@@ -93,8 +99,9 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        let claims = BudgetInviteSenderTokenClaims {
-            invite_id: iid,
+        let claims = ContainerAccessTokenClaims {
+            key_id: kid,
+            container_id: bid,
             expiration: exp,
         };
         let mut token = serde_json::to_vec(&claims).unwrap();
@@ -103,7 +110,7 @@ mod tests {
         token.extend_from_slice(&signature.to_bytes());
 
         let token = b64_urlsafe.encode(&token);
-        assert!(BudgetInviteSenderToken::decode(&token)
+        assert!(ContainerAccessToken::decode(&token)
             .unwrap()
             .verify(&pub_key)
             .is_err());

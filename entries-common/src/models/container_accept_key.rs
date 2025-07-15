@@ -3,27 +3,27 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-use crate::models::budget::Budget;
-use crate::schema::budget_accept_keys;
+use crate::models::container::Container;
+use crate::schema::container_accept_keys;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Associations, Identifiable, Queryable)]
-#[diesel(belongs_to(Budget, foreign_key = budget_id))]
-#[diesel(table_name = budget_accept_keys, primary_key(key_id, budget_id))]
+#[diesel(belongs_to(Container, foreign_key = container_id))]
+#[diesel(table_name = container_accept_keys, primary_key(key_id, container_id))]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct BudgetAcceptKey {
+pub struct ContainerAcceptKey {
     pub key_id: Uuid,
-    pub budget_id: Uuid,
+    pub container_id: Uuid,
     pub public_key: Vec<u8>,
     pub expiration: SystemTime,
     pub read_only: bool,
 }
 
 #[derive(Clone, Debug, Insertable)]
-#[diesel(table_name = budget_accept_keys, primary_key(key_id, budget_id))]
+#[diesel(table_name = container_accept_keys, primary_key(key_id, container_id))]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewBudgetAcceptKey<'a> {
+pub struct NewContainerAcceptKey<'a> {
     pub key_id: Uuid,
-    pub budget_id: Uuid,
+    pub container_id: Uuid,
     pub public_key: &'a [u8],
     pub expiration: SystemTime,
     pub read_only: bool,

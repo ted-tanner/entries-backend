@@ -9,7 +9,7 @@ mod jobs;
 mod runner;
 
 use jobs::{
-    ClearExpiredBudgetInvitesJob, ClearExpiredOtpsJob, ClearOldUserDeletionRequestsJob,
+    ClearExpiredContainerInvitesJob, ClearExpiredOtpsJob, ClearOldUserDeletionRequestsJob,
     ClearUnverifiedUsersJob, DeleteUsersJob, UnblacklistExpiredTokensJob,
 };
 
@@ -69,8 +69,8 @@ fn main() {
 
             job_runner
                 .register(
-                    Box::new(ClearExpiredBudgetInvitesJob::new(db_thread_pool.clone())),
-                    env::CONF.clear_expired_budget_invites_job_frequency,
+                    Box::new(ClearExpiredContainerInvitesJob::new(db_thread_pool.clone())),
+                    env::CONF.clear_expired_container_invites_job_frequency,
                 )
                 .await;
 

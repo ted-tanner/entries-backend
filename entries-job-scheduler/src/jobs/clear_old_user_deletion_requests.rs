@@ -45,11 +45,11 @@ mod tests {
     use super::*;
 
     use entries_common::messages::NewUser;
-    use entries_common::models::budget::NewBudget;
-    use entries_common::models::budget_access_key::NewBudgetAccessKey;
+    use entries_common::models::container::NewContainer;
+    use entries_common::models::container_access_key::NewContainerAccessKey;
     use entries_common::models::user_deletion_request::NewUserDeletionRequest;
-    use entries_common::models::user_deletion_request_budget_key::NewUserDeletionRequestBudgetKey;
-    use entries_common::schema::{budget_access_keys, budgets, user_deletion_request_budget_keys};
+    use entries_common::models::user_deletion_request_container_key::NewUserDeletionRequestContainerKey;
+    use entries_common::schema::{container_access_keys, containers, user_deletion_request_container_keys};
     use entries_common::threadrand::SecureRng;
     use entries_common::{db::user, schema::user_deletion_requests};
 
@@ -199,39 +199,39 @@ mod tests {
             .unwrap();
         user_dao.verify_user_creation(user2_id).unwrap();
 
-        let new_budget = NewBudget {
+        let new_container = NewContainer {
             id: Uuid::now_v7(),
             encrypted_blob: &[0; 4],
             version_nonce: SecureRng::next_i64(),
             modified_timestamp: SystemTime::now(),
         };
 
-        diesel::insert_into(budgets::table)
-            .values(&new_budget)
+        diesel::insert_into(containers::table)
+            .values(&new_container)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_access_key1 = NewBudgetAccessKey {
+        let new_container_access_key1 = NewContainerAccessKey {
             key_id: Uuid::now_v7(),
-            budget_id: new_budget.id,
+            container_id: new_container.id,
             public_key: &[0; 4],
             read_only: false,
         };
 
-        diesel::insert_into(budget_access_keys::table)
-            .values(&new_budget_access_key1)
+        diesel::insert_into(container_access_keys::table)
+            .values(&new_container_access_key1)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_budget_access_key2 = NewBudgetAccessKey {
+        let new_container_access_key2 = NewContainerAccessKey {
             key_id: Uuid::now_v7(),
-            budget_id: new_budget.id,
+            container_id: new_container.id,
             public_key: &[0; 4],
             read_only: false,
         };
 
-        diesel::insert_into(budget_access_keys::table)
-            .values(&new_budget_access_key2)
+        diesel::insert_into(container_access_keys::table)
+            .values(&new_container_access_key2)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
@@ -245,13 +245,13 @@ mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_deletion_req_key_exp = NewUserDeletionRequestBudgetKey {
-            key_id: new_budget_access_key1.key_id,
+        let new_deletion_req_key_exp = NewUserDeletionRequestContainerKey {
+            key_id: new_container_access_key1.key_id,
             user_id: user1_id,
             delete_me_time: SystemTime::now() - Duration::from_nanos(1),
         };
 
-        diesel::insert_into(user_deletion_request_budget_keys::table)
+        diesel::insert_into(user_deletion_request_container_keys::table)
             .values(&new_deletion_req_key_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
@@ -266,13 +266,13 @@ mod tests {
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        let new_deletion_req_key_not_exp = NewUserDeletionRequestBudgetKey {
-            key_id: new_budget_access_key2.key_id,
+        let new_deletion_req_key_not_exp = NewUserDeletionRequestContainerKey {
+            key_id: new_container_access_key2.key_id,
             user_id: user2_id,
             delete_me_time: SystemTime::now() + Duration::from_secs(10),
         };
 
-        diesel::insert_into(user_deletion_request_budget_keys::table)
+        diesel::insert_into(user_deletion_request_container_keys::table)
             .values(&new_deletion_req_key_not_exp)
             .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
@@ -288,7 +288,7 @@ mod tests {
         );
 
         assert_eq!(
-            user_deletion_request_budget_keys::table
+            user_deletion_request_container_keys::table
                 .find(new_deletion_req_key_exp.key_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -304,7 +304,7 @@ mod tests {
         );
 
         assert_eq!(
-            user_deletion_request_budget_keys::table
+            user_deletion_request_container_keys::table
                 .find(new_deletion_req_key_not_exp.key_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -322,7 +322,7 @@ mod tests {
         );
 
         assert_eq!(
-            user_deletion_request_budget_keys::table
+            user_deletion_request_container_keys::table
                 .find(new_deletion_req_key_exp.key_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -338,7 +338,7 @@ mod tests {
         );
 
         assert_eq!(
-            user_deletion_request_budget_keys::table
+            user_deletion_request_container_keys::table
                 .find(new_deletion_req_key_not_exp.key_id)
                 .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),

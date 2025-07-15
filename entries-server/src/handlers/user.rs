@@ -8,12 +8,12 @@ use entries_common::html::templates::{
     VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
 };
 use entries_common::messages::{
-    AuthStringAndEncryptedPasswordUpdate, BudgetAccessTokenList, EmailChangeRequest, EmailQuery,
+    AuthStringAndEncryptedPasswordUpdate, ContainerAccessTokenList, EmailChangeRequest, EmailQuery,
     EncryptedBlobUpdate, IsUserListedForDeletion, NewUser, NewUserPublicKey, RecoveryKeyUpdate,
     UserPublicKey, VerificationEmailSent,
 };
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
-use entries_common::token::budget_access_token::BudgetAccessToken;
+use entries_common::token::container_access_token::ContainerAccessToken;
 use entries_common::token::{Token, TokenError};
 use entries_common::validators::{self, Validity};
 
@@ -778,36 +778,36 @@ pub async fn init_delete(
     db_thread_pool: web::Data<DbThreadPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
-    budget_access_tokens: ProtoBuf<BudgetAccessTokenList>,
+    container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str =
-        "One of the provided budget access tokens is invalid or has an incorrect ID";
+        "One of the provided container access tokens is invalid or has an incorrect ID";
 
-    if budget_access_tokens.tokens.len() > env::CONF.max_budgets {
+    if container_access_tokens.tokens.len() > env::CONF.max_containers {
         return Err(HttpErrorResponse::InputTooLarge(String::from(
-            "Too many budget access tokens",
+            "Too many container access tokens",
         )));
     }
 
     let mut tokens = HashMap::new();
     let mut key_ids = Vec::new();
-    let mut budget_ids = Vec::new();
+    let mut container_ids = Vec::new();
 
-    for token in budget_access_tokens.tokens.iter() {
-        let token = BudgetAccessToken::decode(token)
+    for token in container_access_tokens.tokens.iter() {
+        let token = ContainerAccessToken::decode(token)
             .map_err(|_| HttpErrorResponse::IncorrectlyFormed(String::from(INVALID_ID_MSG)))?;
 
         key_ids.push(token.claims.key_id);
-        budget_ids.push(token.claims.budget_id);
+        container_ids.push(token.claims.container_id);
         tokens.insert(token.claims.key_id, token);
     }
 
     let key_ids = Arc::new(key_ids);
     let key_ids_ref = Arc::clone(&key_ids);
 
-    let budget_dao = db::budget::Dao::new(&db_thread_pool);
+    let container_dao = db::container::Dao::new(&db_thread_pool);
     let public_keys = match web::block(move || {
-        budget_dao.get_multiple_public_budget_keys(&key_ids_ref, &budget_ids)
+        container_dao.get_multiple_public_container_keys(&key_ids_ref, &container_ids)
     })
     .await?
     {
@@ -816,13 +816,13 @@ pub async fn init_delete(
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     String::from(INVALID_ID_MSG),
-                    DoesNotExistType::Budget,
+                    DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to get budget data corresponding to budget access token",
+                    "Failed to get container data corresponding to container access token",
                 )));
             }
         },
@@ -831,7 +831,7 @@ pub async fn init_delete(
     if public_keys.len() != tokens.len() {
         return Err(HttpErrorResponse::DoesNotExist(
             String::from(INVALID_ID_MSG),
-            DoesNotExistType::Budget,
+            DoesNotExistType::Container,
         ));
     }
 
@@ -841,7 +841,7 @@ pub async fn init_delete(
             None => {
                 return Err(HttpErrorResponse::DoesNotExist(
                     String::from(INVALID_ID_MSG),
-                    DoesNotExistType::Budget,
+                    DoesNotExistType::Container,
                 ))
             }
         };
@@ -857,7 +857,7 @@ pub async fn init_delete(
 
     match web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.save_user_deletion_budget_keys(&key_ids, user_id, delete_me_time)
+        user_dao.save_user_deletion_container_keys(&key_ids, user_id, delete_me_time)
     })
     .await?
     {
@@ -872,7 +872,7 @@ pub async fn init_delete(
             _ => {
                 log::error!("{e}");
                 return Err(HttpErrorResponse::InternalError(String::from(
-                    "Failed to save user deletion budget keys",
+                    "Failed to save user deletion container keys",
                 )));
             }
         },
@@ -1047,17 +1047,17 @@ pub mod tests {
     };
     use entries_common::models::user::User;
     use entries_common::models::user_deletion_request::UserDeletionRequest;
-    use entries_common::schema::budget_access_keys as budget_access_key_fields;
-    use entries_common::schema::budget_access_keys::dsl::budget_access_keys;
-    use entries_common::schema::budgets as budget_fields;
-    use entries_common::schema::budgets::dsl::budgets;
+    use entries_common::schema::container_access_keys as container_access_key_fields;
+    use entries_common::schema::container_access_keys::dsl::container_access_keys;
+    use entries_common::schema::containers as container_fields;
+    use entries_common::schema::containers::dsl::containers;
     use entries_common::schema::categories as category_fields;
     use entries_common::schema::categories::dsl::categories;
     use entries_common::schema::entries as entry_fields;
     use entries_common::schema::entries::dsl::entries;
     use entries_common::schema::signin_nonces::dsl::signin_nonces;
-    use entries_common::schema::user_deletion_request_budget_keys as user_deletion_request_budget_key_fields;
-    use entries_common::schema::user_deletion_request_budget_keys::dsl::user_deletion_request_budget_keys;
+    use entries_common::schema::user_deletion_request_container_keys as user_deletion_request_container_key_fields;
+    use entries_common::schema::user_deletion_request_container_keys::dsl::user_deletion_request_container_keys;
     use entries_common::schema::user_deletion_requests as user_deletion_request_fields;
     use entries_common::schema::user_deletion_requests::dsl::user_deletion_requests;
     use entries_common::schema::user_keystores as user_keystore_fields;
@@ -1069,7 +1069,7 @@ pub mod tests {
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
     use entries_common::threadrand::SecureRng;
-    use entries_common::token::budget_access_token::BudgetAccessTokenClaims;
+    use entries_common::token::container_access_token::ContainerAccessTokenClaims;
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
@@ -2712,15 +2712,15 @@ pub mod tests {
 
         let (_, access_token, _, _) = test_utils::create_user().await;
 
-        let tokens = vec![String::from("test"); env::CONF.max_budgets + 1];
+        let tokens = vec![String::from("test"); env::CONF.max_containers + 1];
 
-        let budget_access_tokens = BudgetAccessTokenList { tokens };
+        let container_access_tokens = ContainerAccessTokenList { tokens };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2733,7 +2733,7 @@ pub mod tests {
     }
 
     #[actix_web::test]
-    async fn test_delete_user_no_budgets() {
+    async fn test_delete_user_no_containers() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2743,16 +2743,16 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
+        // Test init_delete with no container tokens
         let (user, access_token, _, _) = test_utils::create_user().await;
 
-        let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
+        let container_access_tokens = ContainerAccessTokenList { tokens: Vec::new() };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2768,13 +2768,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 0);
+        assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
             users
@@ -2816,13 +2816,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 0);
+        assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
             users
@@ -2843,13 +2843,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 0);
+        assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
             users
@@ -2862,7 +2862,7 @@ pub mod tests {
     }
 
     #[actix_web::test]
-    async fn test_delete_user_with_budgets() {
+    async fn test_delete_user_with_containers() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -2874,8 +2874,8 @@ pub mod tests {
 
         let (user, access_token, _, _) = test_utils::create_user().await;
 
-        let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
-        let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
+        let (container1, container1_token) = test_utils::create_container(&access_token).await;
+        let (container2, container2_token) = test_utils::create_container(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
             entry_encrypted_blob: gen_bytes(30),
@@ -2885,9 +2885,9 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/budget/entry_and_category")
+            .uri("/api/container/entry_and_category")
             .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("BudgetAccessToken", budget1_token.as_str()))
+            .insert_header(("ContainerAccessToken", container1_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();
@@ -2901,29 +2901,29 @@ pub mod tests {
         let new_entry_id: Uuid = new_entry_and_category_ids.entry_id.try_into().unwrap();
         let new_category_id: Uuid = new_entry_and_category_ids.category_id.try_into().unwrap();
 
-        let decoded = b64_urlsafe.decode(&budget1_token).unwrap();
+        let decoded = b64_urlsafe.decode(&container1_token).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget1_access_key_id =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container1_access_key_id =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let decoded = b64_urlsafe.decode(&budget2_token).unwrap();
+        let decoded = b64_urlsafe.decode(&container2_token).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget2_access_key_id =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container2_access_key_id =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget1_token, budget2_token],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container1_token, container2_token],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2939,13 +2939,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -2957,8 +2957,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -2966,8 +2966,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -2975,8 +2975,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3002,8 +3002,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3041,13 +3041,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -3059,8 +3059,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3068,8 +3068,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3077,8 +3077,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3104,8 +3104,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3122,13 +3122,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 0);
+        assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
             users
@@ -3140,8 +3140,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3149,8 +3149,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3158,8 +3158,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3185,8 +3185,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3205,27 +3205,27 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
+        // Test init_delete with no container tokens
         let (user, access_token, _, _) = test_utils::create_user().await;
 
-        let (budget1, budget1_token) = test_utils::create_budget(&access_token).await;
-        let (budget2, budget2_token) = test_utils::create_budget(&access_token).await;
+        let (container1, container1_token) = test_utils::create_container(&access_token).await;
+        let (container2, container2_token) = test_utils::create_container(&access_token).await;
 
-        let decoded = b64_urlsafe.decode(&budget1_token).unwrap();
+        let decoded = b64_urlsafe.decode(&container1_token).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget1_access_key_id =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container1_access_key_id =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let decoded = b64_urlsafe.decode(&budget2_token).unwrap();
+        let decoded = b64_urlsafe.decode(&container2_token).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget2_access_key_id =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container2_access_key_id =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let mut bad_token = b64_urlsafe.decode(&budget2_token).unwrap();
+        let mut bad_token = b64_urlsafe.decode(&container2_token).unwrap();
 
         // Make the signature invalid
         let last_char = bad_token.pop().unwrap();
@@ -3237,19 +3237,19 @@ pub mod tests {
 
         let bad_token = b64_urlsafe.encode(bad_token);
 
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget1_token.clone(), budget2_token],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container1_token.clone(), container2_token],
         };
 
-        let budget_access_tokens_incorrect = BudgetAccessTokenList {
-            tokens: vec![budget1_token, bad_token],
+        let container_access_tokens_incorrect = ContainerAccessTokenList {
+            tokens: vec![container1_token, bad_token],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens_incorrect.encode_to_vec())
+            .set_payload(container_access_tokens_incorrect.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3259,7 +3259,7 @@ pub mod tests {
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3275,13 +3275,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -3293,8 +3293,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3302,8 +3302,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3311,8 +3311,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3320,8 +3320,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3361,13 +3361,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -3379,8 +3379,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3388,8 +3388,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3397,8 +3397,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3406,8 +3406,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3416,7 +3416,7 @@ pub mod tests {
     }
 
     #[actix_web::test]
-    async fn test_delete_user_succeeds_with_shared_budgets() {
+    async fn test_delete_user_succeeds_with_shared_containers() {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
@@ -3426,65 +3426,65 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
+        // Test init_delete with no container tokens
         let (user1, user1_access_token, _, _) = test_utils::create_user().await;
         let (user2, user2_access_token, _, _) = test_utils::create_user().await;
 
         test_utils::gen_new_user_rsa_key(user1.id);
         let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id);
 
-        let (budget1, budget1_token_user1) = test_utils::create_budget(&user1_access_token).await;
-        let (budget2, budget2_token_user1) = test_utils::create_budget(&user1_access_token).await;
+        let (container1, container1_token_user1) = test_utils::create_container(&user1_access_token).await;
+        let (container2, container2_token_user1) = test_utils::create_container(&user1_access_token).await;
 
-        let decoded = b64_urlsafe.decode(&budget1_token_user1).unwrap();
+        let decoded = b64_urlsafe.decode(&container1_token_user1).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget1_access_key_id_user1 =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container1_access_key_id_user1 =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let decoded = b64_urlsafe.decode(&budget2_token_user1).unwrap();
+        let decoded = b64_urlsafe.decode(&container2_token_user1).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;
-        let budget2_access_key_id_user1 =
-            serde_json::from_slice::<BudgetAccessTokenClaims>(&decoded[..json_len])
+        let container2_access_key_id_user1 =
+            serde_json::from_slice::<ContainerAccessTokenClaims>(&decoded[..json_len])
                 .unwrap()
                 .key_id;
 
-        let budget2_token_user2 = test_utils::share_budget(
-            budget2.id,
+        let container2_token_user2 = test_utils::share_container(
+            container2.id,
             &user2.email,
             &user2_rsa_key.private_key_to_der().unwrap(),
             true,
-            &budget2_token_user1,
+            &container2_token_user1,
             &user1_access_token,
             user2.public_key_id,
             user2.public_key_id,
         )
         .await;
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget2_token_user2.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container2_token_user2.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget1_token_user1, budget2_token_user1],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container1_token_user1, container2_token_user1],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", user1_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3500,13 +3500,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user1.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -3518,8 +3518,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3527,8 +3527,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3536,8 +3536,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3545,24 +3545,24 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1,
         );
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget2_token_user2.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container2_token_user2.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3599,13 +3599,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user1.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 2);
+        assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
             users
@@ -3617,8 +3617,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3626,8 +3626,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3635,8 +3635,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3644,8 +3644,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3653,8 +3653,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::budget_id.eq(budget1.id))
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3662,8 +3662,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3680,13 +3680,13 @@ pub mod tests {
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_budget_key_count = user_deletion_request_budget_keys
-            .filter(user_deletion_request_budget_key_fields::user_id.eq(user1.id))
+        let deletion_request_container_key_count = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
             .count()
             .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
 
-        assert_eq!(deletion_request_budget_key_count, 0);
+        assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
             users
@@ -3698,8 +3698,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget1_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3707,8 +3707,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::key_id.eq(budget2_access_key_id_user1))
+            container_access_keys
+                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3716,8 +3716,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget1.id))
+            containers
+                .filter(container_fields::id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3725,8 +3725,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3734,8 +3734,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::budget_id.eq(budget1.id))
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container1.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3743,39 +3743,39 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
             1,
         );
 
-        let budget_token_list = BudgetAccessTokenList {
-            tokens: vec![budget2_token_user2.clone()],
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container2_token_user2.clone()],
         };
 
         let req = TestRequest::get()
-            .uri("/api/budget")
+            .uri("/api/container")
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_token_list.encode_to_vec())
+            .set_payload(container_token_list.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Delete user 2
-        let budget_access_tokens = BudgetAccessTokenList {
-            tokens: vec![budget2_token_user2],
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container2_token_user2],
         };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3825,8 +3825,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budgets
-                .filter(budget_fields::id.eq(budget2.id))
+            containers
+                .filter(container_fields::id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3834,8 +3834,8 @@ pub mod tests {
         );
 
         assert_eq!(
-            budget_access_keys
-                .filter(budget_access_key_fields::budget_id.eq(budget2.id))
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container2.id))
                 .count()
                 .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
                 .unwrap(),
@@ -3854,7 +3854,7 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
+        // Test init_delete with no container tokens
         let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
@@ -3868,13 +3868,13 @@ pub mod tests {
         let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
         assert!(!resp_body.value);
 
-        let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
+        let container_access_tokens = ContainerAccessTokenList { tokens: Vec::new() };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3978,7 +3978,7 @@ pub mod tests {
         )
         .await;
 
-        // Test init_delete with no budget tokens
+        // Test init_delete with no container tokens
         let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
@@ -3992,13 +3992,13 @@ pub mod tests {
         let resp_body = IsUserListedForDeletion::decode(resp_body).unwrap();
         assert!(!resp_body.value);
 
-        let budget_access_tokens = BudgetAccessTokenList { tokens: Vec::new() };
+        let container_access_tokens = ContainerAccessTokenList { tokens: Vec::new() };
 
         let req = TestRequest::delete()
             .uri("/api/user")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(budget_access_tokens.encode_to_vec())
+            .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
 

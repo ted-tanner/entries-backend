@@ -8,9 +8,19 @@ diesel::table! {
 }
 
 diesel::table! {
-    budget_accept_keys (key_id, budget_id) {
+    categories (id) {
+        id -> Uuid,
+        container_id -> Uuid,
+        encrypted_blob -> Bytea,
+        version_nonce -> Int8,
+        modified_timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
+    container_accept_keys (key_id, container_id) {
         key_id -> Uuid,
-        budget_id -> Uuid,
+        container_id -> Uuid,
         public_key -> Bytea,
         expiration -> Timestamp,
         read_only -> Bool,
@@ -18,25 +28,25 @@ diesel::table! {
 }
 
 diesel::table! {
-    budget_access_keys (key_id, budget_id) {
+    container_access_keys (key_id, container_id) {
         key_id -> Uuid,
-        budget_id -> Uuid,
+        container_id -> Uuid,
         public_key -> Bytea,
         read_only -> Bool,
     }
 }
 
 diesel::table! {
-    budget_share_invites (id) {
+    container_share_invites (id) {
         id -> Uuid,
         recipient_user_email -> Text,
         sender_public_key -> Bytea,
         encryption_key_encrypted -> Bytea,
-        budget_accept_private_key_encrypted -> Bytea,
-        budget_info_encrypted -> Bytea,
+        container_accept_private_key_encrypted -> Bytea,
+        container_info_encrypted -> Bytea,
         sender_info_encrypted -> Bytea,
-        budget_accept_key_info_encrypted -> Bytea,
-        budget_accept_key_id_encrypted -> Bytea,
+        container_accept_key_info_encrypted -> Bytea,
+        container_accept_key_id_encrypted -> Bytea,
         share_info_symmetric_key_encrypted -> Bytea,
         recipient_public_key_id_used_by_sender -> Uuid,
         recipient_public_key_id_used_by_server -> Uuid,
@@ -45,18 +55,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    budgets (id) {
+    containers (id) {
         id -> Uuid,
-        encrypted_blob -> Bytea,
-        version_nonce -> Int8,
-        modified_timestamp -> Timestamp,
-    }
-}
-
-diesel::table! {
-    categories (id) {
-        id -> Uuid,
-        budget_id -> Uuid,
         encrypted_blob -> Bytea,
         version_nonce -> Int8,
         modified_timestamp -> Timestamp,
@@ -66,7 +66,7 @@ diesel::table! {
 diesel::table! {
     entries (id) {
         id -> Uuid,
-        budget_id -> Uuid,
+        container_id -> Uuid,
         category_id -> Nullable<Uuid>,
         encrypted_blob -> Bytea,
         version_nonce -> Int8,
@@ -89,7 +89,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_deletion_request_budget_keys (key_id) {
+    user_deletion_request_container_keys (key_id) {
         key_id -> Uuid,
         user_id -> Uuid,
         delete_me_time -> Timestamp,
@@ -156,27 +156,27 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(budget_accept_keys -> budgets (budget_id));
-diesel::joinable!(budget_access_keys -> budgets (budget_id));
-diesel::joinable!(categories -> budgets (budget_id));
-diesel::joinable!(entries -> budgets (budget_id));
+diesel::joinable!(categories -> containers (container_id));
+diesel::joinable!(container_accept_keys -> containers (container_id));
+diesel::joinable!(container_access_keys -> containers (container_id));
 diesel::joinable!(entries -> categories (category_id));
-diesel::joinable!(user_deletion_request_budget_keys -> users (user_id));
+diesel::joinable!(entries -> containers (container_id));
+diesel::joinable!(user_deletion_request_container_keys -> users (user_id));
 diesel::joinable!(user_deletion_requests -> users (user_id));
 diesel::joinable!(user_keystores -> users (user_id));
 diesel::joinable!(user_preferences -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     blacklisted_tokens,
-    budget_accept_keys,
-    budget_access_keys,
-    budget_share_invites,
-    budgets,
     categories,
+    container_accept_keys,
+    container_access_keys,
+    container_share_invites,
+    containers,
     entries,
     job_registry,
     signin_nonces,
-    user_deletion_request_budget_keys,
+    user_deletion_request_container_keys,
     user_deletion_requests,
     user_keystores,
     user_otps,
