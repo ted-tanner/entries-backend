@@ -69,7 +69,7 @@ mod tests {
     #[actix_web::test]
     async fn test_from_header() {
         let kid = Uuid::now_v7();
-        let bid = Uuid::now_v7();
+        let cid = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -77,7 +77,7 @@ mod tests {
 
         let claims = ContainerAccessTokenClaims {
             key_id: kid,
-            container_id: bid,
+            container_id: cid,
             expiration: exp,
         };
 
@@ -129,7 +129,7 @@ mod tests {
         let c = t.0.verify(&access_public_key).unwrap();
 
         assert_eq!(c.key_id, kid);
-        assert_eq!(c.container_id, bid);
+        assert_eq!(c.container_id, cid);
         assert_eq!(c.expiration, exp);
 
         let mut signature = Vec::from(access_key_pair.sign(&claims).to_bytes());
@@ -166,7 +166,7 @@ mod tests {
 
         let claims = ContainerAccessTokenClaims {
             key_id: kid,
-            container_id: bid,
+            container_id: cid,
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();

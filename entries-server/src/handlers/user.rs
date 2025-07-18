@@ -213,7 +213,7 @@ pub async fn create(
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(String::from(
-                "Failed to hash auth atring",
+                "Failed to hash auth string",
             )));
         }
     };

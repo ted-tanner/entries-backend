@@ -24,6 +24,12 @@ pub mod verification {
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.otp_lifetime;
 
+        if user_email.len() > 255 {
+            return Err(HttpErrorResponse::IncorrectlyFormed(String::from(
+                "Email address is too long",
+            )));
+        }
+
         let user_email_copy = String::from(user_email);
 
         let otp = Arc::new(Otp::generate(8));

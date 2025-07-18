@@ -9,7 +9,7 @@ pub struct ContainerAcceptTokenClaims {
     pub invite_id: Uuid, // Invitation ID
     #[serde(rename = "kid")]
     pub key_id: Uuid, // Container Share Key ID
-    #[serde(rename = "bid")]
+    #[serde(rename = "cid")]
     pub container_id: Uuid,
     #[serde(rename = "exp")]
     pub expiration: u64,
@@ -46,7 +46,7 @@ mod tests {
     fn test_verify() {
         let iid = Uuid::now_v7();
         let kid = Uuid::now_v7();
-        let bid = Uuid::now_v7();
+        let cid = Uuid::now_v7();
         let exp = (SystemTime::now() + Duration::from_secs(10))
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -55,7 +55,7 @@ mod tests {
         let claims = ContainerAcceptTokenClaims {
             invite_id: iid,
             key_id: kid,
-            container_id: bid,
+            container_id: cid,
             expiration: exp,
         };
         let claims = serde_json::to_vec(&claims).unwrap();
@@ -73,14 +73,14 @@ mod tests {
 
         assert_eq!(t.claims.invite_id, iid);
         assert_eq!(t.claims.key_id, kid);
-        assert_eq!(t.claims.container_id, bid);
+        assert_eq!(t.claims.container_id, cid);
         assert_eq!(t.claims.expiration, exp);
 
         let verified_claims = t.verify(&pub_key).unwrap();
 
         assert_eq!(verified_claims.invite_id, iid);
         assert_eq!(verified_claims.key_id, kid);
-        assert_eq!(verified_claims.container_id, bid);
+        assert_eq!(verified_claims.container_id, cid);
         assert_eq!(verified_claims.expiration, exp);
 
         let mut token = claims.clone();
@@ -108,7 +108,7 @@ mod tests {
         let claims = ContainerAcceptTokenClaims {
             invite_id: iid,
             key_id: kid,
-            container_id: bid,
+            container_id: cid,
             expiration: exp,
         };
         let mut token = serde_json::to_vec(&claims).unwrap();
