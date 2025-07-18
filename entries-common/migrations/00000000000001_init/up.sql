@@ -40,12 +40,21 @@ CREATE TABLE users (
 
     CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
     CONSTRAINT chk_auth_string_hash_length CHECK (char_length(auth_string_hash) <= 128),
-    CONSTRAINT chk_recovery_key_auth_hash_rehashed_with_auth_string_params_length CHECK (char_length(recovery_key_auth_hash_rehashed_with_auth_string_params) <= 128)
+    CONSTRAINT chk_recovery_key_auth_hash_rehashed_with_auth_string_params_length CHECK (char_length(recovery_key_auth_hash_rehashed_with_auth_string_params) <= 128),
+    CONSTRAINT chk_public_key_size CHECK (octet_length(public_key) <= 1024),
+    CONSTRAINT chk_auth_string_hash_salt_size CHECK (octet_length(auth_string_hash_salt) <= 1024),
+    CONSTRAINT chk_password_encryption_key_salt_size CHECK (octet_length(password_encryption_key_salt) <= 1024),
+    CONSTRAINT chk_recovery_key_hash_salt_for_encryption_size CHECK (octet_length(recovery_key_hash_salt_for_encryption) <= 1024),
+    CONSTRAINT chk_recovery_key_hash_salt_for_recovery_auth_size CHECK (octet_length(recovery_key_hash_salt_for_recovery_auth) <= 1024),
+    CONSTRAINT chk_encryption_key_encrypted_with_password_size CHECK (octet_length(encryption_key_encrypted_with_password) <= 4096),
+    CONSTRAINT chk_encryption_key_encrypted_with_recovery_key_size CHECK (octet_length(encryption_key_encrypted_with_recovery_key) <= 4096)
 );
 
 CREATE TABLE blacklisted_tokens (
     token_signature BYTEA PRIMARY KEY,
-    token_expiration TIMESTAMP NOT NULL
+    token_expiration TIMESTAMP NOT NULL,
+    
+    CONSTRAINT chk_token_signature_size CHECK (octet_length(token_signature) <= 1024)
 );
 
 CREATE INDEX idx_blacklisted_tokens_token_signature ON blacklisted_tokens(token_signature);
@@ -54,7 +63,9 @@ CREATE TABLE containers (
     id UUID PRIMARY KEY,
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
-    modified_timestamp TIMESTAMP NOT NULL
+    modified_timestamp TIMESTAMP NOT NULL,
+    
+    CONSTRAINT chk_containers_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
 
 -- These accept keys allow the server to verify that the user with the private key has
@@ -73,7 +84,8 @@ CREATE TABLE container_accept_keys (
     read_only BOOLEAN NOT NULL,
 
     PRIMARY KEY (key_id, container_id),
-    CONSTRAINT fk_container_accept_keys_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE
+    CONSTRAINT fk_container_accept_keys_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
+    CONSTRAINT chk_container_accept_keys_public_key_size CHECK (octet_length(public_key) <= 1024)
 );
 
 CREATE INDEX idx_container_accept_keys_container_id ON container_accept_keys(container_id);
@@ -86,7 +98,8 @@ CREATE TABLE container_access_keys (
     read_only BOOLEAN NOT NULL,
 
     PRIMARY KEY (key_id, container_id),
-    CONSTRAINT fk_container_access_keys_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE
+    CONSTRAINT fk_container_access_keys_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
+    CONSTRAINT chk_container_access_keys_public_key_size CHECK (octet_length(public_key) <= 1024)
 );
 
 CREATE INDEX idx_container_access_keys_container_id ON container_access_keys(container_id);
@@ -138,7 +151,15 @@ CREATE TABLE container_share_invites (
     created_unix_timestamp_intdiv_five_million SMALLINT NOT NULL,
 
     CONSTRAINT fk_container_share_invites_recipient_key FOREIGN KEY(recipient_user_email) REFERENCES users(email) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT chk_recipient_user_email_length CHECK (char_length(recipient_user_email) <= 255)
+    CONSTRAINT chk_recipient_user_email_length CHECK (char_length(recipient_user_email) <= 255),
+    CONSTRAINT chk_container_share_invites_sender_public_key_size CHECK (octet_length(sender_public_key) <= 1024),
+    CONSTRAINT chk_container_share_invites_encryption_key_encrypted_size CHECK (octet_length(encryption_key_encrypted) <= 4096),
+    CONSTRAINT chk_container_share_invites_container_accept_private_key_encrypted_size CHECK (octet_length(container_accept_private_key_encrypted) <= 4096),
+    CONSTRAINT chk_container_share_invites_container_info_encrypted_size CHECK (octet_length(container_info_encrypted) <= 1048576),
+    CONSTRAINT chk_container_share_invites_sender_info_encrypted_size CHECK (octet_length(sender_info_encrypted) <= 1048576),
+    CONSTRAINT chk_container_share_invites_container_accept_key_info_encrypted_size CHECK (octet_length(container_accept_key_info_encrypted) <= 1048576),
+    CONSTRAINT chk_container_share_invites_container_accept_key_id_encrypted_size CHECK (octet_length(container_accept_key_id_encrypted) <= 4096),
+    CONSTRAINT chk_container_share_invites_share_info_symmetric_key_encrypted_size CHECK (octet_length(share_info_symmetric_key_encrypted) <= 4096)
 );
 
 CREATE INDEX idx_container_share_invites_recipient_user_email ON container_share_invites(recipient_user_email);
@@ -152,7 +173,8 @@ CREATE TABLE categories (
 
     modified_timestamp TIMESTAMP NOT NULL,
 
-    CONSTRAINT fk_categories_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE
+    CONSTRAINT fk_categories_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
+    CONSTRAINT chk_categories_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
 
 CREATE INDEX idx_categories_container_id ON categories(container_id);
@@ -169,7 +191,8 @@ CREATE TABLE entries (
     modified_timestamp TIMESTAMP NOT NULL,
 
     CONSTRAINT fk_entries_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
-    CONSTRAINT fk_entries_category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
+    CONSTRAINT fk_entries_category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL,
+    CONSTRAINT chk_entries_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
 
 CREATE INDEX idx_entries_container_id ON entries(container_id);
@@ -224,7 +247,8 @@ CREATE TABLE user_keystores (
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    CONSTRAINT fk_user_keystores_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_keystores_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_user_keystores_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
 
 CREATE INDEX idx_user_keystores_user_id ON user_keystores(user_id);
@@ -245,7 +269,8 @@ CREATE TABLE user_preferences (
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
 
-    CONSTRAINT fk_user_preferences_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_user_preferences_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_user_preferences_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
 
 CREATE INDEX idx_user_preferences_user_id ON user_preferences(user_id);

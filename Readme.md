@@ -295,9 +295,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* RefreshToken and AccessToken headers should be refresh-token and access-token
-* Have Cursor determine whether Zeroizing needs to be used anywhere else
-* Replace "budget" with "object" to make server agnostic (usable with different apps with similar data structure). "Category" and "entry" are agnostic enough as it is
 * BYTEA fields in db should have length limit check
 * Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add
 * Update readme documentation
