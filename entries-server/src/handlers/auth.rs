@@ -1979,4 +1979,351 @@ mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::InvalidState as i32);
     }
+
+    #[actix_web::test]
+    async fn test_refresh_tokens_success() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Create a valid refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let token_pair = TokenPair::decode(resp_body).unwrap();
+
+        let access_token = AuthToken::decode(&token_pair.access_token).unwrap();
+        let new_refresh_token = AuthToken::decode(&token_pair.refresh_token).unwrap();
+
+        assert!(matches!(
+            access_token.claims.token_type,
+            AuthTokenType::Access
+        ));
+        assert!(matches!(
+            new_refresh_token.claims.token_type,
+            AuthTokenType::Refresh
+        ));
+        assert!(access_token.verify(&env::CONF.token_signing_key).is_ok());
+        assert!(new_refresh_token
+            .verify(&env::CONF.token_signing_key)
+            .is_ok());
+    }
+
+    #[actix_web::test]
+    async fn test_refresh_tokens_with_expired_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Create an expired refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() - Duration::from_secs(3600))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::TokenExpired as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_refresh_tokens_with_blacklisted_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _) = test_utils::create_user().await;
+
+        // Create a valid refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        // Blacklist the token first
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
+        let refresh_token_claims_clone = refresh_token_claims.clone();
+        auth_dao
+            .blacklist_token(
+                &decoded_refresh_token.signature,
+                refresh_token_claims_clone.expiration,
+            )
+            .unwrap();
+
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::TokenExpired as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_refresh_tokens_with_invalid_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .insert_header(("RefreshToken", "invalid_token"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_logout_success() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+
+        // Create a valid refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/logout")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
+        let is_blacklisted = auth_dao
+            .check_is_token_on_blacklist_and_blacklist(
+                &decoded_refresh_token.signature,
+                refresh_token_claims.expiration,
+            )
+            .unwrap();
+        assert!(is_blacklisted);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::TokenExpired as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_logout_with_mismatched_user_ids() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token1, _, _) = test_utils::create_user().await;
+        let (user2, _, _, _) = test_utils::create_user().await;
+
+        // Create a refresh token for a different user
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user2.id,
+            user_email: &user2.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token = AuthToken::sign_new(refresh_token_claims, &env::CONF.token_signing_key);
+
+        let req = TestRequest::post()
+            .uri("/api/auth/logout")
+            .insert_header(("AccessToken", access_token1.as_str()))
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::UserDisallowed as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_logout_with_already_blacklisted_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, access_token, _, _) = test_utils::create_user().await;
+
+        // Create a valid refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        // Blacklist the token first
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
+        auth_dao
+            .blacklist_token(
+                &decoded_refresh_token.signature,
+                refresh_token_claims.expiration,
+            )
+            .unwrap();
+
+        let req = TestRequest::post()
+            .uri("/api/auth/logout")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::ConflictWithExisting as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_logout_with_invalid_refresh_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let req = TestRequest::post()
+            .uri("/api/auth/logout")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("RefreshToken", "invalid_token"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
+        assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+    }
 }

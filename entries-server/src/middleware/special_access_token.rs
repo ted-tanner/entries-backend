@@ -59,7 +59,9 @@ mod tests {
     use entries_common::threadrand::SecureRng;
     use entries_common::token::{
         container_access_token::{ContainerAccessToken, ContainerAccessTokenClaims},
-        container_invite_sender_token::{ContainerInviteSenderToken, ContainerInviteSenderTokenClaims},
+        container_invite_sender_token::{
+            ContainerInviteSenderToken, ContainerInviteSenderTokenClaims,
+        },
     };
 
     use crate::middleware::{FromHeader, FromQuery};

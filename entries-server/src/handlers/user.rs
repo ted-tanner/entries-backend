@@ -1047,12 +1047,12 @@ pub mod tests {
     };
     use entries_common::models::user::User;
     use entries_common::models::user_deletion_request::UserDeletionRequest;
+    use entries_common::schema::categories as category_fields;
+    use entries_common::schema::categories::dsl::categories;
     use entries_common::schema::container_access_keys as container_access_key_fields;
     use entries_common::schema::container_access_keys::dsl::container_access_keys;
     use entries_common::schema::containers as container_fields;
     use entries_common::schema::containers::dsl::containers;
-    use entries_common::schema::categories as category_fields;
-    use entries_common::schema::categories::dsl::categories;
     use entries_common::schema::entries as entry_fields;
     use entries_common::schema::entries::dsl::entries;
     use entries_common::schema::signin_nonces::dsl::signin_nonces;
@@ -3433,8 +3433,10 @@ pub mod tests {
         test_utils::gen_new_user_rsa_key(user1.id);
         let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id);
 
-        let (container1, container1_token_user1) = test_utils::create_container(&user1_access_token).await;
-        let (container2, container2_token_user1) = test_utils::create_container(&user1_access_token).await;
+        let (container1, container1_token_user1) =
+            test_utils::create_container(&user1_access_token).await;
+        let (container2, container2_token_user1) =
+            test_utils::create_container(&user1_access_token).await;
 
         let decoded = b64_urlsafe.decode(&container1_token_user1).unwrap();
         let json_len = decoded.len() - ed25519::SIGNATURE_LENGTH;

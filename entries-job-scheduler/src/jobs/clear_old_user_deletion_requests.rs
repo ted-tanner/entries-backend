@@ -49,7 +49,9 @@ mod tests {
     use entries_common::models::container_access_key::NewContainerAccessKey;
     use entries_common::models::user_deletion_request::NewUserDeletionRequest;
     use entries_common::models::user_deletion_request_container_key::NewUserDeletionRequestContainerKey;
-    use entries_common::schema::{container_access_keys, containers, user_deletion_request_container_keys};
+    use entries_common::schema::{
+        container_access_keys, containers, user_deletion_request_container_keys,
+    };
     use entries_common::threadrand::SecureRng;
     use entries_common::{db::user, schema::user_deletion_requests};
 

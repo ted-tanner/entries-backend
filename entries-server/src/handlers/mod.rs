@@ -212,6 +212,264 @@ pub mod verification {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+        use entries_common::models::user_otp::UserOtp;
+        use entries_common::schema::user_otps as user_otps_table;
+        use entries_common::schema::users as users_table;
+        use std::time::Duration;
+
+        use crate::handlers::test_utils;
+
+        #[actix_web::test]
+        async fn test_generate_and_email_otp_success() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let old_otp = user_otps_table::table
+                .find(&user.email)
+                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result = generate_and_email_otp(
+                &user.email,
+                &env::testing::DB_THREAD_POOL,
+                &env::testing::SMTP_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_ok());
+
+            let new_otp = user_otps_table::table
+                .find(&user.email)
+                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            assert_ne!(old_otp.otp, new_otp.otp);
+        }
+
+        #[actix_web::test]
+        async fn test_verify_otp_success() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            generate_and_email_otp(
+                &user.email,
+                &env::testing::DB_THREAD_POOL,
+                &env::testing::SMTP_THREAD_POOL,
+            )
+            .await
+            .unwrap();
+
+            let user_otp = user_otps_table::table
+                .find(&user.email)
+                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result =
+                verify_otp(&user_otp.otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+
+            assert!(result.is_ok());
+
+            let otp_exists = user_otps_table::table
+                .find(&user.email)
+                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .is_ok();
+
+            assert!(!otp_exists);
+        }
+
+        #[actix_web::test]
+        async fn test_verify_otp_invalid_otp() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let result =
+                verify_otp("invalid_otp", &user.email, &env::testing::DB_THREAD_POOL).await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::IncorrectCredential(_) => (),
+                _ => panic!("Expected IncorrectCredential error"),
+            }
+        }
+
+        #[actix_web::test]
+        async fn test_verify_otp_expired_otp() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            generate_and_email_otp(
+                &user.email,
+                &env::testing::DB_THREAD_POOL,
+                &env::testing::SMTP_THREAD_POOL,
+            )
+            .await
+            .unwrap();
+
+            let user_otp = user_otps_table::table
+                .find(&user.email)
+                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            diesel::update(user_otps_table::table.find(&user.email))
+                .set(user_otps_table::expiration.eq(SystemTime::now() - Duration::from_secs(3600)))
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result =
+                verify_otp(&user_otp.otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::IncorrectCredential(_) => (),
+                _ => panic!("Expected IncorrectCredential error for expired OTP"),
+            }
+        }
+
+        #[actix_web::test]
+        async fn test_verify_otp_too_long_input() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let long_otp = "a".repeat(9);
+            let result = verify_otp(&long_otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::IncorrectCredential(_) => (),
+                _ => panic!("Expected IncorrectCredential error for too long OTP"),
+            }
+        }
+
+        #[actix_web::test]
+        async fn test_verify_auth_string_success() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let auth_string = b"test_password";
+            let auth_string_hash = argon2_kdf::Hasher::default()
+                .algorithm(argon2_kdf::Algorithm::Argon2id)
+                .salt_length(env::CONF.auth_string_hash_salt_length)
+                .hash_length(env::CONF.auth_string_hash_length)
+                .iterations(env::CONF.auth_string_hash_iterations)
+                .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+                .threads(env::CONF.auth_string_hash_threads)
+                .secret((&env::CONF.auth_string_hash_key).into())
+                .hash(auth_string)
+                .unwrap();
+
+            diesel::update(users_table::table.find(user.id))
+                .set(users_table::auth_string_hash.eq(auth_string_hash.to_string()))
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result = verify_auth_string(
+                auth_string,
+                &user.email,
+                false,
+                &env::testing::DB_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[actix_web::test]
+        async fn test_verify_auth_string_invalid_password() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let result = verify_auth_string(
+                b"wrong_password",
+                &user.email,
+                false,
+                &env::testing::DB_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::IncorrectCredential(_) => (),
+                _ => panic!("Expected IncorrectCredential error for invalid password"),
+            }
+        }
+
+        #[actix_web::test]
+        async fn test_verify_auth_string_unverified_user() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            diesel::update(users_table::table.find(user.id))
+                .set(users_table::is_verified.eq(false))
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result = verify_auth_string(
+                b"test_password",
+                &user.email,
+                false,
+                &env::testing::DB_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::InvalidState(_) => (),
+                _ => panic!("Expected InvalidState error for unverified user"),
+            }
+        }
+
+        #[actix_web::test]
+        async fn test_verify_auth_string_with_recovery_key() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let recovery_key = b"test_recovery_key";
+            let recovery_key_hash = argon2_kdf::Hasher::default()
+                .algorithm(argon2_kdf::Algorithm::Argon2id)
+                .salt_length(env::CONF.auth_string_hash_salt_length)
+                .hash_length(env::CONF.auth_string_hash_length)
+                .iterations(env::CONF.auth_string_hash_iterations)
+                .memory_cost_kib(env::CONF.auth_string_hash_mem_cost_kib)
+                .threads(env::CONF.auth_string_hash_threads)
+                .secret((&env::CONF.auth_string_hash_key).into())
+                .hash(recovery_key)
+                .unwrap();
+
+            diesel::update(users_table::table.find(user.id))
+                .set(
+                    users_table::recovery_key_auth_hash_rehashed_with_auth_string_params
+                        .eq(recovery_key_hash.to_string()),
+                )
+                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+                .unwrap();
+
+            let result = verify_auth_string(
+                recovery_key,
+                &user.email,
+                true,
+                &env::testing::DB_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_ok());
+        }
+
+        #[actix_web::test]
+        async fn test_verify_auth_string_too_long_input() {
+            let (user, _, _, _) = test_utils::create_user().await;
+
+            let long_auth_string = vec![0u8; env::CONF.max_auth_string_length + 1];
+            let result = verify_auth_string(
+                &long_auth_string,
+                &user.email,
+                false,
+                &env::testing::DB_THREAD_POOL,
+            )
+            .await;
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                HttpErrorResponse::IncorrectCredential(_) => (),
+                _ => panic!("Expected IncorrectCredential error for too long auth string"),
+            }
+        }
+    }
 }
 
 pub mod error {
@@ -482,8 +740,8 @@ pub mod error {
 pub mod test_utils {
     use entries_common::db;
     use entries_common::messages::{
-        ContainerFrame, ContainerIdAndEncryptionKey, ContainerShareInviteList, NewContainer, NewUser,
-        PublicKey, UserInvitationToContainer,
+        ContainerFrame, ContainerIdAndEncryptionKey, ContainerShareInviteList, NewContainer,
+        NewUser, PublicKey, UserInvitationToContainer,
     };
     use entries_common::models::container::Container;
     use entries_common::models::user::User;

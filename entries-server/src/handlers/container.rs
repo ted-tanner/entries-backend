@@ -1,5 +1,5 @@
 use entries_common::messages::{
-    AcceptKeyInfo, ContainerAccessTokenList, ContainerList, CategoryId, CategoryUpdate,
+    AcceptKeyInfo, CategoryId, CategoryUpdate, ContainerAccessTokenList, ContainerList,
     EncryptedBlobAndCategoryId, EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate,
     NewContainer, NewEncryptedBlob, PublicKey, UserInvitationToContainer,
 };
@@ -171,7 +171,8 @@ pub async fn create(
     // temp_id is an ID the client generates that allows the server to differentiate between
     // categories when multiple are sent to the server simultaneously. The server doesn't have any
     // other way of differentiating them because they are encrypted.
-    let temp_id_set = HashSet::<i32>::from_iter(container_data.categories.iter().map(|c| c.temp_id));
+    let temp_id_set =
+        HashSet::<i32>::from_iter(container_data.categories.iter().map(|c| c.temp_id));
 
     if temp_id_set.len() != container_data.categories.len() {
         return Err(HttpErrorResponse::InvalidState(String::from(
@@ -470,26 +471,27 @@ pub async fn retract_invitation(
     let invitation_id = invite_sender_token.0.claims.invite_id;
 
     let container_dao = db::container::Dao::new(&db_thread_pool);
-    let invite_sender_public_key =
-        match web::block(move || container_dao.get_container_invite_sender_public_key(invitation_id))
-            .await?
-        {
-            Ok(k) => k,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(HttpErrorResponse::DoesNotExist(
-                        String::from("No invitation with ID matching token"),
-                        DoesNotExistType::Invitation,
-                    ));
-                }
-                _ => {
-                    log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(String::from(
-                        "Failed to get public container access key",
-                    )));
-                }
-            },
-        };
+    let invite_sender_public_key = match web::block(move || {
+        container_dao.get_container_invite_sender_public_key(invitation_id)
+    })
+    .await?
+    {
+        Ok(k) => k,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(HttpErrorResponse::DoesNotExist(
+                    String::from("No invitation with ID matching token"),
+                    DoesNotExistType::Invitation,
+                ));
+            }
+            _ => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to get public container access key",
+                )));
+            }
+        },
+    };
 
     invite_sender_token.0.verify(&invite_sender_public_key)?;
 
@@ -535,25 +537,27 @@ pub async fn accept_invitation(
     let container_id = accept_token.0.claims.container_id;
 
     let container_dao = db::container::Dao::new(&db_thread_pool);
-    let container_accept_key =
-        match web::block(move || container_dao.get_container_accept_public_key(key_id, container_id)).await?
-        {
-            Ok(key) => key,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(HttpErrorResponse::DoesNotExist(
-                        String::from("No share invite with ID matching token"),
-                        DoesNotExistType::Invitation,
-                    ));
-                }
-                _ => {
-                    log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(String::from(
-                        "Failed to accept invitation",
-                    )));
-                }
-            },
-        };
+    let container_accept_key = match web::block(move || {
+        container_dao.get_container_accept_public_key(key_id, container_id)
+    })
+    .await?
+    {
+        Ok(key) => key,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(HttpErrorResponse::DoesNotExist(
+                    String::from("No share invite with ID matching token"),
+                    DoesNotExistType::Invitation,
+                ));
+            }
+            _ => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to accept invitation",
+                )));
+            }
+        },
+    };
 
     if container_accept_key.expiration < SystemTime::now() {
         return Err(HttpErrorResponse::OutOfDate(String::from(
@@ -605,25 +609,27 @@ pub async fn decline_invitation(
     let container_id = accept_token.0.claims.container_id;
 
     let container_dao = db::container::Dao::new(&db_thread_pool);
-    let container_accept_key =
-        match web::block(move || container_dao.get_container_accept_public_key(key_id, container_id)).await?
-        {
-            Ok(key) => key,
-            Err(e) => match e {
-                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                    return Err(HttpErrorResponse::DoesNotExist(
-                        String::from("No share invite with ID matching token"),
-                        DoesNotExistType::Invitation,
-                    ));
-                }
-                _ => {
-                    log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(String::from(
-                        "Failed to decline invitation",
-                    )));
-                }
-            },
-        };
+    let container_accept_key = match web::block(move || {
+        container_dao.get_container_accept_public_key(key_id, container_id)
+    })
+    .await?
+    {
+        Ok(key) => key,
+        Err(e) => match e {
+            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                return Err(HttpErrorResponse::DoesNotExist(
+                    String::from("No share invite with ID matching token"),
+                    DoesNotExistType::Invitation,
+                ));
+            }
+            _ => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(String::from(
+                    "Failed to decline invitation",
+                )));
+            }
+        },
+    };
 
     accept_token.0.verify(&container_accept_key.public_key)?;
 
@@ -1079,7 +1085,9 @@ async fn obtain_public_key(
     db_thread_pool: &DbThreadPool,
 ) -> Result<ContainerAccessKey, HttpErrorResponse> {
     let container_dao = db::container::Dao::new(db_thread_pool);
-    let key = match web::block(move || container_dao.get_public_container_key(key_id, container_id)).await? {
+    let key = match web::block(move || container_dao.get_public_container_key(key_id, container_id))
+        .await?
+    {
         Ok(b) => b,
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -1134,7 +1142,7 @@ pub mod tests {
 
     use super::*;
 
-    use entries_common::messages::{ContainerFrame, CategoryWithTempId};
+    use entries_common::messages::{CategoryWithTempId, ContainerFrame};
     use entries_common::messages::{
         ContainerIdAndEncryptionKey, ContainerList, ContainerShareInviteList, EntryIdAndCategoryId,
         ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
@@ -1163,7 +1171,7 @@ pub mod tests {
     use prost::Message;
 
     use crate::env;
-    use crate::handlers::test_utils::{self, gen_container_token, gen_bytes};
+    use crate::handlers::test_utils::{self, gen_bytes, gen_container_token};
     use crate::services::api::RouteLimiters;
 
     #[actix_rt::test]
@@ -1705,7 +1713,9 @@ pub mod tests {
             &key_pair,
         );
 
-        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id)
+            .try_into()
+            .unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
@@ -1941,19 +1951,28 @@ pub mod tests {
 
         assert_eq!(container_list.containers.len(), 3);
 
-        assert_eq!(Uuid::try_from(resp_container1.id.clone()).unwrap(), container1.id);
+        assert_eq!(
+            Uuid::try_from(resp_container1.id.clone()).unwrap(),
+            container1.id
+        );
         assert_eq!(resp_container1.encrypted_blob, container1.encrypted_blob);
         assert_eq!(resp_container1.version_nonce, container1.version_nonce);
         assert_eq!(resp_container1.categories.len(), 0);
         assert_eq!(resp_container1.entries.len(), 0);
 
-        assert_eq!(Uuid::try_from(resp_container2.id.clone()).unwrap(), container2.id);
+        assert_eq!(
+            Uuid::try_from(resp_container2.id.clone()).unwrap(),
+            container2.id
+        );
         assert_eq!(resp_container2.encrypted_blob, container2.encrypted_blob);
         assert_eq!(resp_container2.version_nonce, container2.version_nonce);
         assert_eq!(resp_container2.categories.len(), 0);
         assert_eq!(resp_container2.entries.len(), 0);
 
-        assert_eq!(Uuid::try_from(resp_container3.id.clone()).unwrap(), container3.id);
+        assert_eq!(
+            Uuid::try_from(resp_container3.id.clone()).unwrap(),
+            container3.id
+        );
         assert_eq!(resp_container3.encrypted_blob, container3.encrypted_blob);
         assert_eq!(resp_container3.version_nonce, container3.version_nonce);
         assert_eq!(resp_container3.categories.len(), 1);
@@ -2104,7 +2123,9 @@ pub mod tests {
             &key_pair,
         );
 
-        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id)
+            .try_into()
+            .unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
@@ -2258,7 +2279,9 @@ pub mod tests {
             &key_pair,
         );
 
-        let category_id: Uuid = (&container_data.category_ids[0].real_id).try_into().unwrap();
+        let category_id: Uuid = (&container_data.category_ids[0].real_id)
+            .try_into()
+            .unwrap();
 
         let new_entry = EncryptedBlobAndCategoryId {
             encrypted_blob: gen_bytes(20),
@@ -3066,7 +3089,10 @@ pub mod tests {
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            container_message.categories[cat1_pos].id,
+            category1_id.into()
+        );
         assert_eq!(
             container_message.categories[cat1_pos].container_id,
             container.id.into()
@@ -3080,7 +3106,10 @@ pub mod tests {
             new_category1.version_nonce
         );
 
-        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            container_message.categories[cat2_pos].id,
+            category2_id.into()
+        );
         assert_eq!(
             container_message.categories[cat2_pos].container_id,
             container.id.into()
@@ -3202,7 +3231,10 @@ pub mod tests {
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            container_message.categories[cat1_pos].id,
+            category1_id.into()
+        );
         assert_eq!(
             container_message.categories[cat1_pos].container_id,
             container.id.into()
@@ -3216,7 +3248,10 @@ pub mod tests {
             new_category1.version_nonce
         );
 
-        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            container_message.categories[cat2_pos].id,
+            category2_id.into()
+        );
         assert_eq!(
             container_message.categories[cat2_pos].container_id,
             container.id.into()
@@ -3314,7 +3349,10 @@ pub mod tests {
             .unwrap();
         let cat2_pos = if cat1_pos == 0 { 1 } else { 0 };
 
-        assert_eq!(container_message.categories[cat1_pos].id, category1_id.into());
+        assert_eq!(
+            container_message.categories[cat1_pos].id,
+            category1_id.into()
+        );
         assert_eq!(
             container_message.categories[cat1_pos].container_id,
             container.id.into()
@@ -3328,7 +3366,10 @@ pub mod tests {
             new_category1.version_nonce
         );
 
-        assert_eq!(container_message.categories[cat2_pos].id, category2_id.into());
+        assert_eq!(
+            container_message.categories[cat2_pos].id,
+            category2_id.into()
+        );
         assert_eq!(
             container_message.categories[cat2_pos].container_id,
             container.id.into()
@@ -3460,7 +3501,8 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let (container, sender_container_token) =
+            test_utils::create_container(&sender_access_token).await;
         let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
@@ -3968,7 +4010,8 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let (container, sender_container_token) =
+            test_utils::create_container(&sender_access_token).await;
         let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
@@ -4172,7 +4215,10 @@ pub mod tests {
         let req = TestRequest::delete()
             .uri("/api/container/invitation")
             .insert_header(("AccessToken", sender_access_token.as_str()))
-            .insert_header(("ContainerInviteSenderToken", sender_container_token.as_str()))
+            .insert_header((
+                "ContainerInviteSenderToken",
+                sender_container_token.as_str(),
+            ))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4220,7 +4266,8 @@ pub mod tests {
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
-        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let (container, sender_container_token) =
+            test_utils::create_container(&sender_access_token).await;
 
         let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
@@ -4367,7 +4414,8 @@ pub mod tests {
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
 
-        let (container, sender_container_token) = test_utils::create_container(&sender_access_token).await;
+        let (container, sender_container_token) =
+            test_utils::create_container(&sender_access_token).await;
 
         let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,

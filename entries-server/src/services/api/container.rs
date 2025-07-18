@@ -16,7 +16,11 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
             )
             .service(
                 resource("invitation")
-                    .route(post().to(container::invite_user).wrap(limiters.container_invite))
+                    .route(
+                        post()
+                            .to(container::invite_user)
+                            .wrap(limiters.container_invite),
+                    )
                     .route(delete().to(container::retract_invitation)),
             )
             .service(resource("/invitation/accept").route(put().to(container::accept_invitation)))
