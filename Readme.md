@@ -295,7 +295,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* BYTEA fields in db should have length limit check
+* Limiter should check subnets, not specific IPs
 * Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add
 * Update readme documentation
   - Add a section for the job scheduler

@@ -15,19 +15,22 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .route(post().to(container::create).wrap(limiters.create_container)),
             )
             .service(
-                resource("invitation")
-                    .route(
-                        post()
-                            .to(container::invite_user)
-                            .wrap(limiters.container_invite),
+                scope("/invitation")
+                    .service(
+                        resource("")
+                            .route(
+                                post()
+                                    .to(container::invite_user)
+                                    .wrap(limiters.container_invite),
+                            )
+                            .route(delete().to(container::retract_invitation)),
                     )
-                    .route(delete().to(container::retract_invitation)),
-            )
-            .service(resource("/invitation/accept").route(put().to(container::accept_invitation)))
-            .service(resource("/invitation/decline").route(put().to(container::decline_invitation)))
-            .service(
-                resource("/invitation/all_pending")
-                    .route(get().to(container::get_all_pending_invitations)),
+                    .service(resource("/accept").route(put().to(container::accept_invitation)))
+                    .service(resource("/decline").route(put().to(container::decline_invitation)))
+                    .service(
+                        resource("/all_pending")
+                            .route(get().to(container::get_all_pending_invitations)),
+                    ),
             )
             .service(resource("/leave").route(delete().to(container::leave_container)))
             .service(
