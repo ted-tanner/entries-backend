@@ -2,17 +2,17 @@ use std::{
     collections::HashMap,
     future::{ready, Ready},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicU32, Ordering},
     sync::OnceLock,
     time::{Duration, Instant},
 };
 
 static START: OnceLock<Instant> = OnceLock::new();
 
-fn now_microsecs() -> u64 {
+fn now_millis() -> u32 {
     Instant::now()
         .duration_since(*START.get().unwrap())
-        .as_micros() as u64
+        .as_millis() as u32
 }
 
 use actix_web::{
@@ -24,8 +24,8 @@ use tokio::sync::RwLock;
 
 #[derive(Debug)]
 struct LimiterEntry {
-    count: AtomicU64,
-    first_access: AtomicU64, // microseconds since process start
+    count: AtomicU32,
+    first_access: AtomicU32, // milliseconds since process start
 }
 
 // LimiterTable uses a single u64 as the key for both IPv4 /24 and IPv6 /64 subnets.
@@ -66,6 +66,11 @@ impl Limiter {
     pub fn new(max_per_period: u64, period: Duration, clear_frequency: Duration) -> Self {
         if period > clear_frequency {
             panic!("Period cannot be greater than clear frequency");
+        }
+        // 14 days in milliseconds
+        let max_period_ms = 14 * 24 * 60 * 60 * 1000u64;
+        if period.as_millis() as u64 >= max_period_ms {
+            panic!("Limiter period must be less than 14 days (due to u32 ms wraparound)");
         }
 
         START.get_or_init(Instant::now);
@@ -202,7 +207,7 @@ where
 
         Box::pin(async move {
             let now = Instant::now();
-            let now_microsecs = now_microsecs();
+            let now_millis = now_millis();
 
             // Get the /24 (IPv4) or /64 (IPv6) subnet as a u64 key
             let subnet_key = match ip {
@@ -217,15 +222,15 @@ where
                 let entry = table.map.get(&subnet_key);
 
                 if let Some(entry) = entry {
-                    let first_access_microsecs = entry.first_access.load(Ordering::Relaxed);
+                    let first_access_millis = entry.first_access.load(Ordering::Relaxed);
                     let count = entry.count.load(Ordering::Relaxed);
-                    if now_microsecs > first_access_microsecs + period.as_micros() as u64 {
+                    if now_millis.wrapping_sub(first_access_millis) > period.as_millis() as u32 {
                         // Try to reset first_access and count. The race is acceptable. It is fine if another thread resets
                         // one or both of these concurrently.
-                        entry.first_access.store(now_microsecs, Ordering::Relaxed);
+                        entry.first_access.store(now_millis, Ordering::Relaxed);
                         entry.count.store(1, Ordering::Relaxed);
                     } else {
-                        if count >= max_per_period {
+                        if count >= max_per_period as u32 {
                             return Err(ErrorTooManyRequests(
                                 "Too many requests. Please try again later.",
                             ));
@@ -258,8 +263,8 @@ where
                         entry.count.fetch_add(1, Ordering::Relaxed);
                     })
                     .or_insert_with(|| LimiterEntry {
-                        first_access: AtomicU64::new(now_microsecs),
-                        count: AtomicU64::new(1),
+                        first_access: AtomicU32::new(now_millis),
+                        count: AtomicU32::new(1),
                     });
             }
 
