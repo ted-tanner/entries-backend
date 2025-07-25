@@ -28,8 +28,19 @@ struct LimiterEntry {
     first_access: AtomicU64, // microseconds since process start
 }
 
+// LimiterTable uses a single u64 as the key for both IPv4 /24 and IPv6 /64 subnets.
+//
+// - For IPv4, the /24 subnet is stored in the lower 32 bits of the u64 (upper 32 bits are zero).
+// - For IPv6, the /64 subnet is stored as the upper 64 bits of the address (first 8 bytes).
+//
+// For every IPv4 /24 subnet, there is a collision with the IPv6 /64 subnet where the upper 96
+// bits are zero and the lower 32 bits match the IPv4 subnet (e.g., 1.2.3.0/24 collides
+// with ::1.2.3.0/64). Collisions are extremely unlikely to matter in practice (about 1 in 4.3
+// billion chance for a random IPv6 subnet, probably even lower as real-world IPv6 subnets are
+// not random). In the unlikely event that there is a collision, the only effect is that hits to
+// either subnet will be counted for both.
 struct LimiterTable {
-    map: HashMap<IpAddr, LimiterEntry>,
+    map: HashMap<u64, LimiterEntry>,
     last_clear: Instant,
 }
 
@@ -193,31 +204,17 @@ where
             let now = Instant::now();
             let now_microsecs = now_microsecs();
 
-            // Get the /24 or /64 subnet of the IP
-            let subnet = match ip {
-                IpAddr::V4(ip) => IpAddr::V4(Ipv4Addr::new(
-                    ip.octets()[0],
-                    ip.octets()[1],
-                    ip.octets()[2],
-                    0,
-                )),
-                IpAddr::V6(ip) => IpAddr::V6(Ipv6Addr::new(
-                    ip.segments()[0],
-                    ip.segments()[1],
-                    ip.segments()[2],
-                    ip.segments()[3],
-                    0,
-                    0,
-                    0,
-                    0,
-                )),
+            // Get the /24 (IPv4) or /64 (IPv6) subnet as a u64 key
+            let subnet_key = match ip {
+                IpAddr::V4(ip) => ipv4_subnet_key_u64(&ip),
+                IpAddr::V6(ip) => ipv6_subnet_key_u64(&ip),
             };
 
             let found_subnet = {
                 // The read lock is intentionally scoped in this block to ensure it gets
                 // dropped before the write lock is acquired
                 let table = table.read().await;
-                let entry = table.map.get(&subnet);
+                let entry = table.map.get(&subnet_key);
 
                 if let Some(entry) = entry {
                     let first_access_microsecs = entry.first_access.load(Ordering::Relaxed);
@@ -254,7 +251,7 @@ where
 
                 table
                     .map
-                    .entry(subnet)
+                    .entry(subnet_key)
                     .and_modify(|entry| {
                         // Was added by another thread before we acquired the lock; just
                         // increment the count
@@ -269,6 +266,21 @@ where
             req_fut.await
         })
     }
+}
+
+#[inline]
+fn ipv4_subnet_key_u64(ip: &Ipv4Addr) -> u64 {
+    u32::from_be_bytes([ip.octets()[0], ip.octets()[1], ip.octets()[2], 0]) as u64
+}
+
+#[inline]
+fn ipv6_subnet_key_u64(ip: &Ipv6Addr) -> u64 {
+    let segments = ip.segments();
+    // Combine the first 4 segments (8 bytes) into a u64 (big-endian)
+    ((segments[0] as u64) << 48)
+        | ((segments[1] as u64) << 32)
+        | ((segments[2] as u64) << 16)
+        | (segments[3] as u64)
 }
 
 #[cfg(test)]
