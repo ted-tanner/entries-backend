@@ -2,9 +2,18 @@ use std::{
     collections::HashMap,
     future::{ready, Ready},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Mutex,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::atomic::{AtomicU64, Ordering},
+    sync::OnceLock,
+    time::{Duration, Instant},
 };
+
+static START: OnceLock<Instant> = OnceLock::new();
+
+fn now_microsecs() -> u64 {
+    Instant::now()
+        .duration_since(*START.get().unwrap())
+        .as_micros() as u64
+}
 
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
@@ -13,22 +22,22 @@ use actix_web::{
 use futures::future::LocalBoxFuture;
 use tokio::sync::RwLock;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct LimiterEntry {
-    count: u64,
-    first_access_usecs: u64,
+    count: AtomicU64,
+    first_access: AtomicU64, // microseconds since process start
 }
 
 struct LimiterTable {
-    map: HashMap<IpAddr, Mutex<LimiterEntry>>,
-    last_clear: SystemTime,
+    map: HashMap<IpAddr, LimiterEntry>,
+    last_clear: Instant,
 }
 
 impl LimiterTable {
     fn new() -> Self {
         LimiterTable {
             map: HashMap::new(),
-            last_clear: SystemTime::now(),
+            last_clear: Instant::now(),
         }
     }
 }
@@ -47,6 +56,8 @@ impl Limiter {
         if period > clear_frequency {
             panic!("Period cannot be greater than clear frequency");
         }
+
+        START.get_or_init(Instant::now);
 
         let limiter_tables = Box::leak(Box::new([
             RwLock::new(LimiterTable::new()),
@@ -179,15 +190,8 @@ where
         let clear_frequency = self.clear_frequency;
 
         Box::pin(async move {
-            let timestamp = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("Now should always be after the Unix epoch");
-            let timestamp_usecs: u64 = timestamp
-                .as_micros()
-                .try_into()
-                .expect("Unix timestamp in microseconds should fit in a u64");
-
-            let now = SystemTime::now();
+            let now = Instant::now();
+            let now_microsecs = now_microsecs();
 
             // Get the /24 or /64 subnet of the IP
             let subnet = match ip {
@@ -216,20 +220,20 @@ where
                 let entry = table.map.get(&subnet);
 
                 if let Some(entry) = entry {
-                    let mut entry = entry.lock().expect("Lock should not be poisoned");
-                    let first_access = UNIX_EPOCH + Duration::from_micros(entry.first_access_usecs);
-
-                    if first_access + period < now {
-                        entry.first_access_usecs = timestamp_usecs;
-                        entry.count = 1;
+                    let first_access_microsecs = entry.first_access.load(Ordering::Relaxed);
+                    let count = entry.count.load(Ordering::Relaxed);
+                    if now_microsecs > first_access_microsecs + period.as_micros() as u64 {
+                        // Try to reset first_access and count. The race is acceptable. It is fine if another thread resets
+                        // one or both of these concurrently.
+                        entry.first_access.store(now_microsecs, Ordering::Relaxed);
+                        entry.count.store(1, Ordering::Relaxed);
                     } else {
-                        if entry.count >= max_per_period {
+                        if count >= max_per_period {
                             return Err(ErrorTooManyRequests(
                                 "Too many requests. Please try again later.",
                             ));
                         }
-
-                        entry.count += 1;
+                        entry.count.fetch_add(1, Ordering::Relaxed);
                     }
 
                     true
@@ -241,11 +245,11 @@ where
             if !found_subnet {
                 let mut table = table.write().await;
 
-                if now > table.last_clear + clear_frequency {
+                if now.duration_since(table.last_clear) >= clear_frequency {
                     // Clear the table every so often to prevent it from growing too large
                     table.map.clear();
                     table.map.shrink_to_fit();
-                    table.last_clear = SystemTime::now();
+                    table.last_clear = now;
                 }
 
                 table
@@ -254,13 +258,11 @@ where
                     .and_modify(|entry| {
                         // Was added by another thread before we acquired the lock; just
                         // increment the count
-                        entry.get_mut().expect("Lock should not be poisoned").count += 1;
+                        entry.count.fetch_add(1, Ordering::Relaxed);
                     })
-                    .or_insert_with(|| {
-                        Mutex::new(LimiterEntry {
-                            first_access_usecs: timestamp_usecs,
-                            count: 1,
-                        })
+                    .or_insert_with(|| LimiterEntry {
+                        first_access: AtomicU64::new(now_microsecs),
+                        count: AtomicU64::new(1),
                     });
             }
 
