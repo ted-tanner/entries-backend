@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     future::{ready, Ready},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -124,47 +124,52 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        #[cfg(test)]
         let ip = {
-            use actix_web::http::header::HeaderValue;
-            use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
-            use std::str::FromStr;
+            // peer_addr() only returns None in a test
+            #[cfg(test)]
+            {
+                use actix_web::http::header::HeaderValue;
+                use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+                use std::str::FromStr;
 
-            let default_ip = HeaderValue::from_static("127.0.0.1");
-            let test_ip = req
-                .headers()
-                .get("test-ip")
-                .unwrap_or(&default_ip)
-                .to_str()
-                .unwrap();
+                let default_ip = HeaderValue::from_static("127.0.0.1");
+                let test_ip = req
+                    .headers()
+                    .get("test-ip")
+                    .unwrap_or(&default_ip)
+                    .to_str()
+                    .unwrap();
 
-            if test_ip.len() < 16 {
-                let test_ip = Ipv4Addr::from_str(test_ip).expect("Invalid test IP");
-                SocketAddr::V4(SocketAddrV4::new(test_ip, 80))
-            } else {
-                let test_ip = Ipv6Addr::from_str(test_ip).expect("Invalid test IP");
-                SocketAddr::V6(SocketAddrV6::new(test_ip, 80, 0, 0))
+                if test_ip.len() < 16 {
+                    let test_ip = Ipv4Addr::from_str(test_ip).expect("Invalid test IP");
+                    SocketAddr::V4(SocketAddrV4::new(test_ip, 80))
+                } else {
+                    let test_ip = Ipv6Addr::from_str(test_ip).expect("Invalid test IP");
+                    SocketAddr::V6(SocketAddrV6::new(test_ip, 80, 0, 0))
+                }
+            }
+            #[cfg(not(test))]
+            {
+                req.peer_addr().expect("Address should always be available")
             }
         };
 
-        // peer_addr() only returns None in a test
-        #[cfg(not(test))]
-        let ip = req.peer_addr().expect("Address should always be available");
-
-        let (ip, final_octet) = match ip {
+        let (ip, distinguishing_octet) = match ip {
             SocketAddr::V4(ip) => {
                 let ip = ip.ip();
-                let final_octet = unsafe { *ip.octets().get_unchecked(3) };
-                (IpAddr::V4(*ip), final_octet)
+                // Last significant octet in /24 subnet is the third octet
+                let distinguishing_octet = unsafe { *ip.octets().get_unchecked(2) };
+                (IpAddr::V4(*ip), distinguishing_octet)
             }
             SocketAddr::V6(ip) => {
                 let ip = ip.ip();
-                let final_octet = unsafe { *ip.octets().get_unchecked(15) };
-                (IpAddr::V6(*ip), final_octet)
+                // Last significant octet in /64 subnet is the eighth octet
+                let distinguishing_octet = unsafe { *ip.octets().get_unchecked(7) };
+                (IpAddr::V6(*ip), distinguishing_octet)
             }
         };
 
-        let table_index = (final_octet & 0x0F) as usize;
+        let table_index = (distinguishing_octet & 0x0F) as usize;
         let table = unsafe { self.limiter_tables.get_unchecked(table_index) };
 
         let req_fut = self.service.call(req);
@@ -184,11 +189,31 @@ where
 
             let now = SystemTime::now();
 
-            let found_ip = {
+            // Get the /24 or /64 subnet of the IP
+            let subnet = match ip {
+                IpAddr::V4(ip) => IpAddr::V4(Ipv4Addr::new(
+                    ip.octets()[0],
+                    ip.octets()[1],
+                    ip.octets()[2],
+                    0,
+                )),
+                IpAddr::V6(ip) => IpAddr::V6(Ipv6Addr::new(
+                    ip.segments()[0],
+                    ip.segments()[1],
+                    ip.segments()[2],
+                    ip.segments()[3],
+                    0,
+                    0,
+                    0,
+                    0,
+                )),
+            };
+
+            let found_subnet = {
                 // The read lock is intentionally scoped in this block to ensure it gets
                 // dropped before the write lock is acquired
                 let table = table.read().await;
-                let entry = table.map.get(&ip);
+                let entry = table.map.get(&subnet);
 
                 if let Some(entry) = entry {
                     let mut entry = entry.lock().expect("Lock should not be poisoned");
@@ -213,7 +238,7 @@ where
                 }
             };
 
-            if !found_ip {
+            if !found_subnet {
                 let mut table = table.write().await;
 
                 if now > table.last_clear + clear_frequency {
@@ -225,7 +250,7 @@ where
 
                 table
                     .map
-                    .entry(ip)
+                    .entry(subnet)
                     .and_modify(|entry| {
                         // Was added by another thread before we acquired the lock; just
                         // increment the count
@@ -260,78 +285,107 @@ mod tests {
             ))
             .await;
 
-        let req = test::TestRequest::default().to_request();
-        let res = app.call(req).await;
-        assert!(res.is_ok());
-
-        let req = test::TestRequest::default().to_request();
-        let res = app.call(req).await;
-        assert!(res.is_ok());
-
-        let req = test::TestRequest::default().to_request();
-        let res = app.call(req).await;
-        assert!(res.is_err());
-
-        // Other IPs should still be able to make requests
+        // Requests from different IPs in the same /24 subnet (127.0.0.0/24)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "192.167.0.5"))
+            .append_header(("test-ip", "127.0.0.1"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.2"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        // Throw in a request from a different subnet (same table) to make sure it doesn't affect the limit
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.64.1"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.99"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_err()); // Should hit the limit for the subnet
+
+        // Other IP in a different /24 subnet
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.1.1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         sleep(Duration::from_millis(5)).await;
 
-        // Period has expired, so we should be able to make another request
-        let req = test::TestRequest::default().to_request();
+        // Period has expired, so we should be able to make another request from the same subnet
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.3"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.4"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.5"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        sleep(Duration::from_millis(2)).await;
+        sleep(Duration::from_millis(1)).await;
 
         // Period has not expired
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.6"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        // Make a request from a new IP a write is triggered, which will check if the table
-        // needs to be cleared (which it does). The last 4 bits of the IP must equal
-        // the last four bits of the blocked IP (127.0.0.1) to get the same table. Thus
-        // "192.167.0.16" won't trigger the clear, but "192.167.0.17" will.
+        // Make a request from a new IP in a different subnet (and different table)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "192.167.0.16"))
+            .append_header(("test-ip", "127.0.15.1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.7"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        // This request should trigger the clear
+        sleep(Duration::from_millis(3)).await;
+
+        // This request should trigger a clear (different subnet, same table)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "192.167.0.17"))
+            .append_header(("test-ip", "127.0.32.1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        // Table has been cleared, so we should be able to make another request
-        let req = test::TestRequest::default().to_request();
+        // Table has been cleared, so we should be able to make another request from the original subnet
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.8"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.9"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        let req = test::TestRequest::default().to_request();
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "127.0.0.10"))
+            .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
     }
@@ -346,99 +400,106 @@ mod tests {
             ))
             .await;
 
+        // Requests from different IPs in the same /64 subnet (b24c:089b:7a21:1aff::/64)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::2"))
+            .to_request();
+        let res = app.call(req).await;
+        assert!(res.is_ok());
+
+        // Throw in a request from a different subnet (same table)to make sure it doesn't affect the limit
+        let req = test::TestRequest::default()
+            .append_header(("test-ip", "b24c:089b:7a21:1abf::2"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::abcd"))
             .to_request();
         let res = app.call(req).await;
-        assert!(res.is_err());
+        assert!(res.is_err()); // Should hit the limit for the subnet
 
-        // Other IPs should still be able to make requests
+        // Other IP in a different /64 subnet (change 4th segment)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "e2bc:2381:8996:c56a:892f:dd59:c64e:0041"))
+            .append_header(("test-ip", "b24c:089b:7a21:1bff::1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         sleep(Duration::from_millis(5)).await;
 
-        // Period has expired, so we should be able to make another request
+        // Period has expired, so we should be able to make another request from the same subnet
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::3"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::4"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::5"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        sleep(Duration::from_millis(2)).await;
+        sleep(Duration::from_millis(1)).await;
 
         // Period has not expired
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::6"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        // Make a request from a new IP a write is triggered, which will check if the table
-        // needs to be cleared (which it does). The last 4 bits of the IP must equal
-        // the last four bits of the blocked IP (b24c:089b:7a21:1aff:2d32:dec2:867d:563c) to
-        // get the same table.
+        // Make a request from a new IP in a different subnet (and different table)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "0e43:c469:88fd:9ee4:43b9:8d21:616a:0989"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aee::1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::7"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
 
-        // This request should trigger the clear
+        sleep(Duration::from_millis(3)).await;
+
+        // This request should trigger the clear (different subnet, same table)
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "785a:ae4f:4d1a:d3be:a8bf:e109:6355:6adc"))
+            .append_header(("test-ip", "b24c:089b:7a21:1acf::1"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
-        // Table has been cleared, so we should be able to make another request
+        // Table has been cleared, so we should be able to make another request from the original subnet
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::8"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::9"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_ok());
 
         let req = test::TestRequest::default()
-            .append_header(("test-ip", "b24c:089b:7a21:1aff:2d32:dec2:867d:563c"))
+            .append_header(("test-ip", "b24c:089b:7a21:1aff::a"))
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
