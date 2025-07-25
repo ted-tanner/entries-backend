@@ -138,10 +138,9 @@ pub mod verification {
         };
 
         if user_email.len() > 255 || auth_string.len() > env::CONF.max_auth_string_length {
-            return Err(HttpErrorResponse::IncorrectCredential(format!(
-                "The {} was incorrect",
-                auth_string_error_text,
-            )));
+            return Err(HttpErrorResponse::IncorrectCredential(
+                "The credentials were incorrect".to_string(),
+            ));
         }
 
         let user_email_copy = String::from(user_email);
@@ -160,10 +159,9 @@ pub mod verification {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 // Return IncorrectCredential to prevent user enumeration attacks
-                return Err(HttpErrorResponse::IncorrectCredential(format!(
-                    "The {} was incorrect",
-                    auth_string_error_text,
-                )));
+                return Err(HttpErrorResponse::IncorrectCredential(
+                    "The credentials were incorrect".to_string(),
+                ));
             }
             Err(e) => {
                 log::error!("{e}");
@@ -202,10 +200,9 @@ pub mod verification {
         match receiver.await? {
             Ok(true) => (),
             Ok(false) => {
-                return Err(HttpErrorResponse::IncorrectCredential(format!(
-                    "The {} was incorrect",
-                    auth_string_error_text,
-                )));
+                return Err(HttpErrorResponse::IncorrectCredential(
+                    "The credentials were incorrect".to_string(),
+                ));
             }
             Err(e) => {
                 log::error!("{e}");

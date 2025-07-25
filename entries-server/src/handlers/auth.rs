@@ -9,7 +9,7 @@ use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenCl
 use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
-use actix_web::{web, App, HttpResponse};
+use actix_web::{web, HttpResponse};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env;
-use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
+use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::FromHeader;
 
@@ -106,10 +106,9 @@ pub async fn sign_in(
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("User not found"),
-                    DoesNotExistType::User,
-                ));
+                return Err(HttpErrorResponse::IncorrectCredential(String::from(
+                    "The credentials were incorrect",
+                )));
             }
             Err(e) => {
                 log::error!("{e}");
@@ -135,10 +134,9 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::DoesNotExist(
-                String::from("User not found"),
-                DoesNotExistType::User,
-            ));
+            return Err(HttpErrorResponse::IncorrectCredential(String::from(
+                "The credentials were incorrect",
+            )));
         }
         Err(e) => {
             log::error!("{e}");
@@ -529,6 +527,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use actix_web::App;
 
     use entries_common::messages::{ErrorType, NewUser, ServerErrorResponse};
     use entries_common::models::{user::User, user_otp::UserOtp};

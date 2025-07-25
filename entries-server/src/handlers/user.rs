@@ -19,11 +19,14 @@ use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
+use ed25519_dalek::SigningKey;
 use futures::future;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
+use uuid::Uuid;
 
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
@@ -35,19 +38,47 @@ pub async fn lookup_user_public_key(
     _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let (key_id, key) = match web::block(move || {
+    let user_email = Arc::new(user_email);
+    let user_email_ref = Arc::clone(&user_email);
+
+    // Create phony key/uuid to prevent user enumeration attacks
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let mut hasher = Sha256::new();
+        hasher.update(user_email_ref.email.as_bytes());
+        hasher.update(env::CONF.token_signing_key);
+        let hash = hasher.finalize();
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&hash[..32]);
+        let signing_key = SigningKey::from_bytes(&seed);
+        let phony_key = signing_key.verifying_key().to_bytes().to_vec();
+
+        let mut uuid_hasher = Sha256::new();
+        uuid_hasher.update(b"uuid");
+        uuid_hasher.update(user_email_ref.email.as_bytes());
+        uuid_hasher.update(env::CONF.token_signing_key);
+        let uuid_hash = uuid_hasher.finalize();
+        let mut uuid_bytes = [0u8; 16];
+        uuid_bytes.copy_from_slice(&uuid_hash[..16]);
+        let phony_key_id = Uuid::from_bytes(uuid_bytes);
+
+        sender
+            .send((phony_key_id, phony_key))
+            .expect("Failed to send phony key");
+    });
+    let (phony_key_id, phony_key) = receiver.await.expect("Failed to receive phony key");
+
+    let db_result = web::block(move || {
         let user_dao = db::user::Dao::new(&db_thread_pool);
         user_dao.get_user_public_key(&user_email.email)
     })
-    .await?
-    {
+    .await?;
+
+    let (key_id, key) = match db_result {
         Ok(k) => (k.id, k.value),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No user with given email address"),
-                    DoesNotExistType::Key,
-                ));
+                (phony_key_id.into(), phony_key)
             }
             _ => {
                 log::error!("{e}");
