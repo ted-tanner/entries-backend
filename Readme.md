@@ -7,9 +7,12 @@
 - [Setup](#setup)
   - [PostgreSQL Setup](#postgresql-setup)
   - [Diesel Migrations](#diesel-migrations)
+  - [Compilation Requirements](#compilation-requirements)
 - [Server Configuration](#server-configuration)
 - [Running the Server](#running-the-server)
   - [Command-line Arguments](#command-line-arguments)
+- [Job Scheduler](#job-scheduler)
+  - [Configuration](#job-scheduler-configuration)
 - [Testing the Server](#testing-the-server)
   - [Unit and Integration Tests](#unit-and-integration-tests)
 - [Building the Server](#building-the-server)
@@ -120,6 +123,24 @@ diesel migration revert
 diesel migration redo
 ```
 
+### Compilation Requirements
+
+To compile the project, you'll need to install the following dependencies:
+
+```bash
+# Install Protocol Buffers compiler
+brew install protobuf
+
+# Install PostgreSQL client libraries
+brew install libpq
+
+# Force link the PostgreSQL libraries
+brew link --force libpq
+
+# Set the PostgreSQL library directory environment variable
+export PQ_LIB_DIR="$(brew --prefix libpq)/lib"
+```
+
 ## Server Configuration
 
 Configurations and secrets are read from environment variables. See the `sample.env` in each `entries-server` and `entries-job-scheduler` for all possible configs.
@@ -150,6 +171,14 @@ The server accepts a number of command-line arguments to change default behavior
   ```
   ./entries-server --port 9002
   ```
+
+## Job Scheduler
+
+The project includes a job scheduler component that handles various background tasks such as cleaning up expired data and managing user accounts.
+
+### Job Scheduler Configuration
+
+The job scheduler configuration is handled through environment variables. See the `sample.env` file in the `entries-job-scheduler` directory for all available configuration options.
 
 ## Testing the Server
 
@@ -295,24 +324,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Limiter should check subnets, not specific IPs
-* Limiter: IP address gets “tokens” every so often. Just store the last time a request is made and # of tokens remaining. Check the time and figure out how many tokens to add
-* Update readme documentation
-  - Add a section for the job scheduler
-  - Needed for compilation:
-    - `brew install protobuf`
-    - `brew install libpq`
-    - `brew link --force libpq`
-    - `export PQ_LIB_DIR="$(brew --prefix libpq)/lib"`
-  - Explanation of encryption scheme and expected role of the client in the scheme
-  - Explanation of versioning of encrypted blobs, version_nonce fields, and the role of the client in handling versioning
-  - Guide to all endpoints (requests and responses)
-  - List (and explanation) of enforced size limits
-  - Create a deployment checklist!
-  - Error Codes that can occur that aren't defined in Protobuf ServerErrorResponse message
-    - 413 Request payload is too big
-    - 500
-    - 404
 
 ### Do it later
 
