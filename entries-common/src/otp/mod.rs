@@ -1,4 +1,3 @@
-use rand::distributions::Alphanumeric;
 use rand::Rng;
 
 use crate::threadrand::SecureRng;
@@ -7,10 +6,9 @@ pub struct Otp {}
 
 impl Otp {
     pub fn generate(length: usize) -> String {
-        SecureRng
-            .sample_iter(&Alphanumeric)
-            .take(length)
-            .map(|c| char::from(c).to_ascii_uppercase())
+        let mut rng = SecureRng;
+        (0..length)
+            .map(|_| (b'0' + rng.gen_range(0..10)) as char)
             .collect()
     }
 
@@ -43,11 +41,11 @@ mod tests {
     fn test_generate_verify() {
         let otp = Otp::generate(8);
         assert!(Otp::are_equal(&otp, &otp));
-        assert!(!Otp::are_equal(&otp, "ABCDEFGH"));
+        assert!(!Otp::are_equal(&otp, "12345678"));
         assert!(!Otp::are_equal(&otp, &otp[..7]));
 
         let mut longer_otp = String::from(&otp);
-        longer_otp.push('A');
+        longer_otp.push('9');
         assert!(!Otp::are_equal(&otp, &longer_otp));
     }
 }
