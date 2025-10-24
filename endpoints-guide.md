@@ -24,7 +24,7 @@ All request/response bodies for the API (except HTML verification/deletion pages
 - Response: HTML 200 on success, or HTML error page for expired/invalid token.
 
 3) Sign in (begin)
-- Obtain per-user auth-string params and a daily nonce:
+- Obtain per-user auth-string params and a nonce:
   - GET `/api/auth/nonce_and_auth_string_params?email=<email>`
   - Response: `SigninNonceAndHashParams { auth_string_hash_salt, auth_string_hash_mem_cost_kib, auth_string_hash_threads, auth_string_hash_iterations, nonce }`
 - Compute client-side hash with the returned nonce, then request a sign-in token:
@@ -35,7 +35,7 @@ All request/response bodies for the API (except HTML verification/deletion pages
 - POST `/api/auth/otp/verify`
 - Headers: `SignInToken: <token from prior step>`
 - Body: `Otp { value }`
-- Response: `TokenPair { access_token, refresh_token, server_time }`
+- Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce }`
 
 5) Refresh tokens
 - POST `/api/auth/token/refresh`

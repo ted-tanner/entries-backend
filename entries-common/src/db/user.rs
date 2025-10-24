@@ -522,4 +522,32 @@ impl Dao {
 
         Ok(())
     }
+
+    pub fn get_user_prefs_and_keystore(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(Vec<u8>, i64, Vec<u8>, i64), DaoError> {
+        let (prefs_blob, prefs_version_nonce) = user_preferences
+            .select((
+                user_preferences_fields::encrypted_blob,
+                user_preferences_fields::version_nonce,
+            ))
+            .find(user_id)
+            .first::<(Vec<u8>, i64)>(&mut self.db_thread_pool.get()?)?;
+
+        let (keystore_blob, keystore_version_nonce) = user_keystores
+            .select((
+                user_keystore_fields::encrypted_blob,
+                user_keystore_fields::version_nonce,
+            ))
+            .find(user_id)
+            .first::<(Vec<u8>, i64)>(&mut self.db_thread_pool.get()?)?;
+
+        Ok((
+            prefs_blob,
+            prefs_version_nonce,
+            keystore_blob,
+            keystore_version_nonce,
+        ))
+    }
 }

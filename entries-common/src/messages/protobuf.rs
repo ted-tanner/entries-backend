@@ -507,6 +507,20 @@ pub struct TokenPair {
 }
 #[derive(Zeroize)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AuthenticatedSession {
+    #[prost(message, required, tag = "1")]
+    pub tokens: TokenPair,
+    #[prost(bytes = "vec", required, tag = "2")]
+    pub preferences_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int64, required, tag = "3")]
+    pub preferences_version_nonce: i64,
+    #[prost(bytes = "vec", required, tag = "4")]
+    pub user_keystore_encrypted: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int64, required, tag = "5")]
+    pub user_keystore_version_nonce: i64,
+}
+#[derive(Zeroize)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UserPublicKey {
     #[prost(message, required, tag = "1")]
     pub id: Uuid,

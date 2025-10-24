@@ -375,6 +375,14 @@ message TokenPair {
     required Timestamp server_time = 3;
 }
 
+message AuthenticatedSession {
+    required TokenPair tokens = 1;
+    required bytes preferences_encrypted = 2;
+    required int64 preferences_version_nonce = 3;
+    required bytes user_keystore_encrypted = 4;
+    required int64 user_keystore_version_nonce = 5;
+}
+
 message UserPublicKey {
 	required Uuid id = 1;
 	required bytes value = 2;

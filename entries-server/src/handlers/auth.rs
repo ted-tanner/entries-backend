@@ -1,8 +1,8 @@
 use entries_common::db::{self, DaoError, DbThreadPool};
 use entries_common::email::EmailSender;
 use entries_common::messages::{
-    CredentialPair, EmailQuery, RecoveryKeyAuthAndPasswordUpdate, SigninNonceAndHashParams,
-    SigninToken,
+    AuthenticatedSession, CredentialPair, EmailQuery, RecoveryKeyAuthAndPasswordUpdate,
+    SigninNonceAndHashParams, SigninToken,
 };
 use entries_common::messages::{Otp as OtpMessage, TokenPair};
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
@@ -230,7 +230,24 @@ pub async fn verify_otp_for_signin(
         server_time: SystemTime::now().try_into()?,
     };
 
-    Ok(HttpResponse::Ok().protobuf(token_pair)?)
+    let user_dao = db::user::Dao::new(&db_thread_pool);
+    let (prefs_blob, prefs_version_nonce, keystore_blob, keystore_version_nonce) =
+        web::block(move || user_dao.get_user_prefs_and_keystore(user_id))
+            .await?
+            .map_err(|e| {
+                log::error!("Failed to get user preferences and keystore: {e}");
+                HttpErrorResponse::InternalError(String::from("Failed to get user data"))
+            })?;
+
+    let authenticated_session = AuthenticatedSession {
+        tokens: token_pair,
+        preferences_encrypted: prefs_blob,
+        preferences_version_nonce: prefs_version_nonce,
+        user_keystore_encrypted: keystore_blob,
+        user_keystore_version_nonce: keystore_version_nonce,
+    };
+
+    Ok(HttpResponse::Ok().protobuf(authenticated_session)?)
 }
 
 pub async fn obtain_otp(
@@ -1037,10 +1054,10 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = TokenPair::decode(resp_body).unwrap();
+        let authenticated_session = AuthenticatedSession::decode(resp_body).unwrap();
 
-        let access_token = AuthToken::decode(&resp_body.access_token).unwrap();
-        let refresh_token = AuthToken::decode(&resp_body.refresh_token).unwrap();
+        let access_token = AuthToken::decode(&authenticated_session.tokens.access_token).unwrap();
+        let refresh_token = AuthToken::decode(&authenticated_session.tokens.refresh_token).unwrap();
 
         assert!(matches!(
             access_token.claims.token_type,
@@ -1053,6 +1070,23 @@ mod tests {
 
         assert!(access_token.verify(&env::CONF.token_signing_key).is_ok());
         assert!(refresh_token.verify(&env::CONF.token_signing_key).is_ok());
+
+        assert_eq!(
+            authenticated_session.preferences_encrypted,
+            new_user.preferences_encrypted
+        );
+        assert_eq!(
+            authenticated_session.preferences_version_nonce,
+            new_user.preferences_version_nonce
+        );
+        assert_eq!(
+            authenticated_session.user_keystore_encrypted,
+            new_user.user_keystore_encrypted
+        );
+        assert_eq!(
+            authenticated_session.user_keystore_version_nonce,
+            new_user.user_keystore_version_nonce
+        );
     }
 
     #[actix_rt::test]

@@ -47,18 +47,6 @@ impl std::convert::From<AuthTokenType> for u8 {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-struct PrivateAuthTokenClaims {
-    user_id: Uuid,
-    email: String,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-struct NewPrivateAuthTokenClaims<'a> {
-    user_id: Uuid,
-    email: &'a str,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthTokenClaims {
     #[serde(rename = "uid")]
