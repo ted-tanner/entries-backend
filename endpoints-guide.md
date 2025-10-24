@@ -35,7 +35,7 @@ All request/response bodies for the API (except HTML verification/deletion pages
 - POST `/api/auth/otp/verify`
 - Headers: `SignInToken: <token from prior step>`
 - Body: `Otp { value }`
-- Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce }`
+- Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce, password_encryption_key_salt, password_encryption_key_mem_cost_kib, password_encryption_key_threads, password_encryption_key_iterations, encryption_key_encrypted_with_password }`
 
 5) Refresh tokens
 - POST `/api/auth/token/refresh`

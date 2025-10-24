@@ -1,4 +1,4 @@
-use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, JoinOnDsl, QueryDsl, Queryable, RunQueryDsl};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
@@ -26,6 +26,19 @@ use crate::schema::user_preferences as user_preferences_fields;
 use crate::schema::user_preferences::dsl::user_preferences;
 use crate::schema::users as user_fields;
 use crate::schema::users::dsl::users;
+
+#[derive(Queryable)]
+pub struct ProtectedUserData {
+    pub preferences_encrypted: Vec<u8>,
+    pub preferences_version_nonce: i64,
+    pub user_keystore_encrypted: Vec<u8>,
+    pub user_keystore_version_nonce: i64,
+    pub password_encryption_key_salt: Vec<u8>,
+    pub password_encryption_key_mem_cost_kib: i32,
+    pub password_encryption_key_threads: i32,
+    pub password_encryption_key_iterations: i32,
+    pub encryption_key_encrypted_with_password: Vec<u8>,
+}
 
 pub struct Dao {
     db_thread_pool: DbThreadPool,
@@ -523,31 +536,24 @@ impl Dao {
         Ok(())
     }
 
-    pub fn get_user_prefs_and_keystore(
-        &self,
-        user_id: Uuid,
-    ) -> Result<(Vec<u8>, i64, Vec<u8>, i64), DaoError> {
-        let (prefs_blob, prefs_version_nonce) = user_preferences
+    pub fn get_protected_user_data(&self, user_id: Uuid) -> Result<ProtectedUserData, DaoError> {
+        let protected_data = users
+            .inner_join(user_preferences.on(user_preferences_fields::user_id.eq(user_fields::id)))
+            .inner_join(user_keystores.on(user_keystore_fields::user_id.eq(user_fields::id)))
             .select((
                 user_preferences_fields::encrypted_blob,
                 user_preferences_fields::version_nonce,
-            ))
-            .find(user_id)
-            .first::<(Vec<u8>, i64)>(&mut self.db_thread_pool.get()?)?;
-
-        let (keystore_blob, keystore_version_nonce) = user_keystores
-            .select((
                 user_keystore_fields::encrypted_blob,
                 user_keystore_fields::version_nonce,
+                user_fields::password_encryption_key_salt,
+                user_fields::password_encryption_key_mem_cost_kib,
+                user_fields::password_encryption_key_threads,
+                user_fields::password_encryption_key_iterations,
+                user_fields::encryption_key_encrypted_with_password,
             ))
-            .find(user_id)
-            .first::<(Vec<u8>, i64)>(&mut self.db_thread_pool.get()?)?;
+            .filter(user_fields::id.eq(user_id))
+            .first::<ProtectedUserData>(&mut self.db_thread_pool.get()?)?;
 
-        Ok((
-            prefs_blob,
-            prefs_version_nonce,
-            keystore_blob,
-            keystore_version_nonce,
-        ))
+        Ok(protected_data)
     }
 }

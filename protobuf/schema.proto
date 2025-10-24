@@ -381,6 +381,13 @@ message AuthenticatedSession {
     required int64 preferences_version_nonce = 3;
     required bytes user_keystore_encrypted = 4;
     required int64 user_keystore_version_nonce = 5;
+    
+    required bytes password_encryption_key_salt = 6;
+    required int32 password_encryption_key_mem_cost_kib = 7;
+    required int32 password_encryption_key_threads = 8;
+    required int32 password_encryption_key_iterations = 9;
+    
+    required bytes encryption_key_encrypted_with_password = 10;
 }
 
 message UserPublicKey {

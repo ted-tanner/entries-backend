@@ -231,20 +231,25 @@ pub async fn verify_otp_for_signin(
     };
 
     let user_dao = db::user::Dao::new(&db_thread_pool);
-    let (prefs_blob, prefs_version_nonce, keystore_blob, keystore_version_nonce) =
-        web::block(move || user_dao.get_user_prefs_and_keystore(user_id))
-            .await?
-            .map_err(|e| {
-                log::error!("Failed to get user preferences and keystore: {e}");
-                HttpErrorResponse::InternalError(String::from("Failed to get user data"))
-            })?;
+    let protected_data = web::block(move || user_dao.get_protected_user_data(user_id))
+        .await?
+        .map_err(|e| {
+            log::error!("Failed to get user protected data: {e}");
+            HttpErrorResponse::InternalError(String::from("Failed to get user data"))
+        })?;
 
     let authenticated_session = AuthenticatedSession {
         tokens: token_pair,
-        preferences_encrypted: prefs_blob,
-        preferences_version_nonce: prefs_version_nonce,
-        user_keystore_encrypted: keystore_blob,
-        user_keystore_version_nonce: keystore_version_nonce,
+        preferences_encrypted: protected_data.preferences_encrypted,
+        preferences_version_nonce: protected_data.preferences_version_nonce,
+        user_keystore_encrypted: protected_data.user_keystore_encrypted,
+        user_keystore_version_nonce: protected_data.user_keystore_version_nonce,
+        password_encryption_key_salt: protected_data.password_encryption_key_salt,
+        password_encryption_key_mem_cost_kib: protected_data.password_encryption_key_mem_cost_kib,
+        password_encryption_key_threads: protected_data.password_encryption_key_threads,
+        password_encryption_key_iterations: protected_data.password_encryption_key_iterations,
+        encryption_key_encrypted_with_password: protected_data
+            .encryption_key_encrypted_with_password,
     };
 
     Ok(HttpResponse::Ok().protobuf(authenticated_session)?)
@@ -1086,6 +1091,26 @@ mod tests {
         assert_eq!(
             authenticated_session.user_keystore_version_nonce,
             new_user.user_keystore_version_nonce
+        );
+        assert_eq!(
+            authenticated_session.password_encryption_key_salt,
+            new_user.password_encryption_key_salt
+        );
+        assert_eq!(
+            authenticated_session.password_encryption_key_mem_cost_kib,
+            new_user.password_encryption_key_mem_cost_kib
+        );
+        assert_eq!(
+            authenticated_session.password_encryption_key_threads,
+            new_user.password_encryption_key_threads
+        );
+        assert_eq!(
+            authenticated_session.password_encryption_key_iterations,
+            new_user.password_encryption_key_iterations
+        );
+        assert_eq!(
+            authenticated_session.encryption_key_encrypted_with_password,
+            new_user.encryption_key_encrypted_with_password
         );
     }
 
