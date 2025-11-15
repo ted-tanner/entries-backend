@@ -98,9 +98,15 @@ impl Dao {
                 let container = containers
                     .find(container_id)
                     .get_result::<Container>(conn)?;
-                let loaded_categories =
-                    Category::belonging_to(&container).load::<Category>(conn)?;
-                let loaded_entries = Entry::belonging_to(&container).load::<Entry>(conn)?;
+
+                let (loaded_categories, loaded_entries) = if container.deleted_at.is_some() {
+                    (Vec::new(), Vec::new())
+                } else {
+                    (
+                        Category::belonging_to(&container).load::<Category>(conn)?,
+                        Entry::belonging_to(&container).load::<Entry>(conn)?,
+                    )
+                };
 
                 let category_messages = loaded_categories
                     .into_iter()
@@ -153,20 +159,37 @@ impl Dao {
                 let loaded_containers = containers
                     .filter(container_fields::id.eq_any(container_ids))
                     .get_results::<Container>(conn)?;
-                let loaded_categories = Category::belonging_to(&loaded_containers)
-                    .load::<Category>(conn)?
-                    .grouped_by(&loaded_containers);
-                let loaded_entries = Entry::belonging_to(&loaded_containers)
-                    .load::<Entry>(conn)?
-                    .grouped_by(&loaded_containers);
 
-                let zipped_containers = loaded_containers
-                    .into_iter()
-                    .zip(loaded_categories.into_iter())
-                    .zip(loaded_entries.into_iter());
+                let live_containers: Vec<&Container> = loaded_containers
+                    .iter()
+                    .filter(|c| c.deleted_at.is_none())
+                    .collect();
+
+                let live_categories = Category::belonging_to(&live_containers)
+                    .load::<Category>(conn)?
+                    .grouped_by(&live_containers);
+
+                let live_entries = Entry::belonging_to(&live_containers)
+                    .load::<Entry>(conn)?
+                    .grouped_by(&live_containers);
+
+                let mut live_categories_iter = live_categories.into_iter();
+                let mut live_entries_iter = live_entries.into_iter();
+
                 let mut output_containers = Vec::new();
 
-                for ((container, container_categories), container_entries) in zipped_containers {
+                for container in loaded_containers {
+                    // If this container is soft-deleted, give it no categories/entries
+                    let (container_categories, container_entries) =
+                        if container.deleted_at.is_some() {
+                            (Vec::new(), Vec::new())
+                        } else {
+                            (
+                                live_categories_iter.next().unwrap_or_default(),
+                                live_entries_iter.next().unwrap_or_default(),
+                            )
+                        };
+
                     let category_messages = container_categories
                         .into_iter()
                         .map(|c| CategoryMessage {

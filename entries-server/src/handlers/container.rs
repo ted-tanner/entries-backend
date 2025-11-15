@@ -2384,6 +2384,311 @@ pub mod tests {
     }
 
     #[actix_rt::test]
+    async fn test_get_soft_deleted_container() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
+        let public_key = Vec::from(key_pair.verifying_key().to_bytes());
+
+        let new_container = NewContainer {
+            encrypted_blob: gen_bytes(32),
+            version_nonce: SecureRng::next_i64(),
+            categories: vec![
+                CategoryWithTempId {
+                    temp_id: 0,
+                    encrypted_blob: gen_bytes(40),
+                    version_nonce: SecureRng::next_i64(),
+                },
+                CategoryWithTempId {
+                    temp_id: 1,
+                    encrypted_blob: gen_bytes(50),
+                    version_nonce: SecureRng::next_i64(),
+                },
+            ],
+            user_public_container_key: public_key,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_container.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_data = ContainerFrame::decode(resp_body).unwrap();
+
+        let container = containers
+            .find(Uuid::try_from(container_data.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let container_access_token = gen_container_token(
+            container.id,
+            container_data.access_key_id.try_into().unwrap(),
+            &key_pair,
+        );
+
+        // Create some entries
+        let category_id: Uuid = (&container_data.category_ids[0].real_id)
+            .try_into()
+            .unwrap();
+
+        let new_entry1 = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            version_nonce: SecureRng::next_i64(),
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry1.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let new_entry2 = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(25),
+            version_nonce: SecureRng::next_i64(),
+            category_id: None,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry2.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Verify container has categories and entries before soft deletion
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
+        };
+
+        let req = TestRequest::get()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(container_token_list.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
+
+        assert_eq!(container_message.categories.len(), 2);
+        assert_eq!(container_message.entries.len(), 2);
+
+        // Soft delete the container
+        let container_dao = db::container::Dao::new(&env::testing::DB_THREAD_POOL);
+        container_dao.soft_delete_container(container.id).unwrap();
+
+        // Verify that after soft deletion, categories and entries are empty
+        let container_token_list = ContainerAccessTokenList {
+            tokens: vec![container_access_token.clone()],
+        };
+
+        let req = TestRequest::get()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(container_token_list.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_message = ContainerList::decode(resp_body).unwrap().containers[0].clone();
+
+        assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
+        // Container blob should be empty after soft deletion and it shouldn't return any
+        // categories or entries
+        assert_eq!(container_message.encrypted_blob, Vec::<u8>::new());
+        assert_eq!(container_message.categories.len(), 0);
+        assert_eq!(container_message.entries.len(), 0);
+        assert!(container_message.deleted_at.is_some());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_multiple_containers_with_soft_deleted() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _) = test_utils::create_user().await;
+
+        let key_pair1 = ed25519::SigningKey::generate(SecureRng::get_ref());
+        let public_key1 = Vec::from(key_pair1.verifying_key().to_bytes());
+
+        let new_container1 = NewContainer {
+            encrypted_blob: gen_bytes(32),
+            version_nonce: SecureRng::next_i64(),
+            categories: vec![CategoryWithTempId {
+                temp_id: 0,
+                encrypted_blob: gen_bytes(40),
+                version_nonce: SecureRng::next_i64(),
+            }],
+            user_public_container_key: public_key1,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_container1.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_data1 = ContainerFrame::decode(resp_body).unwrap();
+
+        let container1 = containers
+            .find(Uuid::try_from(container_data1.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let container_access_token1 = gen_container_token(
+            container1.id,
+            container_data1.access_key_id.try_into().unwrap(),
+            &key_pair1,
+        );
+
+        let category_id1: Uuid = (&container_data1.category_ids[0].real_id)
+            .try_into()
+            .unwrap();
+
+        let new_entry1 = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            version_nonce: SecureRng::next_i64(),
+            category_id: Some(category_id1.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/entry")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("ContainerAccessToken", container_access_token1.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry1.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let key_pair2 = ed25519::SigningKey::generate(SecureRng::get_ref());
+        let public_key2 = Vec::from(key_pair2.verifying_key().to_bytes());
+
+        let new_container2 = NewContainer {
+            encrypted_blob: gen_bytes(35),
+            version_nonce: SecureRng::next_i64(),
+            categories: vec![CategoryWithTempId {
+                temp_id: 0,
+                encrypted_blob: gen_bytes(45),
+                version_nonce: SecureRng::next_i64(),
+            }],
+            user_public_container_key: public_key2,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_container2.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_data2 = ContainerFrame::decode(resp_body).unwrap();
+
+        let container2 = containers
+            .find(Uuid::try_from(container_data2.id).unwrap())
+            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+
+        let container_access_token2 = gen_container_token(
+            container2.id,
+            container_data2.access_key_id.try_into().unwrap(),
+            &key_pair2,
+        );
+
+        let container_dao = db::container::Dao::new(&env::testing::DB_THREAD_POOL);
+        container_dao.soft_delete_container(container1.id).unwrap();
+
+        let container_access_tokens = ContainerAccessTokenList {
+            tokens: vec![container_access_token1, container_access_token2],
+        };
+
+        let req = TestRequest::get()
+            .uri("/api/container")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(container_access_tokens.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let container_list = ContainerList::decode(resp_body).unwrap();
+
+        assert_eq!(container_list.containers.len(), 2);
+
+        let deleted_container = container_list
+            .containers
+            .iter()
+            .find(|c| Uuid::try_from(&c.id).unwrap() == container1.id)
+            .unwrap();
+
+        // Soft-deleted container should have empty categories and entries
+        assert_eq!(deleted_container.categories.len(), 0);
+        assert_eq!(deleted_container.entries.len(), 0);
+        assert_eq!(deleted_container.encrypted_blob, Vec::<u8>::new());
+        assert!(deleted_container.deleted_at.is_some());
+
+        let active_container = container_list
+            .containers
+            .iter()
+            .find(|c| Uuid::try_from(&c.id).unwrap() == container2.id)
+            .unwrap();
+
+        assert_eq!(active_container.categories.len(), 1);
+        assert_eq!(active_container.entries.len(), 0);
+        assert_eq!(active_container.encrypted_blob, container2.encrypted_blob);
+        assert!(active_container.deleted_at.is_none());
+    }
+
+    #[actix_rt::test]
     async fn test_edit_container() {
         let app = test::init_service(
             App::new()
