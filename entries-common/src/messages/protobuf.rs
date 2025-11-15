@@ -25,6 +25,8 @@ pub struct Category {
     pub version_nonce: i64,
     #[prost(message, required, tag = "5")]
     pub modified_timestamp: Timestamp,
+    #[prost(message, optional, tag = "6")]
+    pub deleted_at: ::core::option::Option<Timestamp>,
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct Entry {
@@ -40,6 +42,8 @@ pub struct Entry {
     pub version_nonce: i64,
     #[prost(message, required, tag = "6")]
     pub modified_timestamp: Timestamp,
+    #[prost(message, optional, tag = "7")]
+    pub deleted_at: ::core::option::Option<Timestamp>,
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct AuthStringAndEncryptedPasswordUpdate {
@@ -348,6 +352,8 @@ pub struct Container {
     pub categories: ::prost::alloc::vec::Vec<Category>,
     #[prost(message, repeated, tag = "6")]
     pub entries: ::prost::alloc::vec::Vec<Entry>,
+    #[prost(message, optional, tag = "7")]
+    pub deleted_at: ::core::option::Option<Timestamp>,
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct ContainerFrame {

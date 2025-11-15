@@ -486,6 +486,7 @@ impl Dao {
                         .get_result::<i64>(conn)?;
 
                     if users_remaining_in_container == 0 {
+                        // Hard delete. The only user in the container is being deleted
                         diesel::delete(containers.find(container_id)).execute(conn)?;
                     }
                 }

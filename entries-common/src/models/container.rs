@@ -13,6 +13,7 @@ pub struct Container {
     pub encrypted_blob: Vec<u8>,
     pub version_nonce: i64,
     pub modified_timestamp: SystemTime,
+    pub deleted_at: Option<SystemTime>,
 }
 
 #[derive(Debug, Insertable)]

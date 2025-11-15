@@ -110,6 +110,7 @@ impl Dao {
                         encrypted_blob: c.encrypted_blob,
                         version_nonce: c.version_nonce,
                         modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
+                        deleted_at: c.deleted_at.and_then(|t| t.try_into().ok()),
                     })
                     .collect();
 
@@ -122,6 +123,7 @@ impl Dao {
                         encrypted_blob: e.encrypted_blob,
                         version_nonce: e.version_nonce,
                         modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
+                        deleted_at: e.deleted_at.and_then(|t| t.try_into().ok()),
                     })
                     .collect();
 
@@ -132,6 +134,7 @@ impl Dao {
                     entries: entry_messages,
                     version_nonce: container.version_nonce,
                     modified_timestamp: container.modified_timestamp.try_into().unwrap_or_default(),
+                    deleted_at: container.deleted_at.and_then(|t| t.try_into().ok()),
                 })
             })?;
 
@@ -172,6 +175,7 @@ impl Dao {
                             encrypted_blob: c.encrypted_blob,
                             version_nonce: c.version_nonce,
                             modified_timestamp: c.modified_timestamp.try_into().unwrap_or_default(),
+                            deleted_at: c.deleted_at.and_then(|t| t.try_into().ok()),
                         })
                         .collect();
 
@@ -184,6 +188,7 @@ impl Dao {
                             encrypted_blob: e.encrypted_blob,
                             version_nonce: e.version_nonce,
                             modified_timestamp: e.modified_timestamp.try_into().unwrap_or_default(),
+                            deleted_at: e.deleted_at.and_then(|t| t.try_into().ok()),
                         })
                         .collect();
 
@@ -197,6 +202,7 @@ impl Dao {
                             .unwrap_or_default(),
                         categories: category_messages,
                         entries: entry_messages,
+                        deleted_at: container.deleted_at.and_then(|t| t.try_into().ok()),
                     };
 
                     output_containers.push(output_container);
@@ -309,6 +315,7 @@ impl Dao {
                         container_fields::modified_timestamp.eq(dsl::now),
                         container_fields::encrypted_blob.eq(edited_container_data),
                         container_fields::version_nonce.eq(version_nonce),
+                        container_fields::deleted_at.eq(None::<SystemTime>),
                     ))
                     .execute(conn)?;
 
@@ -587,6 +594,8 @@ impl Dao {
                     .get_result::<i64>(conn)?;
 
                 if users_remaining_in_container == 0 {
+                    // Hard delete. The only user in the container is leaving. They will no longer
+                    // have access, so there is no need to keep the container around.
                     diesel::delete(containers.find(container_id)).execute(conn)?;
                 }
 
@@ -697,6 +706,7 @@ impl Dao {
                     entry_fields::encrypted_blob.eq(entry_encrypted_blob),
                     entry_fields::version_nonce.eq(version_nonce),
                     entry_fields::modified_timestamp.eq(dsl::now),
+                    entry_fields::deleted_at.eq(None::<SystemTime>),
                 ))
                 .execute(conn)?;
 
@@ -726,7 +736,23 @@ impl Dao {
             })
     }
 
-    pub fn delete_entry(&self, entry_id: Uuid, container_id: Uuid) -> Result<(), DaoError> {
+    pub fn soft_delete_entry(&self, entry_id: Uuid, container_id: Uuid) -> Result<(), DaoError> {
+        diesel::update(
+            entries
+                .find(entry_id)
+                .filter(entry_fields::container_id.eq(container_id))
+                .filter(entry_fields::deleted_at.is_null()),
+        )
+        .set((
+            entry_fields::deleted_at.eq(dsl::now),
+            entry_fields::encrypted_blob.eq(&[] as &[u8]),
+        ))
+        .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn hard_delete_entry(&self, entry_id: Uuid, container_id: Uuid) -> Result<(), DaoError> {
         diesel::delete(
             entries
                 .find(entry_id)
@@ -785,6 +811,7 @@ impl Dao {
                     category_fields::encrypted_blob.eq(category_encrypted_blob),
                     category_fields::version_nonce.eq(version_nonce),
                     category_fields::modified_timestamp.eq(dsl::now),
+                    category_fields::deleted_at.eq(None::<SystemTime>),
                 ))
                 .execute(conn)?;
 
@@ -814,13 +841,109 @@ impl Dao {
             })
     }
 
-    pub fn delete_category(&self, category_id: Uuid, container_id: Uuid) -> Result<(), DaoError> {
+    pub fn soft_delete_category(
+        &self,
+        category_id: Uuid,
+        container_id: Uuid,
+    ) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                // Soft delete the category and clear its blob
+                diesel::update(
+                    categories
+                        .find(category_id)
+                        .filter(category_fields::container_id.eq(container_id))
+                        .filter(category_fields::deleted_at.is_null()),
+                )
+                .set((
+                    category_fields::deleted_at.eq(dsl::now),
+                    category_fields::encrypted_blob.eq(&[] as &[u8]),
+                ))
+                .execute(conn)?;
+
+                // Set category_id to None for all entries that reference this category
+                diesel::update(
+                    entries
+                        .filter(entry_fields::container_id.eq(container_id))
+                        .filter(entry_fields::category_id.eq(category_id)),
+                )
+                .set(entry_fields::category_id.eq(None::<Uuid>))
+                .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
+    pub fn hard_delete_category(
+        &self,
+        category_id: Uuid,
+        container_id: Uuid,
+    ) -> Result<(), DaoError> {
         diesel::delete(
             categories
                 .find(category_id)
                 .filter(category_fields::container_id.eq(container_id)),
         )
         .execute(&mut self.db_thread_pool.get()?)?;
+
+        Ok(())
+    }
+
+    pub fn soft_delete_container(&self, container_id: Uuid) -> Result<(), DaoError> {
+        let mut db_connection = self.db_thread_pool.get()?;
+
+        db_connection
+            .build_transaction()
+            .run::<_, diesel::result::Error, _>(|conn| {
+                // Soft delete the container and clear its blob
+                diesel::update(
+                    containers
+                        .find(container_id)
+                        .filter(container_fields::deleted_at.is_null()),
+                )
+                .set((
+                    container_fields::deleted_at.eq(dsl::now),
+                    container_fields::encrypted_blob.eq(&[] as &[u8]),
+                ))
+                .execute(conn)?;
+
+                // Soft delete all entries in the container and clear their blobs
+                diesel::update(
+                    entries
+                        .filter(entry_fields::container_id.eq(container_id))
+                        .filter(entry_fields::deleted_at.is_null()),
+                )
+                .set((
+                    entry_fields::deleted_at.eq(dsl::now),
+                    entry_fields::encrypted_blob.eq(&[] as &[u8]),
+                ))
+                .execute(conn)?;
+
+                // Soft delete all categories in the container and clear their blobs
+                diesel::update(
+                    categories
+                        .filter(category_fields::container_id.eq(container_id))
+                        .filter(category_fields::deleted_at.is_null()),
+                )
+                .set((
+                    category_fields::deleted_at.eq(dsl::now),
+                    category_fields::encrypted_blob.eq(&[] as &[u8]),
+                ))
+                .execute(conn)?;
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
+
+    pub fn hard_delete_container(&self, container_id: Uuid) -> Result<(), DaoError> {
+        diesel::delete(containers.find(container_id)).execute(&mut self.db_thread_pool.get()?)?;
 
         Ok(())
     }

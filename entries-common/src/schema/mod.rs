@@ -14,6 +14,7 @@ diesel::table! {
         encrypted_blob -> Bytea,
         version_nonce -> Int8,
         modified_timestamp -> Timestamp,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -60,6 +61,7 @@ diesel::table! {
         encrypted_blob -> Bytea,
         version_nonce -> Int8,
         modified_timestamp -> Timestamp,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -71,6 +73,7 @@ diesel::table! {
         encrypted_blob -> Bytea,
         version_nonce -> Int8,
         modified_timestamp -> Timestamp,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 

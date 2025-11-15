@@ -64,6 +64,7 @@ CREATE TABLE containers (
     encrypted_blob BYTEA NOT NULL,
     version_nonce BIGINT NOT NULL,
     modified_timestamp TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP,
     
     CONSTRAINT chk_containers_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
 );
@@ -172,6 +173,7 @@ CREATE TABLE categories (
     version_nonce BIGINT NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP,
 
     CONSTRAINT fk_categories_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
     CONSTRAINT chk_categories_encrypted_blob_size CHECK (octet_length(encrypted_blob) <= 104857600)
@@ -189,6 +191,7 @@ CREATE TABLE entries (
     version_nonce BIGINT NOT NULL,
 
     modified_timestamp TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP,
 
     CONSTRAINT fk_entries_container_key FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE,
     CONSTRAINT fk_entries_category_key FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL,

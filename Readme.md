@@ -327,7 +327,6 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Do it later
 
-* Recover account without recovery key (fresh start as user cannot access data)
 * Description of EE2E scheme
 * Get rid of created_timestamp on users table and use the UUIdv7 instead
   - The one place the timestamp matters is when clearing unverified users. Use the timestamp in the UUIDv7 to filter these

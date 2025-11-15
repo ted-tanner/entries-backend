@@ -920,7 +920,7 @@ pub async fn delete_entry(
 
     match web::block(move || {
         let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.delete_entry(entry_id, container_access_token.0.claims.container_id)
+        container_dao.soft_delete_entry(entry_id, container_access_token.0.claims.container_id)
     })
     .await?
     {
@@ -1055,7 +1055,8 @@ pub async fn delete_category(
 
     match web::block(move || {
         let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.delete_category(category_id, container_access_token.0.claims.container_id)
+        container_dao
+            .soft_delete_category(category_id, container_access_token.0.claims.container_id)
     })
     .await?
     {
@@ -2219,7 +2220,12 @@ pub mod tests {
         assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
         assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
-        assert_eq!(container_message.categories.len(), 0);
+        // Category is soft-deleted, so it's returned as a stub with empty blob
+        assert_eq!(container_message.categories.len(), 1);
+        assert_eq!(
+            container_message.categories[0].encrypted_blob,
+            Vec::<u8>::new()
+        );
         assert_eq!(container_message.entries.len(), 1);
 
         let entry_message = &container_message.entries[0];
@@ -2368,8 +2374,13 @@ pub mod tests {
         assert_eq!(Uuid::try_from(container_message.id).unwrap(), container.id);
         assert_eq!(container_message.encrypted_blob, container.encrypted_blob);
 
+        // Entry is soft-deleted, so it's returned as a stub with empty blob
         assert_eq!(container_message.categories.len(), 1);
-        assert_eq!(container_message.entries.len(), 0);
+        assert_eq!(container_message.entries.len(), 1);
+        assert_eq!(
+            container_message.entries[0].encrypted_blob,
+            Vec::<u8>::new()
+        );
     }
 
     #[actix_rt::test]
@@ -4417,6 +4428,47 @@ pub mod tests {
         let (container, sender_container_token) =
             test_utils::create_container(&sender_access_token).await;
 
+        // Create some entries and categories to test soft deletion
+        let new_category = NewEncryptedBlob {
+            value: gen_bytes(40),
+            version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/category")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_category.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let category_id: Uuid = CategoryId::decode(resp_body)
+            .unwrap()
+            .value
+            .try_into()
+            .unwrap();
+
+        let new_entry = EncryptedBlobAndCategoryId {
+            encrypted_blob: gen_bytes(20),
+            version_nonce: SecureRng::next_i64(),
+            category_id: Some(category_id.into()),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/entry")
+            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_entry.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
         let invite_info = UserInvitationToContainer {
             recipient_user_email: recipient.email,
             recipient_public_key_id_used_by_sender: recipient.public_key_id.into(),
@@ -4659,9 +4711,30 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-        assert!(containers
+        // Verify container, entries, and categories are all hard-deleted (cascade delete)
+        // Note: Since the user no longer has access, we can't use their token. But we can verify via direct DB query
+        // that the container and all associated entries and categories no longer exist
+        use entries_common::schema::categories::dsl::categories;
+        use entries_common::schema::entries::dsl::entries;
+
+        // Container should be hard deleted
+        let container_from_db = containers
             .find(container.id)
-            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .is_err());
+            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap());
+        assert!(container_from_db.is_err());
+
+        // Verify all categories are hard deleted
+        let categories_from_db: Vec<entries_common::models::category::Category> = categories
+            .filter(entries_common::schema::categories::container_id.eq(container.id))
+            .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert_eq!(categories_from_db.len(), 0);
+
+        // Verify all entries are hard deleted
+        let entries_from_db: Vec<entries_common::models::entry::Entry> = entries
+            .filter(entries_common::schema::entries::container_id.eq(container.id))
+            .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert_eq!(entries_from_db.len(), 0);
     }
 }

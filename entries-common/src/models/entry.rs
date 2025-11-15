@@ -25,6 +25,7 @@ pub struct Entry {
     pub version_nonce: i64,
 
     pub modified_timestamp: SystemTime,
+    pub deleted_at: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, Insertable)]
