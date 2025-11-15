@@ -322,3 +322,200 @@ impl Dao {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::{self, TestUserData};
+    use crate::schema::signin_nonces as signin_nonce_fields;
+    use crate::schema::signin_nonces::dsl::signin_nonces;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+
+    fn dao() -> Dao {
+        Dao::new(test_utils::db_pool())
+    }
+
+    fn create_verified_user() -> (Uuid, TestUserData) {
+        let user_dao = crate::db::user::Dao::new(test_utils::db_pool());
+        let inserted = test_utils::create_user_with_dao(&user_dao);
+        let mut conn = test_utils::db_conn();
+        dsl::update(users.find(inserted.id))
+            .set(user_fields::is_verified.eq(true))
+            .execute(&mut conn)
+            .unwrap();
+        (inserted.id, inserted.data)
+    }
+
+    #[test]
+    fn auth_string_queries_respect_verification_status() {
+        let dao = dao();
+        let (user_id, data) = create_verified_user();
+
+        dsl::update(users.find(user_id))
+            .set(user_fields::is_verified.eq(false))
+            .execute(&mut test_utils::db_conn())
+            .unwrap();
+
+        let result = dao
+            .get_user_auth_string_hash_and_status(&data.email)
+            .unwrap();
+        assert!(!result.is_user_verified);
+        assert!(result.auth_string_hash.is_empty());
+
+        dsl::update(users.find(user_id))
+            .set(user_fields::is_verified.eq(true))
+            .execute(&mut test_utils::db_conn())
+            .unwrap();
+
+        let verified_auth = dao
+            .get_user_auth_string_hash_and_status(&data.email)
+            .unwrap();
+        assert!(verified_auth.is_user_verified);
+        assert_eq!(verified_auth.auth_string_hash, data.auth_string_hash);
+
+        let recovery = dao
+            .get_user_recovery_auth_string_hash_and_status(&data.email)
+            .unwrap();
+        assert_eq!(
+            recovery.auth_string_hash,
+            data.recovery_key_auth_hash_rehashed_with_auth_string_params
+        );
+
+        test_utils::delete_user(user_id);
+    }
+
+    #[test]
+    fn blacklist_and_token_checks_work() {
+        let dao = dao();
+        let token_signature = test_utils::random_bytes(16);
+        let expiration = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 60;
+
+        dao.blacklist_token(&token_signature, expiration).unwrap();
+        let already_blacklisted = dao
+            .check_is_token_on_blacklist_and_blacklist(&token_signature, expiration)
+            .unwrap();
+        assert!(already_blacklisted);
+
+        let new_signature = test_utils::random_bytes(16);
+        let was_listed = dao
+            .check_is_token_on_blacklist_and_blacklist(&new_signature, expiration)
+            .unwrap();
+        assert!(!was_listed);
+
+        // Ensure expired entries removed
+        dao.clear_all_expired_tokens().unwrap();
+    }
+
+    #[test]
+    fn otp_lifecycle_and_expiration_cleanup() {
+        let dao = dao();
+        let (user_id, data) = create_verified_user();
+        let otp = "12345678";
+
+        dao.save_otp(
+            otp,
+            &data.email,
+            SystemTime::now() + Duration::from_secs(60),
+        )
+        .unwrap();
+        assert!(dao.check_unexpired_otp(otp, &data.email).unwrap());
+
+        // Update existing OTP
+        dao.save_otp(
+            otp,
+            &data.email,
+            SystemTime::now() + Duration::from_secs(120),
+        )
+        .unwrap();
+
+        dao.delete_otp(otp, &data.email).unwrap();
+        assert!(!dao.check_unexpired_otp(otp, &data.email).unwrap());
+
+        dao.save_otp(
+            otp,
+            &data.email,
+            SystemTime::now() - Duration::from_secs(10),
+        )
+        .unwrap();
+        dao.delete_all_expired_otps().unwrap();
+        assert!(!dao.check_unexpired_otp(otp, &data.email).unwrap());
+        test_utils::delete_user(user_id);
+    }
+
+    #[test]
+    fn signin_nonce_and_hash_params_are_returned_and_refreshed() {
+        let dao = dao();
+        let (user_id, data) = create_verified_user();
+
+        let original_nonce = {
+            let mut conn = test_utils::db_conn();
+            signin_nonces
+                .select(signin_nonce_fields::nonce)
+                .find(&data.email)
+                .first::<i32>(&mut conn)
+                .unwrap()
+        };
+
+        let fetched_nonce = dao.get_and_refresh_signin_nonce(&data.email).unwrap();
+        assert_eq!(fetched_nonce, original_nonce);
+
+        let auth_data = dao.get_auth_string_data_signin_nonce(&data.email).unwrap();
+        assert_eq!(
+            auth_data.auth_string_hash_iterations,
+            data.auth_string_hash_iterations
+        );
+
+        let new_nonce = {
+            let mut conn = test_utils::db_conn();
+            signin_nonces
+                .select(signin_nonce_fields::nonce)
+                .find(&data.email)
+                .first::<i32>(&mut conn)
+                .unwrap()
+        };
+        assert_ne!(new_nonce, original_nonce);
+
+        test_utils::delete_user(user_id);
+    }
+
+    #[test]
+    fn update_recovery_key_and_auth_string_and_email_updates_all_fields() {
+        let dao = dao();
+        let (user_id, data) = create_verified_user();
+        let new_email = "updated@example.com";
+
+        dao.update_recovery_key_and_auth_string_and_email(
+            &data.email,
+            Some(new_email),
+            "new-auth",
+            &test_utils::random_bytes(8),
+            2048,
+            2,
+            5,
+            &test_utils::random_bytes(8),
+            &test_utils::random_bytes(8),
+            4096,
+            2,
+            5,
+            "new-recovery",
+            &test_utils::random_bytes(12),
+            &test_utils::random_bytes(12),
+        )
+        .unwrap();
+
+        let mut conn = test_utils::db_conn();
+        let updated_user = users.find(user_id).first::<User>(&mut conn).unwrap();
+        assert_eq!(updated_user.email, new_email);
+        assert_eq!(updated_user.auth_string_hash, "new-auth");
+        assert_eq!(
+            updated_user.recovery_key_auth_hash_rehashed_with_auth_string_params,
+            "new-recovery"
+        );
+
+        test_utils::delete_user(user_id);
+    }
+}

@@ -558,3 +558,679 @@ impl Dao {
         Ok(protected_data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::{self, TestUserData};
+    use crate::models::container::Container;
+    use crate::models::signin_nonce::SigninNonce;
+    use crate::models::user::User;
+    use crate::models::user_deletion_request::UserDeletionRequest;
+    use crate::models::user_deletion_request_container_key::UserDeletionRequestContainerKey;
+    use crate::models::user_keystore::UserKeystore;
+    use crate::models::user_preferences::UserPreferences;
+    use crate::schema::container_access_keys as container_access_key_fields;
+    use crate::schema::container_access_keys::dsl::container_access_keys;
+    use crate::schema::containers::dsl::containers;
+    use crate::schema::signin_nonces::dsl::signin_nonces;
+    use crate::schema::user_deletion_request_container_keys as user_deletion_request_container_key_fields;
+    use crate::schema::user_deletion_request_container_keys::dsl::user_deletion_request_container_keys;
+    use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+    use crate::schema::user_keystores::dsl::user_keystores;
+    use crate::schema::user_preferences::dsl::user_preferences;
+    use crate::schema::users as user_fields;
+    use crate::schema::users::dsl::users;
+    use crate::threadrand::SecureRng;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use std::time::{Duration, SystemTime};
+    use uuid::Uuid;
+
+    fn dao() -> Dao {
+        Dao::new(test_utils::db_pool())
+    }
+
+    fn create_user_and_blueprint(dao: &Dao) -> (Uuid, TestUserData) {
+        let inserted = test_utils::create_user_with_dao(dao);
+        (inserted.id, inserted.data)
+    }
+
+    fn delete_user_row(user_id: Uuid) {
+        test_utils::delete_user(user_id);
+    }
+
+    fn delete_container_row(container_id: Uuid) {
+        let mut conn = test_utils::db_conn();
+        let _ = diesel::delete(containers.find(container_id)).execute(&mut conn);
+    }
+
+    fn fetch_user(user_id: Uuid) -> User {
+        let mut conn = test_utils::db_conn();
+        users.find(user_id).first(&mut conn).unwrap()
+    }
+
+    fn fetch_preferences(user_id: Uuid) -> UserPreferences {
+        let mut conn = test_utils::db_conn();
+        user_preferences.find(user_id).first(&mut conn).unwrap()
+    }
+
+    fn fetch_keystore(user_id: Uuid) -> UserKeystore {
+        let mut conn = test_utils::db_conn();
+        user_keystores.find(user_id).first(&mut conn).unwrap()
+    }
+
+    fn very_long_duration() -> Duration {
+        Duration::from_secs(60 * 60 * 24 * 365 * 100)
+    }
+
+    fn prepare_container_with_keys(key_ids: &[Uuid]) -> Uuid {
+        let mut conn = test_utils::db_conn();
+        let container_id = test_utils::insert_container(&mut conn);
+        for key_id in key_ids {
+            test_utils::insert_container_access_key(&mut conn, container_id, *key_id);
+        }
+        container_id
+    }
+
+    #[test]
+    fn get_user_public_key_returns_expected_key() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let public_key = dao.get_user_public_key(&blueprint.email).unwrap();
+
+        assert_eq!(
+            public_key.id.value.as_slice(),
+            blueprint.public_key_id.as_bytes()
+        );
+        assert_eq!(public_key.value, blueprint.public_key.clone());
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn create_user_persists_related_records() {
+        let dao = dao();
+        let blueprint = TestUserData::random();
+        let before = SystemTime::now();
+        let user_id = blueprint.insert(&dao);
+        let after = SystemTime::now();
+
+        let mut conn = test_utils::db_conn();
+        let user = users.find(user_id).first::<User>(&mut conn).unwrap();
+
+        assert_eq!(user.email, blueprint.email);
+        assert!(!user.is_verified);
+        assert!(user.created_timestamp.duration_since(before).is_ok());
+        assert!(after.duration_since(user.created_timestamp).is_ok());
+        assert_eq!(user.public_key_id, blueprint.public_key_id);
+        assert_eq!(user.public_key, blueprint.public_key.clone());
+        assert_eq!(user.auth_string_hash, blueprint.auth_string_hash);
+        assert_eq!(user.auth_string_hash_salt, blueprint.auth_string_hash_salt);
+        assert_eq!(
+            user.auth_string_hash_mem_cost_kib,
+            blueprint.auth_string_hash_mem_cost_kib
+        );
+        assert_eq!(
+            user.auth_string_hash_threads,
+            blueprint.auth_string_hash_threads
+        );
+        assert_eq!(
+            user.auth_string_hash_iterations,
+            blueprint.auth_string_hash_iterations
+        );
+        assert_eq!(
+            user.password_encryption_key_salt,
+            blueprint.password_encryption_key_salt
+        );
+        assert_eq!(
+            user.password_encryption_key_mem_cost_kib,
+            blueprint.password_encryption_key_mem_cost_kib
+        );
+        assert_eq!(
+            user.password_encryption_key_threads,
+            blueprint.password_encryption_key_threads
+        );
+        assert_eq!(
+            user.password_encryption_key_iterations,
+            blueprint.password_encryption_key_iterations
+        );
+        assert_eq!(
+            user.recovery_key_hash_salt_for_encryption,
+            blueprint.recovery_key_hash_salt_for_encryption
+        );
+        assert_eq!(
+            user.recovery_key_hash_salt_for_recovery_auth,
+            blueprint.recovery_key_hash_salt_for_recovery_auth
+        );
+        assert_eq!(
+            user.recovery_key_hash_mem_cost_kib,
+            blueprint.recovery_key_hash_mem_cost_kib
+        );
+        assert_eq!(
+            user.recovery_key_hash_threads,
+            blueprint.recovery_key_hash_threads
+        );
+        assert_eq!(
+            user.recovery_key_hash_iterations,
+            blueprint.recovery_key_hash_iterations
+        );
+        assert_eq!(
+            user.recovery_key_auth_hash_rehashed_with_auth_string_params,
+            blueprint.recovery_key_auth_hash_rehashed_with_auth_string_params
+        );
+        assert_eq!(
+            user.encryption_key_encrypted_with_password,
+            blueprint.encryption_key_encrypted_with_password
+        );
+        assert_eq!(
+            user.encryption_key_encrypted_with_recovery_key,
+            blueprint.encryption_key_encrypted_with_recovery_key
+        );
+
+        let prefs = user_preferences
+            .find(user_id)
+            .first::<UserPreferences>(&mut conn)
+            .unwrap();
+        assert_eq!(prefs.encrypted_blob, blueprint.preferences_encrypted);
+        assert_eq!(prefs.version_nonce, blueprint.preferences_version_nonce);
+
+        let keystore = user_keystores
+            .find(user_id)
+            .first::<UserKeystore>(&mut conn)
+            .unwrap();
+        assert_eq!(keystore.encrypted_blob, blueprint.user_keystore_encrypted);
+        assert_eq!(
+            keystore.version_nonce,
+            blueprint.user_keystore_version_nonce
+        );
+
+        let signin_nonce = signin_nonces
+            .find(blueprint.email.clone())
+            .first::<SigninNonce>(&mut conn)
+            .unwrap();
+        assert_eq!(signin_nonce.user_email, blueprint.email);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn verify_user_creation_sets_flag() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+
+        dao.verify_user_creation(user_id).unwrap();
+
+        assert!(fetch_user(user_id).is_verified);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn clear_unverified_users_removes_only_stale_records() {
+        let dao = dao();
+        let (stale_id, _) = create_user_and_blueprint(&dao);
+        let (fresh_id, _) = create_user_and_blueprint(&dao);
+
+        {
+            let mut conn = test_utils::db_conn();
+            let old_timestamp =
+                SystemTime::UNIX_EPOCH - Duration::from_secs(60 * 60 * 24 * 365 * 200);
+            dsl::update(users.find(stale_id))
+                .set(user_fields::created_timestamp.eq(old_timestamp))
+                .execute(&mut conn)
+                .unwrap();
+        }
+
+        dao.clear_unverified_users(very_long_duration()).unwrap();
+
+        {
+            let mut conn = test_utils::db_conn();
+            assert!(users.find(stale_id).first::<User>(&mut conn).is_err());
+            assert!(users.find(fresh_id).first::<User>(&mut conn).is_ok());
+        }
+
+        delete_user_row(fresh_id);
+    }
+
+    #[test]
+    fn rotate_user_public_key_updates_record() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let new_key_id = Uuid::now_v7();
+        let new_key = test_utils::random_bytes(32);
+
+        dao.rotate_user_public_key(user_id, new_key_id, &new_key, blueprint.public_key_id)
+            .unwrap();
+
+        let user = fetch_user(user_id);
+        assert_eq!(user.public_key_id, new_key_id);
+        assert_eq!(user.public_key, new_key);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn rotate_user_public_key_detects_out_of_date() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let result = dao.rotate_user_public_key(
+            user_id,
+            Uuid::now_v7(),
+            &test_utils::random_bytes(16),
+            Uuid::now_v7(),
+        );
+
+        assert!(matches!(result, Err(DaoError::OutOfDate)));
+        assert_eq!(fetch_user(user_id).public_key_id, blueprint.public_key_id);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_user_prefs_updates_blob() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let new_blob = test_utils::random_bytes(48);
+        let new_nonce = blueprint.preferences_version_nonce + 1;
+
+        dao.update_user_prefs(
+            user_id,
+            &new_blob,
+            new_nonce,
+            blueprint.preferences_version_nonce,
+        )
+        .unwrap();
+
+        let prefs = fetch_preferences(user_id);
+        assert_eq!(prefs.encrypted_blob, new_blob);
+        assert_eq!(prefs.version_nonce, new_nonce);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_user_prefs_detects_out_of_date() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let result = dao.update_user_prefs(
+            user_id,
+            &test_utils::random_bytes(24),
+            blueprint.preferences_version_nonce + 1,
+            blueprint.preferences_version_nonce - 1,
+        );
+
+        assert!(matches!(result, Err(DaoError::OutOfDate)));
+        let prefs = fetch_preferences(user_id);
+        assert_eq!(prefs.version_nonce, blueprint.preferences_version_nonce);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_user_keystore_updates_blob() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let new_blob = test_utils::random_bytes(48);
+        let new_nonce = blueprint.user_keystore_version_nonce + 1;
+
+        dao.update_user_keystore(
+            user_id,
+            &new_blob,
+            new_nonce,
+            blueprint.user_keystore_version_nonce,
+        )
+        .unwrap();
+
+        let keystore = fetch_keystore(user_id);
+        assert_eq!(keystore.encrypted_blob, new_blob);
+        assert_eq!(keystore.version_nonce, new_nonce);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_user_keystore_detects_out_of_date() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let result = dao.update_user_keystore(
+            user_id,
+            &test_utils::random_bytes(24),
+            blueprint.user_keystore_version_nonce + 1,
+            blueprint.user_keystore_version_nonce - 1,
+        );
+
+        assert!(matches!(result, Err(DaoError::OutOfDate)));
+        let keystore = fetch_keystore(user_id);
+        assert_eq!(
+            keystore.version_nonce,
+            blueprint.user_keystore_version_nonce
+        );
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_password_updates_all_fields() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let new_auth_hash = format!("new-auth-{}", SecureRng::next_u128());
+        let new_auth_salt = test_utils::random_bytes(20);
+        let new_auth_mem_cost = 2048;
+        let new_auth_threads = 2;
+        let new_auth_iterations = 6;
+        let new_pw_salt = test_utils::random_bytes(20);
+        let new_pw_mem_cost = 2048;
+        let new_pw_threads = 2;
+        let new_pw_iterations = 6;
+        let new_encrypted_key = test_utils::random_bytes(40);
+
+        dao.update_password(
+            &blueprint.email,
+            &new_auth_hash,
+            &new_auth_salt,
+            new_auth_mem_cost,
+            new_auth_threads,
+            new_auth_iterations,
+            &new_pw_salt,
+            new_pw_mem_cost,
+            new_pw_threads,
+            new_pw_iterations,
+            &new_encrypted_key,
+        )
+        .unwrap();
+
+        let user = fetch_user(user_id);
+        assert_eq!(user.auth_string_hash, new_auth_hash);
+        assert_eq!(user.auth_string_hash_salt, new_auth_salt);
+        assert_eq!(user.auth_string_hash_mem_cost_kib, new_auth_mem_cost);
+        assert_eq!(user.auth_string_hash_threads, new_auth_threads);
+        assert_eq!(user.auth_string_hash_iterations, new_auth_iterations);
+        assert_eq!(user.password_encryption_key_salt, new_pw_salt);
+        assert_eq!(user.password_encryption_key_mem_cost_kib, new_pw_mem_cost);
+        assert_eq!(user.password_encryption_key_threads, new_pw_threads);
+        assert_eq!(user.password_encryption_key_iterations, new_pw_iterations);
+        assert_eq!(
+            user.encryption_key_encrypted_with_password,
+            new_encrypted_key
+        );
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_recovery_key_updates_all_fields() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+
+        let new_salt_encryption = test_utils::random_bytes(24);
+        let new_salt_recovery = test_utils::random_bytes(24);
+        let new_mem_cost = 4096;
+        let new_threads = 2;
+        let new_iterations = 7;
+        let new_auth_hash = format!("recovery-updated-{}", SecureRng::next_u128());
+        let new_encrypted_key = test_utils::random_bytes(40);
+
+        dao.update_recovery_key(
+            user_id,
+            &new_salt_encryption,
+            &new_salt_recovery,
+            new_mem_cost,
+            new_threads,
+            new_iterations,
+            &new_auth_hash,
+            &new_encrypted_key,
+        )
+        .unwrap();
+
+        let user = fetch_user(user_id);
+        assert_eq!(
+            user.recovery_key_hash_salt_for_encryption,
+            new_salt_encryption
+        );
+        assert_eq!(
+            user.recovery_key_hash_salt_for_recovery_auth,
+            new_salt_recovery
+        );
+        assert_eq!(user.recovery_key_hash_mem_cost_kib, new_mem_cost);
+        assert_eq!(user.recovery_key_hash_threads, new_threads);
+        assert_eq!(user.recovery_key_hash_iterations, new_iterations);
+        assert_eq!(
+            user.recovery_key_auth_hash_rehashed_with_auth_string_params,
+            new_auth_hash
+        );
+        assert_eq!(
+            user.encryption_key_encrypted_with_recovery_key,
+            new_encrypted_key
+        );
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn update_email_changes_value() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+        let new_email = format!("updated-{}", test_utils::unique_email());
+
+        dao.update_email(user_id, &new_email).unwrap();
+
+        assert_eq!(fetch_user(user_id).email, new_email);
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn save_user_deletion_container_keys_persists_rows() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+        let key_ids = vec![Uuid::now_v7(), Uuid::now_v7()];
+        let container_id = prepare_container_with_keys(&key_ids);
+        let delete_me_time = SystemTime::now() + Duration::from_secs(60);
+
+        dao.save_user_deletion_container_keys(&key_ids, user_id, delete_me_time)
+            .unwrap();
+
+        let mut conn = test_utils::db_conn();
+        let stored: Vec<UserDeletionRequestContainerKey> = user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user_id))
+            .load(&mut conn)
+            .unwrap();
+        assert_eq!(stored.len(), key_ids.len());
+        for record in stored {
+            assert!(key_ids.contains(&record.key_id));
+        }
+
+        delete_user_row(user_id);
+        delete_container_row(container_id);
+    }
+
+    #[test]
+    fn initiate_and_cancel_user_deletion_cycle() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+
+        assert!(!dao.check_is_user_listed_for_deletion(user_id).unwrap());
+
+        dao.initiate_user_deletion(user_id, Duration::from_secs(5))
+            .unwrap();
+        assert!(dao.check_is_user_listed_for_deletion(user_id).unwrap());
+
+        {
+            let mut conn = test_utils::db_conn();
+            let request = user_deletion_requests
+                .find(user_id)
+                .first::<UserDeletionRequest>(&mut conn)
+                .unwrap();
+            assert!(request
+                .ready_for_deletion_time
+                .duration_since(SystemTime::now())
+                .is_ok());
+        }
+
+        dao.cancel_user_deletion(user_id).unwrap();
+        assert!(!dao.check_is_user_listed_for_deletion(user_id).unwrap());
+
+        delete_user_row(user_id);
+    }
+
+    #[test]
+    fn get_all_users_ready_for_deletion_filters_by_time() {
+        let dao = dao();
+        let (ready_id, _) = create_user_and_blueprint(&dao);
+        let (pending_id, _) = create_user_and_blueprint(&dao);
+
+        dao.initiate_user_deletion(ready_id, Duration::from_secs(0))
+            .unwrap();
+        dao.initiate_user_deletion(pending_id, Duration::from_secs(60))
+            .unwrap();
+
+        let ready_requests = dao.get_all_users_ready_for_deletion().unwrap();
+        let ready_ids: Vec<Uuid> = ready_requests.into_iter().map(|req| req.user_id).collect();
+        assert!(ready_ids.contains(&ready_id));
+        assert!(!ready_ids.contains(&pending_id));
+
+        dao.cancel_user_deletion(ready_id).unwrap();
+        dao.cancel_user_deletion(pending_id).unwrap();
+
+        delete_user_row(ready_id);
+        delete_user_row(pending_id);
+    }
+
+    #[test]
+    fn delete_user_removes_user_and_related_data() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+
+        let key_only_container_key = Uuid::now_v7();
+        let shared_container_key = Uuid::now_v7();
+        let survivor_key = Uuid::now_v7();
+
+        let solo_container = prepare_container_with_keys(&[key_only_container_key]);
+        let shared_container = prepare_container_with_keys(&[shared_container_key, survivor_key]);
+
+        let delete_me_time = SystemTime::now();
+        dao.save_user_deletion_container_keys(
+            &[key_only_container_key, shared_container_key],
+            user_id,
+            delete_me_time,
+        )
+        .unwrap();
+        dao.initiate_user_deletion(user_id, Duration::from_secs(0))
+            .unwrap();
+
+        let request = {
+            let mut conn = test_utils::db_conn();
+            user_deletion_requests
+                .find(user_id)
+                .first::<UserDeletionRequest>(&mut conn)
+                .unwrap()
+        };
+
+        dao.delete_user(&request).unwrap();
+
+        let mut conn = test_utils::db_conn();
+        assert!(users.find(user_id).first::<User>(&mut conn).is_err());
+        assert!(containers
+            .find(solo_container)
+            .first::<Container>(&mut conn)
+            .is_err());
+        assert!(user_deletion_requests
+            .find(user_id)
+            .first::<UserDeletionRequest>(&mut conn)
+            .is_err());
+
+        let shared_key_count: i64 = container_access_keys
+            .filter(container_access_key_fields::container_id.eq(shared_container))
+            .count()
+            .get_result(&mut conn)
+            .unwrap();
+        assert_eq!(shared_key_count, 1);
+
+        delete_container_row(shared_container);
+    }
+
+    #[ignore]
+    #[test]
+    fn delete_old_user_deletion_requests_removes_expired_rows() {
+        let dao = dao();
+        let (user_id, _) = create_user_and_blueprint(&dao);
+        let key_id = Uuid::now_v7();
+        let container_id = prepare_container_with_keys(&[key_id]);
+
+        dao.initiate_user_deletion(user_id, Duration::from_secs(0))
+            .unwrap();
+        dao.save_user_deletion_container_keys(
+            &[key_id],
+            user_id,
+            SystemTime::now() - Duration::from_secs(60),
+        )
+        .unwrap();
+
+        dao.delete_old_user_deletion_requests().unwrap();
+
+        let mut conn = test_utils::db_conn();
+        assert!(user_deletion_requests
+            .find(user_id)
+            .first::<UserDeletionRequest>(&mut conn)
+            .is_err());
+        assert!(user_deletion_request_container_keys
+            .filter(user_deletion_request_container_key_fields::user_id.eq(user_id))
+            .first::<UserDeletionRequestContainerKey>(&mut conn)
+            .is_err());
+
+        delete_user_row(user_id);
+        delete_container_row(container_id);
+    }
+
+    #[test]
+    fn get_protected_user_data_returns_joined_data() {
+        let dao = dao();
+        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+
+        let protected = dao.get_protected_user_data(user_id).unwrap();
+
+        assert_eq!(
+            protected.preferences_encrypted,
+            blueprint.preferences_encrypted
+        );
+        assert_eq!(
+            protected.preferences_version_nonce,
+            blueprint.preferences_version_nonce
+        );
+        assert_eq!(
+            protected.user_keystore_encrypted,
+            blueprint.user_keystore_encrypted
+        );
+        assert_eq!(
+            protected.user_keystore_version_nonce,
+            blueprint.user_keystore_version_nonce
+        );
+        assert_eq!(
+            protected.password_encryption_key_salt,
+            blueprint.password_encryption_key_salt
+        );
+        assert_eq!(
+            protected.password_encryption_key_mem_cost_kib,
+            blueprint.password_encryption_key_mem_cost_kib
+        );
+        assert_eq!(
+            protected.password_encryption_key_threads,
+            blueprint.password_encryption_key_threads
+        );
+        assert_eq!(
+            protected.password_encryption_key_iterations,
+            blueprint.password_encryption_key_iterations
+        );
+        assert_eq!(
+            protected.encryption_key_encrypted_with_password,
+            blueprint.encryption_key_encrypted_with_password
+        );
+
+        delete_user_row(user_id);
+    }
+}

@@ -45,3 +45,37 @@ impl Dao {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils;
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    fn dao() -> Dao {
+        Dao::new(test_utils::db_pool())
+    }
+
+    #[test]
+    fn job_registry_persists_and_updates_timestamps() {
+        let dao = dao();
+        let job_name = format!("test-job-{}", Uuid::now_v7());
+
+        assert!(dao.get_job_last_run_timestamp(&job_name).unwrap().is_none());
+
+        let timestamp = SystemTime::now();
+        dao.set_job_last_run_timestamp(&job_name, timestamp)
+            .unwrap();
+
+        let stored = dao.get_job_last_run_timestamp(&job_name).unwrap();
+        assert_eq!(stored, Some(timestamp));
+
+        let new_timestamp = timestamp + Duration::from_secs(60);
+        dao.set_job_last_run_timestamp(&job_name, new_timestamp)
+            .unwrap();
+
+        let updated = dao.get_job_last_run_timestamp(&job_name).unwrap();
+        assert_eq!(updated, Some(new_timestamp));
+    }
+}

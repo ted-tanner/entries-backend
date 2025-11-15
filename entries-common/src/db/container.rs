@@ -971,3 +971,769 @@ impl Dao {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_utils::{self, TestUserData};
+    use crate::db::user;
+    use crate::db::DbConnection;
+    use crate::messages::{CategoryWithTempId, EntryIdAndCategoryId};
+    use crate::models::category::{Category as CategoryModel, NewCategory};
+    use crate::models::container_share_invite::NewContainerShareInvite;
+    use crate::models::entry::{Entry as EntryModel, NewEntry};
+    use crate::schema::categories::dsl::categories;
+    use crate::schema::container_accept_keys as container_accept_key_fields;
+    use crate::schema::container_accept_keys::dsl::container_accept_keys;
+    use crate::schema::container_access_keys as container_access_key_fields;
+    use crate::schema::container_access_keys::dsl::container_access_keys;
+    use crate::schema::container_share_invites as container_share_invite_fields;
+    use crate::schema::container_share_invites::dsl::container_share_invites;
+    use crate::schema::containers as container_fields;
+    use crate::schema::containers::dsl::containers;
+    use crate::schema::entries as entry_fields;
+    use crate::schema::entries::dsl::entries;
+    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use std::time::{Duration, SystemTime};
+
+    fn dao() -> Dao {
+        Dao::new(test_utils::db_pool())
+    }
+
+    fn insert_container_with_key() -> (Uuid, Uuid) {
+        let mut conn = test_utils::db_conn();
+        let container_id = test_utils::insert_container(&mut conn);
+        let key_id = Uuid::now_v7();
+        test_utils::insert_container_access_key(&mut conn, container_id, key_id);
+        (container_id, key_id)
+    }
+
+    fn cleanup_container(container_id: Uuid) {
+        let mut conn = test_utils::db_conn();
+        let _ = diesel::delete(containers.find(container_id)).execute(&mut conn);
+    }
+
+    fn insert_category_record(conn: &mut DbConnection, container_id: Uuid) -> Uuid {
+        let category_id = Uuid::now_v7();
+        let new_category = NewCategory {
+            id: category_id,
+            container_id,
+            encrypted_blob: &test_utils::random_bytes(16),
+            version_nonce: 1,
+            modified_timestamp: SystemTime::now(),
+        };
+        dsl::insert_into(categories)
+            .values(&new_category)
+            .execute(conn)
+            .unwrap();
+        category_id
+    }
+
+    fn insert_entry_record(
+        conn: &mut DbConnection,
+        container_id: Uuid,
+        category_id: Option<Uuid>,
+    ) -> Uuid {
+        let entry_id = Uuid::now_v7();
+        let new_entry = NewEntry {
+            id: entry_id,
+            container_id,
+            category_id,
+            encrypted_blob: &test_utils::random_bytes(16),
+            version_nonce: 1,
+            modified_timestamp: SystemTime::now(),
+        };
+        dsl::insert_into(entries)
+            .values(&new_entry)
+            .execute(conn)
+            .unwrap();
+        entry_id
+    }
+
+    fn insert_accept_key_record(
+        conn: &mut DbConnection,
+        container_id: Uuid,
+        key_id: Uuid,
+        expiration: SystemTime,
+        read_only: bool,
+    ) {
+        let key = NewContainerAcceptKey {
+            key_id,
+            container_id,
+            public_key: &test_utils::random_bytes(32),
+            expiration,
+            read_only,
+        };
+        dsl::insert_into(container_accept_keys)
+            .values(&key)
+            .execute(conn)
+            .unwrap();
+    }
+
+    fn insert_share_invite_record(
+        conn: &mut DbConnection,
+        recipient_email: &str,
+        accept_key_id: Uuid,
+    ) -> (Uuid, Vec<u8>) {
+        let accept_key_encrypted = accept_key_id.as_bytes().to_vec();
+        let invite = NewContainerShareInvite {
+            id: Uuid::now_v7(),
+            recipient_user_email: recipient_email,
+            sender_public_key: &test_utils::random_bytes(32),
+            encryption_key_encrypted: &test_utils::random_bytes(32),
+            container_accept_private_key_encrypted: &test_utils::random_bytes(32),
+            container_info_encrypted: &test_utils::random_bytes(32),
+            sender_info_encrypted: &test_utils::random_bytes(32),
+            container_accept_key_info_encrypted: &test_utils::random_bytes(32),
+            container_accept_key_id_encrypted: &accept_key_encrypted,
+            share_info_symmetric_key_encrypted: &test_utils::random_bytes(32),
+            recipient_public_key_id_used_by_sender: Uuid::now_v7(),
+            recipient_public_key_id_used_by_server: Uuid::now_v7(),
+            created_unix_timestamp_intdiv_five_million: 0,
+        };
+        dsl::insert_into(container_share_invites)
+            .values(&invite)
+            .execute(conn)
+            .unwrap();
+
+        (invite.id, invite.sender_public_key.to_vec())
+    }
+
+    fn create_verified_user() -> (Uuid, TestUserData) {
+        let user_dao = user::Dao::new(test_utils::db_pool());
+        let inserted = test_utils::create_user_with_dao(&user_dao);
+        let mut conn = test_utils::db_conn();
+        dsl::update(crate::schema::users::dsl::users.find(inserted.id))
+            .set(crate::schema::users::dsl::is_verified.eq(true))
+            .execute(&mut conn)
+            .unwrap();
+        (inserted.id, inserted.data)
+    }
+
+    #[test]
+    fn container_key_queries_work() {
+        let dao = dao();
+        let (container_id, key_id) = insert_container_with_key();
+
+        let key = dao.get_public_container_key(key_id, container_id).unwrap();
+        assert_eq!(key.key_id, key_id);
+
+        let extra_key_id = Uuid::now_v7();
+        {
+            let mut conn = test_utils::db_conn();
+            test_utils::insert_container_access_key(&mut conn, container_id, extra_key_id);
+        }
+
+        let keys = dao
+            .get_multiple_public_container_keys(&[extra_key_id], &[container_id])
+            .unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].key_id, extra_key_id);
+
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn container_accept_and_invite_key_queries_work() {
+        let dao = dao();
+        let (container_id, _key_id) = insert_container_with_key();
+        let accept_key_id = Uuid::now_v7();
+        let (user_id, user_data) = create_verified_user();
+
+        {
+            let mut conn = test_utils::db_conn();
+            insert_accept_key_record(
+                &mut conn,
+                container_id,
+                accept_key_id,
+                SystemTime::now(),
+                false,
+            );
+            insert_share_invite_record(&mut conn, &user_data.email, accept_key_id);
+        }
+
+        let accept_key = dao
+            .get_container_accept_public_key(accept_key_id, container_id)
+            .unwrap();
+        assert_eq!(accept_key.key_id, accept_key_id);
+
+        let invite_id = container_share_invites
+            .select(container_share_invite_fields::id)
+            .first::<Uuid>(&mut test_utils::db_conn())
+            .unwrap();
+        let sender_key = dao
+            .get_container_invite_sender_public_key(invite_id)
+            .unwrap();
+        assert!(!sender_key.is_empty());
+
+        dao.delete_invitation(invite_id).unwrap();
+        test_utils::delete_user(user_id);
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn container_retrieval_includes_categories_and_entries() {
+        let dao = dao();
+        let mut conn = test_utils::db_conn();
+        let live_container = test_utils::insert_container(&mut conn);
+        let live_category = insert_category_record(&mut conn, live_container);
+        insert_entry_record(&mut conn, live_container, Some(live_category));
+
+        let deleted_container = test_utils::insert_container(&mut conn);
+        insert_category_record(&mut conn, deleted_container);
+        insert_entry_record(&mut conn, deleted_container, None);
+        dsl::update(containers.find(deleted_container))
+            .set(container_fields::deleted_at.eq(Some(SystemTime::now())))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        let container = dao.get_container(live_container).unwrap();
+        assert_eq!(
+            Uuid::try_from(container.id).unwrap(),
+            live_container,
+            "container id mismatch"
+        );
+        assert_eq!(container.categories.len(), 1);
+        assert_eq!(container.entries.len(), 1);
+
+        let mut listed = dao
+            .get_multiple_containers_by_id(&[live_container, deleted_container])
+            .unwrap()
+            .containers;
+        listed.sort_by_key(|c| Uuid::try_from(c.id.clone()).unwrap());
+
+        let live_result = &listed[0];
+        assert_eq!(live_result.categories.len(), 1);
+        assert_eq!(live_result.entries.len(), 1);
+
+        let deleted_result = &listed[1];
+        assert!(deleted_result.categories.is_empty());
+        assert!(deleted_result.entries.is_empty());
+
+        cleanup_container(live_container);
+        cleanup_container(deleted_container);
+    }
+
+    #[test]
+    fn create_and_update_container_flow() {
+        let dao = dao();
+        let encrypted_blob = test_utils::random_bytes(32);
+        let categories_input = vec![
+            CategoryWithTempId {
+                temp_id: 10,
+                encrypted_blob: test_utils::random_bytes(16),
+                version_nonce: 1,
+            },
+            CategoryWithTempId {
+                temp_id: 11,
+                encrypted_blob: test_utils::random_bytes(16),
+                version_nonce: 2,
+            },
+        ];
+        let user_key = test_utils::random_bytes(32);
+
+        let frame = dao
+            .create_container(&encrypted_blob, 5, &categories_input, &user_key)
+            .unwrap();
+        let container_id = Uuid::try_from(frame.id).unwrap();
+
+        let mut conn = test_utils::db_conn();
+        let created_container = containers
+            .find(container_id)
+            .first::<Container>(&mut conn)
+            .unwrap();
+        assert_eq!(created_container.encrypted_blob, encrypted_blob);
+        assert_eq!(frame.category_ids.len(), 2);
+
+        let new_blob = test_utils::random_bytes(24);
+        dao.update_container(container_id, &new_blob, 6, 5).unwrap();
+        let updated_container = containers
+            .find(container_id)
+            .first::<Container>(&mut conn)
+            .unwrap();
+        assert_eq!(updated_container.encrypted_blob, new_blob);
+        assert_eq!(updated_container.version_nonce, 6);
+
+        let err = dao
+            .update_container(container_id, &new_blob, 7, 4)
+            .unwrap_err();
+        assert!(matches!(err, DaoError::OutOfDate));
+
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn invite_and_accept_invitation_flow() {
+        let dao = dao();
+        let (container_id, _) = insert_container_with_key();
+        let (user_id, user_data) = create_verified_user();
+        let accept_key_id = Uuid::now_v7();
+        let sender_public_key = test_utils::random_bytes(32);
+        let encryption_key_encrypted = test_utils::random_bytes(48);
+        let container_info = test_utils::random_bytes(32);
+        let sender_info = test_utils::random_bytes(24);
+        let share_info = test_utils::random_bytes(20);
+        let accept_public_key = test_utils::random_bytes(32);
+        let accept_private_key = test_utils::random_bytes(32);
+        let accept_info = test_utils::random_bytes(32);
+        let accept_key_id_encrypted = test_utils::random_bytes(32);
+
+        let invite = dao
+            .invite_user(
+                &user_data.email,
+                &sender_public_key,
+                &encryption_key_encrypted,
+                &container_info,
+                &sender_info,
+                &share_info,
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                container_id,
+                SystemTime::now() + Duration::from_secs(60),
+                false,
+                accept_key_id,
+                &accept_key_id_encrypted,
+                &accept_public_key,
+                &accept_private_key,
+                &accept_info,
+            )
+            .unwrap();
+
+        let pending = dao.get_all_pending_invitations(&user_data.email).unwrap();
+        assert_eq!(pending.invites.len(), 1);
+
+        let recipient_access_public_key = test_utils::random_bytes(32);
+        let container_token = dao
+            .accept_invitation(
+                accept_key_id,
+                container_id,
+                false,
+                Uuid::try_from(invite.value).unwrap(),
+                &user_data.email,
+                &recipient_access_public_key,
+            )
+            .unwrap();
+        assert_eq!(
+            Uuid::try_from(container_token.container_id).unwrap(),
+            container_id
+        );
+
+        let mut conn = test_utils::db_conn();
+        assert_eq!(
+            container_share_invites
+                .filter(container_share_invite_fields::recipient_user_email.eq(&user_data.email))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+        assert!(
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container_id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap()
+                >= 1
+        );
+        assert_eq!(
+            container_accept_keys
+                .filter(container_accept_key_fields::key_id.eq(accept_key_id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+
+        test_utils::delete_user(user_id);
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn reject_invitation_removes_rows() {
+        let dao = dao();
+        let (container_id, _) = insert_container_with_key();
+        let (user_id, user_data) = create_verified_user();
+        let accept_key_id = Uuid::now_v7();
+
+        let invite = dao
+            .invite_user(
+                &user_data.email,
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                container_id,
+                SystemTime::now() + Duration::from_secs(60),
+                true,
+                accept_key_id,
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+            )
+            .unwrap();
+
+        dao.reject_invitation(
+            Uuid::try_from(invite.value).unwrap(),
+            accept_key_id,
+            &user_data.email,
+        )
+        .unwrap();
+
+        let mut conn = test_utils::db_conn();
+        assert_eq!(
+            container_share_invites
+                .filter(container_share_invite_fields::recipient_user_email.eq(&user_data.email))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            container_accept_keys
+                .filter(container_accept_key_fields::key_id.eq(accept_key_id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+
+        test_utils::delete_user(user_id);
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn invitation_cleanup_handles_manual_and_expired_records() {
+        let dao = dao();
+        let (container_id, _) = insert_container_with_key();
+        let (user_id, user_data) = create_verified_user();
+
+        let invite = dao
+            .invite_user(
+                &user_data.email,
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                container_id,
+                SystemTime::now() + Duration::from_secs(60),
+                false,
+                Uuid::now_v7(),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+                &test_utils::random_bytes(16),
+            )
+            .unwrap();
+
+        let invite_id = Uuid::try_from(invite.value).unwrap();
+        dao.delete_invitation(invite_id).unwrap();
+
+        {
+            let mut conn = test_utils::db_conn();
+            assert_eq!(
+                container_share_invites
+                    .filter(container_share_invite_fields::id.eq(invite_id))
+                    .count()
+                    .get_result::<i64>(&mut conn)
+                    .unwrap(),
+                0
+            );
+        }
+
+        // Create expired rows
+        let expired_accept_key = Uuid::now_v7();
+        let live_accept_key = Uuid::now_v7();
+        let expired_invite_id = Uuid::now_v7();
+        let live_invite_id = Uuid::now_v7();
+        {
+            let mut conn = test_utils::db_conn();
+            insert_accept_key_record(
+                &mut conn,
+                container_id,
+                expired_accept_key,
+                SystemTime::now() - Duration::from_secs(60),
+                false,
+            );
+            insert_accept_key_record(
+                &mut conn,
+                container_id,
+                live_accept_key,
+                SystemTime::now() + Duration::from_secs(3600),
+                false,
+            );
+
+            let sender_public_key = test_utils::random_bytes(16);
+            let encryption_key = test_utils::random_bytes(16);
+            let accept_private_key = test_utils::random_bytes(16);
+            let container_info = test_utils::random_bytes(16);
+            let sender_info = test_utils::random_bytes(16);
+            let accept_info = test_utils::random_bytes(16);
+            let accept_key_id_encrypted = test_utils::random_bytes(16);
+            let share_info = test_utils::random_bytes(16);
+            let recipient_key_id_sender = Uuid::now_v7();
+            let recipient_key_id_server = Uuid::now_v7();
+
+            let expired_invite = NewContainerShareInvite {
+                id: expired_invite_id,
+                recipient_user_email: &user_data.email,
+                sender_public_key: &sender_public_key,
+                encryption_key_encrypted: &encryption_key,
+                container_accept_private_key_encrypted: &accept_private_key,
+                container_info_encrypted: &container_info,
+                sender_info_encrypted: &sender_info,
+                container_accept_key_info_encrypted: &accept_info,
+                container_accept_key_id_encrypted: &accept_key_id_encrypted,
+                share_info_symmetric_key_encrypted: &share_info,
+                recipient_public_key_id_used_by_sender: recipient_key_id_sender,
+                recipient_public_key_id_used_by_server: recipient_key_id_server,
+                created_unix_timestamp_intdiv_five_million: 0,
+            };
+            let live_invite = NewContainerShareInvite {
+                id: live_invite_id,
+                recipient_user_email: &user_data.email,
+                sender_public_key: &sender_public_key,
+                encryption_key_encrypted: &encryption_key,
+                container_accept_private_key_encrypted: &accept_private_key,
+                container_info_encrypted: &container_info,
+                sender_info_encrypted: &sender_info,
+                container_accept_key_info_encrypted: &accept_info,
+                container_accept_key_id_encrypted: &accept_key_id_encrypted,
+                share_info_symmetric_key_encrypted: &share_info,
+                recipient_public_key_id_used_by_sender: recipient_key_id_sender,
+                recipient_public_key_id_used_by_server: recipient_key_id_server,
+                created_unix_timestamp_intdiv_five_million: i16::MAX,
+            };
+
+            dsl::insert_into(container_share_invites)
+                .values(&expired_invite)
+                .execute(&mut conn)
+                .unwrap();
+            dsl::insert_into(container_share_invites)
+                .values(&live_invite)
+                .execute(&mut conn)
+                .unwrap();
+        }
+
+        dao.delete_all_expired_invitations().unwrap();
+
+        let mut conn = test_utils::db_conn();
+        let remaining_accept_keys = container_accept_keys
+            .filter(container_accept_key_fields::key_id.eq(live_accept_key))
+            .count()
+            .get_result::<i64>(&mut conn)
+            .unwrap();
+        assert_eq!(remaining_accept_keys, 1);
+        assert_eq!(
+            container_accept_keys
+                .filter(container_accept_key_fields::key_id.eq(expired_accept_key))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            container_share_invites
+                .filter(container_share_invite_fields::id.eq(expired_invite_id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            container_share_invites
+                .filter(container_share_invite_fields::id.eq(live_invite_id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap(),
+            1
+        );
+
+        diesel::delete(container_share_invites.find(live_invite_id))
+            .execute(&mut conn)
+            .unwrap();
+
+        test_utils::delete_user(user_id);
+        cleanup_container(container_id);
+    }
+
+    #[test]
+    fn leave_container_handles_remaining_users() {
+        let dao = dao();
+        let (container_with_two, key_one) = insert_container_with_key();
+        let key_two = Uuid::now_v7();
+        {
+            let mut conn = test_utils::db_conn();
+            test_utils::insert_container_access_key(&mut conn, container_with_two, key_two);
+        }
+
+        dao.leave_container(container_with_two, key_one).unwrap();
+        {
+            let mut conn = test_utils::db_conn();
+            let remaining = container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container_with_two))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap();
+            assert_eq!(remaining, 1);
+        }
+
+        let (solo_container, solo_key) = insert_container_with_key();
+        dao.leave_container(solo_container, solo_key).unwrap();
+        {
+            let mut conn = test_utils::db_conn();
+            assert!(containers
+                .find(solo_container)
+                .first::<Container>(&mut conn)
+                .is_err());
+        }
+
+        cleanup_container(container_with_two);
+    }
+
+    #[test]
+    fn entry_crud_flow_covers_all_paths() {
+        let dao = dao();
+        let (container_id, key_id) = insert_container_with_key();
+        let EntryIdAndCategoryId {
+            entry_id,
+            category_id,
+        } = dao
+            .create_entry_and_category(
+                &test_utils::random_bytes(16),
+                1,
+                &test_utils::random_bytes(16),
+                1,
+                container_id,
+            )
+            .unwrap();
+        let entry_uuid = Uuid::try_from(entry_id.clone()).unwrap();
+        let category_uuid = Uuid::try_from(category_id.clone()).unwrap();
+
+        dao.update_entry(
+            entry_uuid,
+            &test_utils::random_bytes(16),
+            2,
+            1,
+            Some(category_uuid),
+            container_id,
+        )
+        .unwrap();
+
+        let err = dao
+            .update_entry(
+                Uuid::try_from(entry_id.clone()).unwrap(),
+                &test_utils::random_bytes(8),
+                3,
+                0,
+                None,
+                container_id,
+            )
+            .unwrap_err();
+        assert!(matches!(err, DaoError::OutOfDate));
+
+        let standalone_entry = dao
+            .create_entry(&test_utils::random_bytes(10), 1, None, container_id)
+            .unwrap();
+
+        dao.soft_delete_entry(standalone_entry, container_id)
+            .unwrap();
+        dao.hard_delete_entry(standalone_entry, container_id)
+            .unwrap();
+
+        dao.leave_container(container_id, key_id).unwrap();
+    }
+
+    #[test]
+    fn category_crud_flow_updates_and_deletes_records() {
+        let dao = dao();
+        let (container_id, key_id) = insert_container_with_key();
+
+        let category_id = dao
+            .create_category(&test_utils::random_bytes(10), 1, container_id)
+            .unwrap();
+        dao.update_category(
+            category_id,
+            &test_utils::random_bytes(12),
+            2,
+            1,
+            container_id,
+        )
+        .unwrap();
+
+        let err = dao
+            .update_category(
+                category_id,
+                &test_utils::random_bytes(8),
+                3,
+                1,
+                container_id,
+            )
+            .unwrap_err();
+        assert!(matches!(err, DaoError::OutOfDate));
+
+        let entry_id = dao
+            .create_entry(
+                &test_utils::random_bytes(8),
+                1,
+                Some(category_id),
+                container_id,
+            )
+            .unwrap();
+
+        dao.soft_delete_category(category_id, container_id).unwrap();
+        dao.hard_delete_category(category_id, container_id).unwrap();
+
+        dao.hard_delete_entry(entry_id, container_id).unwrap();
+        dao.leave_container(container_id, key_id).unwrap();
+    }
+
+    #[test]
+    fn soft_and_hard_delete_container_flow() {
+        let dao = dao();
+        let mut conn = test_utils::db_conn();
+        let container_id = test_utils::insert_container(&mut conn);
+        let category_id = insert_category_record(&mut conn, container_id);
+        insert_entry_record(&mut conn, container_id, Some(category_id));
+        drop(conn);
+
+        dao.soft_delete_container(container_id).unwrap();
+        {
+            let mut conn = test_utils::db_conn();
+            let container = containers
+                .find(container_id)
+                .first::<Container>(&mut conn)
+                .unwrap();
+            assert!(container.deleted_at.is_some());
+            assert!(container.encrypted_blob.is_empty());
+
+            let category = categories
+                .find(category_id)
+                .first::<CategoryModel>(&mut conn)
+                .unwrap();
+            assert!(category.deleted_at.is_some());
+            assert!(category.encrypted_blob.is_empty());
+
+            let entry = entries
+                .filter(entry_fields::container_id.eq(container_id))
+                .first::<EntryModel>(&mut conn)
+                .unwrap();
+            assert!(entry.deleted_at.is_some());
+            assert!(entry.encrypted_blob.is_empty());
+        }
+
+        dao.hard_delete_container(container_id).unwrap();
+        let mut conn = test_utils::db_conn();
+        assert!(containers
+            .find(container_id)
+            .first::<Container>(&mut conn)
+            .is_err());
+    }
+}

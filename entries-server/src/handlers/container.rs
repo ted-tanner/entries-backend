@@ -1149,9 +1149,11 @@ pub mod tests {
         ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
     };
     use entries_common::models::container::Container;
+    use entries_common::schema::categories::dsl::categories;
     use entries_common::schema::container_access_keys as container_access_key_fields;
     use entries_common::schema::container_access_keys::dsl::container_access_keys;
     use entries_common::schema::containers::dsl::containers;
+    use entries_common::schema::entries::dsl::entries;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
 
@@ -5019,23 +5021,17 @@ pub mod tests {
         // Verify container, entries, and categories are all hard-deleted (cascade delete)
         // Note: Since the user no longer has access, we can't use their token. But we can verify via direct DB query
         // that the container and all associated entries and categories no longer exist
-        use entries_common::schema::categories::dsl::categories;
-        use entries_common::schema::entries::dsl::entries;
-
-        // Container should be hard deleted
         let container_from_db = containers
             .find(container.id)
             .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap());
         assert!(container_from_db.is_err());
 
-        // Verify all categories are hard deleted
         let categories_from_db: Vec<entries_common::models::category::Category> = categories
             .filter(entries_common::schema::categories::container_id.eq(container.id))
             .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
             .unwrap();
         assert_eq!(categories_from_db.len(), 0);
 
-        // Verify all entries are hard deleted
         let entries_from_db: Vec<entries_common::models::entry::Entry> = entries
             .filter(entries_common::schema::entries::container_id.eq(container.id))
             .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
