@@ -21,6 +21,7 @@ pub struct UserAuthStringHashAndStatus {
     pub user_id: Uuid,
     pub is_user_verified: bool,
     pub auth_string_hash: String,
+    pub created_timestamp: SystemTime,
 }
 
 pub struct Dao {
@@ -38,20 +39,22 @@ impl Dao {
         &self,
         user_email: &str,
     ) -> Result<UserAuthStringHashAndStatus, DaoError> {
-        let (user_id, is_user_verified, auth_string_hash) = users
+        let (user_id, is_user_verified, auth_string_hash, created_timestamp) = users
             .select((
                 user_fields::id,
                 user_fields::is_verified,
                 user_fields::auth_string_hash,
+                user_fields::created_timestamp,
             ))
             .filter(user_fields::email.eq(user_email))
-            .get_result::<(Uuid, bool, String)>(&mut self.db_thread_pool.get()?)?;
+            .get_result::<(Uuid, bool, String, SystemTime)>(&mut self.db_thread_pool.get()?)?;
 
         if !is_user_verified {
             return Ok(UserAuthStringHashAndStatus {
                 user_id,
                 is_user_verified,
                 auth_string_hash: String::new(),
+                created_timestamp,
             });
         }
 
@@ -59,6 +62,7 @@ impl Dao {
             user_id,
             is_user_verified,
             auth_string_hash,
+            created_timestamp,
         })
     }
 
@@ -66,20 +70,22 @@ impl Dao {
         &self,
         user_email: &str,
     ) -> Result<UserAuthStringHashAndStatus, DaoError> {
-        let (user_id, is_user_verified, recovery_key_auth_hash_rehashed) = users
+        let (user_id, is_user_verified, recovery_key_auth_hash_rehashed, created_timestamp) = users
             .select((
                 user_fields::id,
                 user_fields::is_verified,
                 user_fields::recovery_key_auth_hash_rehashed_with_auth_string_params,
+                user_fields::created_timestamp,
             ))
             .filter(user_fields::email.eq(user_email))
-            .get_result::<(Uuid, bool, String)>(&mut self.db_thread_pool.get()?)?;
+            .get_result::<(Uuid, bool, String, SystemTime)>(&mut self.db_thread_pool.get()?)?;
 
         if !is_user_verified {
             return Ok(UserAuthStringHashAndStatus {
                 user_id,
                 is_user_verified,
                 auth_string_hash: String::new(),
+                created_timestamp,
             });
         }
 
@@ -87,6 +93,7 @@ impl Dao {
             user_id,
             is_user_verified,
             auth_string_hash: recovery_key_auth_hash_rehashed,
+            created_timestamp,
         })
     }
 

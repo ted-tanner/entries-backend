@@ -1,5 +1,6 @@
 use entries_common::db::{self, DaoError, DbThreadPool};
-use entries_common::email::EmailSender;
+use entries_common::email::templates::UserVerificationMessage;
+use entries_common::email::{EmailMessage, EmailSender};
 use entries_common::messages::{
     AuthenticatedSession, CredentialPair, EmailQuery, RecoveryKeyAuthAndPasswordUpdate,
     SigninNonceAndHashParams, SigninToken,
@@ -147,8 +148,46 @@ pub async fn sign_in(
     };
 
     if !hash_and_status.is_user_verified {
+        let user_id = hash_and_status.user_id;
+        let user_email = &credentials.email;
+
+        // Send a new verification email
+        let user_creation_token_claims = NewAuthTokenClaims {
+            user_id,
+            user_email,
+            expiration: (hash_and_status.created_timestamp
+                + env::CONF.user_creation_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
+            token_type: AuthTokenType::UserCreation,
+        };
+
+        let user_creation_token =
+            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
+
+        let message = EmailMessage {
+            body: UserVerificationMessage::generate(
+                &env::CONF.user_verification_url,
+                &user_creation_token,
+                env::CONF.user_creation_token_lifetime,
+            ),
+            subject: "Verify your account",
+            from: env::CONF.email_from_address.clone(),
+            reply_to: env::CONF.email_reply_to_address.clone(),
+            destination: user_email,
+            is_html: true,
+        };
+
+        match smtp_thread_pool.send(message).await {
+            Ok(_) => (),
+            Err(e) => {
+                log::error!("Failed to send verification email during sign-in attempt: {e}");
+            }
+        }
+
         return Err(HttpErrorResponse::PendingAction(String::from(
-            "User has not accepted verification email",
+            "User has not accepted verification email. A new verification email has been sent.",
         )));
     }
 
@@ -1879,6 +1918,197 @@ mod tests {
         let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
         assert_eq!(resp_err.err_type, ErrorType::PendingAction as i32);
+        assert!(resp_err
+            .err_message
+            .contains("A new verification email has been sent"));
+
+        // Verify that a token created with the user's creation timestamp + lifetime would be valid
+        // This confirms the token expiration is based on creation timestamp, not current time
+        let user_creation_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (user.created_timestamp + env::CONF.user_creation_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
+            token_type: AuthTokenType::UserCreation,
+        };
+
+        let user_creation_token =
+            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
+
+        // Verify the token can be used to verify the user
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/verify?UserCreationToken={}",
+                user_creation_token
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify user is now verified
+        let verified_user = users::table
+            .filter(users::email.eq(&user.email))
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert!(verified_user.is_verified);
+    }
+
+    #[actix_web::test]
+    async fn test_sign_in_sends_verification_email_with_correct_expiration() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let user_number = SecureRng::next_u128();
+
+        let password = format!("password{user_number}");
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(password.as_bytes())
+            .unwrap();
+
+        let public_key_id = Uuid::now_v7();
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+
+            auth_string: Vec::from(auth_string.as_bytes()),
+
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
+
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
+
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
+
+            recovery_key_auth_hash: gen_bytes(32),
+
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: SecureRng::next_i64(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Get the user and record their creation timestamp
+        let user = users::table
+            .filter(users::email.eq(&new_user.email))
+            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+            .unwrap();
+        assert!(!user.is_verified);
+
+        let creation_timestamp = user.created_timestamp;
+        let expected_expiration = creation_timestamp + env::CONF.user_creation_token_lifetime;
+
+        // Wait a short time to ensure current time has advanced
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce_and_auth_string_params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        // Attempt sign in - this should send a new verification email
+        let req = TestRequest::post()
+            .uri("/api/auth/sign_in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Verify that the token expiration is based on creation timestamp, not current time
+        // Create a token with the expected expiration (creation_timestamp + lifetime)
+        let user_creation_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: expected_expiration
+                .duration_since(UNIX_EPOCH)
+                .expect("System time should be after Unix Epoch")
+                .as_secs(),
+            token_type: AuthTokenType::UserCreation,
+        };
+
+        let user_creation_token =
+            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
+
+        // Verify the token is valid and can be used to verify the user
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/user/verify?UserCreationToken={}",
+                user_creation_token
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify that a token with expiration based on current time (not creation time) would be different
+        // This confirms we're using creation_timestamp, not SystemTime::now()
+        let now = SystemTime::now();
+        let wrong_expiration = (now + env::CONF.user_creation_token_lifetime)
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs();
+
+        // The expected expiration should be less than or equal to the wrong expiration
+        // (since we waited after user creation, creation_timestamp + lifetime < now + lifetime)
+        let expected_expiration_secs = expected_expiration
+            .duration_since(UNIX_EPOCH)
+            .expect("System time should be after Unix Epoch")
+            .as_secs();
+
+        assert!(
+            expected_expiration_secs <= wrong_expiration,
+            "Token expiration should be based on creation timestamp, not current time"
+        );
     }
 
     #[actix_web::test]

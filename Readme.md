@@ -324,6 +324,8 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
+* Log something when rate limiting a request
+* Loosen up a tad on the create account limiting. Users may need multiple attempts and creating an account is one of the initial impressions a user receives.
 
 ### Do it later
 
