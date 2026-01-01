@@ -64,6 +64,10 @@ const USER_DELETION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_DELETION_TOKEN
 const OTP_LIFETIME_MINS_VAR: &str = "ENTRIES_OTP_LIFETIME_MINS";
 const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
 
+const SIGNIN_LIMITER_MAX_PER_PERIOD_VAR: &str = "ENTRIES_SIGNIN_LIMITER_MAX_PER_PERIOD";
+const SIGNIN_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_SIGNIN_LIMITER_PERIOD_SECS";
+const SIGNIN_LIMITER_FREQUENCY_HOURS_VAR: &str = "ENTRIES_SIGNIN_LIMITER_FREQUENCY_HOURS";
+
 const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
 const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
 const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
@@ -138,6 +142,13 @@ pub struct ConfigInner {
     pub otp_lifetime: Duration,
     #[zeroize(skip)]
     pub user_deletion_delay_days: u64,
+
+    #[zeroize(skip)]
+    pub signin_limiter_max_per_period: u32,
+    #[zeroize(skip)]
+    pub signin_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub signin_limiter_clear_frequency: Duration,
 
     #[zeroize(skip)]
     pub actix_worker_count: usize,
@@ -262,6 +273,15 @@ impl Config {
             ),
             otp_lifetime: Duration::from_secs(env_var_or(OTP_LIFETIME_MINS_VAR, 15)? * 60),
             user_deletion_delay_days: env_var_or(USER_DELETION_DELAY_DAYS_VAR, 7)?,
+
+            signin_limiter_max_per_period: env_var_or(SIGNIN_LIMITER_MAX_PER_PERIOD_VAR, 6)?,
+            signin_limiter_period: Duration::from_secs(env_var_or(
+                SIGNIN_LIMITER_PERIOD_SECS_VAR,
+                600,
+            )?),
+            signin_limiter_clear_frequency: Duration::from_secs(
+                env_var_or(SIGNIN_LIMITER_FREQUENCY_HOURS_VAR, 24)? * 3600,
+            ),
 
             actix_worker_count: env_var_or(ACTIX_WORKER_COUNT_VAR, num_cpus::get())?,
             log_level: env_var_or(LOG_LEVEL_VAR, String::from("info"))?,

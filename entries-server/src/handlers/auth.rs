@@ -14,13 +14,79 @@ use actix_web::{web, HttpResponse};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::FromHeader;
+use crate::utils::limiter_table as rate_limit_table;
+use crate::utils::limiter_table::LimiterTable;
+
+struct SigninLimiter {
+    max_per_period: u32,
+    period: Duration,
+    clear_frequency: Duration,
+    tables: &'static [RwLock<LimiterTable<String>>; 16],
+}
+
+impl SigninLimiter {
+    fn global() -> &'static Self {
+        static LIMITER: OnceLock<SigninLimiter> = OnceLock::new();
+        LIMITER.get_or_init(|| {
+            rate_limit_table::init_start();
+            Self {
+                max_per_period: env::CONF.signin_limiter_max_per_period,
+                period: env::CONF.signin_limiter_period,
+                clear_frequency: env::CONF.signin_limiter_clear_frequency,
+                tables: rate_limit_table::new_sharded_tables_16::<String>(),
+            }
+        })
+    }
+
+    #[cfg(test)]
+    fn new_for_tests(max_per_period: u32, period: Duration, clear_frequency: Duration) -> Self {
+        rate_limit_table::init_start();
+        Self {
+            max_per_period,
+            period,
+            clear_frequency,
+            tables: rate_limit_table::new_sharded_tables_16::<String>(),
+        }
+    }
+
+    #[inline]
+    fn table_index(email: &str) -> usize {
+        let bytes = email.as_bytes();
+
+        #[allow(clippy::get_first)]
+        let b0 = *bytes.get(0).unwrap_or(&0);
+        let b1 = *bytes.get(1).unwrap_or(&0);
+
+        (((b0 & 0x0F) ^ (b1 & 0x0F)) as usize) & 0x0F
+    }
+
+    async fn allow_attempt(&self, email: String) -> bool {
+        let table_index = Self::table_index(&email);
+        let shard = &self.tables[table_index];
+
+        let now = Instant::now();
+        let now_millis = rate_limit_table::now_millis_u32();
+
+        rate_limit_table::check_and_record(
+            shard,
+            email,
+            now,
+            now_millis,
+            self.max_per_period,
+            self.period,
+            self.clear_frequency,
+        )
+        .await
+    }
+}
 
 pub async fn obtain_nonce_and_auth_string_params(
     db_thread_pool: web::Data<DbThreadPool>,
@@ -94,6 +160,16 @@ pub async fn sign_in(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.0.email) {
         return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+    }
+
+    let email_limiter_key = credentials.0.email.to_ascii_lowercase();
+    if !SigninLimiter::global()
+        .allow_attempt(email_limiter_key)
+        .await
+    {
+        return Err(HttpErrorResponse::TooManyAttempts(String::from(
+            "Too many sign-in attempts. Please try again later.",
+        )));
     }
 
     let credentials = Arc::new(credentials.0);
@@ -604,11 +680,54 @@ mod tests {
     use entries_common::token::Token;
     use prost::Message;
     use std::str::FromStr;
+    use tokio::time::sleep;
     use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::Limiter;
     use crate::services::api::RouteLimiters;
+
+    #[actix_web::test]
+    async fn test_signin_limiter() {
+        let limiter =
+            SigninLimiter::new_for_tests(2, Duration::from_millis(5), Duration::from_millis(8));
+
+        // Choose emails that map to the same shard:
+        // 'a' (0x61 => low nibble 1) XOR second char low nibble 1 => shard 0.
+        let email = "aa@example.com".to_string();
+        let other_email_same_shard = "a1@example.com".to_string();
+        let clear_trigger_email_same_shard = "aq@example.com".to_string();
+
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(!limiter.allow_attempt(email.clone()).await);
+
+        // Different key, same shard should not affect the original key
+        assert!(limiter.allow_attempt(other_email_same_shard.clone()).await);
+
+        sleep(Duration::from_millis(5)).await;
+
+        // Period has expired, so the original key should be allowed again
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(!limiter.allow_attempt(email.clone()).await);
+
+        sleep(Duration::from_millis(1)).await;
+
+        // Period has not expired
+        assert!(!limiter.allow_attempt(email.clone()).await);
+
+        sleep(Duration::from_millis(3)).await;
+
+        // This request should trigger a clear (new key, same shard, sufficient time since last_clear)
+        assert!(limiter.allow_attempt(clear_trigger_email_same_shard).await);
+
+        // Table has been cleared, so the original key should be allowed again even though the period
+        // since the last reset has not necessarily fully elapsed.
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(limiter.allow_attempt(email.clone()).await);
+        assert!(!limiter.allow_attempt(email).await);
+    }
 
     #[actix_web::test]
     async fn test_obtain_nonce_and_auth_string_params() {

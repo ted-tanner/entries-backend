@@ -1,19 +1,11 @@
 use std::{
-    collections::HashMap,
     future::{ready, Ready},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::atomic::{AtomicU32, Ordering},
-    sync::OnceLock,
     time::{Duration, Instant},
 };
 
-static START: OnceLock<Instant> = OnceLock::new();
-
-fn now_millis() -> u32 {
-    Instant::now()
-        .duration_since(*START.get().unwrap())
-        .as_millis() as u32
-}
+use crate::utils::limiter_table as rate_limit_table;
+use crate::utils::limiter_table::LimiterTable;
 
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
@@ -21,12 +13,6 @@ use actix_web::{
 };
 use futures::future::LocalBoxFuture;
 use tokio::sync::RwLock;
-
-#[derive(Debug)]
-struct LimiterEntry {
-    count: AtomicU32,
-    first_access: AtomicU32, // milliseconds since process start
-}
 
 // LimiterTable uses a single u64 as the key for both IPv4 /24 and IPv6 /64 subnets.
 //
@@ -39,26 +25,12 @@ struct LimiterEntry {
 // billion chance for a random IPv6 subnet, probably even lower as real-world IPv6 subnets are
 // not random). In the unlikely event that there is a collision, the only effect is that hits to
 // either subnet will be counted for both.
-struct LimiterTable {
-    map: HashMap<u64, LimiterEntry>,
-    last_clear: Instant,
-}
-
-impl LimiterTable {
-    fn new() -> Self {
-        LimiterTable {
-            map: HashMap::new(),
-            last_clear: Instant::now(),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Limiter {
     max_per_period: u64,
     period: Duration,
     clear_frequency: Duration,
-    limiter_tables: &'static [RwLock<LimiterTable>; 16],
+    limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
 }
 
 impl Limiter {
@@ -73,26 +45,8 @@ impl Limiter {
             panic!("Limiter period must be less than 14 days (due to u32 ms wraparound)");
         }
 
-        START.get_or_init(Instant::now);
-
-        let limiter_tables = Box::leak(Box::new([
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-            RwLock::new(LimiterTable::new()),
-        ]));
+        rate_limit_table::init_start();
+        let limiter_tables = rate_limit_table::new_sharded_tables_16::<u64>();
 
         Limiter {
             max_per_period,
@@ -135,7 +89,7 @@ pub struct LimiterMiddleware<S> {
     period: Duration,
     clear_frequency: Duration,
 
-    limiter_tables: &'static [RwLock<LimiterTable>; 16],
+    limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
 }
 
 impl<S, B> Service<ServiceRequest> for LimiterMiddleware<S>
@@ -197,7 +151,7 @@ where
         };
 
         let table_index = (distinguishing_octet & 0x0F) as usize;
-        let table = unsafe { self.limiter_tables.get_unchecked(table_index) };
+        let shard = unsafe { self.limiter_tables.get_unchecked(table_index) };
 
         let req_fut = self.service.call(req);
 
@@ -207,7 +161,7 @@ where
 
         Box::pin(async move {
             let now = Instant::now();
-            let now_millis = now_millis();
+            let now_millis = rate_limit_table::now_millis_u32();
 
             // Get the /24 (IPv4) or /64 (IPv6) subnet as a u64 key
             let subnet_key = match ip {
@@ -215,57 +169,21 @@ where
                 IpAddr::V6(ip) => ipv6_subnet_key_u64(&ip),
             };
 
-            let found_subnet = {
-                // The read lock is intentionally scoped in this block to ensure it gets
-                // dropped before the write lock is acquired
-                let table = table.read().await;
-                let entry = table.map.get(&subnet_key);
+            let allowed = rate_limit_table::check_and_record(
+                shard,
+                subnet_key,
+                now,
+                now_millis,
+                max_per_period as u32,
+                period,
+                clear_frequency,
+            )
+            .await;
 
-                if let Some(entry) = entry {
-                    let first_access_millis = entry.first_access.load(Ordering::Relaxed);
-                    let count = entry.count.load(Ordering::Relaxed);
-                    if now_millis.wrapping_sub(first_access_millis) > period.as_millis() as u32 {
-                        // Try to reset first_access and count. The race is acceptable. It is fine if another thread resets
-                        // one or both of these concurrently.
-                        entry.first_access.store(now_millis, Ordering::Relaxed);
-                        entry.count.store(1, Ordering::Relaxed);
-                    } else {
-                        if count >= max_per_period as u32 {
-                            return Err(ErrorTooManyRequests(
-                                "Too many requests. Please try again later.",
-                            ));
-                        }
-                        entry.count.fetch_add(1, Ordering::Relaxed);
-                    }
-
-                    true
-                } else {
-                    false
-                }
-            };
-
-            if !found_subnet {
-                let mut table = table.write().await;
-
-                if now.duration_since(table.last_clear) >= clear_frequency {
-                    // Clear the table every so often to prevent it from growing too large
-                    table.map.clear();
-                    table.map.shrink_to_fit();
-                    table.last_clear = now;
-                }
-
-                table
-                    .map
-                    .entry(subnet_key)
-                    .and_modify(|entry| {
-                        // Was added by another thread before we acquired the lock; just
-                        // increment the count
-                        entry.count.fetch_add(1, Ordering::Relaxed);
-                    })
-                    .or_insert_with(|| LimiterEntry {
-                        first_access: AtomicU32::new(now_millis),
-                        count: AtomicU32::new(1),
-                    });
+            if !allowed {
+                return Err(ErrorTooManyRequests(
+                    "Too many requests. Please try again later.",
+                ));
             }
 
             req_fut.await
