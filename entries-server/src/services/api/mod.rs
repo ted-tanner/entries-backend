@@ -1,7 +1,6 @@
-use std::time::Duration;
-
 use actix_web::web::*;
 
+use crate::env::CONF;
 use crate::middleware::Limiter;
 
 mod auth;
@@ -27,21 +26,67 @@ pub struct RouteLimiters {
 
 impl Default for RouteLimiters {
     fn default() -> Self {
-        const CLEAR_FREQUENCY: Duration = Duration::from_secs(3600 * 24);
-
         Self {
-            create_container: Limiter::new(10, Duration::from_secs(120), CLEAR_FREQUENCY),
-            get_containers: Limiter::new(20, Duration::from_secs(10), CLEAR_FREQUENCY),
-            container_invite: Limiter::new(10, Duration::from_secs(120), CLEAR_FREQUENCY),
-            key_lookup: Limiter::new(30, Duration::from_secs(180), CLEAR_FREQUENCY),
-            create_user: Limiter::new(5, Duration::from_secs(1200), CLEAR_FREQUENCY),
-            create_object: Limiter::new(10, Duration::from_secs(10), CLEAR_FREQUENCY),
-            password: Limiter::new(6, Duration::from_secs(600), CLEAR_FREQUENCY),
-            recovery: Limiter::new(2, Duration::from_secs(600), CLEAR_FREQUENCY),
-            verify_otp: Limiter::new(6, Duration::from_secs(60), CLEAR_FREQUENCY),
-            email: Limiter::new(6, Duration::from_secs(360), CLEAR_FREQUENCY),
-            refresh_tokens: Limiter::new(20, Duration::from_secs(180), CLEAR_FREQUENCY),
-            change_email: Limiter::new(5, Duration::from_secs(1200), CLEAR_FREQUENCY),
+            create_container: Limiter::new(
+                CONF.api_create_container_limiter_max_per_period,
+                CONF.api_create_container_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            get_containers: Limiter::new(
+                CONF.api_get_containers_limiter_max_per_period,
+                CONF.api_get_containers_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            container_invite: Limiter::new(
+                CONF.api_container_invite_limiter_max_per_period,
+                CONF.api_container_invite_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            key_lookup: Limiter::new(
+                CONF.api_key_lookup_limiter_max_per_period,
+                CONF.api_key_lookup_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            create_user: Limiter::new(
+                CONF.api_create_user_limiter_max_per_period,
+                CONF.api_create_user_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            create_object: Limiter::new(
+                CONF.api_create_object_limiter_max_per_period,
+                CONF.api_create_object_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            password: Limiter::new(
+                CONF.api_password_limiter_max_per_period,
+                CONF.api_password_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            recovery: Limiter::new(
+                CONF.api_recovery_limiter_max_per_period,
+                CONF.api_recovery_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            verify_otp: Limiter::new(
+                CONF.api_verify_otp_limiter_max_per_period,
+                CONF.api_verify_otp_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            email: Limiter::new(
+                CONF.api_email_limiter_max_per_period,
+                CONF.api_email_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            refresh_tokens: Limiter::new(
+                CONF.api_refresh_tokens_limiter_max_per_period,
+                CONF.api_refresh_tokens_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
+            change_email: Limiter::new(
+                CONF.api_change_email_limiter_max_per_period,
+                CONF.api_change_email_limiter_period,
+                CONF.api_limiter_clear_frequency,
+            ),
         }
     }
 }

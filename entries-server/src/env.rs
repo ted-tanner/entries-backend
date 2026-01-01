@@ -64,13 +64,54 @@ const USER_DELETION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_DELETION_TOKEN
 const OTP_LIFETIME_MINS_VAR: &str = "ENTRIES_OTP_LIFETIME_MINS";
 const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
 
+const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
+const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
+const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
+
 const SIGNIN_LIMITER_MAX_PER_PERIOD_VAR: &str = "ENTRIES_SIGNIN_LIMITER_MAX_PER_PERIOD";
 const SIGNIN_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_SIGNIN_LIMITER_PERIOD_SECS";
 const SIGNIN_LIMITER_FREQUENCY_HOURS_VAR: &str = "ENTRIES_SIGNIN_LIMITER_FREQUENCY_HOURS";
 
-const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
-const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
-const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
+const API_CREATE_CONTAINER_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_CREATE_CONTAINER_LIMITER_MAX_PER_PERIOD";
+const API_CREATE_CONTAINER_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_CREATE_CONTAINER_LIMITER_PERIOD_SECS";
+const API_GET_CONTAINERS_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_GET_CONTAINERS_LIMITER_MAX_PER_PERIOD";
+const API_GET_CONTAINERS_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_GET_CONTAINERS_LIMITER_PERIOD_SECS";
+const API_CONTAINER_INVITE_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_CONTAINER_INVITE_LIMITER_MAX_PER_PERIOD";
+const API_CONTAINER_INVITE_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_CONTAINER_INVITE_LIMITER_PERIOD_SECS";
+const API_KEY_LOOKUP_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_KEY_LOOKUP_LIMITER_MAX_PER_PERIOD";
+const API_KEY_LOOKUP_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_KEY_LOOKUP_LIMITER_PERIOD_SECS";
+const API_CREATE_USER_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_CREATE_USER_LIMITER_MAX_PER_PERIOD";
+const API_CREATE_USER_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_CREATE_USER_LIMITER_PERIOD_SECS";
+const API_CREATE_OBJECT_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_CREATE_OBJECT_LIMITER_MAX_PER_PERIOD";
+const API_CREATE_OBJECT_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_CREATE_OBJECT_LIMITER_PERIOD_SECS";
+const API_PASSWORD_LIMITER_MAX_PER_PERIOD_VAR: &str = "ENTRIES_API_PASSWORD_LIMITER_MAX_PER_PERIOD";
+const API_PASSWORD_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_PASSWORD_LIMITER_PERIOD_SECS";
+const API_RECOVERY_LIMITER_MAX_PER_PERIOD_VAR: &str = "ENTRIES_API_RECOVERY_LIMITER_MAX_PER_PERIOD";
+const API_RECOVERY_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_RECOVERY_LIMITER_PERIOD_SECS";
+const API_VERIFY_OTP_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_VERIFY_OTP_LIMITER_MAX_PER_PERIOD";
+const API_VERIFY_OTP_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_VERIFY_OTP_LIMITER_PERIOD_SECS";
+const API_EMAIL_LIMITER_MAX_PER_PERIOD_VAR: &str = "ENTRIES_API_EMAIL_LIMITER_MAX_PER_PERIOD";
+const API_EMAIL_LIMITER_PERIOD_SECS_VAR: &str = "ENTRIES_API_EMAIL_LIMITER_PERIOD_SECS";
+const API_REFRESH_TOKENS_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_REFRESH_TOKENS_LIMITER_MAX_PER_PERIOD";
+const API_REFRESH_TOKENS_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_REFRESH_TOKENS_LIMITER_PERIOD_SECS";
+const API_CHANGE_EMAIL_LIMITER_MAX_PER_PERIOD_VAR: &str =
+    "ENTRIES_API_CHANGE_EMAIL_LIMITER_MAX_PER_PERIOD";
+const API_CHANGE_EMAIL_LIMITER_PERIOD_SECS_VAR: &str =
+    "ENTRIES_API_CHANGE_EMAIL_LIMITER_PERIOD_SECS";
+const API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR: &str = "ENTRIES_API_LIMITER_CLEAR_FREQUENCY_HOURS";
 
 const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
@@ -173,6 +214,57 @@ pub struct ConfigInner {
     pub max_auth_string_length: usize,
 
     pub health_endpoint_key: String,
+
+    #[zeroize(skip)]
+    pub api_create_container_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_create_container_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_get_containers_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_get_containers_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_container_invite_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_container_invite_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_key_lookup_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_key_lookup_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_create_user_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_create_user_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_create_object_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_create_object_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_password_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_password_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_recovery_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_recovery_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_verify_otp_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_verify_otp_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_email_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_email_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_refresh_tokens_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_refresh_tokens_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_change_email_limiter_max_per_period: u64,
+    #[zeroize(skip)]
+    pub api_change_email_limiter_period: Duration,
+    #[zeroize(skip)]
+    pub api_limiter_clear_frequency: Duration,
 }
 
 pub struct Config {
@@ -296,6 +388,106 @@ impl Config {
             max_auth_string_length: env_var_or(MAX_AUTH_STRING_LENGTH_VAR, 1024)?,
 
             health_endpoint_key: env_var(HEALTH_ENDPOINT_KEY_VAR)?,
+
+            api_create_container_limiter_max_per_period: env_var_or(
+                API_CREATE_CONTAINER_LIMITER_MAX_PER_PERIOD_VAR,
+                10u64,
+            )?,
+            api_create_container_limiter_period: Duration::from_secs(env_var_or(
+                API_CREATE_CONTAINER_LIMITER_PERIOD_SECS_VAR,
+                120,
+            )?),
+            api_get_containers_limiter_max_per_period: env_var_or(
+                API_GET_CONTAINERS_LIMITER_MAX_PER_PERIOD_VAR,
+                20u64,
+            )?,
+            api_get_containers_limiter_period: Duration::from_secs(env_var_or(
+                API_GET_CONTAINERS_LIMITER_PERIOD_SECS_VAR,
+                10,
+            )?),
+            api_container_invite_limiter_max_per_period: env_var_or(
+                API_CONTAINER_INVITE_LIMITER_MAX_PER_PERIOD_VAR,
+                10u64,
+            )?,
+            api_container_invite_limiter_period: Duration::from_secs(env_var_or(
+                API_CONTAINER_INVITE_LIMITER_PERIOD_SECS_VAR,
+                120,
+            )?),
+            api_key_lookup_limiter_max_per_period: env_var_or(
+                API_KEY_LOOKUP_LIMITER_MAX_PER_PERIOD_VAR,
+                30u64,
+            )?,
+            api_key_lookup_limiter_period: Duration::from_secs(env_var_or(
+                API_KEY_LOOKUP_LIMITER_PERIOD_SECS_VAR,
+                180,
+            )?),
+            api_create_user_limiter_max_per_period: env_var_or(
+                API_CREATE_USER_LIMITER_MAX_PER_PERIOD_VAR,
+                5u64,
+            )?,
+            api_create_user_limiter_period: Duration::from_secs(env_var_or(
+                API_CREATE_USER_LIMITER_PERIOD_SECS_VAR,
+                1200,
+            )?),
+            api_create_object_limiter_max_per_period: env_var_or(
+                API_CREATE_OBJECT_LIMITER_MAX_PER_PERIOD_VAR,
+                10u64,
+            )?,
+            api_create_object_limiter_period: Duration::from_secs(env_var_or(
+                API_CREATE_OBJECT_LIMITER_PERIOD_SECS_VAR,
+                10,
+            )?),
+            api_password_limiter_max_per_period: env_var_or(
+                API_PASSWORD_LIMITER_MAX_PER_PERIOD_VAR,
+                6u64,
+            )?,
+            api_password_limiter_period: Duration::from_secs(env_var_or(
+                API_PASSWORD_LIMITER_PERIOD_SECS_VAR,
+                600,
+            )?),
+            api_recovery_limiter_max_per_period: env_var_or(
+                API_RECOVERY_LIMITER_MAX_PER_PERIOD_VAR,
+                2u64,
+            )?,
+            api_recovery_limiter_period: Duration::from_secs(env_var_or(
+                API_RECOVERY_LIMITER_PERIOD_SECS_VAR,
+                600,
+            )?),
+            api_verify_otp_limiter_max_per_period: env_var_or(
+                API_VERIFY_OTP_LIMITER_MAX_PER_PERIOD_VAR,
+                6u64,
+            )?,
+            api_verify_otp_limiter_period: Duration::from_secs(env_var_or(
+                API_VERIFY_OTP_LIMITER_PERIOD_SECS_VAR,
+                60,
+            )?),
+            api_email_limiter_max_per_period: env_var_or(
+                API_EMAIL_LIMITER_MAX_PER_PERIOD_VAR,
+                6u64,
+            )?,
+            api_email_limiter_period: Duration::from_secs(env_var_or(
+                API_EMAIL_LIMITER_PERIOD_SECS_VAR,
+                360,
+            )?),
+            api_refresh_tokens_limiter_max_per_period: env_var_or(
+                API_REFRESH_TOKENS_LIMITER_MAX_PER_PERIOD_VAR,
+                20u64,
+            )?,
+            api_refresh_tokens_limiter_period: Duration::from_secs(env_var_or(
+                API_REFRESH_TOKENS_LIMITER_PERIOD_SECS_VAR,
+                180,
+            )?),
+            api_change_email_limiter_max_per_period: env_var_or(
+                API_CHANGE_EMAIL_LIMITER_MAX_PER_PERIOD_VAR,
+                5,
+            )?,
+            api_change_email_limiter_period: Duration::from_secs(env_var_or(
+                API_CHANGE_EMAIL_LIMITER_PERIOD_SECS_VAR,
+                1200,
+            )?),
+            api_limiter_clear_frequency: Duration::from_secs(
+                env_var_or(API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR, 24)? * 3600,
+            ),
         };
 
         Ok(Config {
