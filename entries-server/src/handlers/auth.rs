@@ -23,6 +23,7 @@ use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
 use crate::middleware::FromHeader;
 use crate::utils::limiter_table as rate_limit_table;
+use crate::utils::limiter_table::CheckAndRecordResult;
 use crate::utils::limiter_table::LimiterTable;
 
 struct SigninLimiter {
@@ -75,7 +76,7 @@ impl SigninLimiter {
         let now = Instant::now();
         let now_millis = rate_limit_table::now_millis_u32();
 
-        rate_limit_table::check_and_record(
+        match rate_limit_table::check_and_record(
             shard,
             email,
             now,
@@ -85,6 +86,10 @@ impl SigninLimiter {
             self.clear_frequency,
         )
         .await
+        {
+            CheckAndRecordResult::Allowed => true,
+            CheckAndRecordResult::Blocked { .. } => false,
+        }
     }
 }
 

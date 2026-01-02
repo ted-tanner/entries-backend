@@ -41,6 +41,15 @@ pub struct LimiterTable<K> {
     pub last_clear: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckAndRecordResult {
+    Allowed,
+    /// Request is blocked; contains the updated count (including this blocked attempt).
+    Blocked {
+        count: u32,
+    },
+}
+
 impl<K> LimiterTable<K> {
     pub fn new() -> Self {
         Self {
@@ -69,8 +78,8 @@ pub async fn check_and_record<K: Eq + Hash>(
     max_per_period: u32,
     period: Duration,
     clear_frequency: Duration,
-) -> bool {
-    let found_key = {
+) -> CheckAndRecordResult {
+    let result = {
         // The read lock is intentionally scoped in this block to ensure it gets
         // dropped before the write lock is acquired.
         let table = shard.read().await;
@@ -85,21 +94,26 @@ pub async fn check_and_record<K: Eq + Hash>(
                 // another thread resets one or both of these concurrently.
                 entry.first_access.store(now_millis, Ordering::Relaxed);
                 entry.count.store(1, Ordering::Relaxed);
-                return true;
+                Some(CheckAndRecordResult::Allowed)
+            } else if count >= max_per_period {
+                // Still record the blocked attempt so callers can warn periodically
+                // about sustained over-limit traffic.
+                let prev = entry.count.fetch_add(1, Ordering::Relaxed);
+                Some(CheckAndRecordResult::Blocked { count: prev + 1 })
+            } else {
+                entry.count.fetch_add(1, Ordering::Relaxed);
+                Some(CheckAndRecordResult::Allowed)
             }
-
-            if count >= max_per_period {
-                return false;
-            }
-
-            entry.count.fetch_add(1, Ordering::Relaxed);
-            true
         } else {
-            false
+            None
         }
     };
 
-    if !found_key {
+    if let Some(result) = result {
+        return result;
+    }
+
+    {
         let mut table = shard.write().await;
 
         if now.duration_since(table.last_clear) >= clear_frequency {
@@ -122,5 +136,5 @@ pub async fn check_and_record<K: Eq + Hash>(
             });
     }
 
-    true
+    CheckAndRecordResult::Allowed
 }

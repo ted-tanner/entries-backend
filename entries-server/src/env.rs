@@ -113,6 +113,8 @@ const API_CHANGE_EMAIL_LIMITER_PERIOD_SECS_VAR: &str =
     "ENTRIES_API_CHANGE_EMAIL_LIMITER_PERIOD_SECS";
 const API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR: &str = "ENTRIES_API_LIMITER_CLEAR_FREQUENCY_HOURS";
 
+const API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR: &str = "ENTRIES_API_LIMITER_WARN_EVERY_OVER_LIMIT";
+
 const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
 const MAX_USER_PREFERENCES_SIZE_KB_VAR: &str = "ENTRIES_MAX_USER_PREFERENCES_SIZE_KB";
@@ -265,6 +267,11 @@ pub struct ConfigInner {
     pub api_change_email_limiter_period: Duration,
     #[zeroize(skip)]
     pub api_limiter_clear_frequency: Duration,
+
+    /// When a request is blocked by an API limiter, emit a WARN log every N blocked requests
+    /// above the limit (per key/subnet). Set to 0 to disable.
+    #[zeroize(skip)]
+    pub api_limiter_warn_every_over_limit: u32,
 }
 
 pub struct Config {
@@ -488,6 +495,10 @@ impl Config {
             api_limiter_clear_frequency: Duration::from_secs(
                 env_var_or(API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR, 24)? * 3600,
             ),
+            api_limiter_warn_every_over_limit: env_var_or(
+                API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR,
+                30u32,
+            )?,
         };
 
         Ok(Config {

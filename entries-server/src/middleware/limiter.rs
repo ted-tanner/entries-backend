@@ -4,7 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::env;
 use crate::utils::limiter_table as rate_limit_table;
+use crate::utils::limiter_table::CheckAndRecordResult;
 use crate::utils::limiter_table::LimiterTable;
 
 use actix_web::{
@@ -30,6 +32,7 @@ pub struct Limiter {
     max_per_period: u64,
     period: Duration,
     clear_frequency: Duration,
+    warn_every_over_limit: u32,
     limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
 }
 
@@ -45,6 +48,8 @@ impl Limiter {
             panic!("Limiter period must be less than 14 days (due to u32 ms wraparound)");
         }
 
+        let warn_every_over_limit = env::CONF.api_limiter_warn_every_over_limit;
+
         rate_limit_table::init_start();
         let limiter_tables = rate_limit_table::new_sharded_tables_16::<u64>();
 
@@ -52,6 +57,7 @@ impl Limiter {
             max_per_period,
             period,
             clear_frequency,
+            warn_every_over_limit,
             limiter_tables,
         }
     }
@@ -76,6 +82,7 @@ where
             max_per_period: self.max_per_period,
             period: self.period,
             clear_frequency: self.clear_frequency,
+            warn_every_over_limit: self.warn_every_over_limit,
 
             limiter_tables: self.limiter_tables,
         }))
@@ -88,6 +95,7 @@ pub struct LimiterMiddleware<S> {
     max_per_period: u64,
     period: Duration,
     clear_frequency: Duration,
+    warn_every_over_limit: u32,
 
     limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
 }
@@ -158,6 +166,7 @@ where
         let max_per_period = self.max_per_period;
         let period = self.period;
         let clear_frequency = self.clear_frequency;
+        let warn_every = self.warn_every_over_limit;
 
         Box::pin(async move {
             let now = Instant::now();
@@ -169,7 +178,7 @@ where
                 IpAddr::V6(ip) => ipv6_subnet_key_u64(&ip),
             };
 
-            let allowed = rate_limit_table::check_and_record(
+            let result = rate_limit_table::check_and_record(
                 shard,
                 subnet_key,
                 now,
@@ -180,7 +189,36 @@ where
             )
             .await;
 
-            if !allowed {
+            if let CheckAndRecordResult::Blocked { count } = result {
+                if warn_every != 0 {
+                    let limit = max_per_period as u32;
+                    let delta = count - limit - 1;
+                    if delta.is_multiple_of(warn_every) {
+                        let subnet = match ip {
+                            IpAddr::V4(ip) => {
+                                let octets = ip.octets();
+                                format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2])
+                            }
+                            IpAddr::V6(ip) => {
+                                let segments = ip.segments();
+                                format!(
+                                    "{:x}:{:x}:{:x}:{:x}::/64",
+                                    segments[0], segments[1], segments[2], segments[3]
+                                )
+                            }
+                        };
+
+                        log::warn!(
+                            "Rate-limited request (subnet={}, count={}, limit={}, warn_every={}, table_index={})",
+                            subnet,
+                            count,
+                            limit,
+                            warn_every,
+                            table_index
+                        );
+                    }
+                }
+
                 return Err(ErrorTooManyRequests(
                     "Too many requests. Please try again later.",
                 ));
@@ -210,6 +248,8 @@ fn ipv6_subnet_key_u64(ip: &Ipv6Addr) -> u64 {
 mod tests {
     use super::*;
     use actix_web::{test, web, App, HttpResponse};
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
     use tokio::time::sleep;
 
     #[actix_web::test]
@@ -440,5 +480,123 @@ mod tests {
             .to_request();
         let res = app.call(req).await;
         assert!(res.is_err());
+    }
+
+    #[actix_web::test]
+    async fn test_limiter_warning_logging() {
+        use log::{Level, LevelFilter, Log, Metadata, Record};
+        use std::sync::Once;
+
+        static TEST_LOGGER_INIT: Once = Once::new();
+        static WARNINGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+        struct TestLogger;
+
+        impl Log for TestLogger {
+            fn enabled(&self, metadata: &Metadata) -> bool {
+                metadata.level() <= Level::Warn
+            }
+
+            fn log(&self, record: &Record) {
+                if self.enabled(record.metadata()) && record.level() == Level::Warn {
+                    let message = format!("{}", record.args());
+                    WARNINGS.lock().unwrap().push(message);
+                }
+            }
+
+            fn flush(&self) {}
+        }
+
+        TEST_LOGGER_INIT.call_once(|| {
+            let logger = Box::new(TestLogger);
+            log::set_logger(Box::leak(logger))
+                .map(|()| log::set_max_level(LevelFilter::Warn))
+                .expect("Failed to set test logger");
+            WARNINGS.lock().unwrap().clear();
+        });
+
+        WARNINGS.lock().unwrap().clear();
+
+        let warn_every = crate::env::CONF.api_limiter_warn_every_over_limit;
+        if warn_every == 0 {
+            eprintln!("Skipping test: warn_every_over_limit is 0 (warnings disabled)");
+            return;
+        }
+
+        let limit = 2u32;
+        let limiter = Limiter::new(
+            limit as u64,
+            Duration::from_millis(100),
+            Duration::from_millis(200),
+        );
+
+        let app =
+            test::init_service(App::new().wrap(limiter).service(
+                web::resource("/").to(|| async { HttpResponse::Ok().body("Hello world") }),
+            ))
+            .await;
+
+        // Warnings occur at: limit+1, limit+1+warn_every, limit+1+2*warn_every, limit+1+3*warn_every
+        // To get 4 warnings, need count = limit + 1 + 3*warn_every
+        let requests_needed = limit + 1 + (3 * warn_every);
+
+        for i in 1..=limit {
+            let req = test::TestRequest::default()
+                .append_header(("test-ip", format!("127.0.0.{}", i)))
+                .to_request();
+            let res = app.call(req).await;
+            assert!(res.is_ok(), "Request {} should be allowed", i);
+        }
+
+        for i in (limit + 1)..=requests_needed {
+            let req = test::TestRequest::default()
+                .append_header(("test-ip", format!("127.0.0.{}", i)))
+                .to_request();
+            let res = app.call(req).await;
+            assert!(res.is_err(), "Request {} should be blocked", i);
+        }
+
+        let warnings = WARNINGS.lock().unwrap();
+        let expected_warnings = 4;
+
+        assert!(
+            warnings.len() >= expected_warnings,
+            "Expected at least {} warnings (warn_every={}, limit={}, requests={}), got {}",
+            expected_warnings,
+            warn_every,
+            limit,
+            requests_needed,
+            warnings.len()
+        );
+
+        for warning in warnings.iter() {
+            assert!(
+                warning.contains("Rate-limited request"),
+                "Warning should contain 'Rate-limited request', got: {}",
+                warning
+            );
+            assert!(
+                warning.contains("subnet="),
+                "Warning should contain 'subnet=', got: {}",
+                warning
+            );
+            assert!(
+                warning.contains("/24") || warning.contains("/64"),
+                "Warning should contain subnet mask, got: {}",
+                warning
+            );
+            assert!(
+                warning.contains(&format!("warn_every={}", warn_every)),
+                "Warning should contain 'warn_every={}', got: {}",
+                warn_every,
+                warning
+            );
+            assert!(
+                warning.contains(&format!("limit={}", limit)),
+                "Warning should contain 'limit={}', got: {}",
+                limit,
+                warning
+            );
+        }
     }
 }
