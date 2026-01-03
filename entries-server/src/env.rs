@@ -486,7 +486,7 @@ impl Config {
             )?),
             api_change_email_limiter_max_per_period: env_var_or(
                 API_CHANGE_EMAIL_LIMITER_MAX_PER_PERIOD_VAR,
-                5,
+                5u64,
             )?,
             api_change_email_limiter_period: Duration::from_secs(env_var_or(
                 API_CHANGE_EMAIL_LIMITER_PERIOD_SECS_VAR,
@@ -497,7 +497,7 @@ impl Config {
             ),
             api_limiter_warn_every_over_limit: env_var_or(
                 API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR,
-                30u32,
+                50u32,
             )?,
         };
 

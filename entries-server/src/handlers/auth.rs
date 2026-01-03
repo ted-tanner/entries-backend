@@ -1786,7 +1786,12 @@ mod tests {
         protobuf_config.limit(env::CONF.protobuf_max_size);
 
         let route_limiters = RouteLimiters {
-            recovery: Limiter::new(100, Duration::from_secs(1), Duration::from_secs(10)),
+            recovery: Limiter::new(
+                100,
+                Duration::from_secs(1),
+                Duration::from_secs(10),
+                "POST /api/auth/recover_with_recovery_key",
+            ),
             ..Default::default()
         };
 

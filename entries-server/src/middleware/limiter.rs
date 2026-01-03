@@ -34,11 +34,17 @@ pub struct Limiter {
     clear_frequency: Duration,
     warn_every_over_limit: u32,
     limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
+    name: &'static str,
 }
 
 impl Limiter {
     /// Should be created on a single thread. Panics if period is greater than clear frequency.
-    pub fn new(max_per_period: u64, period: Duration, clear_frequency: Duration) -> Self {
+    pub fn new(
+        max_per_period: u64,
+        period: Duration,
+        clear_frequency: Duration,
+        name: &'static str,
+    ) -> Self {
         if period > clear_frequency {
             panic!("Period cannot be greater than clear frequency");
         }
@@ -59,6 +65,7 @@ impl Limiter {
             clear_frequency,
             warn_every_over_limit,
             limiter_tables,
+            name,
         }
     }
 }
@@ -85,6 +92,7 @@ where
             warn_every_over_limit: self.warn_every_over_limit,
 
             limiter_tables: self.limiter_tables,
+            name: self.name,
         }))
     }
 }
@@ -98,6 +106,7 @@ pub struct LimiterMiddleware<S> {
     warn_every_over_limit: u32,
 
     limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
+    name: &'static str,
 }
 
 impl<S, B> Service<ServiceRequest> for LimiterMiddleware<S>
@@ -158,19 +167,21 @@ where
             }
         };
 
-        let table_index = (distinguishing_octet & 0x0F) as usize;
-        let shard = unsafe { self.limiter_tables.get_unchecked(table_index) };
-
         let req_fut = self.service.call(req);
 
         let max_per_period = self.max_per_period;
         let period = self.period;
         let clear_frequency = self.clear_frequency;
         let warn_every = self.warn_every_over_limit;
+        let limiter_tables = self.limiter_tables;
+        let limiter_name = self.name;
 
         Box::pin(async move {
             let now = Instant::now();
             let now_millis = rate_limit_table::now_millis_u32();
+
+            let table_index = (distinguishing_octet & 0x0F) as usize;
+            let shard = unsafe { limiter_tables.get_unchecked(table_index) };
 
             // Get the /24 (IPv4) or /64 (IPv6) subnet as a u64 key
             let subnet_key = match ip {
@@ -209,12 +220,13 @@ where
                         };
 
                         log::warn!(
-                            "Rate-limited request (subnet={}, count={}, limit={}, warn_every={}, table_index={})",
+                            "Rate-limited request (subnet={}, count={}, limit={}, warn_every={}, table_index={}, limiter_name={})",
                             subnet,
                             count,
                             limit,
                             warn_every,
-                            table_index
+                            table_index,
+                            limiter_name
                         );
                     }
                 }
@@ -254,7 +266,12 @@ mod tests {
 
     #[actix_web::test]
     async fn test_limiter_ipv4() {
-        let limiter = Limiter::new(2, Duration::from_millis(5), Duration::from_millis(8));
+        let limiter = Limiter::new(
+            2,
+            Duration::from_millis(5),
+            Duration::from_millis(8),
+            "GET /test",
+        );
 
         let app =
             test::init_service(App::new().wrap(limiter).service(
@@ -369,7 +386,12 @@ mod tests {
 
     #[actix_web::test]
     async fn test_limiter_ipv6() {
-        let limiter = Limiter::new(2, Duration::from_millis(5), Duration::from_millis(8));
+        let limiter = Limiter::new(
+            2,
+            Duration::from_millis(5),
+            Duration::from_millis(8),
+            "GET /test",
+        );
 
         let app =
             test::init_service(App::new().wrap(limiter).service(
@@ -528,6 +550,7 @@ mod tests {
             limit as u64,
             Duration::from_millis(100),
             Duration::from_millis(200),
+            "GET /test",
         );
 
         let app =
@@ -595,6 +618,11 @@ mod tests {
                 warning.contains(&format!("limit={}", limit)),
                 "Warning should contain 'limit={}', got: {}",
                 limit,
+                warning
+            );
+            assert!(
+                warning.contains("limiter_name=GET /test"),
+                "Warning should contain 'limiter_name=GET /test', got: {}",
                 warning
             );
         }

@@ -1362,7 +1362,12 @@ pub mod tests {
         let mut protobuf_config = ProtoBufConfig::default();
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let route_limiters = RouteLimiters {
-            create_user: Limiter::new(15, Duration::from_secs(1200), Duration::from_secs(3600)),
+            create_user: Limiter::new(
+                15,
+                Duration::from_secs(1200),
+                Duration::from_secs(3600),
+                "POST /api/user",
+            ),
             ..Default::default()
         };
         let app = test::init_service(
