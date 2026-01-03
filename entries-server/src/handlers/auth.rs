@@ -74,7 +74,7 @@ impl SigninLimiter {
         let shard = &self.tables[table_index];
 
         let now = Instant::now();
-        let now_millis = rate_limit_table::now_millis_u32();
+        let now_millis = rate_limit_table::instant_to_millis_u32(now);
 
         match rate_limit_table::check_and_record(
             shard,

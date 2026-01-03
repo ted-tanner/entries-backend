@@ -39,7 +39,7 @@ impl FromRequest for AppVersion {
             )));
         }
 
-        future::ok(AppVersion(String::from(app_version)))
+        future::ok(AppVersion(app_version.into()))
     }
 }
 

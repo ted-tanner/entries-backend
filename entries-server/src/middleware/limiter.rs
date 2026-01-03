@@ -178,7 +178,7 @@ where
 
         Box::pin(async move {
             let now = Instant::now();
-            let now_millis = rate_limit_table::now_millis_u32();
+            let now_millis = rate_limit_table::instant_to_millis_u32(now);
 
             let table_index = (distinguishing_octet & 0x0F) as usize;
             let shard = unsafe { limiter_tables.get_unchecked(table_index) };
@@ -205,29 +205,32 @@ where
                     let limit = max_per_period as u32;
                     let delta = count - limit - 1;
                     if delta.is_multiple_of(warn_every) {
-                        let subnet = match ip {
+                        match ip {
                             IpAddr::V4(ip) => {
                                 let octets = ip.octets();
-                                format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2])
+                                log::warn!(
+                                    "Rate-limited request (subnet={}.{}.{}.0/24, count={}, limit={}, warn_every={}, table_index={}, limiter_name={})",
+                                    octets[0], octets[1], octets[2],
+                                    count,
+                                    limit,
+                                    warn_every,
+                                    table_index,
+                                    limiter_name
+                                );
                             }
                             IpAddr::V6(ip) => {
                                 let segments = ip.segments();
-                                format!(
-                                    "{:x}:{:x}:{:x}:{:x}::/64",
-                                    segments[0], segments[1], segments[2], segments[3]
-                                )
+                                log::warn!(
+                                    "Rate-limited request (subnet={:x}:{:x}:{:x}:{:x}::/64, count={}, limit={}, warn_every={}, table_index={}, limiter_name={})",
+                                    segments[0], segments[1], segments[2], segments[3],
+                                    count,
+                                    limit,
+                                    warn_every,
+                                    table_index,
+                                    limiter_name
+                                );
                             }
-                        };
-
-                        log::warn!(
-                            "Rate-limited request (subnet={}, count={}, limit={}, warn_every={}, table_index={}, limiter_name={})",
-                            subnet,
-                            count,
-                            limit,
-                            warn_every,
-                            table_index,
-                            limiter_name
-                        );
+                        }
                     }
                 }
 

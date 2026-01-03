@@ -16,18 +16,17 @@ pub fn init_start() {
     START.get_or_init(Instant::now);
 }
 
-/// Milliseconds since process start (wrapping u32).
+/// Convert an `Instant` to milliseconds since process start (wrapping u32).
 ///
-/// Note: This is intentionally a `u32` to allow atomic reads/writes without extra overhead.
+/// This avoids calling `Instant::now()` multiple times when you already have an `Instant`.
 #[inline]
-pub fn now_millis_u32() -> u32 {
-    Instant::now()
-        .duration_since(
-            *START
-                .get()
-                .expect("utils::limiter_table::init_start() must be called first"),
-        )
-        .as_millis() as u32
+pub fn instant_to_millis_u32(now: Instant) -> u32 {
+    now.duration_since(
+        *START
+            .get()
+            .expect("utils::limiter_table::init_start() must be called first"),
+    )
+    .as_millis() as u32
 }
 
 #[derive(Debug)]
@@ -119,7 +118,6 @@ pub async fn check_and_record<K: Eq + Hash>(
         if now.duration_since(table.last_clear) >= clear_frequency {
             // Clear the table every so often to prevent it from growing too large
             table.map.clear();
-            table.map.shrink_to_fit();
             table.last_clear = now;
         }
 

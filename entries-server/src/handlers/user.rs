@@ -617,7 +617,7 @@ pub async fn change_password(
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         log::error!("{e}");
-        HttpErrorResponse::InternalError(String::from("Failed to update password"))
+        HttpErrorResponse::InternalError("Failed to update password".into())
     })
 }
 
