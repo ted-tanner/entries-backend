@@ -1,19 +1,19 @@
 use entries_common::db::auth::Dao as AuthDao;
-use entries_common::db::DbThreadPool;
+use entries_common::db::DbAsyncPool;
 
 use async_trait::async_trait;
 
 use crate::jobs::{Job, JobError};
 
 pub struct UnblacklistExpiredTokensJob {
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
     is_running: bool,
 }
 
 impl UnblacklistExpiredTokensJob {
-    pub fn new(db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(db_async_pool: DbAsyncPool) -> Self {
         Self {
-            db_thread_pool,
+            db_async_pool,
             is_running: false,
         }
     }
@@ -32,8 +32,8 @@ impl Job for UnblacklistExpiredTokensJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let dao = AuthDao::new(&self.db_thread_pool);
-        tokio::task::spawn_blocking(move || dao.clear_all_expired_tokens()).await??;
+        let dao = AuthDao::new(&self.db_async_pool);
+        dao.clear_all_expired_tokens().await?;
 
         self.is_running = false;
         Ok(())
@@ -52,14 +52,14 @@ mod tests {
     use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
     use entries_common::token::Token;
 
-    use diesel::{dsl, RunQueryDsl};
+    use diesel::dsl;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
     use crate::env;
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Needs async pool setup and sync pool removal"]
     async fn test_execute() {
         let user_number = SecureRng::next_u128();
 
@@ -99,7 +99,7 @@ mod tests {
             user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
-        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_ASYNC_POOL);
 
         let user_id = user_dao
             .create_user(
@@ -128,8 +128,9 @@ mod tests {
                 &new_user.user_keystore_encrypted,
                 new_user.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
-        user_dao.verify_user_creation(user_id).unwrap();
+        user_dao.verify_user_creation(user_id).await.unwrap();
 
         let pretend_expired_token_claims = NewAuthTokenClaims {
             user_id,
@@ -169,26 +170,32 @@ mod tests {
             token_expiration: SystemTime::now() + Duration::from_secs(3600),
         };
 
-        let mut db_connection = env::testing::DB_THREAD_POOL.get().unwrap();
-        dsl::insert_into(blacklisted_tokens)
-            .values(&expired_blacklisted)
-            .execute(&mut db_connection)
-            .unwrap();
-        dsl::insert_into(blacklisted_tokens)
-            .values(&unexpired_blacklisted)
-            .execute(&mut db_connection)
-            .unwrap();
+        let mut db_connection = env::testing::DB_ASYNC_POOL.get().await.unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::insert_into(blacklisted_tokens).values(&expired_blacklisted),
+            &mut db_connection,
+        )
+        .await
+        .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::insert_into(blacklisted_tokens).values(&unexpired_blacklisted),
+            &mut db_connection,
+        )
+        .await
+        .unwrap();
 
-        let mut job = UnblacklistExpiredTokensJob::new(env::testing::DB_THREAD_POOL.clone());
+        let mut job = UnblacklistExpiredTokensJob::new(env::testing::DB_ASYNC_POOL.clone());
         job.execute().await.unwrap();
 
-        let dao = AuthDao::new(&env::testing::DB_THREAD_POOL);
+        let dao = AuthDao::new(&env::testing::DB_ASYNC_POOL);
 
         assert!(!dao
             .check_is_token_on_blacklist_and_blacklist(&pretend_expired_token.signature, 0)
+            .await
             .unwrap());
         assert!(dao
             .check_is_token_on_blacklist_and_blacklist(&unexpired_token.signature, 0)
+            .await
             .unwrap());
     }
 }

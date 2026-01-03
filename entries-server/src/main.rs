@@ -1,4 +1,4 @@
-use entries_common::db::create_db_thread_pool;
+use entries_common::db::create_db_async_pool;
 use entries_common::email::senders::{AmazonSes, MockSender};
 use entries_common::email::SendEmail;
 
@@ -104,11 +104,7 @@ async fn main() -> std::io::Result<()> {
         env::CONF.db_name,
     ));
 
-    let db_thread_pool = create_db_thread_pool(
-        &db_uri,
-        env::CONF.db_max_connections,
-        env::CONF.db_idle_timeout,
-    );
+    let db_async_pool = create_db_async_pool(&db_uri, env::CONF.db_max_connections).await;
 
     log::info!("Successfully connected to database");
 
@@ -138,7 +134,7 @@ async fn main() -> std::io::Result<()> {
         Arc::new(Box::new(MockSender::new()))
     };
 
-    let db_thread_pool = Data::new(db_thread_pool);
+    let db_async_pool = Data::new(db_async_pool);
     let smtp_thread_pool = Data::new(smtp_thread_pool);
 
     let limiters = RouteLimiters::default();
@@ -149,7 +145,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(protobuf_config)
-            .app_data(db_thread_pool.clone())
+            .app_data(db_async_pool.clone())
             .app_data(smtp_thread_pool.clone())
             .configure(|cfg| services::api::configure(cfg, limiters.clone()))
             .wrap(actix_web::middleware::Compress::default())

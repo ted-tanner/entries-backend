@@ -1,4 +1,4 @@
-use entries_common::db::create_db_thread_pool;
+use entries_common::db::create_db_async_pool;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use runner::JobRunner;
 use std::time::Duration;
@@ -23,12 +23,6 @@ fn main() {
         env::CONF.db_name,
     ));
 
-    let db_thread_pool = create_db_thread_pool(
-        &db_uri,
-        env::CONF.db_max_connections,
-        env::CONF.db_idle_timeout,
-    );
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(env::CONF.worker_threads)
         .max_blocking_threads(env::CONF.max_blocking_threads)
@@ -36,6 +30,7 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
+            let db_async_pool = create_db_async_pool(&db_uri, env::CONF.db_max_connections).await;
             Logger::try_with_str(&env::CONF.log_level)
                 .expect(
                     "Invalid log level. Options: ERROR, WARN, INFO, DEBUG, TRACE. \
@@ -65,25 +60,25 @@ fn main() {
                 .start()
                 .expect("Failed to start logger");
 
-            let mut job_runner = JobRunner::new(env::CONF.update_frequency, db_thread_pool.clone());
+            let mut job_runner = JobRunner::new(env::CONF.update_frequency, db_async_pool.clone());
 
             job_runner
                 .register(
-                    Box::new(ClearExpiredContainerInvitesJob::new(db_thread_pool.clone())),
+                    Box::new(ClearExpiredContainerInvitesJob::new(db_async_pool.clone())),
                     env::CONF.clear_expired_container_invites_job_frequency,
                 )
                 .await;
 
             job_runner
                 .register(
-                    Box::new(ClearExpiredOtpsJob::new(db_thread_pool.clone())),
+                    Box::new(ClearExpiredOtpsJob::new(db_async_pool.clone())),
                     env::CONF.clear_expired_otps_job_frequency,
                 )
                 .await;
 
             job_runner
                 .register(
-                    Box::new(ClearOldUserDeletionRequestsJob::new(db_thread_pool.clone())),
+                    Box::new(ClearOldUserDeletionRequestsJob::new(db_async_pool.clone())),
                     env::CONF.clear_old_user_deletion_requests_job_frequency,
                 )
                 .await;
@@ -94,7 +89,7 @@ fn main() {
                         Duration::from_secs(
                             env::CONF.clear_unverified_users_max_user_age_days * 86400,
                         ),
-                        db_thread_pool.clone(),
+                        db_async_pool.clone(),
                     )),
                     env::CONF.clear_unverified_users_job_frequency,
                 )
@@ -102,14 +97,14 @@ fn main() {
 
             job_runner
                 .register(
-                    Box::new(DeleteUsersJob::new(db_thread_pool.clone())),
+                    Box::new(DeleteUsersJob::new(db_async_pool.clone())),
                     env::CONF.delete_users_job_frequency,
                 )
                 .await;
 
             job_runner
                 .register(
-                    Box::new(UnblacklistExpiredTokensJob::new(db_thread_pool.clone())),
+                    Box::new(UnblacklistExpiredTokensJob::new(db_async_pool.clone())),
                     env::CONF.unblacklist_expired_tokens_job_frequency,
                 )
                 .await;

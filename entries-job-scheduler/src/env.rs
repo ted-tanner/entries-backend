@@ -202,18 +202,17 @@ impl fmt::Display for ConfigError {
 
 #[cfg(test)]
 pub mod testing {
-    use entries_common::db::{create_db_thread_pool, DbThreadPool};
+    use entries_common::db::{create_db_async_pool, DbAsyncPool};
 
     use super::*;
 
-    pub static DB_THREAD_POOL: Lazy<DbThreadPool> = Lazy::new(|| {
-        create_db_thread_pool(
-            &format!(
-                "postgres://{}:{}@{}:{}/{}",
-                CONF.db_username, CONF.db_password, CONF.db_hostname, CONF.db_port, CONF.db_name,
-            ),
-            CONF.db_max_connections,
-            CONF.db_idle_timeout,
-        )
+    pub static DB_ASYNC_POOL: Lazy<DbAsyncPool> = Lazy::new(|| {
+        let db_uri = format!(
+            "postgres://{}:{}@{}:{}/{}",
+            CONF.db_username, CONF.db_password, CONF.db_hostname, CONF.db_port, CONF.db_name,
+        );
+
+        // Use futures::executor::block_on which works within async contexts
+        futures::executor::block_on(create_db_async_pool(&db_uri, CONF.db_max_connections))
     });
 }

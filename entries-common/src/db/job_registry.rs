@@ -1,31 +1,36 @@
-use diesel::{dsl, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel_async::RunQueryDsl;
 use std::time::SystemTime;
 
-use crate::db::{DaoError, DbThreadPool};
+use crate::db::{DaoError, DbAsyncPool};
 use crate::models::job_registry_item::NewJobRegistryItem;
 use crate::schema::job_registry as job_registry_fields;
 use crate::schema::job_registry::dsl::job_registry;
 
 pub struct Dao {
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
 }
 
 impl Dao {
-    pub fn new(db_thread_pool: &DbThreadPool) -> Self {
+    pub fn new(db_async_pool: &DbAsyncPool) -> Self {
         Self {
-            db_thread_pool: db_thread_pool.clone(),
+            db_async_pool: db_async_pool.clone(),
         }
     }
 
-    pub fn get_job_last_run_timestamp(&self, name: &str) -> Result<Option<SystemTime>, DaoError> {
+    pub async fn get_job_last_run_timestamp(
+        &self,
+        name: &str,
+    ) -> Result<Option<SystemTime>, DaoError> {
         Ok(job_registry
             .select(job_registry_fields::last_run_timestamp)
             .find(name)
-            .get_result(&mut self.db_thread_pool.get()?)
+            .get_result(&mut self.db_async_pool.get().await?)
+            .await
             .optional()?)
     }
 
-    pub fn set_job_last_run_timestamp(
+    pub async fn set_job_last_run_timestamp(
         &self,
         job_name: &str,
         timestamp: SystemTime,
@@ -40,7 +45,8 @@ impl Dao {
             .on_conflict(job_registry_fields::job_name)
             .do_update()
             .set(job_registry_fields::last_run_timestamp.eq(timestamp))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut self.db_async_pool.get().await?)
+            .await?;
 
         Ok(())
     }
@@ -54,28 +60,34 @@ mod tests {
     use uuid::Uuid;
 
     fn dao() -> Dao {
-        Dao::new(test_utils::db_pool())
+        Dao::new(test_utils::db_async_pool())
     }
 
-    #[test]
-    fn job_registry_persists_and_updates_timestamps() {
+    #[tokio::test]
+    async fn job_registry_persists_and_updates_timestamps() {
         let dao = dao();
         let job_name = format!("test-job-{}", Uuid::now_v7());
 
-        assert!(dao.get_job_last_run_timestamp(&job_name).unwrap().is_none());
+        assert!(dao
+            .get_job_last_run_timestamp(&job_name)
+            .await
+            .unwrap()
+            .is_none());
 
         let timestamp = SystemTime::now();
         dao.set_job_last_run_timestamp(&job_name, timestamp)
+            .await
             .unwrap();
 
-        let stored = dao.get_job_last_run_timestamp(&job_name).unwrap();
+        let stored = dao.get_job_last_run_timestamp(&job_name).await.unwrap();
         assert_eq!(stored, Some(timestamp));
 
         let new_timestamp = timestamp + Duration::from_secs(60);
         dao.set_job_last_run_timestamp(&job_name, new_timestamp)
+            .await
             .unwrap();
 
-        let updated = dao.get_job_last_run_timestamp(&job_name).unwrap();
+        let updated = dao.get_job_last_run_timestamp(&job_name).await.unwrap();
         assert_eq!(updated, Some(new_timestamp));
     }
 }

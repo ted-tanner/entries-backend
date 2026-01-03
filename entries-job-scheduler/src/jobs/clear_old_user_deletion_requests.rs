@@ -1,19 +1,19 @@
 use entries_common::db::user::Dao as UserDao;
-use entries_common::db::DbThreadPool;
+use entries_common::db::DbAsyncPool;
 
 use async_trait::async_trait;
 
 use crate::jobs::{Job, JobError};
 
 pub struct ClearOldUserDeletionRequestsJob {
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
     is_running: bool,
 }
 
 impl ClearOldUserDeletionRequestsJob {
-    pub fn new(db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(db_async_pool: DbAsyncPool) -> Self {
         Self {
-            db_thread_pool,
+            db_async_pool,
             is_running: false,
         }
     }
@@ -32,8 +32,8 @@ impl Job for ClearOldUserDeletionRequestsJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let dao = UserDao::new(&self.db_thread_pool);
-        tokio::task::spawn_blocking(move || dao.delete_old_user_deletion_requests()).await??;
+        let dao = UserDao::new(&self.db_async_pool);
+        dao.delete_old_user_deletion_requests().await?;
 
         self.is_running = false;
         Ok(())
@@ -55,7 +55,7 @@ mod tests {
     use entries_common::threadrand::SecureRng;
     use entries_common::{db::user, schema::user_deletion_requests};
 
-    use diesel::{QueryDsl, RunQueryDsl};
+    use diesel::QueryDsl;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -101,7 +101,7 @@ mod tests {
             user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
-        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_ASYNC_POOL);
 
         let user1_id = user_dao
             .create_user(
@@ -130,8 +130,9 @@ mod tests {
                 &new_user1.user_keystore_encrypted,
                 new_user1.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
-        user_dao.verify_user_creation(user1_id).unwrap();
+        user_dao.verify_user_creation(user1_id).await.unwrap();
 
         let user2_number = SecureRng::next_u128();
 
@@ -198,8 +199,9 @@ mod tests {
                 &new_user2.user_keystore_encrypted,
                 new_user2.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
-        user_dao.verify_user_creation(user2_id).unwrap();
+        user_dao.verify_user_creation(user2_id).await.unwrap();
 
         let new_container = NewContainer {
             id: Uuid::now_v7(),
@@ -208,10 +210,12 @@ mod tests {
             modified_timestamp: SystemTime::now(),
         };
 
-        diesel::insert_into(containers::table)
-            .values(&new_container)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(containers::table).values(&new_container),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_access_key1 = NewContainerAccessKey {
             key_id: Uuid::now_v7(),
@@ -220,10 +224,12 @@ mod tests {
             read_only: false,
         };
 
-        diesel::insert_into(container_access_keys::table)
-            .values(&new_container_access_key1)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_access_keys::table).values(&new_container_access_key1),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_access_key2 = NewContainerAccessKey {
             key_id: Uuid::now_v7(),
@@ -232,20 +238,24 @@ mod tests {
             read_only: false,
         };
 
-        diesel::insert_into(container_access_keys::table)
-            .values(&new_container_access_key2)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_access_keys::table).values(&new_container_access_key2),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_deletion_req_exp = NewUserDeletionRequest {
             user_id: user1_id,
             ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
         };
 
-        diesel::insert_into(user_deletion_requests::table)
-            .values(&new_deletion_req_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(user_deletion_requests::table).values(&new_deletion_req_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_deletion_req_key_exp = NewUserDeletionRequestContainerKey {
             key_id: new_container_access_key1.key_id,
@@ -253,20 +263,25 @@ mod tests {
             delete_me_time: SystemTime::now() - Duration::from_nanos(1),
         };
 
-        diesel::insert_into(user_deletion_request_container_keys::table)
-            .values(&new_deletion_req_key_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(user_deletion_request_container_keys::table)
+                .values(&new_deletion_req_key_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_deletion_req_not_exp = NewUserDeletionRequest {
             user_id: user2_id,
             ready_for_deletion_time: SystemTime::now() + Duration::from_secs(10),
         };
 
-        diesel::insert_into(user_deletion_requests::table)
-            .values(&new_deletion_req_not_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(user_deletion_requests::table).values(&new_deletion_req_not_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_deletion_req_key_not_exp = NewUserDeletionRequestContainerKey {
             key_id: new_container_access_key2.key_id,
@@ -274,77 +289,80 @@ mod tests {
             delete_me_time: SystemTime::now() + Duration::from_secs(10),
         };
 
-        diesel::insert_into(user_deletion_request_container_keys::table)
-            .values(&new_deletion_req_key_not_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(user_deletion_request_container_keys::table)
+                .values(&new_deletion_req_key_not_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        let mut job = ClearOldUserDeletionRequestsJob::new(env::testing::DB_THREAD_POOL.clone());
+        let mut job = ClearOldUserDeletionRequestsJob::new(env::testing::DB_ASYNC_POOL.clone());
 
-        assert_eq!(
-            user_deletion_requests::table
-                .find(new_deletion_req_exp.user_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_requests::table.find(new_deletion_req_exp.user_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            user_deletion_request_container_keys::table
-                .find(new_deletion_req_key_exp.key_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_request_container_keys::table.find(new_deletion_req_key_exp.key_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            user_deletion_requests::table
-                .find(new_deletion_req_not_exp.user_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_requests::table.find(new_deletion_req_not_exp.user_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            user_deletion_request_container_keys::table
-                .find(new_deletion_req_key_not_exp.key_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_request_container_keys::table.find(new_deletion_req_key_not_exp.key_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
         job.execute().await.unwrap();
 
-        assert_eq!(
-            user_deletion_requests::table
-                .find(new_deletion_req_exp.user_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            0
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_requests::table.find(new_deletion_req_exp.user_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 0);
 
-        assert_eq!(
-            user_deletion_request_container_keys::table
-                .find(new_deletion_req_key_exp.key_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            0
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_request_container_keys::table.find(new_deletion_req_key_exp.key_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 0);
 
-        assert_eq!(
-            user_deletion_requests::table
-                .find(new_deletion_req_not_exp.user_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_requests::table.find(new_deletion_req_not_exp.user_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            user_deletion_request_container_keys::table
-                .find(new_deletion_req_key_not_exp.key_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            user_deletion_request_container_keys::table.find(new_deletion_req_key_not_exp.key_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
     }
 }

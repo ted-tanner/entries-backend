@@ -10,7 +10,7 @@ use entries_common::token::container_access_token::ContainerAccessToken;
 use entries_common::token::container_invite_sender_token::ContainerInviteSenderToken;
 use entries_common::token::Token;
 use entries_common::validators::{self, Validity};
-use entries_common::{db, db::DaoError, db::DbThreadPool};
+use entries_common::{db, db::DaoError, db::DbAsyncPool};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
 use actix_web::{web, HttpResponse};
@@ -31,7 +31,7 @@ use crate::middleware::special_access_token::SpecialAccessToken;
 use crate::middleware::{FromHeader, TokenLocation};
 
 pub async fn get(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -57,36 +57,49 @@ pub async fn get(
         tokens.insert(token.claims.key_id, token);
     }
 
-    let container_ids = Arc::new(container_ids);
-    let container_ids_ref = Arc::clone(&container_ids);
-
-    let container_dao = db::container::Dao::new(&db_thread_pool);
-    let public_keys = match web::block(move || {
-        if container_ids_ref.len() == 1 && key_ids.len() == 1 {
-            vec![container_dao.get_public_container_key(key_ids[0], container_ids_ref[0])]
-                .into_iter()
-                .collect()
-        } else {
-            container_dao.get_multiple_public_container_keys(&key_ids, &container_ids_ref)
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let public_keys = if container_ids.len() == 1 && key_ids.len() == 1 {
+        match container_dao
+            .get_public_container_key(key_ids[0], container_ids[0])
+            .await
+        {
+            Ok(key) => vec![key].into_iter().collect(),
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(HttpErrorResponse::DoesNotExist(
+                        Cow::Borrowed(INVALID_ID_MSG),
+                        DoesNotExistType::Container,
+                    ));
+                }
+                _ => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                        "Failed to get container data",
+                    )));
+                }
+            },
         }
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(
-                    Cow::Borrowed(INVALID_ID_MSG),
-                    DoesNotExistType::Container,
-                ));
-            }
-            _ => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                    "Failed to get container data",
-                )));
-            }
-        },
+    } else {
+        match container_dao
+            .get_multiple_public_container_keys(&key_ids, &container_ids)
+            .await
+        {
+            Ok(keys) => keys,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(HttpErrorResponse::DoesNotExist(
+                        Cow::Borrowed(INVALID_ID_MSG),
+                        DoesNotExistType::Container,
+                    ));
+                }
+                _ => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                        "Failed to get container data",
+                    )));
+                }
+            },
+        }
     };
 
     if public_keys.len() != tokens.len() {
@@ -110,41 +123,55 @@ pub async fn get(
         token.verify(&key.public_key)?;
     }
 
-    let containers = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        if container_ids.len() == 1 {
-            let container = container_dao.get_container(container_ids[0])?;
-            Ok(ContainerList {
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let containers = if container_ids.len() == 1 {
+        match container_dao.get_container(container_ids[0]).await {
+            Ok(container) => ContainerList {
                 containers: vec![container],
-            })
-        } else {
-            container_dao.get_multiple_containers_by_id(&container_ids)
+            },
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(HttpErrorResponse::DoesNotExist(
+                        Cow::Borrowed("One of the provided IDs did not match a container"),
+                        DoesNotExistType::Container,
+                    ));
+                }
+                _ => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                        "Failed to get container data",
+                    )));
+                }
+            },
         }
-    })
-    .await?
-    {
-        Ok(b) => b,
-        Err(e) => match e {
-            DaoError::QueryFailure(diesel::result::Error::NotFound) => {
-                return Err(HttpErrorResponse::DoesNotExist(
-                    Cow::Borrowed("One of the provided IDs did not match a container"),
-                    DoesNotExistType::Container,
-                ));
-            }
-            _ => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                    "Failed to get container data",
-                )));
-            }
-        },
+    } else {
+        match container_dao
+            .get_multiple_containers_by_id(&container_ids)
+            .await
+        {
+            Ok(containers) => containers,
+            Err(e) => match e {
+                DaoError::QueryFailure(diesel::result::Error::NotFound) => {
+                    return Err(HttpErrorResponse::DoesNotExist(
+                        Cow::Borrowed("One of the provided IDs did not match a container"),
+                        DoesNotExistType::Container,
+                    ));
+                }
+                _ => {
+                    log::error!("{e}");
+                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                        "Failed to get container data",
+                    )));
+                }
+            },
+        }
     };
 
     Ok(HttpResponse::Ok().protobuf(containers)?)
 }
 
 pub async fn create(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     container_data: ProtoBuf<NewContainer>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -181,16 +208,15 @@ pub async fn create(
         )));
     }
 
-    let new_container = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.create_container(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let new_container = match container_dao
+        .create_container(
             &container_data.encrypted_blob,
             container_data.version_nonce,
             &container_data.categories,
             &container_data.user_public_container_key,
         )
-    })
-    .await?
+        .await
     {
         Ok(b) => b,
         Err(e) => {
@@ -205,12 +231,12 @@ pub async fn create(
 }
 
 pub async fn edit(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     container_data: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -218,16 +244,15 @@ pub async fn edit(
         )));
     }
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.update_container(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .update_container(
             container_access_token.0.claims.container_id,
             &container_data.encrypted_blob,
             container_data.version_nonce,
             container_data.expected_previous_version_nonce,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -264,12 +289,12 @@ pub struct AcceptKey {
 }
 
 pub async fn invite_user(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     invitation_info: ProtoBuf<UserInvitationToContainer>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if invitation_info.sender_public_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -318,13 +343,11 @@ pub async fn invite_user(
     let expiration: SystemTime = (&invitation_info.expiration).into();
 
     let invitation_info = Arc::new(invitation_info.0);
-    let invitation_info_ref = Arc::clone(&invitation_info);
 
-    let user_dao = db::user::Dao::new(&db_thread_pool);
-    let (recipient_pub_key_id, recipient_public_key) = match web::block(move || {
-        user_dao.get_user_public_key(&invitation_info_ref.recipient_user_email)
-    })
-    .await?
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let (recipient_pub_key_id, recipient_public_key) = match user_dao
+        .get_user_public_key(&invitation_info.recipient_user_email)
+        .await
     {
         Ok(k) => (Uuid::try_from(k.id)?, k.value),
         Err(e) => match e {
@@ -421,9 +444,9 @@ pub async fn invite_user(
     let recipient_pub_key_id_used_by_sender =
         (&invitation_info.recipient_public_key_id_used_by_sender).try_into()?;
 
-    let invite_id = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.invite_user(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let invite_id = match container_dao
+        .invite_user(
             &invitation_info.recipient_user_email,
             &invitation_info.sender_public_key,
             &invitation_info.encryption_key_encrypted,
@@ -441,8 +464,7 @@ pub async fn invite_user(
             &accept_key_data.private_key_encrypted,
             &accept_key_data.key_info_encrypted,
         )
-    })
-    .await?
+        .await
     {
         Ok(i) => i,
         Err(e) => match e {
@@ -465,17 +487,16 @@ pub async fn invite_user(
 }
 
 pub async fn retract_invitation(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     invite_sender_token: SpecialAccessToken<ContainerInviteSenderToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invitation_id = invite_sender_token.0.claims.invite_id;
 
-    let container_dao = db::container::Dao::new(&db_thread_pool);
-    let invite_sender_public_key = match web::block(move || {
-        container_dao.get_container_invite_sender_public_key(invitation_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let invite_sender_public_key = match container_dao
+        .get_container_invite_sender_public_key(invitation_id)
+        .await
     {
         Ok(k) => k,
         Err(e) => match e {
@@ -496,11 +517,10 @@ pub async fn retract_invitation(
 
     invite_sender_token.0.verify(&invite_sender_public_key)?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.delete_invitation(invite_sender_token.0.claims.invite_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .delete_invitation(invite_sender_token.0.claims.invite_id)
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -523,7 +543,7 @@ pub async fn retract_invitation(
 }
 
 pub async fn accept_invitation(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
     container_user_public_key: ProtoBuf<PublicKey>,
@@ -537,11 +557,10 @@ pub async fn accept_invitation(
     let key_id = accept_token.0.claims.key_id;
     let container_id = accept_token.0.claims.container_id;
 
-    let container_dao = db::container::Dao::new(&db_thread_pool);
-    let container_accept_key = match web::block(move || {
-        container_dao.get_container_accept_public_key(key_id, container_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let container_accept_key = match container_dao
+        .get_container_accept_public_key(key_id, container_id)
+        .await
     {
         Ok(key) => key,
         Err(e) => match e {
@@ -568,9 +587,9 @@ pub async fn accept_invitation(
 
     accept_token.0.verify(&container_accept_key.public_key)?;
 
-    let container_keys = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.accept_invitation(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let container_keys = match container_dao
+        .accept_invitation(
             container_accept_key.key_id,
             container_accept_key.container_id,
             container_accept_key.read_only,
@@ -578,8 +597,7 @@ pub async fn accept_invitation(
             &user_access_token.0.user_email,
             &container_user_public_key.value,
         )
-    })
-    .await?
+        .await
     {
         Ok(key) => key,
         Err(e) => match e {
@@ -602,18 +620,17 @@ pub async fn accept_invitation(
 }
 
 pub async fn decline_invitation(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.claims.key_id;
     let container_id = accept_token.0.claims.container_id;
 
-    let container_dao = db::container::Dao::new(&db_thread_pool);
-    let container_accept_key = match web::block(move || {
-        container_dao.get_container_accept_public_key(key_id, container_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let container_accept_key = match container_dao
+        .get_container_accept_public_key(key_id, container_id)
+        .await
     {
         Ok(key) => key,
         Err(e) => match e {
@@ -634,15 +651,14 @@ pub async fn decline_invitation(
 
     accept_token.0.verify(&container_accept_key.public_key)?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.reject_invitation(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .reject_invitation(
             accept_token.0.claims.invite_id,
             accept_token.0.claims.key_id,
             &user_access_token.0.user_email,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -665,14 +681,13 @@ pub async fn decline_invitation(
 }
 
 pub async fn get_all_pending_invitations(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let invites = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.get_all_pending_invitations(&user_access_token.0.user_email)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let invites = match container_dao
+        .get_all_pending_invitations(&user_access_token.0.user_email)
+        .await
     {
         Ok(invites) => invites,
         Err(e) => match e {
@@ -692,20 +707,19 @@ pub async fn get_all_pending_invitations(
 }
 
 pub async fn leave_container(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_access(&container_access_token, &db_async_pool).await?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.leave_container(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .leave_container(
             container_access_token.0.claims.container_id,
             container_access_token.0.claims.key_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -728,12 +742,12 @@ pub async fn leave_container(
 }
 
 pub async fn create_entry(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_data: ProtoBuf<EncryptedBlobAndCategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -748,16 +762,15 @@ pub async fn create_entry(
         .map(Uuid::try_from)
         .transpose()?;
 
-    let entry_id = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.create_entry(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let entry_id = match container_dao
+        .create_entry(
             &entry_data.0.encrypted_blob,
             entry_data.0.version_nonce,
             category_id,
             container_access_token.0.claims.container_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(id) => id,
         Err(e) => match e {
@@ -790,12 +803,12 @@ pub async fn create_entry(
 }
 
 pub async fn create_entry_and_category(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_and_category_data: ProtoBuf<EntryAndCategory>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if entry_and_category_data.entry_encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -809,17 +822,16 @@ pub async fn create_entry_and_category(
         )));
     }
 
-    let entry_and_category_ids = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.create_entry_and_category(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let entry_and_category_ids = match container_dao
+        .create_entry_and_category(
             &entry_and_category_data.entry_encrypted_blob,
             entry_and_category_data.entry_version_nonce,
             &entry_and_category_data.category_encrypted_blob,
             entry_and_category_data.category_version_nonce,
             container_access_token.0.claims.container_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(ids) => ids,
         Err(e) => match e {
@@ -842,12 +854,12 @@ pub async fn create_entry_and_category(
 }
 
 pub async fn edit_entry(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_data: ProtoBuf<EntryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -863,9 +875,9 @@ pub async fn edit_entry(
 
     let entry_id = (&entry_data.entry_id).try_into()?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.update_entry(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .update_entry(
             entry_id,
             &entry_data.encrypted_blob,
             entry_data.version_nonce,
@@ -873,8 +885,7 @@ pub async fn edit_entry(
             category_id,
             container_access_token.0.claims.container_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -910,20 +921,19 @@ pub async fn edit_entry(
 }
 
 pub async fn delete_entry(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     entry_id: ProtoBuf<EntryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     let entry_id = (&entry_id.value).try_into()?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.soft_delete_entry(entry_id, container_access_token.0.claims.container_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .soft_delete_entry(entry_id, container_access_token.0.claims.container_id)
+        .await
     {
         Ok(id) => id,
         Err(e) => match e {
@@ -946,12 +956,12 @@ pub async fn delete_entry(
 }
 
 pub async fn create_category(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_data: ProtoBuf<NewEncryptedBlob>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if category_data.value.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -959,15 +969,14 @@ pub async fn create_category(
         )));
     }
 
-    let category_id = match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.create_category(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let category_id = match container_dao
+        .create_category(
             &category_data.value,
             category_data.version_nonce,
             container_access_token.0.claims.container_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(id) => id,
         Err(e) => match e {
@@ -992,12 +1001,12 @@ pub async fn create_category(
 }
 
 pub async fn edit_category(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_data: ProtoBuf<CategoryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     if category_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -1007,17 +1016,16 @@ pub async fn edit_category(
 
     let category_id = (&category_data.category_id).try_into()?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao.update_category(
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .update_category(
             category_id,
             &category_data.encrypted_blob,
             category_data.version_nonce,
             category_data.expected_previous_version_nonce,
             container_access_token.0.claims.container_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -1045,21 +1053,19 @@ pub async fn edit_category(
 }
 
 pub async fn delete_category(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
     category_id: ProtoBuf<CategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    verify_read_write_access(&container_access_token, &db_thread_pool).await?;
+    verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
     let category_id = (&category_id.value).try_into()?;
 
-    match web::block(move || {
-        let container_dao = db::container::Dao::new(&db_thread_pool);
-        container_dao
-            .soft_delete_category(category_id, container_access_token.0.claims.container_id)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    match container_dao
+        .soft_delete_category(category_id, container_access_token.0.claims.container_id)
+        .await
     {
         Ok(id) => id,
         Err(e) => match e {
@@ -1084,11 +1090,12 @@ pub async fn delete_category(
 async fn obtain_public_key(
     key_id: Uuid,
     container_id: Uuid,
-    db_thread_pool: &DbThreadPool,
+    db_async_pool: &DbAsyncPool,
 ) -> Result<ContainerAccessKey, HttpErrorResponse> {
-    let container_dao = db::container::Dao::new(db_thread_pool);
-    let key = match web::block(move || container_dao.get_public_container_key(key_id, container_id))
-        .await?
+    let container_dao = db::container::Dao::new(db_async_pool);
+    let key = match container_dao
+        .get_public_container_key(key_id, container_id)
+        .await
     {
         Ok(b) => b,
         Err(e) => match e {
@@ -1112,10 +1119,10 @@ async fn obtain_public_key(
 
 async fn verify_read_write_access<F: TokenLocation>(
     container_access_token: &SpecialAccessToken<ContainerAccessToken, F>,
-    db_thread_pool: &DbThreadPool,
+    db_async_pool: &DbAsyncPool,
 ) -> Result<(), HttpErrorResponse> {
     let claims = &container_access_token.0.claims;
-    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_thread_pool).await?;
+    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_async_pool).await?;
     container_access_token.0.verify(&public_key.public_key)?;
 
     if public_key.read_only {
@@ -1129,10 +1136,10 @@ async fn verify_read_write_access<F: TokenLocation>(
 
 async fn verify_read_access<F: TokenLocation>(
     container_access_token: &SpecialAccessToken<ContainerAccessToken, F>,
-    db_thread_pool: &DbThreadPool,
+    db_async_pool: &DbAsyncPool,
 ) -> Result<(), HttpErrorResponse> {
     let claims = &container_access_token.0.claims;
-    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_thread_pool).await?;
+    let public_key = obtain_public_key(claims.key_id, claims.container_id, db_async_pool).await?;
     container_access_token.0.verify(&public_key.public_key)?;
 
     Ok(())
@@ -1166,7 +1173,7 @@ pub mod tests {
     use actix_web::App;
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{ExpressionMethods, QueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
     use entries_common::threadrand::SecureRng;
@@ -1182,7 +1189,7 @@ pub mod tests {
     async fn test_create_and_get_container_and_entry_and_category() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1228,10 +1235,12 @@ pub mod tests {
             .category_ids
             .sort_unstable_by(|a, b| a.temp_id.cmp(&b.temp_id));
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -1589,7 +1598,7 @@ pub mod tests {
     async fn test_create_container_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1670,7 +1679,7 @@ pub mod tests {
     async fn test_create_entry_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1706,10 +1715,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -1749,7 +1760,7 @@ pub mod tests {
     async fn test_create_entry_and_category_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1811,7 +1822,7 @@ pub mod tests {
     async fn test_create_category_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1847,10 +1858,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -1884,7 +1897,7 @@ pub mod tests {
     async fn test_get_multiple_containers() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2047,7 +2060,7 @@ pub mod tests {
     async fn test_get_multiple_containers_fails_with_too_many_tokens() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2080,7 +2093,7 @@ pub mod tests {
     async fn test_delete_category() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2116,10 +2129,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -2241,7 +2256,7 @@ pub mod tests {
     async fn test_delete_entry() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2277,10 +2292,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -2390,7 +2407,7 @@ pub mod tests {
     async fn test_get_soft_deleted_container() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2433,10 +2450,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
 
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -2505,8 +2524,11 @@ pub mod tests {
         assert_eq!(container_message.entries.len(), 2);
 
         // Soft delete the container
-        let container_dao = db::container::Dao::new(&env::testing::DB_THREAD_POOL);
-        container_dao.soft_delete_container(container.id).unwrap();
+        let container_dao = db::container::Dao::new(&env::testing::DB_ASYNC_POOL);
+        container_dao
+            .soft_delete_container(container.id)
+            .await
+            .unwrap();
 
         // Verify that after soft deletion, categories and entries are empty
         let container_token_list = ContainerAccessTokenList {
@@ -2539,7 +2561,7 @@ pub mod tests {
     async fn test_get_multiple_containers_with_soft_deleted() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2575,10 +2597,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data1 = ContainerFrame::decode(resp_body).unwrap();
 
-        let container1 = containers
-            .find(Uuid::try_from(container_data1.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container1 = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data1.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token1 = gen_container_token(
             container1.id,
@@ -2634,10 +2658,12 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data2 = ContainerFrame::decode(resp_body).unwrap();
 
-        let container2 = containers
-            .find(Uuid::try_from(container_data2.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container2 = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data2.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token2 = gen_container_token(
             container2.id,
@@ -2645,8 +2671,11 @@ pub mod tests {
             &key_pair2,
         );
 
-        let container_dao = db::container::Dao::new(&env::testing::DB_THREAD_POOL);
-        container_dao.soft_delete_container(container1.id).unwrap();
+        let container_dao = db::container::Dao::new(&env::testing::DB_ASYNC_POOL);
+        container_dao
+            .soft_delete_container(container1.id)
+            .await
+            .unwrap();
 
         let container_access_tokens = ContainerAccessTokenList {
             tokens: vec![container_access_token1, container_access_token2],
@@ -2695,7 +2724,7 @@ pub mod tests {
     async fn test_edit_container() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2796,7 +2825,7 @@ pub mod tests {
     async fn test_edit_container_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2833,7 +2862,7 @@ pub mod tests {
     async fn test_edit_entry() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3165,7 +3194,7 @@ pub mod tests {
     async fn test_edit_entry_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3282,7 +3311,7 @@ pub mod tests {
     async fn test_edit_category() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3719,7 +3748,7 @@ pub mod tests {
     async fn test_edit_category_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3808,7 +3837,7 @@ pub mod tests {
     async fn test_invite_user() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3818,7 +3847,7 @@ pub mod tests {
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
-        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
         let (container, sender_container_token) =
             test_utils::create_container(&sender_access_token).await;
@@ -4021,10 +4050,13 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-        diesel::update(container_access_keys.find((access_key_id, container.id)))
-            .set(container_access_key_fields::read_only.eq(false))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(container_access_keys.find((access_key_id, container.id)))
+                .set(container_access_key_fields::read_only.eq(false)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let req = TestRequest::put()
             .uri("/api/container")
@@ -4067,7 +4099,7 @@ pub mod tests {
     async fn test_invite_user_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4269,7 +4301,7 @@ pub mod tests {
     async fn test_invite_user_fails_invalid_recipient_email_address() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4317,7 +4349,7 @@ pub mod tests {
     async fn test_accept_invitation_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4327,7 +4359,7 @@ pub mod tests {
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
-        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
         let (container, sender_container_token) =
             test_utils::create_container(&sender_access_token).await;
@@ -4433,7 +4465,7 @@ pub mod tests {
     async fn test_retract_invitation() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4447,10 +4479,13 @@ pub mod tests {
         let recipient_keypair = Rsa::generate(512).unwrap();
         let recipient_public_key = recipient_keypair.public_key_to_der().unwrap();
 
-        diesel::update(users.find(recipient.id))
-            .set(user_fields::public_key.eq(recipient_public_key.to_vec()))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users.find(recipient.id))
+                .set(user_fields::public_key.eq(recipient_public_key.to_vec())),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let invite_sender_keypair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let invite_sender_pub_key = invite_sender_keypair.verifying_key().to_bytes();
@@ -4574,7 +4609,7 @@ pub mod tests {
     async fn test_decline_invitation() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4584,7 +4619,7 @@ pub mod tests {
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
-        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
         let (container, sender_container_token) =
             test_utils::create_container(&sender_access_token).await;
 
@@ -4721,7 +4756,7 @@ pub mod tests {
     async fn test_leave_container() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4731,7 +4766,7 @@ pub mod tests {
         let (_, sender_access_token, _, _) = test_utils::create_user().await;
         let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
 
-        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id);
+        let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
         let (container, sender_container_token) =
             test_utils::create_container(&sender_access_token).await;
@@ -4914,11 +4949,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let container_access_key_count = container_access_keys
-            .filter(container_access_key_fields::container_id.eq(container.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container_access_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(container_access_key_count, 2);
 
@@ -4931,11 +4969,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let container_access_key_count = container_access_keys
-            .filter(container_access_key_fields::container_id.eq(container.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container_access_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(container_access_key_count, 1);
 
@@ -4968,10 +5009,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        assert!(containers
-            .find(container.id)
-            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .is_ok());
+        let result = diesel_async::RunQueryDsl::first::<Container>(
+            containers.find(container.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await;
+        assert!(result.is_ok());
 
         let req = TestRequest::delete()
             .uri("/api/container/leave")
@@ -4982,11 +5025,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let container_access_key_count = container_access_keys
-            .filter(container_access_key_fields::container_id.eq(container.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container_access_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            container_access_keys
+                .filter(container_access_key_fields::container_id.eq(container.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(container_access_key_count, 0);
 
@@ -5022,20 +5068,29 @@ pub mod tests {
         // Verify container, entries, and categories are all hard-deleted (cascade delete)
         // Note: Since the user no longer has access, we can't use their token. But we can verify via direct DB query
         // that the container and all associated entries and categories no longer exist
-        let container_from_db = containers
-            .find(container.id)
-            .first::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap());
+        let container_from_db = diesel_async::RunQueryDsl::first::<Container>(
+            containers.find(container.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await;
         assert!(container_from_db.is_err());
 
-        let categories_from_db: Vec<entries_common::models::category::Category> = categories
-            .filter(entries_common::schema::categories::container_id.eq(container.id))
-            .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let categories_from_db: Vec<entries_common::models::category::Category> =
+            diesel_async::RunQueryDsl::load(
+                categories
+                    .filter(entries_common::schema::categories::container_id.eq(container.id)),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
         assert_eq!(categories_from_db.len(), 0);
 
-        let entries_from_db: Vec<entries_common::models::entry::Entry> = entries
-            .filter(entries_common::schema::entries::container_id.eq(container.id))
-            .load(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let entries_from_db: Vec<entries_common::models::entry::Entry> =
+            diesel_async::RunQueryDsl::load(
+                entries.filter(entries_common::schema::entries::container_id.eq(container.id)),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
         assert_eq!(entries_from_db.len(), 0);
     }

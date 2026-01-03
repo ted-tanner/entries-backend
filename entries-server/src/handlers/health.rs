@@ -1,5 +1,5 @@
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
-use entries_common::db::DbThreadPool;
+use entries_common::db::DbAsyncPool;
 use serde_json::json;
 
 use crate::env;
@@ -8,7 +8,7 @@ pub async fn heartbeat() -> impl Responder {
     HttpResponse::Ok()
 }
 
-pub async fn health(db_thread_pool: web::Data<DbThreadPool>, req: HttpRequest) -> impl Responder {
+pub async fn health(db_async_pool: web::Data<DbAsyncPool>, req: HttpRequest) -> impl Responder {
     let Some(key) = req.headers().get("Key") else {
         return HttpResponse::Unauthorized().finish();
     };
@@ -19,12 +19,11 @@ pub async fn health(db_thread_pool: web::Data<DbThreadPool>, req: HttpRequest) -
         return HttpResponse::Unauthorized().finish();
     }
 
-    let thread_pool_state = db_thread_pool.state();
+    let async_pool_state = db_async_pool.state();
     let resp_body = json!({
-        "db_thread_pool_state": {
-            "connections": thread_pool_state.connections,
-            "idle_connections": thread_pool_state.idle_connections,
-            "max_connections": db_thread_pool.max_size()
+        "db_async_pool_state": {
+            "connections": async_pool_state.connections,
+            "idle_connections": async_pool_state.idle_connections
         }
     });
 
@@ -67,7 +66,7 @@ mod tests {
     async fn test_health_with_valid_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .route("/health", web::get().to(health)),
         )
         .await;
@@ -83,18 +82,17 @@ mod tests {
         let resp_body = test::read_body(resp).await;
         let resp_json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
 
-        assert!(resp_json.get("db_thread_pool_state").is_some());
-        let db_state = resp_json.get("db_thread_pool_state").unwrap();
+        assert!(resp_json.get("db_async_pool_state").is_some());
+        let db_state = resp_json.get("db_async_pool_state").unwrap();
         assert!(db_state.get("connections").is_some());
         assert!(db_state.get("idle_connections").is_some());
-        assert!(db_state.get("max_connections").is_some());
     }
 
     #[actix_web::test]
     async fn test_health_with_invalid_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .route("/health", web::get().to(health)),
         )
         .await;
@@ -112,7 +110,7 @@ mod tests {
     async fn test_health_with_missing_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .route("/health", web::get().to(health)),
         )
         .await;
@@ -127,7 +125,7 @@ mod tests {
     async fn test_health_with_wrong_length_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .route("/health", web::get().to(health)),
         )
         .await;

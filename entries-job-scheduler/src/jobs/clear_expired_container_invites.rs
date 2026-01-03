@@ -1,19 +1,19 @@
 use entries_common::db::container::Dao as ContainerDao;
-use entries_common::db::DbThreadPool;
+use entries_common::db::DbAsyncPool;
 
 use async_trait::async_trait;
 
 use crate::jobs::{Job, JobError};
 
 pub struct ClearExpiredContainerInvitesJob {
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
     is_running: bool,
 }
 
 impl ClearExpiredContainerInvitesJob {
-    pub fn new(db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(db_async_pool: DbAsyncPool) -> Self {
         Self {
-            db_thread_pool,
+            db_async_pool,
             is_running: false,
         }
     }
@@ -32,8 +32,8 @@ impl Job for ClearExpiredContainerInvitesJob {
     async fn execute(&mut self) -> Result<(), JobError> {
         self.is_running = true;
 
-        let dao = ContainerDao::new(&self.db_thread_pool);
-        tokio::task::spawn_blocking(move || dao.delete_all_expired_invitations()).await??;
+        let dao = ContainerDao::new(&self.db_async_pool);
+        dao.delete_all_expired_invitations().await?;
 
         self.is_running = false;
         Ok(())
@@ -54,7 +54,7 @@ mod tests {
     use entries_common::schema::containers;
     use entries_common::threadrand::SecureRng;
 
-    use diesel::{QueryDsl, RunQueryDsl};
+    use diesel::QueryDsl;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -100,7 +100,7 @@ mod tests {
             user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
-        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_ASYNC_POOL);
 
         let user_id = user_dao
             .create_user(
@@ -129,8 +129,9 @@ mod tests {
                 &new_user.user_keystore_encrypted,
                 new_user.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
-        user_dao.verify_user_creation(user_id).unwrap();
+        user_dao.verify_user_creation(user_id).await.unwrap();
 
         let new_container = NewContainer {
             id: Uuid::now_v7(),
@@ -139,10 +140,12 @@ mod tests {
             modified_timestamp: SystemTime::now(),
         };
 
-        diesel::insert_into(containers::table)
-            .values(&new_container)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(containers::table).values(&new_container),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_share_invite_exp = NewContainerShareInvite {
             id: Uuid::now_v7(),
@@ -160,10 +163,13 @@ mod tests {
             created_unix_timestamp_intdiv_five_million: 100,
         };
 
-        diesel::insert_into(container_share_invites::table)
-            .values(&new_container_share_invite_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_share_invites::table)
+                .values(&new_container_share_invite_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_accept_key_exp = NewContainerAcceptKey {
             key_id: Uuid::now_v7(),
@@ -173,10 +179,12 @@ mod tests {
             read_only: false,
         };
 
-        diesel::insert_into(container_accept_keys::table)
-            .values(&new_container_accept_key_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_accept_keys::table).values(&new_container_accept_key_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_share_invite_not_exp = NewContainerShareInvite {
             id: Uuid::now_v7(),
@@ -194,10 +202,13 @@ mod tests {
             created_unix_timestamp_intdiv_five_million: i16::MAX,
         };
 
-        diesel::insert_into(container_share_invites::table)
-            .values(&new_container_share_invite_not_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_share_invites::table)
+                .values(&new_container_share_invite_not_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_container_accept_key_not_exp = NewContainerAcceptKey {
             key_id: Uuid::now_v7(),
@@ -207,77 +218,91 @@ mod tests {
             read_only: false,
         };
 
-        diesel::insert_into(container_accept_keys::table)
-            .values(&new_container_accept_key_not_exp)
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::insert_into(container_accept_keys::table)
+                .values(&new_container_accept_key_not_exp),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        let mut job = ClearExpiredContainerInvitesJob::new(env::testing::DB_THREAD_POOL.clone());
+        let mut job = ClearExpiredContainerInvitesJob::new(env::testing::DB_ASYNC_POOL.clone());
 
-        assert_eq!(
-            container_share_invites::table
-                .find(new_container_share_invite_exp.id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            container_share_invites::table.find(new_container_share_invite_exp.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
 
-        assert_eq!(
+        let count = diesel_async::RunQueryDsl::execute(
             container_accept_keys::table
-                .find((new_container_accept_key_exp.key_id, new_container.id))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+                .find((new_container_accept_key_exp.key_id, new_container.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
+
+        assert_eq!(
+            diesel_async::RunQueryDsl::execute(
+                container_share_invites::table.find(new_container_share_invite_not_exp.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1
         );
 
-        assert_eq!(
-            container_share_invites::table
-                .find(new_container_share_invite_not_exp.id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
-
-        assert_eq!(
+        let count = diesel_async::RunQueryDsl::execute(
             container_accept_keys::table
-                .find((new_container_accept_key_not_exp.key_id, new_container.id))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+                .find((new_container_accept_key_not_exp.key_id, new_container.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
 
         job.execute().await.unwrap();
 
-        assert_eq!(
-            container_share_invites::table
-                .find(new_container_share_invite_exp.id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            0
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            container_share_invites::table.find(new_container_share_invite_exp.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 0);
 
-        assert_eq!(
+        let count = diesel_async::RunQueryDsl::execute(
             container_accept_keys::table
-                .find((new_container_accept_key_exp.key_id, new_container.id))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            0
-        );
+                .find((new_container_accept_key_exp.key_id, new_container.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 0);
 
         assert_eq!(
-            container_share_invites::table
-                .find(new_container_share_invite_not_exp.id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::execute(
+                container_share_invites::table.find(new_container_share_invite_not_exp.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1
         );
 
-        assert_eq!(
+        let count = diesel_async::RunQueryDsl::execute(
             container_accept_keys::table
-                .find((new_container_accept_key_not_exp.key_id, new_container.id))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+                .find((new_container_accept_key_not_exp.key_id, new_container.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
     }
 }

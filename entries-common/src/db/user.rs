@@ -1,8 +1,9 @@
-use diesel::{dsl, ExpressionMethods, JoinOnDsl, QueryDsl, Queryable, RunQueryDsl};
+use diesel::{dsl, ExpressionMethods, JoinOnDsl, QueryDsl, Queryable};
+use diesel_async::RunQueryDsl;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-use crate::db::{DaoError, DbThreadPool};
+use crate::db::{DaoError, DbAsyncPool};
 use crate::messages::UserPublicKey;
 use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
@@ -41,21 +42,23 @@ pub struct ProtectedUserData {
 }
 
 pub struct Dao {
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
 }
 
 impl Dao {
-    pub fn new(db_thread_pool: &DbThreadPool) -> Self {
+    pub fn new(db_async_pool: &DbAsyncPool) -> Self {
         Self {
-            db_thread_pool: db_thread_pool.clone(),
+            db_async_pool: db_async_pool.clone(),
         }
     }
 
-    pub fn get_user_public_key(&self, user_email: &str) -> Result<UserPublicKey, DaoError> {
+    pub async fn get_user_public_key(&self, user_email: &str) -> Result<UserPublicKey, DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         let (key_id, key) = users
             .select((user_fields::public_key_id, user_fields::public_key))
             .filter(user_fields::email.eq(user_email))
-            .first::<(Uuid, Vec<u8>)>(&mut self.db_thread_pool.get()?)?;
+            .first::<(Uuid, Vec<u8>)>(&mut conn)
+            .await?;
 
         Ok(UserPublicKey {
             id: key_id.into(),
@@ -64,7 +67,7 @@ impl Dao {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn create_user(
+    pub async fn create_user(
         &self,
         email: &str,
         auth_string_hash: &str,
@@ -146,199 +149,226 @@ impl Dao {
             nonce: SecureRng::next_i32(),
         };
 
-        let mut db_connection = self.db_thread_pool.get()?;
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                dsl::insert_into(users).values(&new_user).execute(conn)?;
+                Box::pin(async move {
+                    dsl::insert_into(users)
+                        .values(&new_user)
+                        .execute(conn)
+                        .await?;
 
-                dsl::insert_into(user_preferences)
-                    .values(&new_user_preferences)
-                    .execute(conn)?;
+                    dsl::insert_into(user_preferences)
+                        .values(&new_user_preferences)
+                        .execute(conn)
+                        .await?;
 
-                dsl::insert_into(user_keystores)
-                    .values(&new_user_keystore)
-                    .execute(conn)?;
+                    dsl::insert_into(user_keystores)
+                        .values(&new_user_keystore)
+                        .execute(conn)
+                        .await?;
 
-                dsl::insert_into(signin_nonces)
-                    .values(&new_signin_nonce)
-                    .execute(conn)?;
+                    dsl::insert_into(signin_nonces)
+                        .values(&new_signin_nonce)
+                        .execute(conn)
+                        .await?;
 
-                Ok(())
-            })?;
+                    Ok(())
+                })
+            })
+            .await?;
 
         Ok(user_id)
     }
 
-    pub fn verify_user_creation(&self, user_id: Uuid) -> Result<(), DaoError> {
+    pub async fn verify_user_creation(&self, user_id: Uuid) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         dsl::update(users.find(user_id))
             .set(user_fields::is_verified.eq(true))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn clear_unverified_users(
+    pub async fn clear_unverified_users(
         &self,
         max_unverified_user_age: Duration,
     ) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         diesel::delete(users.filter(user_fields::is_verified.eq(false)).filter(
             user_fields::created_timestamp.lt(SystemTime::now() - max_unverified_user_age),
         ))
-        .execute(&mut self.db_thread_pool.get()?)?;
+        .execute(&mut conn)
+        .await?;
 
         Ok(())
     }
 
-    pub fn rotate_user_public_key(
+    pub async fn rotate_user_public_key(
         &self,
         user_id: Uuid,
         public_key_id: Uuid,
         public_key: &[u8],
         expected_previous_public_key_id: Uuid,
     ) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let affected_row_count = dsl::update(
-                    users
-                        .find(user_id)
-                        .filter(user_fields::public_key_id.eq(expected_previous_public_key_id)),
-                )
-                .set((
-                    user_fields::public_key_id.eq(public_key_id),
-                    user_fields::public_key.eq(public_key),
-                ))
-                .execute(conn)?;
+                Box::pin(async move {
+                    let affected_row_count =
+                        dsl::update(users.find(user_id).filter(
+                            user_fields::public_key_id.eq(expected_previous_public_key_id),
+                        ))
+                        .set((
+                            user_fields::public_key_id.eq(public_key_id),
+                            user_fields::public_key.eq(public_key),
+                        ))
+                        .execute(conn)
+                        .await?;
 
-                if affected_row_count == 0 {
-                    // Check whether the update failed because the record wasn't found or because
-                    // the key ID was out-of-date
-                    let current_key_id = users
-                        .select(user_fields::public_key_id)
-                        .find(user_id)
-                        .first::<Uuid>(conn);
+                    if affected_row_count == 0 {
+                        // Check whether the update failed because the record wasn't found or because
+                        // the key ID was out-of-date
+                        let current_key_id = users
+                            .select(user_fields::public_key_id)
+                            .find(user_id)
+                            .first::<Uuid>(conn)
+                            .await;
 
-                    match current_key_id {
-                        Ok(current_key_id) => {
-                            if current_key_id != expected_previous_public_key_id {
-                                return Err(DaoError::OutOfDate);
+                        match current_key_id {
+                            Ok(current_key_id) => {
+                                if current_key_id != expected_previous_public_key_id {
+                                    return Err(DaoError::OutOfDate);
+                                }
+
+                                // This case should never happen because we filtered on version_nonce
+                                // in the update query
+                                unreachable!();
                             }
-
-                            // This case should never happen because we filtered on version_nonce
-                            // in the update query
-                            unreachable!();
+                            Err(e) => return Err(DaoError::from(e)),
                         }
-                        Err(e) => return Err(DaoError::from(e)),
                     }
-                }
 
-                Ok(())
+                    Ok(())
+                })
             })
+            .await
     }
 
-    pub fn update_user_prefs(
+    pub async fn update_user_prefs(
         &self,
         user_id: Uuid,
         prefs_encrypted_blob: &[u8],
         version_nonce: i64,
         expected_previous_version_nonce: i64,
     ) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let affected_row_count = dsl::update(user_preferences.find(user_id).filter(
-                    user_preferences_fields::version_nonce.eq(expected_previous_version_nonce),
-                ))
-                .set((
-                    user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
-                    user_preferences_fields::version_nonce.eq(version_nonce),
-                ))
-                .execute(conn)?;
+                Box::pin(async move {
+                    let affected_row_count = dsl::update(user_preferences.find(user_id).filter(
+                        user_preferences_fields::version_nonce.eq(expected_previous_version_nonce),
+                    ))
+                    .set((
+                        user_preferences_fields::encrypted_blob.eq(prefs_encrypted_blob),
+                        user_preferences_fields::version_nonce.eq(version_nonce),
+                    ))
+                    .execute(conn)
+                    .await?;
 
-                if affected_row_count == 0 {
-                    // Check whether the update failed because the record wasn't found or because
-                    // the version_nonce was out-of-date
-                    let current_version_nonce = user_preferences
-                        .select(user_preferences_fields::version_nonce)
-                        .find(user_id)
-                        .first::<i64>(conn);
+                    if affected_row_count == 0 {
+                        // Check whether the update failed because the record wasn't found or because
+                        // the version_nonce was out-of-date
+                        let current_version_nonce = user_preferences
+                            .select(user_preferences_fields::version_nonce)
+                            .find(user_id)
+                            .first::<i64>(conn)
+                            .await;
 
-                    match current_version_nonce {
-                        Ok(current_version_nonce) => {
-                            if current_version_nonce != expected_previous_version_nonce {
-                                return Err(DaoError::OutOfDate);
+                        match current_version_nonce {
+                            Ok(current_version_nonce) => {
+                                if current_version_nonce != expected_previous_version_nonce {
+                                    return Err(DaoError::OutOfDate);
+                                }
+
+                                // This case should never happen because we filtered on version_nonce
+                                // in the update query
+                                unreachable!();
                             }
-
-                            // This case should never happen because we filtered on version_nonce
-                            // in the update query
-                            unreachable!();
+                            Err(e) => return Err(DaoError::from(e)),
                         }
-                        Err(e) => return Err(DaoError::from(e)),
                     }
-                }
 
-                Ok(())
+                    Ok(())
+                })
             })
+            .await
     }
 
-    pub fn update_user_keystore(
+    pub async fn update_user_keystore(
         &self,
         user_id: Uuid,
         keystore_encrypted_blob: &[u8],
         version_nonce: i64,
         expected_previous_version_nonce: i64,
     ) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .repeatable_read()
             .run::<_, DaoError, _>(|conn| {
-                let affected_row_count = dsl::update(user_keystores.find(user_id).filter(
-                    user_keystore_fields::version_nonce.eq(expected_previous_version_nonce),
-                ))
-                .set((
-                    user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
-                    user_keystore_fields::version_nonce.eq(version_nonce),
-                ))
-                .execute(conn)?;
+                Box::pin(async move {
+                    let affected_row_count = dsl::update(user_keystores.find(user_id).filter(
+                        user_keystore_fields::version_nonce.eq(expected_previous_version_nonce),
+                    ))
+                    .set((
+                        user_keystore_fields::encrypted_blob.eq(keystore_encrypted_blob),
+                        user_keystore_fields::version_nonce.eq(version_nonce),
+                    ))
+                    .execute(conn)
+                    .await?;
 
-                if affected_row_count == 0 {
-                    // Check whether the update failed because the record wasn't found or because
-                    // the version_nonce was out-of-date
-                    let current_version_nonce = user_keystores
-                        .select(user_keystore_fields::version_nonce)
-                        .find(user_id)
-                        .first::<i64>(conn);
+                    if affected_row_count == 0 {
+                        // Check whether the update failed because the record wasn't found or because
+                        // the version_nonce was out-of-date
+                        let current_version_nonce = user_keystores
+                            .select(user_keystore_fields::version_nonce)
+                            .find(user_id)
+                            .first::<i64>(conn)
+                            .await;
 
-                    match current_version_nonce {
-                        Ok(current_version_nonce) => {
-                            if current_version_nonce != expected_previous_version_nonce {
-                                return Err(DaoError::OutOfDate);
+                        match current_version_nonce {
+                            Ok(current_version_nonce) => {
+                                if current_version_nonce != expected_previous_version_nonce {
+                                    return Err(DaoError::OutOfDate);
+                                }
+
+                                // This case should never happen because we filtered on version_nonce
+                                // in the update query
+                                unreachable!();
                             }
-
-                            // This case should never happen because we filtered on version_nonce
-                            // in the update query
-                            unreachable!();
+                            Err(e) => return Err(DaoError::from(e)),
                         }
-                        Err(e) => return Err(DaoError::from(e)),
                     }
-                }
 
-                Ok(())
+                    Ok(())
+                })
             })
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn update_password(
+    pub async fn update_password(
         &self,
         user_email: &str,
         new_auth_string_hash: &str,
@@ -352,6 +382,7 @@ impl Dao {
         new_password_encryption_key_iterations: i32,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         dsl::update(users.filter(user_fields::email.eq(user_email)))
             .set((
                 user_fields::auth_string_hash.eq(new_auth_string_hash),
@@ -368,13 +399,14 @@ impl Dao {
                     .eq(new_password_encryption_key_iterations),
                 user_fields::encryption_key_encrypted_with_password.eq(encrypted_encryption_key),
             ))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn update_recovery_key(
+    pub async fn update_recovery_key(
         &self,
         user_id: Uuid,
         new_recovery_key_hash_salt_for_encryption: &[u8],
@@ -385,6 +417,7 @@ impl Dao {
         new_recovery_key_auth_hash_rehashed_with_auth_string_params: &str,
         encrypted_encryption_key: &[u8],
     ) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         dsl::update(users.find(user_id))
             .set((
                 user_fields::recovery_key_hash_salt_for_encryption
@@ -399,20 +432,23 @@ impl Dao {
                 user_fields::encryption_key_encrypted_with_recovery_key
                     .eq(encrypted_encryption_key),
             ))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn update_email(&self, user_id: Uuid, new_email: &str) -> Result<(), DaoError> {
+    pub async fn update_email(&self, user_id: Uuid, new_email: &str) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         dsl::update(users.find(user_id))
             .set(user_fields::email.eq(new_email))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn save_user_deletion_container_keys(
+    pub async fn save_user_deletion_container_keys(
         &self,
         container_access_key_ids: &[Uuid],
         user_id: Uuid,
@@ -427,14 +463,16 @@ impl Dao {
             })
             .collect::<Vec<_>>();
 
+        let mut conn = self.db_async_pool.get().await?;
         dsl::insert_into(user_deletion_request_container_keys)
             .values(&deletion_request_container_keys)
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn initiate_user_deletion(
+    pub async fn initiate_user_deletion(
         &self,
         user_id: Uuid,
         time_until_deletion: Duration,
@@ -444,100 +482,132 @@ impl Dao {
             ready_for_deletion_time: SystemTime::now() + time_until_deletion,
         };
 
+        let mut conn = self.db_async_pool.get().await?;
         dsl::insert_into(user_deletion_requests)
             .values(&new_request)
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn cancel_user_deletion(&self, user_id: Uuid) -> Result<(), DaoError> {
+    pub async fn cancel_user_deletion(&self, user_id: Uuid) -> Result<(), DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         diesel::delete(user_deletion_requests.find(user_id))
-            .execute(&mut self.db_thread_pool.get()?)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
 
-    pub fn delete_user(&self, user_deletion_request: &UserDeletionRequest) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+    pub async fn delete_user(
+        &self,
+        user_deletion_request: &UserDeletionRequest,
+    ) -> Result<(), DaoError> {
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let container_key_ids = user_deletion_request_container_keys
-                    .select(user_deletion_request_container_key_fields::key_id)
-                    .filter(
-                        user_deletion_request_container_key_fields::user_id
-                            .eq(user_deletion_request.user_id),
+                Box::pin(async move {
+                    let container_key_ids = user_deletion_request_container_keys
+                        .select(user_deletion_request_container_key_fields::key_id)
+                        .filter(
+                            user_deletion_request_container_key_fields::user_id
+                                .eq(user_deletion_request.user_id),
+                        )
+                        .load::<Uuid>(conn)
+                        .await?;
+
+                    let container_ids = diesel::delete(
+                        container_access_keys
+                            .filter(container_access_key_fields::key_id.eq_any(container_key_ids)),
                     )
-                    .load::<Uuid>(conn)?;
+                    .returning(container_access_key_fields::container_id)
+                    .load::<Uuid>(conn)
+                    .await?;
 
-                let container_ids = diesel::delete(
-                    container_access_keys
-                        .filter(container_access_key_fields::key_id.eq_any(container_key_ids)),
-                )
-                .returning(container_access_key_fields::container_id)
-                .load::<Uuid>(conn)?;
+                    for container_id in container_ids {
+                        let users_remaining_in_container = container_access_keys
+                            .filter(container_access_key_fields::container_id.eq(container_id))
+                            .count()
+                            .get_result::<i64>(conn)
+                            .await?;
 
-                for container_id in container_ids {
-                    let users_remaining_in_container = container_access_keys
-                        .filter(container_access_key_fields::container_id.eq(container_id))
-                        .count()
-                        .get_result::<i64>(conn)?;
-
-                    if users_remaining_in_container == 0 {
-                        // Hard delete. The only user in the container is being deleted
-                        diesel::delete(containers.find(container_id)).execute(conn)?;
+                        if users_remaining_in_container == 0 {
+                            // Hard delete. The only user in the container is being deleted
+                            diesel::delete(containers.find(container_id))
+                                .execute(conn)
+                                .await?;
+                        }
                     }
-                }
 
-                diesel::delete(users.find(user_deletion_request.user_id)).execute(conn)
-            })?;
+                    diesel::delete(users.find(user_deletion_request.user_id))
+                        .execute(conn)
+                        .await
+                })
+            })
+            .await?;
 
         Ok(())
     }
 
-    pub fn get_all_users_ready_for_deletion(&self) -> Result<Vec<UserDeletionRequest>, DaoError> {
+    pub async fn get_all_users_ready_for_deletion(
+        &self,
+    ) -> Result<Vec<UserDeletionRequest>, DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         Ok(user_deletion_requests
             .filter(user_deletion_request_fields::ready_for_deletion_time.lt(SystemTime::now()))
-            .get_results(&mut self.db_thread_pool.get()?)?)
+            .get_results(&mut conn)
+            .await?)
     }
 
-    pub fn check_is_user_listed_for_deletion(&self, user_id: Uuid) -> Result<bool, DaoError> {
+    pub async fn check_is_user_listed_for_deletion(&self, user_id: Uuid) -> Result<bool, DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         Ok(
             dsl::select(dsl::exists(user_deletion_requests.find(user_id)))
-                .get_result(&mut self.db_thread_pool.get()?)?,
+                .get_result(&mut conn)
+                .await?,
         )
     }
 
-    pub fn delete_old_user_deletion_requests(&self) -> Result<(), DaoError> {
-        let mut db_connection = self.db_thread_pool.get()?;
+    pub async fn delete_old_user_deletion_requests(&self) -> Result<(), DaoError> {
+        let mut db_connection = self.db_async_pool.get().await?;
 
         db_connection
             .build_transaction()
             .run::<_, diesel::result::Error, _>(|conn| {
-                let user_ids = diesel::delete(
-                    user_deletion_request_container_keys.filter(
-                        user_deletion_request_container_key_fields::delete_me_time
-                            .le(SystemTime::now()),
-                    ),
-                )
-                .returning(user_deletion_request_container_key_fields::user_id)
-                .get_results::<Uuid>(conn)?;
+                Box::pin(async move {
+                    let user_ids = diesel::delete(
+                        user_deletion_request_container_keys.filter(
+                            user_deletion_request_container_key_fields::delete_me_time
+                                .le(SystemTime::now()),
+                        ),
+                    )
+                    .returning(user_deletion_request_container_key_fields::user_id)
+                    .get_results::<Uuid>(conn)
+                    .await?;
 
-                diesel::delete(
-                    user_deletion_requests
-                        .filter(user_deletion_request_fields::user_id.eq_any(user_ids)),
-                )
-                .execute(conn)?;
+                    diesel::delete(
+                        user_deletion_requests
+                            .filter(user_deletion_request_fields::user_id.eq_any(user_ids)),
+                    )
+                    .execute(conn)
+                    .await?;
 
-                Ok(())
-            })?;
+                    Ok(())
+                })
+            })
+            .await?;
 
         Ok(())
     }
 
-    pub fn get_protected_user_data(&self, user_id: Uuid) -> Result<ProtectedUserData, DaoError> {
+    pub async fn get_protected_user_data(
+        &self,
+        user_id: Uuid,
+    ) -> Result<ProtectedUserData, DaoError> {
+        let mut conn = self.db_async_pool.get().await?;
         let protected_data = users
             .inner_join(user_preferences.on(user_preferences_fields::user_id.eq(user_fields::id)))
             .inner_join(user_keystores.on(user_keystore_fields::user_id.eq(user_fields::id)))
@@ -553,7 +623,8 @@ impl Dao {
                 user_fields::encryption_key_encrypted_with_password,
             ))
             .filter(user_fields::id.eq(user_id))
-            .first::<ProtectedUserData>(&mut self.db_thread_pool.get()?)?;
+            .first::<ProtectedUserData>(&mut conn)
+            .await?;
 
         Ok(protected_data)
     }
@@ -582,62 +653,69 @@ mod tests {
     use crate::schema::users as user_fields;
     use crate::schema::users::dsl::users;
     use crate::threadrand::SecureRng;
-    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl};
+    use diesel_async::RunQueryDsl;
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
     fn dao() -> Dao {
-        Dao::new(test_utils::db_pool())
+        Dao::new(test_utils::db_async_pool())
     }
 
-    fn create_user_and_blueprint(dao: &Dao) -> (Uuid, TestUserData) {
-        let inserted = test_utils::create_user_with_dao(dao);
+    async fn create_user_and_blueprint(dao: &Dao) -> (Uuid, TestUserData) {
+        let inserted = test_utils::create_user_with_dao(dao).await;
         (inserted.id, inserted.data)
     }
 
-    fn delete_user_row(user_id: Uuid) {
-        test_utils::delete_user(user_id);
+    async fn delete_user_row(user_id: Uuid) {
+        test_utils::delete_user(user_id).await;
     }
 
-    fn delete_container_row(container_id: Uuid) {
-        let mut conn = test_utils::db_conn();
-        let _ = diesel::delete(containers.find(container_id)).execute(&mut conn);
+    async fn delete_container_row(container_id: Uuid) {
+        let mut conn = test_utils::db_async_conn().await;
+        let _ = diesel::delete(containers.find(container_id))
+            .execute(&mut conn)
+            .await;
     }
 
-    fn fetch_user(user_id: Uuid) -> User {
-        let mut conn = test_utils::db_conn();
-        users.find(user_id).first(&mut conn).unwrap()
+    async fn fetch_user(user_id: Uuid) -> User {
+        let mut conn = test_utils::db_async_conn().await;
+        users.find(user_id).first(&mut conn).await.unwrap()
     }
 
-    fn fetch_preferences(user_id: Uuid) -> UserPreferences {
-        let mut conn = test_utils::db_conn();
-        user_preferences.find(user_id).first(&mut conn).unwrap()
+    async fn fetch_preferences(user_id: Uuid) -> UserPreferences {
+        let mut conn = test_utils::db_async_conn().await;
+        user_preferences
+            .find(user_id)
+            .first(&mut conn)
+            .await
+            .unwrap()
     }
 
-    fn fetch_keystore(user_id: Uuid) -> UserKeystore {
-        let mut conn = test_utils::db_conn();
-        user_keystores.find(user_id).first(&mut conn).unwrap()
+    async fn fetch_keystore(user_id: Uuid) -> UserKeystore {
+        let mut conn = test_utils::db_async_conn().await;
+        user_keystores.find(user_id).first(&mut conn).await.unwrap()
     }
 
     fn very_long_duration() -> Duration {
         Duration::from_secs(60 * 60 * 24 * 365 * 100)
     }
 
-    fn prepare_container_with_keys(key_ids: &[Uuid]) -> Uuid {
-        let mut conn = test_utils::db_conn();
-        let container_id = test_utils::insert_container(&mut conn);
+    async fn prepare_container_with_keys(key_ids: &[Uuid]) -> Uuid {
+        let mut conn = test_utils::db_async_conn().await;
+        let container_id = test_utils::insert_container(&mut conn).await;
         for key_id in key_ids {
-            test_utils::insert_container_access_key(&mut conn, container_id, *key_id);
+            test_utils::insert_container_access_key(&mut conn, container_id, *key_id).await;
         }
         container_id
     }
 
-    #[test]
-    fn get_user_public_key_returns_expected_key() {
+    #[tokio::test]
+    async fn get_user_public_key_returns_expected_key() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
-        let public_key = dao.get_user_public_key(&blueprint.email).unwrap();
+        let public_key = dao.get_user_public_key(&blueprint.email).await.unwrap();
 
         assert_eq!(
             public_key.id.value.as_slice(),
@@ -645,19 +723,19 @@ mod tests {
         );
         assert_eq!(public_key.value, blueprint.public_key.clone());
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn create_user_persists_related_records() {
+    #[tokio::test]
+    async fn create_user_persists_related_records() {
         let dao = dao();
         let blueprint = TestUserData::random();
         let before = SystemTime::now();
-        let user_id = blueprint.insert(&dao);
+        let user_id = blueprint.insert(&dao).await;
         let after = SystemTime::now();
 
-        let mut conn = test_utils::db_conn();
-        let user = users.find(user_id).first::<User>(&mut conn).unwrap();
+        let mut conn = test_utils::db_async_conn().await;
+        let user = users.find(user_id).first::<User>(&mut conn).await.unwrap();
 
         assert_eq!(user.email, blueprint.email);
         assert!(!user.is_verified);
@@ -731,6 +809,7 @@ mod tests {
         let prefs = user_preferences
             .find(user_id)
             .first::<UserPreferences>(&mut conn)
+            .await
             .unwrap();
         assert_eq!(prefs.encrypted_blob, blueprint.preferences_encrypted);
         assert_eq!(prefs.version_nonce, blueprint.preferences_version_nonce);
@@ -738,6 +817,7 @@ mod tests {
         let keystore = user_keystores
             .find(user_id)
             .first::<UserKeystore>(&mut conn)
+            .await
             .unwrap();
         assert_eq!(keystore.encrypted_blob, blueprint.user_keystore_encrypted);
         assert_eq!(
@@ -748,90 +828,108 @@ mod tests {
         let signin_nonce = signin_nonces
             .find(blueprint.email.clone())
             .first::<SigninNonce>(&mut conn)
+            .await
             .unwrap();
         assert_eq!(signin_nonce.user_email, blueprint.email);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn verify_user_creation_sets_flag() {
+    #[tokio::test]
+    async fn verify_user_creation_sets_flag() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
 
-        dao.verify_user_creation(user_id).unwrap();
+        dao.verify_user_creation(user_id).await.unwrap();
 
-        assert!(fetch_user(user_id).is_verified);
+        assert!(fetch_user(user_id).await.is_verified);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn clear_unverified_users_removes_only_stale_records() {
+    #[tokio::test]
+    async fn clear_unverified_users_removes_only_stale_records() {
         let dao = dao();
-        let (stale_id, _) = create_user_and_blueprint(&dao);
-        let (fresh_id, _) = create_user_and_blueprint(&dao);
+        let (stale_id, _) = create_user_and_blueprint(&dao).await;
+        let (fresh_id, _) = create_user_and_blueprint(&dao).await;
 
         {
-            let mut conn = test_utils::db_conn();
+            let mut conn = test_utils::db_async_conn().await;
             let old_timestamp =
                 SystemTime::UNIX_EPOCH - Duration::from_secs(60 * 60 * 24 * 365 * 200);
             dsl::update(users.find(stale_id))
                 .set(user_fields::created_timestamp.eq(old_timestamp))
                 .execute(&mut conn)
+                .await
                 .unwrap();
         }
 
-        dao.clear_unverified_users(very_long_duration()).unwrap();
+        dao.clear_unverified_users(very_long_duration())
+            .await
+            .unwrap();
 
         {
-            let mut conn = test_utils::db_conn();
-            assert!(users.find(stale_id).first::<User>(&mut conn).is_err());
-            assert!(users.find(fresh_id).first::<User>(&mut conn).is_ok());
+            let mut conn = test_utils::db_async_conn().await;
+            assert!(
+                diesel_async::RunQueryDsl::first::<User>(users.find(stale_id), &mut conn)
+                    .await
+                    .is_err()
+            );
+            assert!(
+                diesel_async::RunQueryDsl::first::<User>(users.find(fresh_id), &mut conn)
+                    .await
+                    .is_ok()
+            );
         }
 
-        delete_user_row(fresh_id);
+        delete_user_row(fresh_id).await;
     }
 
-    #[test]
-    fn rotate_user_public_key_updates_record() {
+    #[tokio::test]
+    async fn rotate_user_public_key_updates_record() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
         let new_key_id = Uuid::now_v7();
         let new_key = test_utils::random_bytes(32);
 
         dao.rotate_user_public_key(user_id, new_key_id, &new_key, blueprint.public_key_id)
+            .await
             .unwrap();
 
-        let user = fetch_user(user_id);
+        let user = fetch_user(user_id).await;
         assert_eq!(user.public_key_id, new_key_id);
         assert_eq!(user.public_key, new_key);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn rotate_user_public_key_detects_out_of_date() {
+    #[tokio::test]
+    async fn rotate_user_public_key_detects_out_of_date() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
-        let result = dao.rotate_user_public_key(
-            user_id,
-            Uuid::now_v7(),
-            &test_utils::random_bytes(16),
-            Uuid::now_v7(),
-        );
+        let result = dao
+            .rotate_user_public_key(
+                user_id,
+                Uuid::now_v7(),
+                &test_utils::random_bytes(16),
+                Uuid::now_v7(),
+            )
+            .await;
 
         assert!(matches!(result, Err(DaoError::OutOfDate)));
-        assert_eq!(fetch_user(user_id).public_key_id, blueprint.public_key_id);
+        assert_eq!(
+            fetch_user(user_id).await.public_key_id,
+            blueprint.public_key_id
+        );
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_user_prefs_updates_blob() {
+    #[tokio::test]
+    async fn update_user_prefs_updates_blob() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
         let new_blob = test_utils::random_bytes(48);
         let new_nonce = blueprint.preferences_version_nonce + 1;
 
@@ -841,38 +939,41 @@ mod tests {
             new_nonce,
             blueprint.preferences_version_nonce,
         )
+        .await
         .unwrap();
 
-        let prefs = fetch_preferences(user_id);
+        let prefs = fetch_preferences(user_id).await;
         assert_eq!(prefs.encrypted_blob, new_blob);
         assert_eq!(prefs.version_nonce, new_nonce);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_user_prefs_detects_out_of_date() {
+    #[tokio::test]
+    async fn update_user_prefs_detects_out_of_date() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
-        let result = dao.update_user_prefs(
-            user_id,
-            &test_utils::random_bytes(24),
-            blueprint.preferences_version_nonce + 1,
-            blueprint.preferences_version_nonce - 1,
-        );
+        let result = dao
+            .update_user_prefs(
+                user_id,
+                &test_utils::random_bytes(24),
+                blueprint.preferences_version_nonce + 1,
+                blueprint.preferences_version_nonce - 1,
+            )
+            .await;
 
         assert!(matches!(result, Err(DaoError::OutOfDate)));
-        let prefs = fetch_preferences(user_id);
+        let prefs = fetch_preferences(user_id).await;
         assert_eq!(prefs.version_nonce, blueprint.preferences_version_nonce);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_user_keystore_updates_blob() {
+    #[tokio::test]
+    async fn update_user_keystore_updates_blob() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
         let new_blob = test_utils::random_bytes(48);
         let new_nonce = blueprint.user_keystore_version_nonce + 1;
 
@@ -882,41 +983,44 @@ mod tests {
             new_nonce,
             blueprint.user_keystore_version_nonce,
         )
+        .await
         .unwrap();
 
-        let keystore = fetch_keystore(user_id);
+        let keystore = fetch_keystore(user_id).await;
         assert_eq!(keystore.encrypted_blob, new_blob);
         assert_eq!(keystore.version_nonce, new_nonce);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_user_keystore_detects_out_of_date() {
+    #[tokio::test]
+    async fn update_user_keystore_detects_out_of_date() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
-        let result = dao.update_user_keystore(
-            user_id,
-            &test_utils::random_bytes(24),
-            blueprint.user_keystore_version_nonce + 1,
-            blueprint.user_keystore_version_nonce - 1,
-        );
+        let result = dao
+            .update_user_keystore(
+                user_id,
+                &test_utils::random_bytes(24),
+                blueprint.user_keystore_version_nonce + 1,
+                blueprint.user_keystore_version_nonce - 1,
+            )
+            .await;
 
         assert!(matches!(result, Err(DaoError::OutOfDate)));
-        let keystore = fetch_keystore(user_id);
+        let keystore = fetch_keystore(user_id).await;
         assert_eq!(
             keystore.version_nonce,
             blueprint.user_keystore_version_nonce
         );
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_password_updates_all_fields() {
+    #[tokio::test]
+    async fn update_password_updates_all_fields() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
         let new_auth_hash = format!("new-auth-{}", SecureRng::next_u128());
         let new_auth_salt = test_utils::random_bytes(20);
@@ -942,9 +1046,10 @@ mod tests {
             new_pw_iterations,
             &new_encrypted_key,
         )
+        .await
         .unwrap();
 
-        let user = fetch_user(user_id);
+        let user = fetch_user(user_id).await;
         assert_eq!(user.auth_string_hash, new_auth_hash);
         assert_eq!(user.auth_string_hash_salt, new_auth_salt);
         assert_eq!(user.auth_string_hash_mem_cost_kib, new_auth_mem_cost);
@@ -959,13 +1064,13 @@ mod tests {
             new_encrypted_key
         );
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_recovery_key_updates_all_fields() {
+    #[tokio::test]
+    async fn update_recovery_key_updates_all_fields() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
 
         let new_salt_encryption = test_utils::random_bytes(24);
         let new_salt_recovery = test_utils::random_bytes(24);
@@ -985,9 +1090,10 @@ mod tests {
             &new_auth_hash,
             &new_encrypted_key,
         )
+        .await
         .unwrap();
 
-        let user = fetch_user(user_id);
+        let user = fetch_user(user_id).await;
         assert_eq!(
             user.recovery_key_hash_salt_for_encryption,
             new_salt_encryption
@@ -1008,63 +1114,73 @@ mod tests {
             new_encrypted_key
         );
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn update_email_changes_value() {
+    #[tokio::test]
+    async fn update_email_changes_value() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
         let new_email = format!("updated-{}", test_utils::unique_email());
 
-        dao.update_email(user_id, &new_email).unwrap();
+        dao.update_email(user_id, &new_email).await.unwrap();
 
-        assert_eq!(fetch_user(user_id).email, new_email);
+        assert_eq!(fetch_user(user_id).await.email, new_email);
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn save_user_deletion_container_keys_persists_rows() {
+    #[tokio::test]
+    async fn save_user_deletion_container_keys_persists_rows() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
         let key_ids = vec![Uuid::now_v7(), Uuid::now_v7()];
-        let container_id = prepare_container_with_keys(&key_ids);
+        let container_id = prepare_container_with_keys(&key_ids).await;
         let delete_me_time = SystemTime::now() + Duration::from_secs(60);
 
         dao.save_user_deletion_container_keys(&key_ids, user_id, delete_me_time)
+            .await
             .unwrap();
 
-        let mut conn = test_utils::db_conn();
+        let mut conn = test_utils::db_async_conn().await;
         let stored: Vec<UserDeletionRequestContainerKey> = user_deletion_request_container_keys
             .filter(user_deletion_request_container_key_fields::user_id.eq(user_id))
             .load(&mut conn)
+            .await
             .unwrap();
         assert_eq!(stored.len(), key_ids.len());
         for record in stored {
             assert!(key_ids.contains(&record.key_id));
         }
 
-        delete_user_row(user_id);
-        delete_container_row(container_id);
+        delete_user_row(user_id).await;
+        delete_container_row(container_id).await;
     }
 
-    #[test]
-    fn initiate_and_cancel_user_deletion_cycle() {
+    #[tokio::test]
+    async fn initiate_and_cancel_user_deletion_cycle() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
 
-        assert!(!dao.check_is_user_listed_for_deletion(user_id).unwrap());
+        assert!(!dao
+            .check_is_user_listed_for_deletion(user_id)
+            .await
+            .unwrap());
 
         dao.initiate_user_deletion(user_id, Duration::from_secs(5))
+            .await
             .unwrap();
-        assert!(dao.check_is_user_listed_for_deletion(user_id).unwrap());
+        assert!(dao
+            .check_is_user_listed_for_deletion(user_id)
+            .await
+            .unwrap());
 
         {
-            let mut conn = test_utils::db_conn();
+            let mut conn = test_utils::db_async_conn().await;
             let request = user_deletion_requests
                 .find(user_id)
                 .first::<UserDeletionRequest>(&mut conn)
+                .await
                 .unwrap();
             assert!(request
                 .ready_for_deletion_time
@@ -1072,46 +1188,52 @@ mod tests {
                 .is_ok());
         }
 
-        dao.cancel_user_deletion(user_id).unwrap();
-        assert!(!dao.check_is_user_listed_for_deletion(user_id).unwrap());
+        dao.cancel_user_deletion(user_id).await.unwrap();
+        assert!(!dao
+            .check_is_user_listed_for_deletion(user_id)
+            .await
+            .unwrap());
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 
-    #[test]
-    fn get_all_users_ready_for_deletion_filters_by_time() {
+    #[tokio::test]
+    async fn get_all_users_ready_for_deletion_filters_by_time() {
         let dao = dao();
-        let (ready_id, _) = create_user_and_blueprint(&dao);
-        let (pending_id, _) = create_user_and_blueprint(&dao);
+        let (ready_id, _) = create_user_and_blueprint(&dao).await;
+        let (pending_id, _) = create_user_and_blueprint(&dao).await;
 
         dao.initiate_user_deletion(ready_id, Duration::from_secs(0))
+            .await
             .unwrap();
         dao.initiate_user_deletion(pending_id, Duration::from_secs(60))
+            .await
             .unwrap();
 
-        let ready_requests = dao.get_all_users_ready_for_deletion().unwrap();
+        let ready_requests = dao.get_all_users_ready_for_deletion().await.unwrap();
         let ready_ids: Vec<Uuid> = ready_requests.into_iter().map(|req| req.user_id).collect();
         assert!(ready_ids.contains(&ready_id));
         assert!(!ready_ids.contains(&pending_id));
 
-        dao.cancel_user_deletion(ready_id).unwrap();
-        dao.cancel_user_deletion(pending_id).unwrap();
+        dao.cancel_user_deletion(ready_id).await.unwrap();
+        dao.cancel_user_deletion(pending_id).await.unwrap();
 
-        delete_user_row(ready_id);
-        delete_user_row(pending_id);
+        delete_user_row(ready_id).await;
+        delete_user_row(pending_id).await;
     }
 
-    #[test]
-    fn delete_user_removes_user_and_related_data() {
+    #[tokio::test]
+    async fn delete_user_removes_user_and_related_data() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
 
         let key_only_container_key = Uuid::now_v7();
         let shared_container_key = Uuid::now_v7();
         let survivor_key = Uuid::now_v7();
 
-        let solo_container = prepare_container_with_keys(&[key_only_container_key]);
-        let shared_container = prepare_container_with_keys(&[shared_container_key, survivor_key]);
+        let solo_container = prepare_container_with_keys(&[key_only_container_key]).await;
+        let shared_container =
+            prepare_container_with_keys(&[shared_container_key, survivor_key]).await;
 
         let delete_me_time = SystemTime::now();
         dao.save_user_deletion_container_keys(
@@ -1119,80 +1241,96 @@ mod tests {
             user_id,
             delete_me_time,
         )
+        .await
         .unwrap();
         dao.initiate_user_deletion(user_id, Duration::from_secs(0))
+            .await
             .unwrap();
 
         let request = {
-            let mut conn = test_utils::db_conn();
+            let mut conn = test_utils::db_async_conn().await;
             user_deletion_requests
                 .find(user_id)
                 .first::<UserDeletionRequest>(&mut conn)
+                .await
                 .unwrap()
         };
 
-        dao.delete_user(&request).unwrap();
+        dao.delete_user(&request).await.unwrap();
 
-        let mut conn = test_utils::db_conn();
-        assert!(users.find(user_id).first::<User>(&mut conn).is_err());
-        assert!(containers
-            .find(solo_container)
-            .first::<Container>(&mut conn)
-            .is_err());
-        assert!(user_deletion_requests
-            .find(user_id)
-            .first::<UserDeletionRequest>(&mut conn)
-            .is_err());
+        let mut conn = test_utils::db_async_conn().await;
+        assert!(
+            diesel_async::RunQueryDsl::first::<User>(users.find(user_id), &mut conn)
+                .await
+                .is_err()
+        );
+        assert!(diesel_async::RunQueryDsl::first::<Container>(
+            containers.find(solo_container),
+            &mut conn
+        )
+        .await
+        .is_err());
+        assert!(diesel_async::RunQueryDsl::first::<UserDeletionRequest>(
+            user_deletion_requests.find(user_id),
+            &mut conn
+        )
+        .await
+        .is_err());
 
         let shared_key_count: i64 = container_access_keys
             .filter(container_access_key_fields::container_id.eq(shared_container))
             .count()
             .get_result(&mut conn)
+            .await
             .unwrap();
         assert_eq!(shared_key_count, 1);
 
-        delete_container_row(shared_container);
+        delete_container_row(shared_container).await;
     }
 
     #[ignore]
-    #[test]
-    fn delete_old_user_deletion_requests_removes_expired_rows() {
+    #[tokio::test]
+    async fn delete_old_user_deletion_requests_removes_expired_rows() {
         let dao = dao();
-        let (user_id, _) = create_user_and_blueprint(&dao);
+        let (user_id, _) = create_user_and_blueprint(&dao).await;
         let key_id = Uuid::now_v7();
-        let container_id = prepare_container_with_keys(&[key_id]);
+        let container_id = prepare_container_with_keys(&[key_id]).await;
 
         dao.initiate_user_deletion(user_id, Duration::from_secs(0))
+            .await
             .unwrap();
         dao.save_user_deletion_container_keys(
             &[key_id],
             user_id,
             SystemTime::now() - Duration::from_secs(60),
         )
+        .await
         .unwrap();
 
-        dao.delete_old_user_deletion_requests().unwrap();
+        dao.delete_old_user_deletion_requests().await.unwrap();
 
-        let mut conn = test_utils::db_conn();
+        let mut conn = test_utils::db_async_conn().await;
         assert!(user_deletion_requests
             .find(user_id)
             .first::<UserDeletionRequest>(&mut conn)
+            .await
             .is_err());
         assert!(user_deletion_request_container_keys
             .filter(user_deletion_request_container_key_fields::user_id.eq(user_id))
             .first::<UserDeletionRequestContainerKey>(&mut conn)
+            .await
             .is_err());
 
-        delete_user_row(user_id);
-        delete_container_row(container_id);
+        delete_user_row(user_id).await;
+        delete_container_row(container_id).await;
     }
 
-    #[test]
-    fn get_protected_user_data_returns_joined_data() {
+    #[tokio::test]
+    async fn get_protected_user_data_returns_joined_data() {
         let dao = dao();
-        let (user_id, blueprint) = create_user_and_blueprint(&dao);
+        let (user_id, blueprint) = create_user_and_blueprint(&dao).await;
 
-        let protected = dao.get_protected_user_data(user_id).unwrap();
+        let protected = dao.get_protected_user_data(user_id).await.unwrap();
 
         assert_eq!(
             protected.preferences_encrypted,
@@ -1231,6 +1369,6 @@ mod tests {
             blueprint.encryption_key_encrypted_with_password
         );
 
-        delete_user_row(user_id);
+        delete_user_row(user_id).await;
     }
 }

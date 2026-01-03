@@ -10,7 +10,9 @@ actix-protobuf = "0.11.*"
 actix-web = "4.12.*"
 argon2-kdf = "1.6.*"
 base64 = "0.22.*"
+bb8 = "0.9.*"
 diesel = { version = "2.3.*", features = ["postgres", "uuid", "r2d2"] }
+diesel-async = { version = "0.7.*", features = ["postgres", "bb8"] }
 ed25519-dalek = { version = "2.2.*", features = ["rand_core"] }
 flexi_logger = { version = "0.31.*", features = ["async", "compress"], default-features = false }
 futures = "0.3.*"

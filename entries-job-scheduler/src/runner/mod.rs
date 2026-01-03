@@ -1,6 +1,6 @@
 use entries_common::db::job_registry::Dao as JobRegistryDao;
 
-use entries_common::db::DbThreadPool;
+use entries_common::db::DbAsyncPool;
 use futures::future;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::time;
@@ -16,15 +16,15 @@ struct JobContainer {
 pub struct JobRunner {
     jobs: Vec<JobContainer>,
     update_frequency: Duration,
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
 }
 
 impl JobRunner {
-    pub fn new(update_frequency: Duration, db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(update_frequency: Duration, db_async_pool: DbAsyncPool) -> Self {
         Self {
             jobs: Vec::new(),
             update_frequency,
-            db_thread_pool,
+            db_async_pool,
         }
     }
 
@@ -37,23 +37,18 @@ impl JobRunner {
             run_frequency.as_secs()
         );
 
-        let dao = JobRegistryDao::new(&self.db_thread_pool);
-        let last_run_time = tokio::task::spawn_blocking(move || {
-            dao.get_job_last_run_timestamp(job_name_ref)
-                .unwrap_or_else(|e| {
-                    log::error!(
-                        "Failed to get last run timestamp for job '{}': {}",
-                        job_name_ref,
-                        e
-                    );
-                    None
-                })
-        })
-        .await
-        .unwrap_or_else(|e| {
-            log::error!("Failed to join Tokio task: {}", e);
-            None
-        });
+        let dao = JobRegistryDao::new(&self.db_async_pool);
+        let last_run_time = dao
+            .get_job_last_run_timestamp(job_name_ref)
+            .await
+            .unwrap_or_else(|e| {
+                log::error!(
+                    "Failed to get last run timestamp for job '{}': {}",
+                    job_name_ref,
+                    e
+                );
+                None
+            });
 
         let job_container = JobContainer {
             job,
@@ -91,10 +86,9 @@ impl JobRunner {
                     let current_time = SystemTime::now();
                     job_container.last_run_time = current_time;
 
-                    let dao = JobRegistryDao::new(&self.db_thread_pool);
-                    let record_run_task = tokio::task::spawn_blocking(move || {
-                        dao.set_job_last_run_timestamp(name_ref, current_time)
-                    });
+                    let dao = JobRegistryDao::new(&self.db_async_pool);
+                    let record_run_task =
+                        async move { dao.set_job_last_run_timestamp(name_ref, current_time).await };
 
                     record_job_run_futures.push(record_run_task);
                 }
@@ -145,7 +139,7 @@ mod tests {
     async fn test_register() {
         let mut job_runner = JobRunner::new(
             Duration::from_micros(200),
-            env::testing::DB_THREAD_POOL.clone(),
+            env::testing::DB_ASYNC_POOL.clone(),
         );
         assert_eq!(job_runner.update_frequency, Duration::from_micros(200));
         assert!(job_runner.jobs.is_empty());
@@ -155,8 +149,9 @@ mod tests {
 
         let set_time = SystemTime::now();
 
-        let dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
+        let dao = JobRegistryDao::new(&env::testing::DB_ASYNC_POOL);
         dao.set_job_last_run_timestamp(mock_job1.name(), set_time)
+            .await
             .unwrap();
 
         job_runner
@@ -177,7 +172,7 @@ mod tests {
     async fn test_start() {
         let mut job_runner = JobRunner::new(
             Duration::from_millis(1),
-            env::testing::DB_THREAD_POOL.clone(),
+            env::testing::DB_ASYNC_POOL.clone(),
         );
         let job1 = MockJob::new();
         let job2 = MockJob::new();
@@ -220,9 +215,10 @@ mod tests {
         assert_eq!(*job1_run_count.lock().await, 2);
         assert_eq!(*job2_run_count.lock().await, 1);
 
-        let dao = JobRegistryDao::new(&env::testing::DB_THREAD_POOL);
+        let dao = JobRegistryDao::new(&env::testing::DB_ASYNC_POOL);
         let mock_job_last_run = dao
             .get_job_last_run_timestamp(job_name)
+            .await
             .unwrap()
             .expect("Last run time should have been set in DB during this test");
 

@@ -4,13 +4,11 @@ pub mod health;
 pub mod user;
 
 pub mod verification {
-    use actix_web::web;
-    use entries_common::db::{self, DaoError, DbThreadPool};
+    use entries_common::db::{self, DaoError, DbAsyncPool};
     use entries_common::email::{templates::OtpMessage, EmailMessage, EmailSender};
     use entries_common::otp::Otp;
     use std::borrow::Cow;
     use std::str::FromStr;
-    use std::sync::Arc;
     use std::time::SystemTime;
     use tokio::sync::oneshot;
     use zeroize::Zeroizing;
@@ -20,7 +18,7 @@ pub mod verification {
 
     pub async fn generate_and_email_otp(
         user_email: &str,
-        db_thread_pool: &DbThreadPool,
+        db_async_pool: &DbAsyncPool,
         smtp_thread_pool: &EmailSender,
     ) -> Result<(), HttpErrorResponse> {
         let otp_expiration = SystemTime::now() + env::CONF.otp_lifetime;
@@ -31,15 +29,10 @@ pub mod verification {
             )));
         }
 
-        let user_email_copy = String::from(user_email);
+        let otp = Otp::generate(8);
 
-        let otp = Arc::new(Otp::generate(8));
-        let otp_ref = Arc::clone(&otp);
-
-        let auth_dao = db::auth::Dao::new(db_thread_pool);
-        match web::block(move || auth_dao.save_otp(&otp_ref, &user_email_copy, otp_expiration))
-            .await?
-        {
+        let auth_dao = db::auth::Dao::new(db_async_pool);
+        match auth_dao.save_otp(&otp, user_email, otp_expiration).await {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 return Err(HttpErrorResponse::DoesNotExist(
@@ -80,7 +73,7 @@ pub mod verification {
     pub async fn verify_otp(
         otp: &str,
         user_email: &str,
-        db_thread_pool: &DbThreadPool,
+        db_async_pool: &DbAsyncPool,
     ) -> Result<(), HttpErrorResponse> {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
 
@@ -90,28 +83,19 @@ pub mod verification {
             )));
         }
 
-        let otp_copy = Arc::new(String::from(otp));
-        let otp_ref = Arc::new(String::from(otp));
-        let user_email_copy = Arc::new(String::from(user_email));
-        let user_email_ref = Arc::clone(&user_email_copy);
-
-        let auth_dao = db::auth::Dao::new(db_thread_pool);
-        let exists_unexpired_otp =
-            match web::block(move || auth_dao.check_unexpired_otp(&otp_copy, &user_email_copy))
-                .await?
-            {
-                Ok(e) => e,
-                Err(e) => {
-                    log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                        "Failed to check OTP",
-                    )));
-                }
-            };
+        let auth_dao = db::auth::Dao::new(db_async_pool);
+        let exists_unexpired_otp = match auth_dao.check_unexpired_otp(otp, user_email).await {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("{e}");
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                    "Failed to check OTP",
+                )));
+            }
+        };
 
         if exists_unexpired_otp {
-            let auth_dao = db::auth::Dao::new(db_thread_pool);
-            match web::block(move || auth_dao.delete_otp(&otp_ref, &user_email_ref)).await? {
+            match auth_dao.delete_otp(otp, user_email).await {
                 Ok(_) => (),
                 Err(e) => {
                     log::error!("{e}");
@@ -130,7 +114,7 @@ pub mod verification {
         auth_string: &[u8],
         user_email: &str,
         verify_using_recovery_key: bool,
-        db_thread_pool: &DbThreadPool,
+        db_async_pool: &DbAsyncPool,
     ) -> Result<(), HttpErrorResponse> {
         let auth_string_error_text = if verify_using_recovery_key {
             "recovery key hash"
@@ -144,19 +128,18 @@ pub mod verification {
             )));
         }
 
-        let user_email_copy = String::from(user_email);
         let auth_string = Zeroizing::new(Vec::from(auth_string));
 
-        let auth_dao = db::auth::Dao::new(db_thread_pool);
-        let hash_and_status = match web::block(move || {
-            if verify_using_recovery_key {
-                auth_dao.get_user_recovery_auth_string_hash_and_status(&user_email_copy)
-            } else {
-                auth_dao.get_user_auth_string_hash_and_status(&user_email_copy)
-            }
-        })
-        .await?
-        {
+        let auth_dao = db::auth::Dao::new(db_async_pool);
+        let hash_and_status = match if verify_using_recovery_key {
+            auth_dao
+                .get_user_recovery_auth_string_hash_and_status(user_email)
+                .await
+        } else {
+            auth_dao
+                .get_user_auth_string_hash_and_status(user_email)
+                .await
+        } {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 // Return IncorrectCredential to prevent user enumeration attacks
@@ -220,7 +203,7 @@ pub mod verification {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+        use diesel::{ExpressionMethods, QueryDsl};
         use entries_common::models::user_otp::UserOtp;
         use entries_common::schema::user_otps as user_otps_table;
         use entries_common::schema::users as users_table;
@@ -232,24 +215,28 @@ pub mod verification {
         async fn test_generate_and_email_otp_success() {
             let (user, _, _, _) = test_utils::create_user().await;
 
-            let old_otp = user_otps_table::table
-                .find(&user.email)
-                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            let old_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+                user_otps_table::table.find(&user.email),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
             let result = generate_and_email_otp(
                 &user.email,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
                 &env::testing::SMTP_THREAD_POOL,
             )
             .await;
 
             assert!(result.is_ok());
 
-            let new_otp = user_otps_table::table
-                .find(&user.email)
-                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            let new_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+                user_otps_table::table.find(&user.email),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
             assert_ne!(old_otp.otp, new_otp.otp);
         }
@@ -260,26 +247,29 @@ pub mod verification {
 
             generate_and_email_otp(
                 &user.email,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
                 &env::testing::SMTP_THREAD_POOL,
             )
             .await
             .unwrap();
 
-            let user_otp = user_otps_table::table
-                .find(&user.email)
-                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            let user_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+                user_otps_table::table.find(&user.email),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
-            let result =
-                verify_otp(&user_otp.otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+            let result = verify_otp(&user_otp.otp, &user.email, &env::testing::DB_ASYNC_POOL).await;
 
             assert!(result.is_ok());
 
-            let otp_exists = user_otps_table::table
-                .find(&user.email)
-                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .is_ok();
+            let otp_exists = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+                user_otps_table::table.find(&user.email),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .is_ok();
 
             assert!(!otp_exists);
         }
@@ -288,8 +278,7 @@ pub mod verification {
         async fn test_verify_otp_invalid_otp() {
             let (user, _, _, _) = test_utils::create_user().await;
 
-            let result =
-                verify_otp("invalid_otp", &user.email, &env::testing::DB_THREAD_POOL).await;
+            let result = verify_otp("invalid_otp", &user.email, &env::testing::DB_ASYNC_POOL).await;
 
             assert!(result.is_err());
             match result.unwrap_err() {
@@ -304,24 +293,29 @@ pub mod verification {
 
             generate_and_email_otp(
                 &user.email,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
                 &env::testing::SMTP_THREAD_POOL,
             )
             .await
             .unwrap();
 
-            let user_otp = user_otps_table::table
-                .find(&user.email)
-                .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            let user_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+                user_otps_table::table.find(&user.email),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
-            diesel::update(user_otps_table::table.find(&user.email))
-                .set(user_otps_table::expiration.eq(SystemTime::now() - Duration::from_secs(3600)))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            diesel_async::RunQueryDsl::execute(
+                diesel::update(user_otps_table::table.find(&user.email)).set(
+                    user_otps_table::expiration.eq(SystemTime::now() - Duration::from_secs(3600)),
+                ),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
-            let result =
-                verify_otp(&user_otp.otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+            let result = verify_otp(&user_otp.otp, &user.email, &env::testing::DB_ASYNC_POOL).await;
 
             assert!(result.is_err());
             match result.unwrap_err() {
@@ -335,7 +329,7 @@ pub mod verification {
             let (user, _, _, _) = test_utils::create_user().await;
 
             let long_otp = "a".repeat(9);
-            let result = verify_otp(&long_otp, &user.email, &env::testing::DB_THREAD_POOL).await;
+            let result = verify_otp(&long_otp, &user.email, &env::testing::DB_ASYNC_POOL).await;
 
             assert!(result.is_err());
             match result.unwrap_err() {
@@ -360,16 +354,19 @@ pub mod verification {
                 .hash(auth_string)
                 .unwrap();
 
-            diesel::update(users_table::table.find(user.id))
-                .set(users_table::auth_string_hash.eq(auth_string_hash.to_string()))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            diesel_async::RunQueryDsl::execute(
+                diesel::update(users_table::table.find(user.id))
+                    .set(users_table::auth_string_hash.eq(auth_string_hash.to_string())),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
             let result = verify_auth_string(
                 auth_string,
                 &user.email,
                 false,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
@@ -384,7 +381,7 @@ pub mod verification {
                 b"wrong_password",
                 &user.email,
                 false,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
@@ -399,16 +396,19 @@ pub mod verification {
         async fn test_verify_auth_string_unverified_user() {
             let (user, _, _, _) = test_utils::create_user().await;
 
-            diesel::update(users_table::table.find(user.id))
-                .set(users_table::is_verified.eq(false))
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+            diesel_async::RunQueryDsl::execute(
+                diesel::update(users_table::table.find(user.id))
+                    .set(users_table::is_verified.eq(false)),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
             let result = verify_auth_string(
                 b"test_password",
                 &user.email,
                 false,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
@@ -435,19 +435,21 @@ pub mod verification {
                 .hash(recovery_key)
                 .unwrap();
 
-            diesel::update(users_table::table.find(user.id))
-                .set(
+            diesel_async::RunQueryDsl::execute(
+                diesel::update(users_table::table.find(user.id)).set(
                     users_table::recovery_key_auth_hash_rehashed_with_auth_string_params
                         .eq(recovery_key_hash.to_string()),
-                )
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap();
+                ),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
+            .unwrap();
 
             let result = verify_auth_string(
                 recovery_key,
                 &user.email,
                 true,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
@@ -463,7 +465,7 @@ pub mod verification {
                 &long_auth_string,
                 &user.email,
                 false,
-                &env::testing::DB_THREAD_POOL,
+                &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
@@ -764,7 +766,7 @@ pub mod test_utils {
     use actix_web::App;
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
     use entries_common::token::container_accept_token::ContainerAcceptTokenClaims;
@@ -808,7 +810,7 @@ pub mod test_utils {
     pub async fn create_user() -> (User, String, i64, i64) {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -862,17 +864,21 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let user = users
-            .filter(user_fields::email.eq(&new_user.email))
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::first::<User>(
+            users
+                .filter(user_fields::email.eq(&new_user.email))
+                .into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
-        user_dao.verify_user_creation(user.id).unwrap();
+        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
+        user_dao.verify_user_creation(user.id).await.unwrap();
 
         super::verification::generate_and_email_otp(
             &user.email,
-            &env::testing::DB_THREAD_POOL,
+            &env::testing::DB_ASYNC_POOL,
             &env::testing::SMTP_THREAD_POOL,
         )
         .await
@@ -898,14 +904,16 @@ pub mod test_utils {
         )
     }
 
-    pub fn gen_new_user_rsa_key(user_id: Uuid) -> Rsa<Private> {
+    pub async fn gen_new_user_rsa_key(user_id: Uuid) -> Rsa<Private> {
         let keypair = Rsa::generate(512).unwrap();
         let public_key = keypair.public_key_to_der().unwrap();
 
-        dsl::update(users.find(user_id))
-            .set(user_fields::public_key.eq(public_key))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users.find(user_id)).set(user_fields::public_key.eq(public_key)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         keypair
     }
@@ -913,7 +921,7 @@ pub mod test_utils {
     pub async fn create_container(access_token: &str) -> (Container, String) {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -942,10 +950,12 @@ pub mod test_utils {
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let container_data = ContainerFrame::decode(resp_body).unwrap();
-        let container = containers
-            .find(Uuid::try_from(container_data.id).unwrap())
-            .get_result::<Container>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let container = diesel_async::RunQueryDsl::get_result::<Container>(
+            containers.find(Uuid::try_from(container_data.id).unwrap()),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let container_access_token = gen_container_token(
             container.id,
@@ -969,7 +979,7 @@ pub mod test_utils {
     ) -> String {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1002,10 +1012,12 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let recipient = users
-            .filter(user_fields::email.eq(recipient_email))
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let recipient = diesel_async::RunQueryDsl::get_result::<User>(
+            users.filter(user_fields::email.eq(recipient_email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let recipient_access_token_claims = NewAuthTokenClaims {
             user_id: recipient.id,

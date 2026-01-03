@@ -1,4 +1,4 @@
-use entries_common::db::{self, DaoError, DbThreadPool};
+use entries_common::db::{self, DaoError, DbAsyncPool};
 use entries_common::email::templates::UserVerificationMessage;
 use entries_common::email::{EmailMessage, EmailSender};
 use entries_common::html::templates::{
@@ -35,7 +35,7 @@ use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletio
 use crate::middleware::{FromHeader, FromQuery};
 
 pub async fn lookup_user_public_key(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     _user_access_token: VerifiedToken<Access, FromHeader>,
     user_email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -69,11 +69,8 @@ pub async fn lookup_user_public_key(
     });
     let (phony_key_id, phony_key) = receiver.await.expect("Failed to receive phony key");
 
-    let db_result = web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.get_user_public_key(&user_email.email)
-    })
-    .await?;
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let db_result = user_dao.get_user_public_key(&user_email.email).await;
 
     let (key_id, key) = match db_result {
         Ok(k) => (k.id, k.value),
@@ -97,7 +94,7 @@ pub async fn lookup_user_public_key(
 }
 
 pub async fn create(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_data: ProtoBuf<NewUser>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -263,9 +260,9 @@ pub async fn create(
     let user_public_key_id = (&user_data.public_key_id).try_into()?;
     let user_data_ref = Arc::clone(&user_data);
 
-    let user_id = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.create_user(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let user_id = match user_dao
+        .create_user(
             &user_data_ref.email,
             &auth_string_hash,
             &user_data_ref.auth_string_hash_salt,
@@ -291,8 +288,7 @@ pub async fn create(
             &user_data_ref.user_keystore_encrypted,
             user_data_ref.user_keystore_version_nonce,
         )
-    })
-    .await?
+        .await
     {
         Ok(id) => id,
         Err(e) => match e {
@@ -358,7 +354,7 @@ pub async fn create(
 }
 
 pub async fn verify_creation(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_creation_token: UnverifiedToken<UserCreation, FromQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = match user_creation_token.verify() {
@@ -380,12 +376,8 @@ pub async fn verify_creation(
         }
     };
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.verify_user_creation(claims.user_id)
-    })
-    .await?
-    {
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao.verify_user_creation(claims.user_id).await {
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
@@ -401,7 +393,7 @@ pub async fn verify_creation(
 }
 
 pub async fn rotate_user_public_key(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_key: ProtoBuf<NewUserPublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -414,16 +406,15 @@ pub async fn rotate_user_public_key(
     let new_key_id = (&new_key.0.id).try_into()?;
     let expected_previous_public_key_id =
         (&new_key.0.expected_previous_public_key_id).try_into()?;
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.rotate_user_public_key(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .rotate_user_public_key(
             user_access_token.0.user_id,
             new_key_id,
             &new_key.0.value,
             expected_previous_public_key_id,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(DaoError::OutOfDate) => {
@@ -443,7 +434,7 @@ pub async fn rotate_user_public_key(
 }
 
 pub async fn edit_preferences(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_prefs: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -453,16 +444,15 @@ pub async fn edit_preferences(
         )));
     }
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_user_prefs(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .update_user_prefs(
             user_access_token.0.user_id,
             &new_prefs.encrypted_blob,
             new_prefs.version_nonce,
             new_prefs.expected_previous_version_nonce,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -484,7 +474,7 @@ pub async fn edit_preferences(
 }
 
 pub async fn edit_keystore(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_keystore: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -494,16 +484,15 @@ pub async fn edit_keystore(
         )));
     }
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_user_keystore(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .update_user_keystore(
             user_access_token.0.user_id,
             &new_keystore.encrypted_blob,
             new_keystore.version_nonce,
             new_keystore.expected_previous_version_nonce,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -525,7 +514,7 @@ pub async fn edit_keystore(
 }
 
 pub async fn change_password(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_password_data.0.new_auth_string.len() > env::CONF.max_auth_string_length {
@@ -555,7 +544,7 @@ pub async fn change_password(
     handlers::verification::verify_otp(
         &new_password_data.0.otp,
         &new_password_data.0.user_email,
-        &db_thread_pool,
+        &db_async_pool,
     )
     .await?;
 
@@ -598,23 +587,24 @@ pub async fn change_password(
         }
     };
 
-    web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_password(
-            &new_password_data.user_email,
-            &auth_string_hash,
-            &new_password_data.auth_string_hash_salt,
-            new_password_data.auth_string_hash_mem_cost_kib,
-            new_password_data.auth_string_hash_threads,
-            new_password_data.auth_string_hash_iterations,
-            &new_password_data.password_encryption_key_salt,
-            new_password_data.password_encryption_key_mem_cost_kib,
-            new_password_data.password_encryption_key_threads,
-            new_password_data.password_encryption_key_iterations,
-            &new_password_data.encrypted_encryption_key,
-        )
-    })
-    .await
+    {
+        let user_dao = db::user::Dao::new(&db_async_pool);
+        user_dao
+            .update_password(
+                &new_password_data.user_email,
+                &auth_string_hash,
+                &new_password_data.auth_string_hash_salt,
+                new_password_data.auth_string_hash_mem_cost_kib,
+                new_password_data.auth_string_hash_threads,
+                new_password_data.auth_string_hash_iterations,
+                &new_password_data.password_encryption_key_salt,
+                new_password_data.password_encryption_key_mem_cost_kib,
+                new_password_data.password_encryption_key_threads,
+                new_password_data.password_encryption_key_iterations,
+                &new_password_data.encrypted_encryption_key,
+            )
+            .await
+    }
     .map(|_| HttpResponse::Ok().finish())
     .map_err(|e| {
         log::error!("{e}");
@@ -623,7 +613,7 @@ pub async fn change_password(
 }
 
 pub async fn change_recovery_key(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -664,7 +654,7 @@ pub async fn change_recovery_key(
     handlers::verification::verify_otp(
         &new_recovery_key_data.otp,
         &user_access_token.0.user_email,
-        &db_thread_pool,
+        &db_async_pool,
     )
     .await?;
 
@@ -708,9 +698,9 @@ pub async fn change_recovery_key(
         }
     };
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.update_recovery_key(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .update_recovery_key(
             user_id,
             &new_recovery_key_data.recovery_key_hash_salt_for_encryption,
             &new_recovery_key_data.recovery_key_hash_salt_for_recovery_auth,
@@ -720,8 +710,7 @@ pub async fn change_recovery_key(
             &rehashed_recovery_key_auth_hash,
             &new_recovery_key_data.encrypted_encryption_key,
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => {
@@ -736,7 +725,7 @@ pub async fn change_recovery_key(
 }
 
 pub async fn change_email(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     email_change_data: ProtoBuf<EmailChangeRequest>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -750,27 +739,16 @@ pub async fn change_email(
         &email_change_data.0.auth_string,
         &user_access_token.0.user_email,
         false,
-        &db_thread_pool,
+        &db_async_pool,
     )
     .await?;
 
     // Check if the new email is already in use
     let new_email = email_change_data.0.new_email.clone();
-    let db_thread_pool_check = db_thread_pool.clone();
-    let new_email_exists = web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool_check);
-
-        // All users have a public key, so if we can't find one, the email doesn't exist
-        match user_dao.get_user_public_key(&new_email) {
-            Ok(_) => Ok(true), // Email exists
-            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => Ok(false),
-            Err(e) => Err(e),
-        }
-    })
-    .await?;
-
-    let new_email_exists = match new_email_exists {
-        Ok(b) => b,
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let new_email_exists = match user_dao.get_user_public_key(&new_email).await {
+        Ok(_) => true, // Email exists
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => false,
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
@@ -787,13 +765,7 @@ pub async fn change_email(
 
     let new_email = email_change_data.new_email.clone();
     let user_id = user_access_token.0.user_id;
-    let db_thread_pool_update = db_thread_pool.clone();
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool_update);
-        user_dao.update_email(user_id, &new_email)
-    })
-    .await?
-    {
+    match user_dao.update_email(user_id, &new_email).await {
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
@@ -807,7 +779,7 @@ pub async fn change_email(
 }
 
 pub async fn init_delete(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
@@ -834,14 +806,10 @@ pub async fn init_delete(
         tokens.insert(token.claims.key_id, token);
     }
 
-    let key_ids = Arc::new(key_ids);
-    let key_ids_ref = Arc::clone(&key_ids);
-
-    let container_dao = db::container::Dao::new(&db_thread_pool);
-    let public_keys = match web::block(move || {
-        container_dao.get_multiple_public_container_keys(&key_ids_ref, &container_ids)
-    })
-    .await?
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let public_keys = match container_dao
+        .get_multiple_public_container_keys(&key_ids, &container_ids)
+        .await
     {
         Ok(b) => b,
         Err(e) => match e {
@@ -887,11 +855,10 @@ pub async fn init_delete(
 
     let user_id = user_access_token.0.user_id;
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.save_user_deletion_container_keys(&key_ids, user_id, delete_me_time)
-    })
-    .await?
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .save_user_deletion_container_keys(&key_ids, user_id, delete_me_time)
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -953,7 +920,7 @@ pub async fn init_delete(
 }
 
 pub async fn delete(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_deletion_token: UnverifiedToken<UserDeletion, FromQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = match user_deletion_token.verify() {
@@ -978,14 +945,13 @@ pub async fn delete(
     let user_id = claims.user_id;
     let days_until_deletion = env::CONF.user_deletion_delay_days;
 
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.initiate_user_deletion(
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .initiate_user_deletion(
             user_id,
             Duration::from_secs(days_until_deletion * 24 * 60 * 60),
         )
-    })
-    .await?
+        .await
     {
         Ok(_) => (),
         Err(e) => match e {
@@ -1024,20 +990,19 @@ pub async fn delete(
 }
 
 pub async fn is_listed_for_deletion(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    let is_listed_for_deletion = match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.check_is_user_listed_for_deletion(user_access_token.0.user_id)
-    })
-    .await?
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let is_listed_for_deletion = match user_dao
+        .check_is_user_listed_for_deletion(user_access_token.0.user_id)
+        .await
     {
         Ok(l) => l,
         Err(e) => {
             log::error!("{e}");
             return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                "Failed to cancel user deletion",
+                "Failed to check user deletion status",
             )));
         }
     };
@@ -1048,14 +1013,13 @@ pub async fn is_listed_for_deletion(
 }
 
 pub async fn cancel_delete(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    match web::block(move || {
-        let user_dao = db::user::Dao::new(&db_thread_pool);
-        user_dao.cancel_user_deletion(user_access_token.0.user_id)
-    })
-    .await?
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    match user_dao
+        .cancel_user_deletion(user_access_token.0.user_id)
+        .await
     {
         Ok(_) => (),
         Err(e) => {
@@ -1112,7 +1076,7 @@ pub mod tests {
     use base64::engine::general_purpose::STANDARD_NO_PAD as b64_nopad;
     use base64::engine::general_purpose::URL_SAFE as b64_urlsafe;
     use base64::Engine;
-    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl};
     use ed25519_dalek as ed25519;
     use prost::Message;
     use std::str::FromStr;
@@ -1127,7 +1091,7 @@ pub mod tests {
     async fn test_lookup_user_public_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1157,7 +1121,7 @@ pub mod tests {
     async fn test_create_user() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1214,10 +1178,14 @@ pub mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         VerificationEmailSent::decode(resp_body).unwrap();
 
-        let user = users
-            .filter(user_fields::email.eq(&new_user.email))
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::first::<User>(
+            users
+                .filter(user_fields::email.eq(&new_user.email))
+                .into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(user.email, new_user.email);
         assert_eq!(user.auth_string_hash_salt, new_user.auth_string_hash_salt);
@@ -1323,25 +1291,33 @@ pub mod tests {
             .auth_string_hash
             .contains(&format!("p={}", env::CONF.auth_string_hash_threads)));
 
-        let (keystore, keystore_version_nonce) = user_keystores
-            .select((
-                user_keystore_fields::encrypted_blob,
-                user_keystore_fields::version_nonce,
-            ))
-            .find(user.id)
-            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (keystore, keystore_version_nonce) =
+            diesel_async::RunQueryDsl::get_result::<(Vec<u8>, i64)>(
+                user_keystores
+                    .select((
+                        user_keystore_fields::encrypted_blob,
+                        user_keystore_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_eq!(keystore, new_user.user_keystore_encrypted);
         assert_eq!(keystore_version_nonce, new_user.user_keystore_version_nonce);
 
-        let (preferences, preferences_version_nonce) = user_preferences
-            .select((
-                user_preferences_fields::encrypted_blob,
-                user_preferences_fields::version_nonce,
-            ))
-            .find(user.id)
-            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (preferences, preferences_version_nonce) =
+            diesel_async::RunQueryDsl::get_result::<(Vec<u8>, i64)>(
+                user_preferences
+                    .select((
+                        user_preferences_fields::encrypted_blob,
+                        user_preferences_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_eq!(preferences, new_user.preferences_encrypted);
@@ -1350,11 +1326,12 @@ pub mod tests {
             new_user.preferences_version_nonce
         );
 
-        assert!(
-            dsl::select(dsl::exists(signin_nonces.find(&new_user.email)))
-                .get_result::<bool>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-        );
+        assert!(diesel_async::RunQueryDsl::get_result::<bool>(
+            dsl::select(dsl::exists(signin_nonces.find(&new_user.email))),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+        )
+        .await
+        .unwrap(),);
     }
 
     #[actix_web::test]
@@ -1373,7 +1350,7 @@ pub mod tests {
         };
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, route_limiters)),
@@ -1593,7 +1570,7 @@ pub mod tests {
     async fn test_verify_creation() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1647,10 +1624,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let user = users
-            .filter(user_fields::email.eq(&new_user.email))
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::first::<User>(
+            users
+                .filter(user_fields::email.eq(&new_user.email))
+                .into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert!(!user.is_verified);
 
@@ -1678,10 +1659,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let user = users
-            .filter(user_fields::email.eq(&new_user.email))
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::first::<User>(
+            users
+                .filter(user_fields::email.eq(&new_user.email))
+                .into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert!(!user.is_verified);
 
@@ -1696,10 +1681,14 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let user = users
-            .filter(user_fields::email.eq(&new_user.email))
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::first::<User>(
+            users
+                .filter(user_fields::email.eq(&new_user.email))
+                .into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert!(user.is_verified);
     }
@@ -1708,7 +1697,7 @@ pub mod tests {
     async fn test_rotate_user_public_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1740,10 +1729,12 @@ pub mod tests {
         let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
         assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
-        let user_after_req = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user_after_req = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(user_after_req.public_key_id, user.public_key_id);
         assert_eq!(user_after_req.public_key, user.public_key);
@@ -1764,10 +1755,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let user_after_req = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user_after_req = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_ne!(user_after_req.public_key_id, user.public_key_id);
         assert_ne!(user_after_req.public_key, user.public_key);
@@ -1782,7 +1775,7 @@ pub mod tests {
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1817,7 +1810,7 @@ pub mod tests {
     async fn test_edit_preferences() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1849,13 +1842,17 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
-        let (stored_prefs_blob, stored_prefs_version_nonce) = user_preferences
-            .select((
-                user_preferences_fields::encrypted_blob,
-                user_preferences_fields::version_nonce,
-            ))
-            .find(user.id)
-            .first::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (stored_prefs_blob, stored_prefs_version_nonce) =
+            diesel_async::RunQueryDsl::first::<(Vec<u8>, i64)>(
+                user_preferences
+                    .select((
+                        user_preferences_fields::encrypted_blob,
+                        user_preferences_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_ne!(stored_prefs_blob, updated_prefs_blob);
@@ -1877,13 +1874,17 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let (stored_prefs_blob, stored_prefs_version_nonce) = user_preferences
-            .select((
-                user_preferences_fields::encrypted_blob,
-                user_preferences_fields::version_nonce,
-            ))
-            .find(user.id)
-            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (stored_prefs_blob, stored_prefs_version_nonce) =
+            diesel_async::RunQueryDsl::get_result::<(Vec<u8>, i64)>(
+                user_preferences
+                    .select((
+                        user_preferences_fields::encrypted_blob,
+                        user_preferences_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_eq!(stored_prefs_blob, updated_prefs.encrypted_blob);
@@ -1897,7 +1898,7 @@ pub mod tests {
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1932,7 +1933,7 @@ pub mod tests {
     async fn test_edit_keystore() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1964,13 +1965,17 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::OutOfDate as i32);
 
-        let (stored_keystore_blob, stored_keystore_version_nonce) = user_keystores
-            .select((
-                user_keystore_fields::encrypted_blob,
-                user_keystore_fields::version_nonce,
-            ))
-            .find(user.id)
-            .first::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (stored_keystore_blob, stored_keystore_version_nonce) =
+            diesel_async::RunQueryDsl::first::<(Vec<u8>, i64)>(
+                user_keystores
+                    .select((
+                        user_keystore_fields::encrypted_blob,
+                        user_keystore_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_ne!(stored_keystore_blob, updated_keystore_blob);
@@ -1995,13 +2000,17 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let (stored_keystore_blob, stored_keystore_version_nonce) = user_keystores
-            .select((
-                user_keystore_fields::encrypted_blob,
-                user_keystore_fields::version_nonce,
-            ))
-            .find(user.id)
-            .get_result::<(Vec<u8>, i64)>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
+        let (stored_keystore_blob, stored_keystore_version_nonce) =
+            diesel_async::RunQueryDsl::get_result::<(Vec<u8>, i64)>(
+                user_keystores
+                    .select((
+                        user_keystore_fields::encrypted_blob,
+                        user_keystore_fields::version_nonce,
+                    ))
+                    .find(user.id),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+            )
+            .await
             .unwrap();
 
         assert_eq!(stored_keystore_blob, updated_keystore.encrypted_blob);
@@ -2018,7 +2027,7 @@ pub mod tests {
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2053,7 +2062,7 @@ pub mod tests {
     async fn test_change_password() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2069,11 +2078,12 @@ pub mod tests {
             .to_request();
         test::call_service(&app, req).await;
 
-        let otp = user_otps
-            .select(user_otp_fields::otp)
-            .find(&user.email)
-            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let updated_auth_string: Vec<_> = gen_bytes(256);
         let updated_auth_string_hash_salt: Vec<_> = gen_bytes(16);
@@ -2115,10 +2125,12 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
 
-        let stored_user = users
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let stored_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert!(!argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
             .unwrap()
@@ -2177,10 +2189,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let stored_user = users
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let stored_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert!(argon2_kdf::Hash::from_str(&stored_user.auth_string_hash)
             .unwrap()
@@ -2271,7 +2285,7 @@ pub mod tests {
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2287,11 +2301,12 @@ pub mod tests {
             .to_request();
         test::call_service(&app, req).await;
 
-        let otp = user_otps
-            .select(user_otp_fields::otp)
-            .find(&user.email)
-            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let edit_password = AuthStringAndEncryptedPasswordUpdate {
             user_email: user.email.clone(),
@@ -2438,7 +2453,7 @@ pub mod tests {
     async fn test_change_recovery_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2454,11 +2469,12 @@ pub mod tests {
             .to_request();
         test::call_service(&app, req).await;
 
-        let otp = user_otps
-            .select(user_otp_fields::otp)
-            .find(&user.email)
-            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let updated_recovery_key_hash_salt_for_encryption: Vec<_> = gen_bytes(16);
         let updated_recovery_key_hash_salt_for_recovery_auth: Vec<_> = gen_bytes(16);
@@ -2513,10 +2529,12 @@ pub mod tests {
 
         assert_eq!(resp_err.err_type, ErrorType::TokenMissing as i32);
 
-        let stored_user = users
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let stored_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_ne!(
             stored_user.recovery_key_hash_salt_for_encryption,
@@ -2553,10 +2571,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let stored_user = users
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let stored_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             stored_user.recovery_key_hash_salt_for_encryption,
@@ -2589,7 +2609,7 @@ pub mod tests {
     async fn test_change_recovery_key_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2605,11 +2625,12 @@ pub mod tests {
             .to_request();
         test::call_service(&app, req).await;
 
-        let otp = user_otps
-            .select(user_otp_fields::otp)
-            .find(&user.email)
-            .get_result::<String>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let edit_recovery_key = RecoveryKeyUpdate {
             otp: otp.clone(),
@@ -2740,7 +2761,7 @@ pub mod tests {
     async fn test_init_delete_fails_with_large_input() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2773,7 +2794,7 @@ pub mod tests {
     async fn test_delete_user_no_containers() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2798,27 +2819,33 @@ pub mod tests {
         let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
@@ -2846,54 +2873,66 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
-        user_dao.delete_user(&deletion_requests[0]).unwrap();
+        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
+        user_dao.delete_user(&deletion_requests[0]).await.unwrap();
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
     }
@@ -2902,7 +2941,7 @@ pub mod tests {
     async fn test_delete_user_with_containers() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2969,81 +3008,103 @@ pub mod tests {
         let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            entries
-                .filter(entry_fields::id.eq(new_entry_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                entries.filter(entry_fields::id.eq(new_entry_id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            categories
-                .filter(category_fields::id.eq(new_category_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                categories
+                    .filter(category_fields::id.eq(new_category_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
@@ -3071,162 +3132,206 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            entries
-                .filter(entry_fields::id.eq(new_entry_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                entries.filter(entry_fields::id.eq(new_entry_id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            categories
-                .filter(category_fields::id.eq(new_category_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                categories
+                    .filter(category_fields::id.eq(new_category_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
-        user_dao.delete_user(&deletion_requests[0]).unwrap();
+        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
+        user_dao.delete_user(&deletion_requests[0]).await.unwrap();
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            entries
-                .filter(entry_fields::id.eq(new_entry_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                entries.filter(entry_fields::id.eq(new_entry_id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            categories
-                .filter(category_fields::id.eq(new_category_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                categories
+                    .filter(category_fields::id.eq(new_category_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
     }
@@ -3235,7 +3340,7 @@ pub mod tests {
     async fn test_delete_user_fails_with_bad_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3305,63 +3410,81 @@ pub mod tests {
         let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
@@ -3391,63 +3514,81 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
     }
@@ -3456,7 +3597,7 @@ pub mod tests {
     async fn test_delete_user_succeeds_with_shared_containers() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3467,8 +3608,8 @@ pub mod tests {
         let (user1, user1_access_token, _, _) = test_utils::create_user().await;
         let (user2, user2_access_token, _, _) = test_utils::create_user().await;
 
-        test_utils::gen_new_user_rsa_key(user1.id);
-        let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id);
+        test_utils::gen_new_user_rsa_key(user1.id).await;
+        let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id).await;
 
         let (container1, container1_token_user1) =
             test_utils::create_container(&user1_access_token).await;
@@ -3532,63 +3673,81 @@ pub mod tests {
         let resp_body = VerificationEmailSent::decode(resp_body).unwrap();
         assert!(resp_body.email_sent);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user1.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user1.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user1.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
@@ -3631,162 +3790,210 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user1.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user1.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 2);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user1.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::container_id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::container_id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::container_id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::container_id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             2,
         );
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
-        user_dao.delete_user(&deletion_requests[0]).unwrap();
+        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
+        user_dao.delete_user(&deletion_requests[0]).await.unwrap();
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user1.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user1.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
-        let deletion_request_container_key_count = user_deletion_request_container_keys
-            .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
-            .count()
-            .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_request_container_key_count = diesel_async::RunQueryDsl::get_result::<i64>(
+            user_deletion_request_container_keys
+                .filter(user_deletion_request_container_key_fields::user_id.eq(user1.id))
+                .count(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_request_container_key_count, 0);
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user1.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container1_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::key_id.eq(container2_access_key_id_user1))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::container_id.eq(container1.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::container_id.eq(container1.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::container_id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::container_id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             1,
         );
 
@@ -3844,40 +4051,49 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user2.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user2.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_THREAD_POOL);
-        user_dao.delete_user(&deletion_requests[0]).unwrap();
+        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
+        user_dao.delete_user(&deletion_requests[0]).await.unwrap();
 
         assert_eq!(
-            users
-                .filter(user_fields::id.eq(user2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                users.filter(user_fields::id.eq(user2.id)).count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            containers
-                .filter(container_fields::id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                containers
+                    .filter(container_fields::id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
 
         assert_eq!(
-            container_access_keys
-                .filter(container_access_key_fields::container_id.eq(container2.id))
-                .count()
-                .get_result::<i64>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
+            diesel_async::RunQueryDsl::get_result::<i64>(
+                container_access_keys
+                    .filter(container_access_key_fields::container_id.eq(container2.id))
+                    .count(),
+                &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+            )
+            .await
+            .unwrap(),
             0,
         );
     }
@@ -3886,7 +4102,7 @@ pub mod tests {
     async fn test_check_user_is_listed_for_deletion() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -3919,10 +4135,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
@@ -3961,10 +4179,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
@@ -3987,10 +4207,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
@@ -4010,7 +4232,7 @@ pub mod tests {
     async fn test_cancel_user_deletion() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4043,10 +4265,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
 
@@ -4074,10 +4298,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 1);
 
@@ -4089,10 +4315,12 @@ pub mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let deletion_requests = user_deletion_requests
-            .filter(user_deletion_request_fields::user_id.eq(user.id))
-            .get_results::<UserDeletionRequest>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let deletion_requests = diesel_async::RunQueryDsl::get_results::<UserDeletionRequest>(
+            user_deletion_requests.filter(user_deletion_request_fields::user_id.eq(user.id)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(deletion_requests.len(), 0);
     }
@@ -4101,7 +4329,7 @@ pub mod tests {
     async fn test_change_email_success() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4125,10 +4353,13 @@ pub mod tests {
             .unwrap()
             .to_string();
 
-        dsl::update(users.find(user.id))
-            .set(user_fields::auth_string_hash.eq(auth_string_hash))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users.find(user.id))
+                .set(user_fields::auth_string_hash.eq(auth_string_hash)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let email_change_request = EmailChangeRequest {
             new_email: new_email.clone(),
@@ -4146,10 +4377,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verify the email was actually changed in the database
-        let updated_user = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, new_email);
         assert_ne!(updated_user.email, user.email);
@@ -4159,7 +4392,7 @@ pub mod tests {
     async fn test_change_email_fails_with_incorrect_auth_string() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4183,10 +4416,13 @@ pub mod tests {
             .unwrap()
             .to_string();
 
-        dsl::update(users.find(user.id))
-            .set(user_fields::auth_string_hash.eq(auth_string_hash))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users.find(user.id))
+                .set(user_fields::auth_string_hash.eq(auth_string_hash)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let email_change_request = EmailChangeRequest {
             new_email: new_email.clone(),
@@ -4208,10 +4444,12 @@ pub mod tests {
         assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
 
         // Verify the email was not changed
-        let updated_user = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, user.email);
         assert_ne!(updated_user.email, new_email);
@@ -4221,7 +4459,7 @@ pub mod tests {
     async fn test_change_email_fails_with_existing_email() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4245,10 +4483,13 @@ pub mod tests {
             .unwrap()
             .to_string();
 
-        dsl::update(users.find(user1.id))
-            .set(user_fields::auth_string_hash.eq(auth_string_hash))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users.find(user1.id))
+                .set(user_fields::auth_string_hash.eq(auth_string_hash)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let email_change_request = EmailChangeRequest {
             new_email: user2.email.clone(),
@@ -4270,10 +4511,12 @@ pub mod tests {
         assert_eq!(resp_err.err_type, ErrorType::ConflictWithExisting as i32);
 
         // Verify the email was not changed
-        let updated_user = users
-            .find(user1.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user1.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, user1.email);
         assert_ne!(updated_user.email, user2.email);
@@ -4283,7 +4526,7 @@ pub mod tests {
     async fn test_change_email_fails_with_invalid_email_format() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4312,10 +4555,12 @@ pub mod tests {
         assert_eq!(resp_err.err_type, ErrorType::IncorrectlyFormed as i32);
 
         // Verify the email was not changed
-        let updated_user = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, user.email);
     }
@@ -4324,7 +4569,7 @@ pub mod tests {
     async fn test_change_email_fails_without_access_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4349,10 +4594,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         // Verify the email was not changed
-        let updated_user = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, user.email);
         assert_ne!(updated_user.email, new_email);
@@ -4362,7 +4609,7 @@ pub mod tests {
     async fn test_change_email_fails_with_expired_access_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -4402,10 +4649,12 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
         // Verify the email was not changed
-        let updated_user = users
-            .find(user.id)
-            .first::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::first::<User>(
+            users.find(user.id).into_boxed(),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, user.email);
         assert_ne!(updated_user.email, new_email);

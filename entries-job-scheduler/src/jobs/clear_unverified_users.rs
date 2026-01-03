@@ -1,23 +1,22 @@
 use entries_common::db::user::Dao as UserDao;
-use entries_common::db::DbThreadPool;
-
-use async_trait::async_trait;
-use std::time::Duration;
+use entries_common::db::DbAsyncPool;
 
 use crate::jobs::{Job, JobError};
+use async_trait::async_trait;
+use std::time::Duration;
 
 pub struct ClearUnverifiedUsersJob {
     pub max_unverified_user_age: Duration,
 
-    db_thread_pool: DbThreadPool,
+    db_async_pool: DbAsyncPool,
     is_running: bool,
 }
 
 impl ClearUnverifiedUsersJob {
-    pub fn new(max_unverified_user_age: Duration, db_thread_pool: DbThreadPool) -> Self {
+    pub fn new(max_unverified_user_age: Duration, db_async_pool: DbAsyncPool) -> Self {
         Self {
             max_unverified_user_age,
-            db_thread_pool,
+            db_async_pool,
             is_running: false,
         }
     }
@@ -37,10 +36,9 @@ impl Job for ClearUnverifiedUsersJob {
         self.is_running = true;
 
         let max_unverified_user_age = self.max_unverified_user_age;
-        let dao = UserDao::new(&self.db_thread_pool);
+        let dao = UserDao::new(&self.db_async_pool);
 
-        tokio::task::spawn_blocking(move || dao.clear_unverified_users(max_unverified_user_age))
-            .await??;
+        dao.clear_unverified_users(max_unverified_user_age).await?;
 
         self.is_running = false;
         Ok(())
@@ -56,7 +54,7 @@ mod tests {
     use entries_common::schema::users;
     use entries_common::threadrand::SecureRng;
 
-    use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{ExpressionMethods, QueryDsl};
     use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
@@ -102,7 +100,7 @@ mod tests {
             user_keystore_version_nonce: SecureRng::next_i64(),
         };
 
-        let user_dao = user::Dao::new(&env::testing::DB_THREAD_POOL);
+        let user_dao = user::Dao::new(&env::testing::DB_ASYNC_POOL);
 
         let user_no_exp_id = user_dao
             .create_user(
@@ -131,6 +129,7 @@ mod tests {
                 &new_user_no_exp.user_keystore_encrypted,
                 new_user_no_exp.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
 
         let user_verified_number = SecureRng::next_u128();
@@ -198,13 +197,20 @@ mod tests {
                 &new_user_verified.user_keystore_encrypted,
                 new_user_verified.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
-        user_dao.verify_user_creation(user_verified_id).unwrap();
+        user_dao
+            .verify_user_creation(user_verified_id)
+            .await
+            .unwrap();
 
-        diesel::update(users::table.find(user_verified_id))
-            .set(users::created_timestamp.eq(SystemTime::now() - Duration::from_secs(864_000)))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user_verified_id))
+                .set(users::created_timestamp.eq(SystemTime::now() - Duration::from_secs(864_000))),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let user_exp_number = SecureRng::next_u128();
 
@@ -271,66 +277,76 @@ mod tests {
                 &new_user_exp.user_keystore_encrypted,
                 new_user_exp.user_keystore_version_nonce,
             )
+            .await
             .unwrap();
 
-        diesel::update(users::table.find(user_exp_id))
-            .set(users::created_timestamp.eq(SystemTime::now() - Duration::from_secs(864_000)))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user_exp_id))
+                .set(users::created_timestamp.eq(SystemTime::now() - Duration::from_secs(864_000))),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let mut job = ClearUnverifiedUsersJob::new(
             Duration::from_secs(86400),
-            env::testing::DB_THREAD_POOL.clone(),
+            env::testing::DB_ASYNC_POOL.clone(),
         );
 
-        assert_eq!(
-            users::table
-                .find(user_no_exp_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_no_exp_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(
-            users::table
-                .find(user_verified_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            users::table
-                .find(user_exp_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_verified_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
+
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_exp_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
 
         job.execute().await.unwrap();
 
-        assert_eq!(
-            users::table
-                .find(user_no_exp_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_no_exp_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(
-            users::table
-                .find(user_verified_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            1
-        );
+        assert_eq!(count, 1);
 
-        assert_eq!(
-            users::table
-                .find(user_exp_id)
-                .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-                .unwrap(),
-            0
-        );
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_verified_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 1);
+
+        let count = diesel_async::RunQueryDsl::execute(
+            users::table.find(user_exp_id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count, 0);
     }
 }

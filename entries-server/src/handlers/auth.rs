@@ -1,4 +1,4 @@
-use entries_common::db::{self, DaoError, DbThreadPool};
+use entries_common::db::{self, DaoError, DbAsyncPool};
 use entries_common::email::templates::UserVerificationMessage;
 use entries_common::email::{EmailMessage, EmailSender};
 use entries_common::messages::{
@@ -95,7 +95,7 @@ impl SigninLimiter {
 }
 
 pub async fn obtain_nonce_and_auth_string_params(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     // Disguise that the user doesn't exist by returning random data that only changes
@@ -128,11 +128,10 @@ pub async fn obtain_nonce_and_auth_string_params(
         nonce: phony_nonce,
     };
 
-    let real_params = match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.get_auth_string_data_signin_nonce(&email.0.email)
-    })
-    .await?
+    let auth_dao = db::auth::Dao::new(&db_async_pool);
+    let real_params = match auth_dao
+        .get_auth_string_data_signin_nonce(&email.0.email)
+        .await
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
@@ -160,7 +159,7 @@ fn seed_chacha12rng_from_u64(unix_day: u64) -> ChaCha12Rng {
 }
 
 pub async fn sign_in(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     credentials: ProtoBuf<CredentialPair>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -179,27 +178,26 @@ pub async fn sign_in(
     }
 
     let credentials = Arc::new(credentials.0);
-    let credentials_ref = Arc::clone(&credentials);
 
-    let auth_dao = db::auth::Dao::new(&db_thread_pool);
+    let auth_dao = db::auth::Dao::new(&db_async_pool);
 
-    let nonce =
-        match web::block(move || auth_dao.get_and_refresh_signin_nonce(&credentials_ref.email))
-            .await?
-        {
-            Ok(a) => a,
-            Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
-                    "The credentials were incorrect",
-                )));
-            }
-            Err(e) => {
-                log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                    "Failed to obtain sign-in nonce",
-                )));
-            }
-        };
+    let nonce = match auth_dao
+        .get_and_refresh_signin_nonce(&credentials.email)
+        .await
+    {
+        Ok(a) => a,
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
+                "The credentials were incorrect",
+            )));
+        }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                "Failed to obtain sign-in nonce",
+            )));
+        }
+    };
 
     if nonce != credentials.nonce {
         return Err(HttpErrorResponse::IncorrectNonce(Cow::Borrowed(
@@ -207,13 +205,9 @@ pub async fn sign_in(
         )));
     }
 
-    let credentials_ref = Arc::clone(&credentials);
-    let auth_dao = db::auth::Dao::new(&db_thread_pool);
-
-    let hash_and_status = match web::block(move || {
-        auth_dao.get_user_auth_string_hash_and_status(&credentials_ref.email)
-    })
-    .await?
+    let hash_and_status = match auth_dao
+        .get_user_auth_string_hash_and_status(&credentials.email)
+        .await
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
@@ -279,7 +273,7 @@ pub async fn sign_in(
         &credentials.auth_string,
         &credentials.email,
         false,
-        &db_thread_pool,
+        &db_async_pool,
     )
     .await?;
 
@@ -301,7 +295,7 @@ pub async fn sign_in(
 
     handlers::verification::generate_and_email_otp(
         &credentials.email,
-        db_thread_pool.as_ref(),
+        db_async_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
     .await?;
@@ -310,14 +304,14 @@ pub async fn sign_in(
 }
 
 pub async fn verify_otp_for_signin(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     signin_token: UnverifiedToken<SignIn, FromHeader>,
     otp: ProtoBuf<OtpMessage>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
     let user_id = claims.user_id;
 
-    handlers::verification::verify_otp(&otp.value, &claims.user_email, &db_thread_pool).await?;
+    handlers::verification::verify_otp(&otp.value, &claims.user_email, &db_async_pool).await?;
 
     let now = SystemTime::now();
 
@@ -351,9 +345,10 @@ pub async fn verify_otp_for_signin(
         server_time: SystemTime::now().try_into()?,
     };
 
-    let user_dao = db::user::Dao::new(&db_thread_pool);
-    let protected_data = web::block(move || user_dao.get_protected_user_data(user_id))
-        .await?
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    let protected_data = user_dao
+        .get_protected_user_data(user_id)
+        .await
         .map_err(|e| {
             log::error!("Failed to get user protected data: {e}");
             HttpErrorResponse::InternalError(Cow::Borrowed("Failed to get user data"))
@@ -377,13 +372,13 @@ pub async fn verify_otp_for_signin(
 }
 
 pub async fn obtain_otp(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
     user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     handlers::verification::generate_and_email_otp(
         &user_access_token.0.user_email,
-        db_thread_pool.as_ref(),
+        db_async_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
     .await?;
@@ -392,17 +387,16 @@ pub async fn obtain_otp(
 }
 
 pub async fn refresh_tokens(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let token_claims = token.verify()?;
     let token_expiration = token_claims.expiration;
 
-    match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.check_is_token_on_blacklist_and_blacklist(&token.0.signature, token_expiration)
-    })
-    .await?
+    let auth_dao = db::auth::Dao::new(&db_async_pool);
+    match auth_dao
+        .check_is_token_on_blacklist_and_blacklist(&token.0.signature, token_expiration)
+        .await
     {
         Ok(false) => (),
         Ok(true) => {
@@ -454,7 +448,7 @@ pub async fn refresh_tokens(
 }
 
 pub async fn recover_with_recovery_key(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     recovery_key_data: ProtoBuf<RecoveryKeyAuthAndPasswordUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) =
@@ -531,7 +525,7 @@ pub async fn recover_with_recovery_key(
         &recovery_key_data.recovery_key_hash_for_recovery_auth,
         &recovery_key_data.user_email,
         true,
-        &db_thread_pool,
+        &db_async_pool,
     )
     .await?;
 
@@ -595,39 +589,39 @@ pub async fn recover_with_recovery_key(
         }
     };
 
-    let recovery_key_data_for_db = Arc::clone(&recovery_key_data);
-    let save_result = web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.update_recovery_key_and_auth_string_and_email(
-            &recovery_key_data_for_db.user_email,
-            recovery_key_data_for_db.new_user_email.as_deref(),
+    let auth_dao = db::auth::Dao::new(&db_async_pool);
+    match auth_dao
+        .update_recovery_key_and_auth_string_and_email(
+            &recovery_key_data.user_email,
+            recovery_key_data.new_user_email.as_deref(),
             &rehashed_auth_string,
-            &recovery_key_data_for_db.new_auth_string_hash_salt,
-            recovery_key_data_for_db.new_auth_string_hash_mem_cost_kib,
-            recovery_key_data_for_db.new_auth_string_hash_threads,
-            recovery_key_data_for_db.new_auth_string_hash_iterations,
-            &recovery_key_data_for_db.new_recovery_key_hash_salt_for_encryption,
-            &recovery_key_data_for_db.new_recovery_key_hash_salt_for_recovery_auth,
-            recovery_key_data_for_db.new_recovery_key_hash_mem_cost_kib,
-            recovery_key_data_for_db.new_recovery_key_hash_threads,
-            recovery_key_data_for_db.new_recovery_key_hash_iterations,
+            &recovery_key_data.new_auth_string_hash_salt,
+            recovery_key_data.new_auth_string_hash_mem_cost_kib,
+            recovery_key_data.new_auth_string_hash_threads,
+            recovery_key_data.new_auth_string_hash_iterations,
+            &recovery_key_data.new_recovery_key_hash_salt_for_encryption,
+            &recovery_key_data.new_recovery_key_hash_salt_for_recovery_auth,
+            recovery_key_data.new_recovery_key_hash_mem_cost_kib,
+            recovery_key_data.new_recovery_key_hash_threads,
+            recovery_key_data.new_recovery_key_hash_iterations,
             &rehashed_recovery_key_auth_hash,
-            &recovery_key_data_for_db.encryption_key_encrypted_with_new_password,
-            &recovery_key_data_for_db.encryption_key_encrypted_with_new_recovery_key,
+            &recovery_key_data.encryption_key_encrypted_with_new_password,
+            &recovery_key_data.encryption_key_encrypted_with_new_recovery_key,
         )
-    })
-    .await;
-
-    match save_result {
-        Ok(Ok(())) => Ok(HttpResponse::Ok().finish()),
-        _ => Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-            "Failed to update user data during recovery",
-        ))),
+        .await
+    {
+        Ok(()) => Ok(HttpResponse::Ok().finish()),
+        Err(e) => {
+            log::error!("{e}");
+            Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                "Failed to update user data during recovery",
+            )))
+        }
     }
 }
 
 pub async fn logout(
-    db_thread_pool: web::Data<DbThreadPool>,
+    db_async_pool: web::Data<DbAsyncPool>,
     user_access_token: VerifiedToken<Access, FromHeader>,
     refresh_token: UnverifiedToken<Refresh, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
@@ -639,11 +633,10 @@ pub async fn logout(
         )));
     }
 
-    match web::block(move || {
-        let auth_dao = db::auth::Dao::new(&db_thread_pool);
-        auth_dao.blacklist_token(&refresh_token.0.signature, refresh_token_claims.expiration)
-    })
-    .await?
+    let auth_dao = db::auth::Dao::new(&db_async_pool);
+    match auth_dao
+        .blacklist_token(&refresh_token.0.signature, refresh_token_claims.expiration)
+        .await
     {
         Ok(_) => (),
         Err(DaoError::QueryFailure(diesel::result::Error::DatabaseError(
@@ -682,7 +675,7 @@ mod tests {
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
-    use diesel::{dsl, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, ExpressionMethods, QueryDsl};
     use entries_common::token::Token;
     use prost::Message;
     use std::str::FromStr;
@@ -739,7 +732,7 @@ mod tests {
     async fn test_obtain_nonce_and_auth_string_params() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -751,20 +744,25 @@ mod tests {
         let salt = gen_bytes(16);
         let nonce = i32::MAX;
 
-        diesel::update(users::table.find(user.id))
-            .set((
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user.id)).set((
                 users::auth_string_hash_salt.eq(&salt),
                 users::auth_string_hash_mem_cost_kib.eq(10),
                 users::auth_string_hash_threads.eq(10),
                 users::auth_string_hash_iterations.eq(10),
-            ))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+            )),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        diesel::update(signin_nonces::table.find(&user.email))
-            .set(signin_nonces::nonce.eq(nonce))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(signin_nonces::table.find(&user.email))
+                .set(signin_nonces::nonce.eq(nonce)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Real user
         let req = TestRequest::get()
@@ -870,7 +868,7 @@ mod tests {
     async fn test_sign_in() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -932,10 +930,13 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
-            .set(users::is_verified.eq(true))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+                .set(users::is_verified.eq(true)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -1016,10 +1017,13 @@ mod tests {
         );
 
         // User shouldn't be able to sign in again until they verify their email
-        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
-            .set(users::is_verified.eq(false))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+                .set(users::is_verified.eq(false)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -1059,7 +1063,7 @@ mod tests {
     async fn test_verify_otp_for_signin() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1121,10 +1125,13 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        dsl::update(users::table.filter(users::email.eq(&new_user.email)))
-            .set(users::is_verified.eq(true))
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+                .set(users::is_verified.eq(true)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let req = TestRequest::get()
             .uri(&format!(
@@ -1157,10 +1164,12 @@ mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let signin_token = SigninToken::decode(resp_body).unwrap();
 
-        let otp = user_otps::table
-            .find(&new_user.email)
-            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+            user_otps::table.find(&new_user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let otp_msg = OtpMessage {
             value: otp.otp.clone(),
@@ -1282,7 +1291,7 @@ mod tests {
     async fn test_obtain_otp() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1291,10 +1300,12 @@ mod tests {
 
         let (user, access_token, _, _) = test_utils::create_user().await;
 
-        let old_otp = user_otps::table
-            .find(&user.email)
-            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let old_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+            user_otps::table.find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let req = TestRequest::get()
             .uri("/api/auth/otp")
@@ -1306,10 +1317,12 @@ mod tests {
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
 
-        let new_otp = user_otps::table
-            .find(&user.email)
-            .get_result::<UserOtp>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let new_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+            user_otps::table.find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let resp_body = String::from_utf8_lossy(&resp_body);
         assert!(!resp_body.contains(&new_otp.otp));
@@ -1321,7 +1334,7 @@ mod tests {
     async fn test_recover_with_recovery_key_success() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1352,13 +1365,15 @@ mod tests {
             .unwrap();
 
         // Update user's recovery key hash in database
-        diesel::update(users::table.find(user.id))
-            .set(
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user.id)).set(
                 users::recovery_key_auth_hash_rehashed_with_auth_string_params
                     .eq(server_hash.to_string()),
-            )
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+            ),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Create new password and recovery key
         let new_password = format!("new_password_{}", SecureRng::next_u128());
@@ -1409,10 +1424,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verify the user data was updated in the database
-        let updated_user = users::table
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Check that the new auth string hash can be verified with the new password
         assert!(argon2_kdf::Hash::from_str(&updated_user.auth_string_hash)
@@ -1438,7 +1455,7 @@ mod tests {
     async fn test_recover_with_recovery_key_with_email_change() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1469,13 +1486,15 @@ mod tests {
             .unwrap();
 
         // Update user's recovery key hash in database
-        diesel::update(users::table.find(user.id))
-            .set(
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user.id)).set(
                 users::recovery_key_auth_hash_rehashed_with_auth_string_params
                     .eq(server_hash.to_string()),
-            )
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+            ),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_email = format!("new_email_{}@test.com", SecureRng::next_u128());
         let new_password = format!("new_password_{}", SecureRng::next_u128());
@@ -1526,10 +1545,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verify the user email was updated
-        let updated_user = users::table
-            .find(user.id)
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let updated_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated_user.email, new_email);
     }
@@ -1539,7 +1560,7 @@ mod tests {
     async fn test_recover_with_recovery_key_fails_with_invalid_recovery_key() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1570,13 +1591,15 @@ mod tests {
             .unwrap();
 
         // Update user's recovery key hash in database
-        diesel::update(users::table.find(user.id))
-            .set(
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user.id)).set(
                 users::recovery_key_auth_hash_rehashed_with_auth_string_params
                     .eq(server_hash.to_string()),
-            )
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+            ),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         let new_password = format!("new_password_{}", SecureRng::next_u128());
         let new_recovery_key = format!("new_recovery_key_{}", SecureRng::next_u128());
@@ -1647,7 +1670,7 @@ mod tests {
     async fn test_recover_with_recovery_key_fails_with_invalid_email() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1692,7 +1715,7 @@ mod tests {
     async fn test_recover_with_recovery_key_fails_with_invalid_new_email() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1739,7 +1762,7 @@ mod tests {
     async fn test_recover_with_recovery_key_fails_with_nonexistent_user() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -1798,7 +1821,7 @@ mod tests {
 
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
                 .configure(|cfg| crate::services::api::configure(cfg, route_limiters)),
@@ -1947,7 +1970,7 @@ mod tests {
     async fn test_sign_in_fails_for_unverified_user() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2010,10 +2033,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         // Ensure user is not verified (this should be the default state)
-        let user = users::table
-            .filter(users::email.eq(&new_user.email))
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.filter(users::email.eq(&new_user.email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
         assert!(!user.is_verified);
 
         let req = TestRequest::get()
@@ -2079,10 +2104,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verify user is now verified
-        let verified_user = users::table
-            .filter(users::email.eq(&user.email))
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let verified_user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.filter(users::email.eq(&user.email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
         assert!(verified_user.is_verified);
     }
 
@@ -2090,7 +2117,7 @@ mod tests {
     async fn test_sign_in_sends_verification_email_with_correct_expiration() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2153,10 +2180,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         // Get the user and record their creation timestamp
-        let user = users::table
-            .filter(users::email.eq(&new_user.email))
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.filter(users::email.eq(&new_user.email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
         assert!(!user.is_verified);
 
         let creation_timestamp = user.created_timestamp;
@@ -2245,7 +2274,7 @@ mod tests {
     async fn test_recovery_key_fails_for_unverified_user() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2308,10 +2337,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         // Ensure user is not verified (this should be the default state)
-        let user = users::table
-            .filter(users::email.eq(&new_user.email))
-            .get_result::<User>(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+        let user = diesel_async::RunQueryDsl::get_result::<User>(
+            users::table.filter(users::email.eq(&new_user.email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
         assert!(!user.is_verified);
 
         // Simulate client-side hash (arbitrary params that the client uses)
@@ -2336,13 +2367,15 @@ mod tests {
             .unwrap();
 
         // Update user's recovery key hash in database
-        diesel::update(users::table.find(user.id))
-            .set(
+        diesel_async::RunQueryDsl::execute(
+            diesel::update(users::table.find(user.id)).set(
                 users::recovery_key_auth_hash_rehashed_with_auth_string_params
                     .eq(server_hash.to_string()),
-            )
-            .execute(&mut env::testing::DB_THREAD_POOL.get().unwrap())
-            .unwrap();
+            ),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Create new password and recovery key
         let new_password = format!("new_password_{}", SecureRng::next_u128());
@@ -2402,7 +2435,7 @@ mod tests {
     async fn test_refresh_tokens_success() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2457,7 +2490,7 @@ mod tests {
     async fn test_refresh_tokens_with_expired_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2496,7 +2529,7 @@ mod tests {
     async fn test_refresh_tokens_with_blacklisted_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2520,7 +2553,7 @@ mod tests {
             AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
 
         // Blacklist the token first
-        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_ASYNC_POOL);
         let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
         let refresh_token_claims_clone = refresh_token_claims.clone();
         auth_dao
@@ -2528,6 +2561,7 @@ mod tests {
                 &decoded_refresh_token.signature,
                 refresh_token_claims_clone.expiration,
             )
+            .await
             .unwrap();
 
         let req = TestRequest::post()
@@ -2547,7 +2581,7 @@ mod tests {
     async fn test_refresh_tokens_with_invalid_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2571,7 +2605,7 @@ mod tests {
     async fn test_logout_success() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2603,13 +2637,14 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_ASYNC_POOL);
         let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
         let is_blacklisted = auth_dao
             .check_is_token_on_blacklist_and_blacklist(
                 &decoded_refresh_token.signature,
                 refresh_token_claims.expiration,
             )
+            .await
             .unwrap();
         assert!(is_blacklisted);
 
@@ -2630,7 +2665,7 @@ mod tests {
     async fn test_logout_with_mismatched_user_ids() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2671,7 +2706,7 @@ mod tests {
     async fn test_logout_with_already_blacklisted_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
@@ -2695,13 +2730,14 @@ mod tests {
             AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
 
         // Blacklist the token first
-        let auth_dao = db::auth::Dao::new(&env::testing::DB_THREAD_POOL);
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_ASYNC_POOL);
         let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
         auth_dao
             .blacklist_token(
                 &decoded_refresh_token.signature,
                 refresh_token_claims.expiration,
             )
+            .await
             .unwrap();
 
         let req = TestRequest::post()
@@ -2722,7 +2758,7 @@ mod tests {
     async fn test_logout_with_invalid_refresh_token() {
         let app = test::init_service(
             App::new()
-                .app_data(Data::new(env::testing::DB_THREAD_POOL.clone()))
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
                 .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),

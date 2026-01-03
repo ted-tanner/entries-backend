@@ -1,31 +1,29 @@
-use diesel::pg::PgConnection;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel_async::pooled_connection::bb8::Pool as AsyncPool;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::AsyncPgConnection;
 use std::fmt;
-use std::time::Duration;
 
 pub mod auth;
 pub mod container;
 pub mod job_registry;
 pub mod user;
 
-pub type DbThreadPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
-pub type DbConnection = PooledConnection<ConnectionManager<PgConnection>>;
+pub type DbAsyncPool = AsyncPool<AsyncPgConnection>;
+pub type DbAsyncConnection =
+    bb8::PooledConnection<'static, AsyncDieselConnectionManager<AsyncPgConnection>>;
 
-pub fn create_db_thread_pool(
-    database_uri: &str,
-    max_db_connections: u32,
-    idle_timeout: Duration,
-) -> DbThreadPool {
-    r2d2::Pool::builder()
+pub async fn create_db_async_pool(database_uri: &str, max_db_connections: u32) -> DbAsyncPool {
+    let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_uri);
+    AsyncPool::builder()
         .max_size(max_db_connections)
-        .idle_timeout(Some(idle_timeout))
-        .build(ConnectionManager::<PgConnection>::new(database_uri))
-        .expect("Failed to create DB thread pool")
+        .build(config)
+        .await
+        .expect("Failed to create async DB pool")
 }
 
 #[derive(Debug)]
 pub enum DaoError {
-    DbThreadPoolFailure(r2d2::Error),
+    DbAsyncPoolFailure(String),
     QueryFailure(diesel::result::Error),
     OutOfDate,
     CannotRunQuery(&'static str),
@@ -37,8 +35,8 @@ impl std::error::Error for DaoError {}
 impl fmt::Display for DaoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DaoError::DbThreadPoolFailure(e) => {
-                write!(f, "DaoError: Failed to obtain DB connection: {e}")
+            DaoError::DbAsyncPoolFailure(e) => {
+                write!(f, "DaoError: Failed to obtain async DB connection: {e}")
             }
             DaoError::QueryFailure(e) => {
                 write!(f, "DaoError: Query failed: {e}")
@@ -56,9 +54,9 @@ impl fmt::Display for DaoError {
     }
 }
 
-impl From<r2d2::Error> for DaoError {
-    fn from(error: r2d2::Error) -> Self {
-        DaoError::DbThreadPoolFailure(error)
+impl<E: std::error::Error + Send + Sync + 'static> From<bb8::RunError<E>> for DaoError {
+    fn from(error: bb8::RunError<E>) -> Self {
+        DaoError::DbAsyncPoolFailure(error.to_string())
     }
 }
 
@@ -71,10 +69,12 @@ impl From<diesel::result::Error> for DaoError {
 #[cfg(test)]
 pub mod test_utils {
     use once_cell::sync::Lazy;
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
     use uuid::Uuid;
 
-    use diesel::{dsl, QueryDsl, RunQueryDsl};
+    use diesel::{dsl, QueryDsl};
+
+    use crate::db::{create_db_async_pool, DbAsyncConnection, DbAsyncPool};
 
     use super::user;
     use crate::models::container::NewContainer;
@@ -84,43 +84,39 @@ pub mod test_utils {
     use crate::schema::users::dsl::users;
     use crate::threadrand::SecureRng;
 
-    use super::{create_db_thread_pool, DbConnection, DbThreadPool};
-
     const DB_USERNAME_VAR: &str = "ENTRIES_DB_USERNAME";
     const DB_PASSWORD_VAR: &str = "ENTRIES_DB_PASSWORD";
     const DB_HOSTNAME_VAR: &str = "ENTRIES_DB_HOSTNAME";
     const DB_PORT_VAR: &str = "ENTRIES_DB_PORT";
     const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
     const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
-    const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
 
-    pub static DB_THREAD_POOL: Lazy<DbThreadPool> = Lazy::new(|| {
+    pub static DB_ASYNC_POOL: Lazy<DbAsyncPool> = Lazy::new(|| {
         let username = env_or_panic(DB_USERNAME_VAR);
         let password = env_or_panic(DB_PASSWORD_VAR);
         let hostname = env_or_panic(DB_HOSTNAME_VAR);
         let port = env_or_panic(DB_PORT_VAR);
         let db_name = env_or_panic(DB_NAME_VAR);
 
-        let max_connections = env_or_parse(DB_MAX_CONNECTIONS_VAR, 8u32);
-        let idle_timeout_secs = env_or_parse(DB_IDLE_TIMEOUT_SECS_VAR, 30u64);
+        let max_connections = env_or_parse(DB_MAX_CONNECTIONS_VAR, 48u32);
 
-        create_db_thread_pool(
-            &format!(
-                "postgres://{}:{}@{}:{}/{}",
-                username, password, hostname, port, db_name
-            ),
-            max_connections,
-            Duration::from_secs(idle_timeout_secs),
-        )
+        let db_uri = format!(
+            "postgres://{}:{}@{}:{}/{}",
+            username, password, hostname, port, db_name
+        );
+
+        // Use futures::executor::block_on which works within async contexts
+        futures::executor::block_on(create_db_async_pool(&db_uri, max_connections))
     });
 
-    pub fn db_pool() -> &'static DbThreadPool {
-        &DB_THREAD_POOL
+    pub fn db_async_pool() -> &'static DbAsyncPool {
+        &DB_ASYNC_POOL
     }
 
-    pub fn db_conn() -> DbConnection {
-        DB_THREAD_POOL
+    pub async fn db_async_conn() -> DbAsyncConnection {
+        DB_ASYNC_POOL
             .get()
+            .await
             .expect("Failed to obtain pooled DB connection for tests")
     }
 
@@ -132,7 +128,7 @@ pub mod test_utils {
         format!("db-test-{}@entries.test", SecureRng::next_u128())
     }
 
-    pub fn insert_container(conn: &mut DbConnection) -> Uuid {
+    pub async fn insert_container(conn: &mut DbAsyncConnection) -> Uuid {
         let container_id = Uuid::now_v7();
         let encrypted_blob = random_bytes(32);
 
@@ -143,15 +139,21 @@ pub mod test_utils {
             modified_timestamp: SystemTime::now(),
         };
 
-        dsl::insert_into(containers)
-            .values(&new_container)
-            .execute(conn)
-            .expect("Failed to insert container");
+        diesel_async::RunQueryDsl::execute(
+            dsl::insert_into(containers).values(&new_container),
+            conn,
+        )
+        .await
+        .expect("Failed to insert container");
 
         container_id
     }
 
-    pub fn insert_container_access_key(conn: &mut DbConnection, container_id: Uuid, key_id: Uuid) {
+    pub async fn insert_container_access_key(
+        conn: &mut DbAsyncConnection,
+        container_id: Uuid,
+        key_id: Uuid,
+    ) {
         let public_key = random_bytes(32);
         let new_key = NewContainerAccessKey {
             key_id,
@@ -160,10 +162,12 @@ pub mod test_utils {
             read_only: false,
         };
 
-        dsl::insert_into(container_access_keys)
-            .values(&new_key)
-            .execute(conn)
-            .expect("Failed to insert container access key");
+        diesel_async::RunQueryDsl::execute(
+            dsl::insert_into(container_access_keys).values(&new_key),
+            conn,
+        )
+        .await
+        .expect("Failed to insert container access key");
     }
 
     #[derive(Clone)]
@@ -198,26 +202,24 @@ pub mod test_utils {
         pub fn random() -> Self {
             Self {
                 email: unique_email(),
-                auth_string_hash: format!("auth-hash-{}", SecureRng::next_u128()),
+                auth_string_hash: "test_auth_hash".to_string(),
                 auth_string_hash_salt: random_bytes(16),
-                auth_string_hash_mem_cost_kib: 1024,
-                auth_string_hash_threads: 1,
-                auth_string_hash_iterations: 4,
+                auth_string_hash_mem_cost_kib: 1000,
+                auth_string_hash_threads: 2,
+                auth_string_hash_iterations: 2,
                 password_encryption_key_salt: random_bytes(16),
-                password_encryption_key_mem_cost_kib: 1024,
-                password_encryption_key_threads: 1,
+                password_encryption_key_mem_cost_kib: 1000,
+                password_encryption_key_threads: 2,
                 password_encryption_key_iterations: 2,
                 recovery_key_hash_salt_for_encryption: random_bytes(16),
                 recovery_key_hash_salt_for_recovery_auth: random_bytes(16),
-                recovery_key_hash_mem_cost_kib: 1024,
-                recovery_key_hash_threads: 1,
+                recovery_key_hash_mem_cost_kib: 1000,
+                recovery_key_hash_threads: 2,
                 recovery_key_hash_iterations: 2,
-                recovery_key_auth_hash_rehashed_with_auth_string_params: format!(
-                    "recovery-hash-{}",
-                    SecureRng::next_u128()
-                ),
-                encryption_key_encrypted_with_password: random_bytes(24),
-                encryption_key_encrypted_with_recovery_key: random_bytes(24),
+                recovery_key_auth_hash_rehashed_with_auth_string_params: "test_recovery_hash"
+                    .to_string(),
+                encryption_key_encrypted_with_password: random_bytes(32),
+                encryption_key_encrypted_with_recovery_key: random_bytes(32),
                 public_key_id: Uuid::now_v7(),
                 public_key: random_bytes(32),
                 preferences_encrypted: random_bytes(32),
@@ -227,7 +229,7 @@ pub mod test_utils {
             }
         }
 
-        pub fn insert(&self, user_dao: &user::Dao) -> Uuid {
+        pub async fn insert(&self, user_dao: &user::Dao) -> Uuid {
             user_dao
                 .create_user(
                     &self.email,
@@ -255,6 +257,7 @@ pub mod test_utils {
                     &self.user_keystore_encrypted,
                     self.user_keystore_version_nonce,
                 )
+                .await
                 .expect("Failed to create test user")
         }
     }
@@ -264,39 +267,31 @@ pub mod test_utils {
         pub data: TestUserData,
     }
 
-    pub fn create_user_with_dao(user_dao: &user::Dao) -> InsertedTestUser {
+    pub async fn create_user_with_dao(user_dao: &user::Dao) -> InsertedTestUser {
         let data = TestUserData::random();
-        let user_id = data.insert(user_dao);
-
-        InsertedTestUser { id: user_id, data }
+        let id = data.insert(user_dao).await;
+        InsertedTestUser { id, data }
     }
 
-    pub fn create_user() -> InsertedTestUser {
-        let dao = user::Dao::new(db_pool());
-        create_user_with_dao(&dao)
-    }
-
-    pub fn delete_user(user_id: Uuid) {
-        if let Ok(mut conn) = db_pool().get() {
-            let _ = diesel::delete(users.find(user_id)).execute(&mut conn);
+    pub async fn delete_user(user_id: Uuid) {
+        if let Ok(mut conn) = db_async_pool().get().await {
+            let _ =
+                diesel_async::RunQueryDsl::execute(diesel::delete(users.find(user_id)), &mut conn)
+                    .await;
         }
     }
 
     fn env_or_panic(key: &str) -> String {
-        std::env::var(key)
-            .unwrap_or_else(|_| panic!("Missing environment variable '{key}' for DB tests"))
+        std::env::var(key).unwrap_or_else(|_| panic!("Environment variable {key} must be set"))
     }
 
     fn env_or_parse<T>(key: &str, default: T) -> T
     where
-        T: Copy + std::str::FromStr,
-        <T as std::str::FromStr>::Err: std::fmt::Debug,
+        T: std::str::FromStr,
     {
-        match std::env::var(key) {
-            Ok(value) => value
-                .parse::<T>()
-                .unwrap_or_else(|_| panic!("Invalid value for '{key}'")),
-            Err(_) => default,
-        }
+        std::env::var(key)
+            .ok()
+            .and_then(|val| val.parse().ok())
+            .unwrap_or(default)
     }
 }
