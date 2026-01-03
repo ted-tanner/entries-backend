@@ -44,9 +44,9 @@ pub async fn get(
         ))));
     }
 
-    let mut tokens = HashMap::new();
-    let mut key_ids = Vec::new();
-    let mut container_ids = Vec::new();
+    let mut tokens = HashMap::with_capacity(container_access_tokens.tokens.len());
+    let mut key_ids = Vec::with_capacity(container_access_tokens.tokens.len());
+    let mut container_ids = Vec::with_capacity(container_access_tokens.tokens.len());
 
     for token in container_access_tokens.tokens.iter() {
         let token = ContainerAccessToken::decode(token)
@@ -63,7 +63,7 @@ pub async fn get(
             .get_public_container_key(key_ids[0], container_ids[0])
             .await
         {
-            Ok(key) => vec![key].into_iter().collect(),
+            Ok(key) => vec![key],
             Err(e) => match e {
                 DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                     return Err(HttpErrorResponse::DoesNotExist(
@@ -123,7 +123,6 @@ pub async fn get(
         token.verify(&key.public_key)?;
     }
 
-    let container_dao = db::container::Dao::new(&db_async_pool);
     let containers = if container_ids.len() == 1 {
         match container_dao.get_container(container_ids[0]).await {
             Ok(container) => ContainerList {
@@ -199,8 +198,10 @@ pub async fn create(
     // temp_id is an ID the client generates that allows the server to differentiate between
     // categories when multiple are sent to the server simultaneously. The server doesn't have any
     // other way of differentiating them because they are encrypted.
-    let temp_id_set =
-        HashSet::<i32>::from_iter(container_data.categories.iter().map(|c| c.temp_id));
+    let mut temp_id_set = HashSet::with_capacity(container_data.categories.len());
+    for category in &container_data.categories {
+        temp_id_set.insert(category.temp_id);
+    }
 
     if temp_id_set.len() != container_data.categories.len() {
         return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
@@ -517,11 +518,7 @@ pub async fn retract_invitation(
 
     invite_sender_token.0.verify(&invite_sender_public_key)?;
 
-    let container_dao = db::container::Dao::new(&db_async_pool);
-    match container_dao
-        .delete_invitation(invite_sender_token.0.claims.invite_id)
-        .await
-    {
+    match container_dao.delete_invitation(invitation_id).await {
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -556,6 +553,7 @@ pub async fn accept_invitation(
 
     let key_id = accept_token.0.claims.key_id;
     let container_id = accept_token.0.claims.container_id;
+    let invite_id = accept_token.0.claims.invite_id;
 
     let container_dao = db::container::Dao::new(&db_async_pool);
     let container_accept_key = match container_dao
@@ -587,13 +585,12 @@ pub async fn accept_invitation(
 
     accept_token.0.verify(&container_accept_key.public_key)?;
 
-    let container_dao = db::container::Dao::new(&db_async_pool);
     let container_keys = match container_dao
         .accept_invitation(
             container_accept_key.key_id,
             container_accept_key.container_id,
             container_accept_key.read_only,
-            accept_token.0.claims.invite_id,
+            invite_id,
             &user_access_token.0.user_email,
             &container_user_public_key.value,
         )
@@ -626,6 +623,7 @@ pub async fn decline_invitation(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.claims.key_id;
     let container_id = accept_token.0.claims.container_id;
+    let invite_id = accept_token.0.claims.invite_id;
 
     let container_dao = db::container::Dao::new(&db_async_pool);
     let container_accept_key = match container_dao
@@ -651,13 +649,8 @@ pub async fn decline_invitation(
 
     accept_token.0.verify(&container_accept_key.public_key)?;
 
-    let container_dao = db::container::Dao::new(&db_async_pool);
     match container_dao
-        .reject_invitation(
-            accept_token.0.claims.invite_id,
-            accept_token.0.claims.key_id,
-            &user_access_token.0.user_email,
-        )
+        .reject_invitation(invite_id, key_id, &user_access_token.0.user_email)
         .await
     {
         Ok(_) => (),
@@ -713,14 +706,11 @@ pub async fn leave_container(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_access(&container_access_token, &db_async_pool).await?;
 
+    let container_id = container_access_token.0.claims.container_id;
+    let key_id = container_access_token.0.claims.key_id;
+
     let container_dao = db::container::Dao::new(&db_async_pool);
-    match container_dao
-        .leave_container(
-            container_access_token.0.claims.container_id,
-            container_access_token.0.claims.key_id,
-        )
-        .await
-    {
+    match container_dao.leave_container(container_id, key_id).await {
         Ok(_) => (),
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
@@ -749,6 +739,9 @@ pub async fn create_entry(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
 
+    let entry_data = entry_data.0;
+    let container_id = container_access_token.0.claims.container_id;
+
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted blob too large",
@@ -765,10 +758,10 @@ pub async fn create_entry(
     let container_dao = db::container::Dao::new(&db_async_pool);
     let entry_id = match container_dao
         .create_entry(
-            &entry_data.0.encrypted_blob,
-            entry_data.0.version_nonce,
+            &entry_data.encrypted_blob,
+            entry_data.version_nonce,
             category_id,
-            container_access_token.0.claims.container_id,
+            container_id,
         )
         .await
     {

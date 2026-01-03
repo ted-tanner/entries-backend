@@ -517,33 +517,37 @@ pub async fn change_password(
     db_async_pool: web::Data<DbAsyncPool>,
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
-    if new_password_data.0.new_auth_string.len() > env::CONF.max_auth_string_length {
+    let new_password_data_inner = &new_password_data.0;
+
+    if new_password_data_inner.new_auth_string.len() > env::CONF.max_auth_string_length {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string is too long",
         )));
     }
 
-    if new_password_data.0.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data_inner.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string salt is too long",
         )));
     }
 
-    if new_password_data.0.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
+    if new_password_data_inner.password_encryption_key_salt.len()
+        > env::CONF.max_encryption_key_size
+    {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Password encryption salt is too long",
         )));
     }
 
-    if new_password_data.0.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
+    if new_password_data_inner.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted encryption key is too long",
         )));
     }
 
     handlers::verification::verify_otp(
-        &new_password_data.0.otp,
-        &new_password_data.0.user_email,
+        &new_password_data_inner.otp,
+        &new_password_data_inner.user_email,
         &db_async_pool,
     )
     .await?;
@@ -763,7 +767,6 @@ pub async fn change_email(
         )));
     }
 
-    let new_email = email_change_data.new_email.clone();
     let user_id = user_access_token.0.user_id;
     match user_dao.update_email(user_id, &new_email).await {
         Ok(_) => (),
@@ -793,9 +796,9 @@ pub async fn init_delete(
         )));
     }
 
-    let mut tokens = HashMap::new();
-    let mut key_ids = Vec::new();
-    let mut container_ids = Vec::new();
+    let mut tokens = HashMap::with_capacity(container_access_tokens.tokens.len());
+    let mut key_ids = Vec::with_capacity(container_access_tokens.tokens.len());
+    let mut container_ids = Vec::with_capacity(container_access_tokens.tokens.len());
 
     for token in container_access_tokens.tokens.iter() {
         let token = ContainerAccessToken::decode(token)
