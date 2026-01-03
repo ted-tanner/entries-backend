@@ -4,6 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+// ahash is a faster hash function than the one from the standard library, albeit with slightly poorer resistance
+// to HashDoS attacks. That should be okay as it still has some resistance and it is hard for an attacker to
+// control the subnets that are used as the key for the hash map. HashDos usually requires a LOT of crafted keys,
+// but that is not really feasible when using the subnets as the key for the hash map.
+use ahash::RandomState as AHashRandomState;
+
 use crate::env;
 use crate::utils::limiter_table as rate_limit_table;
 use crate::utils::limiter_table::CheckAndRecordResult;
@@ -33,7 +39,7 @@ pub struct Limiter {
     period: Duration,
     clear_frequency: Duration,
     warn_every_over_limit: u32,
-    limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
+    limiter_tables: &'static [RwLock<LimiterTable<u64, AHashRandomState>>; 16],
     name: &'static str,
 }
 
@@ -57,7 +63,7 @@ impl Limiter {
         let warn_every_over_limit = env::CONF.api_limiter_warn_every_over_limit;
 
         rate_limit_table::init_start();
-        let limiter_tables = rate_limit_table::new_sharded_tables_16::<u64>();
+        let limiter_tables = rate_limit_table::new_sharded_tables_16::<u64, AHashRandomState>();
 
         Limiter {
             max_per_period,
@@ -105,7 +111,7 @@ pub struct LimiterMiddleware<S> {
     clear_frequency: Duration,
     warn_every_over_limit: u32,
 
-    limiter_tables: &'static [RwLock<LimiterTable<u64>>; 16],
+    limiter_tables: &'static [RwLock<LimiterTable<u64, AHashRandomState>>; 16],
     name: &'static str,
 }
 

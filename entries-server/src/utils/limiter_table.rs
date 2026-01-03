@@ -1,11 +1,11 @@
 use std::{
-    collections::HashMap,
-    hash::Hash,
+    hash::{BuildHasher, Hash},
     sync::atomic::{AtomicU32, Ordering},
     sync::OnceLock,
     time::{Duration, Instant},
 };
 
+use hashbrown::HashMap;
 use tokio::sync::RwLock;
 
 static START: OnceLock<Instant> = OnceLock::new();
@@ -35,8 +35,8 @@ pub struct LimiterEntry {
     pub first_access: AtomicU32, // milliseconds since process start
 }
 
-pub struct LimiterTable<K> {
-    pub map: HashMap<K, LimiterEntry>,
+pub struct LimiterTable<K, H> {
+    pub map: HashMap<K, LimiterEntry, H>,
     pub last_clear: Instant,
 }
 
@@ -49,17 +49,23 @@ pub enum CheckAndRecordResult {
     },
 }
 
-impl<K> LimiterTable<K> {
+impl<K, H> LimiterTable<K, H>
+where
+    H: BuildHasher + Default,
+{
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            map: HashMap::with_hasher(H::default()),
             last_clear: Instant::now(),
         }
     }
 }
 
 /// Create a leaked, `'static` set of 16 sharded tables.
-pub fn new_sharded_tables_16<K>() -> &'static [RwLock<LimiterTable<K>>; 16] {
+pub fn new_sharded_tables_16<K, H>() -> &'static [RwLock<LimiterTable<K, H>>; 16]
+where
+    H: BuildHasher + Default,
+{
     Box::leak(Box::new(std::array::from_fn(|_| {
         RwLock::new(LimiterTable::new())
     })))
@@ -69,8 +75,8 @@ pub fn new_sharded_tables_16<K>() -> &'static [RwLock<LimiterTable<K>>; 16] {
 ///
 /// Returns `true` if the hit is allowed (and records it), or `false` if the key has exceeded
 /// `max_per_period` within `period`.
-pub async fn check_and_record<K: Eq + Hash>(
-    shard: &RwLock<LimiterTable<K>>,
+pub async fn check_and_record<K: Eq + Hash, H: BuildHasher>(
+    shard: &RwLock<LimiterTable<K, H>>,
     key: K,
     now: Instant,
     now_millis: u32,

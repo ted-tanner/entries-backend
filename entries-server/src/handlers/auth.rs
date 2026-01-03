@@ -27,11 +27,15 @@ use crate::utils::limiter_table as rate_limit_table;
 use crate::utils::limiter_table::CheckAndRecordResult;
 use crate::utils::limiter_table::LimiterTable;
 
+// Use SipHash (std::collections::hash_map::RandomState) rather than the faster ahash for sign-in limiter
+// because email addresses are user-provided and need stronger HashDoS protection
+type SigninLimiterTable = LimiterTable<String, std::collections::hash_map::RandomState>;
+
 struct SigninLimiter {
     max_per_period: u32,
     period: Duration,
     clear_frequency: Duration,
-    tables: &'static [RwLock<LimiterTable<String>>; 16],
+    tables: &'static [RwLock<SigninLimiterTable>; 16],
 }
 
 impl SigninLimiter {
@@ -43,7 +47,10 @@ impl SigninLimiter {
                 max_per_period: env::CONF.signin_limiter_max_per_period,
                 period: env::CONF.signin_limiter_period,
                 clear_frequency: env::CONF.signin_limiter_clear_frequency,
-                tables: rate_limit_table::new_sharded_tables_16::<String>(),
+                tables: rate_limit_table::new_sharded_tables_16::<
+                    String,
+                    std::collections::hash_map::RandomState,
+                >(),
             }
         })
     }
@@ -55,7 +62,10 @@ impl SigninLimiter {
             max_per_period,
             period,
             clear_frequency,
-            tables: rate_limit_table::new_sharded_tables_16::<String>(),
+            tables: rate_limit_table::new_sharded_tables_16::<
+                String,
+                std::collections::hash_map::RandomState,
+            >(),
         }
     }
 
