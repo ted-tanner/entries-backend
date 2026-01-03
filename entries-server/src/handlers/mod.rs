@@ -8,6 +8,7 @@ pub mod verification {
     use entries_common::db::{self, DaoError, DbThreadPool};
     use entries_common::email::{templates::OtpMessage, EmailMessage, EmailSender};
     use entries_common::otp::Otp;
+    use std::borrow::Cow;
     use std::str::FromStr;
     use std::sync::Arc;
     use std::time::SystemTime;
@@ -25,7 +26,7 @@ pub mod verification {
         let otp_expiration = SystemTime::now() + env::CONF.otp_lifetime;
 
         if user_email.len() > 255 {
-            return Err(HttpErrorResponse::IncorrectlyFormed(String::from(
+            return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
                 "Email address is too long",
             )));
         }
@@ -42,13 +43,13 @@ pub mod verification {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("User not found"),
+                    Cow::Borrowed("User not found"),
                     DoesNotExistType::User,
                 ));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to save OTP",
                 )));
             }
@@ -67,7 +68,7 @@ pub mod verification {
             Ok(_) => (),
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to send OTP to user's email address",
                 )));
             }
@@ -84,7 +85,7 @@ pub mod verification {
         const WRONG_OR_EXPIRED_OTP_MSG: &str = "OTP was incorrect or has expired";
 
         if user_email.len() > 255 || otp.len() > 8 {
-            return Err(HttpErrorResponse::IncorrectCredential(String::from(
+            return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
                 WRONG_OR_EXPIRED_OTP_MSG,
             )));
         }
@@ -102,7 +103,7 @@ pub mod verification {
                 Ok(e) => e,
                 Err(e) => {
                     log::error!("{e}");
-                    return Err(HttpErrorResponse::InternalError(String::from(
+                    return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                         "Failed to check OTP",
                     )));
                 }
@@ -117,7 +118,7 @@ pub mod verification {
                 }
             }
         } else {
-            return Err(HttpErrorResponse::IncorrectCredential(String::from(
+            return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
                 WRONG_OR_EXPIRED_OTP_MSG,
             )));
         }
@@ -138,9 +139,9 @@ pub mod verification {
         };
 
         if user_email.len() > 255 || auth_string.len() > env::CONF.max_auth_string_length {
-            return Err(HttpErrorResponse::IncorrectCredential(
-                "The credentials were incorrect".to_string(),
-            ));
+            return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
+                "The credentials were incorrect",
+            )));
         }
 
         let user_email_copy = String::from(user_email);
@@ -159,21 +160,21 @@ pub mod verification {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
                 // Return IncorrectCredential to prevent user enumeration attacks
-                return Err(HttpErrorResponse::IncorrectCredential(
-                    "The credentials were incorrect".to_string(),
-                ));
+                return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
+                    "The credentials were incorrect",
+                )));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(format!(
+                return Err(HttpErrorResponse::InternalError(Cow::Owned(format!(
                     "Failed to get user {}",
                     auth_string_error_text,
-                )));
+                ))));
             }
         };
 
         if !hash_and_status.is_user_verified {
-            return Err(HttpErrorResponse::InvalidState(String::from(
+            return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
                 "User is not verified",
             )));
         }
@@ -200,16 +201,16 @@ pub mod verification {
         match receiver.await? {
             Ok(true) => (),
             Ok(false) => {
-                return Err(HttpErrorResponse::IncorrectCredential(
-                    "The credentials were incorrect".to_string(),
-                ));
+                return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
+                    "The credentials were incorrect",
+                )));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(format!(
+                return Err(HttpErrorResponse::InternalError(Cow::Owned(format!(
                     "Failed to validate {}",
                     auth_string_error_text,
-                )));
+                ))));
             }
         };
 
@@ -482,6 +483,7 @@ pub mod error {
 
     use actix_web::http::{header, StatusCode};
     use actix_web::{HttpResponse, HttpResponseBuilder};
+    use std::borrow::Cow;
     use std::fmt;
     use tokio::sync::oneshot;
 
@@ -498,39 +500,39 @@ pub mod error {
     #[derive(Debug)]
     pub enum HttpErrorResponse {
         // 400
-        IncorrectlyFormed(String),
+        IncorrectlyFormed(Cow<'static, str>),
         InvalidMessage(MessageError),
-        OutOfDate(String),
-        InvalidState(String),
-        MissingHeader(String),
-        ConflictWithExisting(String),
+        OutOfDate(Cow<'static, str>),
+        InvalidState(Cow<'static, str>),
+        MissingHeader(Cow<'static, str>),
+        ConflictWithExisting(Cow<'static, str>),
 
         // 401
-        IncorrectCredential(String),
-        IncorrectNonce(String),
-        BadToken(String),
-        TokenExpired(String),
-        TokenMissing(String),
-        WrongTokenType(String),
+        IncorrectCredential(Cow<'static, str>),
+        IncorrectNonce(Cow<'static, str>),
+        BadToken(Cow<'static, str>),
+        TokenExpired(Cow<'static, str>),
+        TokenMissing(Cow<'static, str>),
+        WrongTokenType(Cow<'static, str>),
 
         // 403
-        UserDisallowed(String),
-        PendingAction(String),
-        TooManyAttempts(String),
-        ReadOnlyAccess(String),
+        UserDisallowed(Cow<'static, str>),
+        PendingAction(Cow<'static, str>),
+        TooManyAttempts(Cow<'static, str>),
+        ReadOnlyAccess(Cow<'static, str>),
 
         // 404
-        DoesNotExist(String, DoesNotExistType),
-        ForeignKeyDoesNotExist(String),
+        DoesNotExist(Cow<'static, str>, DoesNotExistType),
+        ForeignKeyDoesNotExist(Cow<'static, str>),
 
         // 413
-        InputTooLarge(String),
+        InputTooLarge(Cow<'static, str>),
 
         // 418
-        TooManyRequested(String),
+        TooManyRequested(Cow<'static, str>),
 
         // 500
-        InternalError(String),
+        InternalError(Cow<'static, str>),
     }
 
     impl std::error::Error for HttpErrorResponse {}
@@ -554,7 +556,7 @@ pub mod error {
                 // 400
                 HttpErrorResponse::IncorrectlyFormed(msg) => ServerErrorResponse {
                     err_type: ErrorType::IncorrectlyFormed.into(),
-                    err_message: format!("Incorrectly formed request: {msg}"),
+                    err_message: format!("Incorrectly formed request: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::InvalidMessage(e) => ServerErrorResponse {
                     err_type: ErrorType::InvalidMessage.into(),
@@ -562,63 +564,63 @@ pub mod error {
                 },
                 HttpErrorResponse::OutOfDate(msg) => ServerErrorResponse {
                     err_type: ErrorType::OutOfDate.into(),
-                    err_message: format!("Out of date: {msg}"),
+                    err_message: format!("Out of date: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::InvalidState(msg) => ServerErrorResponse {
                     err_type: ErrorType::InvalidState.into(),
-                    err_message: format!("Invalid state: {msg}"),
+                    err_message: format!("Invalid state: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::MissingHeader(msg) => ServerErrorResponse {
                     err_type: ErrorType::MissingHeader.into(),
-                    err_message: format!("Missing header: {msg}"),
+                    err_message: format!("Missing header: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::ConflictWithExisting(msg) => ServerErrorResponse {
                     err_type: ErrorType::ConflictWithExisting.into(),
-                    err_message: format!("Conflict with existing data: {msg}"),
+                    err_message: format!("Conflict with existing data: {}", msg.as_ref()),
                 },
 
                 // 401
                 HttpErrorResponse::IncorrectCredential(msg) => ServerErrorResponse {
                     err_type: ErrorType::IncorrectCredential.into(),
-                    err_message: format!("Incorrect credential: {msg}"),
+                    err_message: format!("Incorrect credential: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::BadToken(msg) => ServerErrorResponse {
                     err_type: ErrorType::IncorrectCredential.into(),
-                    err_message: format!("Bad token: {msg}"),
+                    err_message: format!("Bad token: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::TokenExpired(msg) => ServerErrorResponse {
                     err_type: ErrorType::TokenExpired.into(),
-                    err_message: format!("Token expired: {msg}"),
+                    err_message: format!("Token expired: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::TokenMissing(msg) => ServerErrorResponse {
                     err_type: ErrorType::TokenMissing.into(),
-                    err_message: format!("Token missing: {msg}"),
+                    err_message: format!("Token missing: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::WrongTokenType(msg) => ServerErrorResponse {
                     err_type: ErrorType::WrongTokenType.into(),
-                    err_message: format!("Wrong token type: {msg}"),
+                    err_message: format!("Wrong token type: {}", msg.as_ref()),
                 },
 
                 // 403
                 HttpErrorResponse::UserDisallowed(msg) => ServerErrorResponse {
                     err_type: ErrorType::UserDisallowed.into(),
-                    err_message: format!("User disallowed: {msg}"),
+                    err_message: format!("User disallowed: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::PendingAction(msg) => ServerErrorResponse {
                     err_type: ErrorType::PendingAction.into(),
-                    err_message: format!("Pending user action: {msg}"),
+                    err_message: format!("Pending user action: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::IncorrectNonce(msg) => ServerErrorResponse {
                     err_type: ErrorType::IncorrectNonce.into(),
-                    err_message: format!("Incorrect nonce: {msg}"),
+                    err_message: format!("Incorrect nonce: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::TooManyAttempts(msg) => ServerErrorResponse {
                     err_type: ErrorType::TooManyAttempts.into(),
-                    err_message: format!("Too many attempts: {msg}"),
+                    err_message: format!("Too many attempts: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::ReadOnlyAccess(msg) => ServerErrorResponse {
                     err_type: ErrorType::ReadOnlyAccess.into(),
-                    err_message: format!("Read-only access: {msg}"),
+                    err_message: format!("Read-only access: {}", msg.as_ref()),
                 },
 
                 // 404
@@ -632,29 +634,29 @@ pub mod error {
                         DoesNotExistType::Invitation => ErrorType::InvitationDoesNotExist,
                     }
                     .into(),
-                    err_message: format!("Does not exist: {msg}"),
+                    err_message: format!("Does not exist: {}", msg.as_ref()),
                 },
                 HttpErrorResponse::ForeignKeyDoesNotExist(msg) => ServerErrorResponse {
                     err_type: ErrorType::ForeignKeyDoesNotExist.into(),
-                    err_message: format!("Foreign key does not exist: {msg}"),
+                    err_message: format!("Foreign key does not exist: {}", msg.as_ref()),
                 },
 
                 // 413
                 HttpErrorResponse::InputTooLarge(msg) => ServerErrorResponse {
                     err_type: ErrorType::InputTooLarge.into(),
-                    err_message: format!("Input is too long: {msg}"),
+                    err_message: format!("Input is too long: {}", msg.as_ref()),
                 },
 
                 // 418
                 HttpErrorResponse::TooManyRequested(msg) => ServerErrorResponse {
                     err_type: ErrorType::TooManyRequested.into(),
-                    err_message: format!("Too many requested: {msg}"),
+                    err_message: format!("Too many requested: {}", msg.as_ref()),
                 },
 
                 // 500
                 HttpErrorResponse::InternalError(msg) => ServerErrorResponse {
                     err_type: ErrorType::InternalError.into(),
-                    err_message: format!("Internal error: {msg}"),
+                    err_message: format!("Internal error: {}", msg.as_ref()),
                 },
             }
         }
@@ -697,19 +699,19 @@ pub mod error {
 
     impl From<actix_web::Error> for HttpErrorResponse {
         fn from(_err: actix_web::Error) -> Self {
-            HttpErrorResponse::InternalError(String::from("Failed to serialize ProtoBuf response"))
+            HttpErrorResponse::InternalError(Cow::Borrowed("Failed to serialize ProtoBuf response"))
         }
     }
 
     impl From<actix_web::error::BlockingError> for HttpErrorResponse {
         fn from(_err: actix_web::error::BlockingError) -> Self {
-            HttpErrorResponse::InternalError(String::from("Actix thread pool failure"))
+            HttpErrorResponse::InternalError(Cow::Borrowed("Actix thread pool failure"))
         }
     }
 
     impl From<oneshot::error::RecvError> for HttpErrorResponse {
         fn from(_err: oneshot::error::RecvError) -> Self {
-            HttpErrorResponse::InternalError(String::from("Rayon thread pool failure"))
+            HttpErrorResponse::InternalError(Cow::Borrowed("Rayon thread pool failure"))
         }
     }
 
@@ -723,16 +725,16 @@ pub mod error {
         fn from(err: TokenError) -> Self {
             match err {
                 TokenError::TokenInvalid => {
-                    HttpErrorResponse::BadToken(String::from("Invalid token"))
+                    HttpErrorResponse::BadToken(Cow::Borrowed("Invalid token"))
                 }
                 TokenError::TokenExpired => {
-                    HttpErrorResponse::TokenExpired(String::from("Token expired"))
+                    HttpErrorResponse::TokenExpired(Cow::Borrowed("Token expired"))
                 }
                 TokenError::TokenMissing => {
-                    HttpErrorResponse::TokenMissing(String::from("Missing token"))
+                    HttpErrorResponse::TokenMissing(Cow::Borrowed("Missing token"))
                 }
                 TokenError::WrongTokenType => {
-                    HttpErrorResponse::WrongTokenType(String::from("Wrong token type"))
+                    HttpErrorResponse::WrongTokenType(Cow::Borrowed("Wrong token type"))
                 }
             }
         }

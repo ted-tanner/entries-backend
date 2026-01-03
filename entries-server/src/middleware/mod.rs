@@ -9,6 +9,7 @@ pub use limiter::Limiter;
 use entries_common::token::TokenError;
 
 use actix_web::HttpRequest;
+use std::borrow::Cow;
 
 use crate::handlers::error::HttpErrorResponse;
 
@@ -49,16 +50,16 @@ impl TokenLocation for FromHeader {
 fn into_actix_error_res<T>(result: Result<T, TokenError>) -> Result<T, HttpErrorResponse> {
     match result {
         Ok(t) => Ok(t),
-        Err(TokenError::TokenInvalid) => Err(HttpErrorResponse::IncorrectCredential(String::from(
-            "Token is invalid",
-        ))),
-        Err(TokenError::TokenExpired) => Err(HttpErrorResponse::TokenExpired(String::from(
+        Err(TokenError::TokenInvalid) => Err(HttpErrorResponse::IncorrectCredential(
+            Cow::Borrowed("Token is invalid"),
+        )),
+        Err(TokenError::TokenExpired) => Err(HttpErrorResponse::TokenExpired(Cow::Borrowed(
             "Token is expired",
         ))),
-        Err(TokenError::TokenMissing) => Err(HttpErrorResponse::TokenMissing(String::from(
+        Err(TokenError::TokenMissing) => Err(HttpErrorResponse::TokenMissing(Cow::Borrowed(
             "Token is missing",
         ))),
-        Err(TokenError::WrongTokenType) => Err(HttpErrorResponse::WrongTokenType(String::from(
+        Err(TokenError::WrongTokenType) => Err(HttpErrorResponse::WrongTokenType(Cow::Borrowed(
             "Incorrect token type",
         ))),
     }

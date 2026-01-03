@@ -22,6 +22,7 @@ use actix_web::{web, HttpResponse};
 use ed25519_dalek::SigningKey;
 use futures::future;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -82,7 +83,7 @@ pub async fn lookup_user_public_key(
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get user's public key",
                 )));
             }
@@ -101,29 +102,29 @@ pub async fn create(
     user_data: ProtoBuf<NewUser>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.0.email) {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
     if user_data.0.auth_string.len() > env::CONF.max_auth_string_length {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string is too long",
         )));
     }
 
     if user_data.0.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string salt is too big",
         )));
     }
 
     if user_data.0.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Password encryption salt is too big",
         )));
     }
 
     if user_data.0.recovery_key_hash_salt_for_encryption.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key salt for encryption is too big",
         )));
     }
@@ -131,20 +132,20 @@ pub async fn create(
     if user_data.0.recovery_key_hash_salt_for_recovery_auth.len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key salt for recovery auth is too big",
         )));
     }
 
     if user_data.0.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key auth hash is too long",
         )));
     }
 
     if user_data.0.encryption_key_encrypted_with_password.len() > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encryption key encrypted with password is too big",
         )));
     }
@@ -152,25 +153,25 @@ pub async fn create(
     if user_data.0.encryption_key_encrypted_with_recovery_key.len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encryption key encrypted with recovery key is too big",
         )));
     }
 
     if user_data.0.public_key.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Public key is too big",
         )));
     }
 
     if user_data.0.preferences_encrypted.len() > env::CONF.max_user_preferences_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Preferences encrypted is too big",
         )));
     }
 
     if user_data.0.user_keystore_encrypted.len() > env::CONF.max_keystore_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "User keystore encrypted is too big",
         )));
     }
@@ -243,7 +244,7 @@ pub async fn create(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to hash auth string",
             )));
         }
@@ -253,7 +254,7 @@ pub async fn create(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to rehash recovery key auth hash",
             )));
         }
@@ -299,13 +300,13 @@ pub async fn create(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
             )) => {
-                return Err(HttpErrorResponse::ConflictWithExisting(String::from(
+                return Err(HttpErrorResponse::ConflictWithExisting(Cow::Borrowed(
                     "A user with the given email address already exists",
                 )));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to create user",
                 )));
             }
@@ -342,7 +343,7 @@ pub async fn create(
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to send user verification token to user's email address",
             )));
         }
@@ -405,7 +406,7 @@ pub async fn rotate_user_public_key(
     new_key: ProtoBuf<NewUserPublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_key.value.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "User public key is too long",
         )));
     }
@@ -426,13 +427,13 @@ pub async fn rotate_user_public_key(
     {
         Ok(_) => (),
         Err(DaoError::OutOfDate) => {
-            return Err(HttpErrorResponse::OutOfDate(String::from(
+            return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                 "Expected key was out of date",
             )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to rotate user public key",
             )));
         }
@@ -447,7 +448,7 @@ pub async fn edit_preferences(
     new_prefs: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_prefs.encrypted_blob.len() > env::CONF.max_user_preferences_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "User preferences are too large",
         )));
     }
@@ -466,13 +467,13 @@ pub async fn edit_preferences(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate(String::from(
+                return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                     "Out of date version nonce",
                 )));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to update user preferences",
                 )));
             }
@@ -488,7 +489,7 @@ pub async fn edit_keystore(
     new_keystore: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_keystore.encrypted_blob.len() > env::CONF.max_keystore_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "User keystore is too large",
         )));
     }
@@ -507,13 +508,13 @@ pub async fn edit_keystore(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate(String::from(
+                return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                     "Out of date version nonce",
                 )));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to update user keystore",
                 )));
             }
@@ -528,25 +529,25 @@ pub async fn change_password(
     new_password_data: ProtoBuf<AuthStringAndEncryptedPasswordUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_password_data.0.new_auth_string.len() > env::CONF.max_auth_string_length {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string is too long",
         )));
     }
 
     if new_password_data.0.auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Auth string salt is too long",
         )));
     }
 
     if new_password_data.0.password_encryption_key_salt.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Password encryption salt is too long",
         )));
     }
 
     if new_password_data.0.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted encryption key is too long",
         )));
     }
@@ -591,7 +592,7 @@ pub async fn change_password(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to hash auth atring",
             )));
         }
@@ -631,7 +632,7 @@ pub async fn change_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key salt for encryption is too long",
         )));
     }
@@ -641,19 +642,19 @@ pub async fn change_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key salt for recovery auth is too long",
         )));
     }
 
     if new_recovery_key_data.recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Recovery key auth hash is too long",
         )));
     }
 
     if new_recovery_key_data.encrypted_encryption_key.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted encryption key is too long",
         )));
     }
@@ -701,7 +702,7 @@ pub async fn change_recovery_key(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to rehash recovery key auth hash",
             )));
         }
@@ -725,7 +726,7 @@ pub async fn change_recovery_key(
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to update recovery key",
             )));
         }
@@ -742,7 +743,7 @@ pub async fn change_email(
     if let Validity::Invalid(msg) =
         validators::validate_email_address(&email_change_data.0.new_email)
     {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
     handlers::verification::verify_auth_string(
@@ -772,14 +773,14 @@ pub async fn change_email(
         Ok(b) => b,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to check if email exists",
             )));
         }
     };
 
     if new_email_exists {
-        return Err(HttpErrorResponse::ConflictWithExisting(String::from(
+        return Err(HttpErrorResponse::ConflictWithExisting(Cow::Borrowed(
             "A user with the given email address already exists",
         )));
     }
@@ -796,7 +797,7 @@ pub async fn change_email(
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to update email",
             )));
         }
@@ -815,7 +816,7 @@ pub async fn init_delete(
         "One of the provided container access tokens is invalid or has an incorrect ID";
 
     if container_access_tokens.tokens.len() > env::CONF.max_containers {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Too many container access tokens",
         )));
     }
@@ -826,7 +827,7 @@ pub async fn init_delete(
 
     for token in container_access_tokens.tokens.iter() {
         let token = ContainerAccessToken::decode(token)
-            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(String::from(INVALID_ID_MSG)))?;
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(INVALID_ID_MSG)))?;
 
         key_ids.push(token.claims.key_id);
         container_ids.push(token.claims.container_id);
@@ -846,13 +847,13 @@ pub async fn init_delete(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from(INVALID_ID_MSG),
+                    Cow::Borrowed(INVALID_ID_MSG),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get container data corresponding to container access token",
                 )));
             }
@@ -861,7 +862,7 @@ pub async fn init_delete(
 
     if public_keys.len() != tokens.len() {
         return Err(HttpErrorResponse::DoesNotExist(
-            String::from(INVALID_ID_MSG),
+            Cow::Borrowed(INVALID_ID_MSG),
             DoesNotExistType::Container,
         ));
     }
@@ -871,7 +872,7 @@ pub async fn init_delete(
             Some(t) => t,
             None => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from(INVALID_ID_MSG),
+                    Cow::Borrowed(INVALID_ID_MSG),
                     DoesNotExistType::Container,
                 ))
             }
@@ -896,13 +897,13 @@ pub async fn init_delete(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from(INVALID_ID_MSG),
+                    Cow::Borrowed(INVALID_ID_MSG),
                     DoesNotExistType::User,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to save user deletion container keys",
                 )));
             }
@@ -939,7 +940,7 @@ pub async fn init_delete(
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to send user deletion token to user's email address",
             )));
         }
@@ -1035,7 +1036,7 @@ pub async fn is_listed_for_deletion(
         Ok(l) => l,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to cancel user deletion",
             )));
         }
@@ -1059,7 +1060,7 @@ pub async fn cancel_delete(
         Ok(_) => (),
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to cancel user deletion",
             )));
         }

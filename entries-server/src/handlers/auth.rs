@@ -14,6 +14,7 @@ use actix_web::{web, HttpResponse};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
@@ -139,7 +140,7 @@ pub async fn obtain_nonce_and_auth_string_params(
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to obtain nonce or authentication string data",
             )));
         }
@@ -164,7 +165,7 @@ pub async fn sign_in(
     credentials: ProtoBuf<CredentialPair>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.0.email) {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
     let email_limiter_key = credentials.0.email.to_ascii_lowercase();
@@ -172,7 +173,7 @@ pub async fn sign_in(
         .allow_attempt(email_limiter_key)
         .await
     {
-        return Err(HttpErrorResponse::TooManyAttempts(String::from(
+        return Err(HttpErrorResponse::TooManyAttempts(Cow::Borrowed(
             "Too many sign-in attempts. Please try again later.",
         )));
     }
@@ -188,20 +189,20 @@ pub async fn sign_in(
         {
             Ok(a) => a,
             Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-                return Err(HttpErrorResponse::IncorrectCredential(String::from(
+                return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
                     "The credentials were incorrect",
                 )));
             }
             Err(e) => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to obtain sign-in nonce",
                 )));
             }
         };
 
     if nonce != credentials.nonce {
-        return Err(HttpErrorResponse::IncorrectNonce(String::from(
+        return Err(HttpErrorResponse::IncorrectNonce(Cow::Borrowed(
             "Incorrect nonce",
         )));
     }
@@ -216,13 +217,13 @@ pub async fn sign_in(
     {
         Ok(a) => a,
         Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
-            return Err(HttpErrorResponse::IncorrectCredential(String::from(
+            return Err(HttpErrorResponse::IncorrectCredential(Cow::Borrowed(
                 "The credentials were incorrect",
             )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to get user auth string hash",
             )));
         }
@@ -267,7 +268,7 @@ pub async fn sign_in(
             }
         }
 
-        return Err(HttpErrorResponse::PendingAction(String::from(
+        return Err(HttpErrorResponse::PendingAction(Cow::Borrowed(
             "User has not accepted verification email. A new verification email has been sent.",
         )));
     }
@@ -355,7 +356,7 @@ pub async fn verify_otp_for_signin(
         .await?
         .map_err(|e| {
             log::error!("Failed to get user protected data: {e}");
-            HttpErrorResponse::InternalError(String::from("Failed to get user data"))
+            HttpErrorResponse::InternalError(Cow::Borrowed("Failed to get user data"))
         })?;
 
     let authenticated_session = AuthenticatedSession {
@@ -405,13 +406,13 @@ pub async fn refresh_tokens(
     {
         Ok(false) => (),
         Ok(true) => {
-            return Err(HttpErrorResponse::TokenExpired(String::from(
+            return Err(HttpErrorResponse::TokenExpired(Cow::Borrowed(
                 "Token has expired",
             )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Error verifying token",
             )));
         }
@@ -459,23 +460,23 @@ pub async fn recover_with_recovery_key(
     if let Validity::Invalid(msg) =
         validators::validate_email_address(&recovery_key_data.user_email)
     {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
     if let Some(email) = &recovery_key_data.new_user_email {
         if let Validity::Invalid(msg) = validators::validate_email_address(email) {
-            return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+            return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
         }
     }
 
     if recovery_key_data.new_auth_string.len() > env::CONF.max_auth_string_length {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
             "New auth string is too long",
         )));
     }
 
     if recovery_key_data.new_auth_string_hash_salt.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "New auth string salt is too big",
         )));
     }
@@ -485,7 +486,7 @@ pub async fn recover_with_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "New recovery key hash salt for encryption is too big",
         )));
     }
@@ -495,13 +496,13 @@ pub async fn recover_with_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "New recovery key hash salt for recovery auth is too big",
         )));
     }
 
     if recovery_key_data.new_recovery_key_auth_hash.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "New recovery key auth hash is too big",
         )));
     }
@@ -511,7 +512,7 @@ pub async fn recover_with_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encryption key encrypted with new password is too big",
         )));
     }
@@ -521,7 +522,7 @@ pub async fn recover_with_recovery_key(
         .len()
         > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encryption key encrypted with new recovery key is too big",
         )));
     }
@@ -579,7 +580,7 @@ pub async fn recover_with_recovery_key(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to hash new auth string",
             )));
         }
@@ -588,7 +589,7 @@ pub async fn recover_with_recovery_key(
         Ok(s) => s,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to hash recovery key auth hash",
             )));
         }
@@ -619,7 +620,7 @@ pub async fn recover_with_recovery_key(
 
     match save_result {
         Ok(Ok(())) => Ok(HttpResponse::Ok().finish()),
-        _ => Err(HttpErrorResponse::InternalError(String::from(
+        _ => Err(HttpErrorResponse::InternalError(Cow::Borrowed(
             "Failed to update user data during recovery",
         ))),
     }
@@ -633,7 +634,7 @@ pub async fn logout(
     let refresh_token_claims = refresh_token.verify()?;
 
     if refresh_token_claims.user_id != user_access_token.0.user_id {
-        return Err(HttpErrorResponse::UserDisallowed(String::from(
+        return Err(HttpErrorResponse::UserDisallowed(Cow::Borrowed(
             "Refresh token does not belong to user.",
         )));
     }
@@ -649,13 +650,13 @@ pub async fn logout(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             _,
         ))) => {
-            return Err(HttpErrorResponse::ConflictWithExisting(String::from(
+            return Err(HttpErrorResponse::ConflictWithExisting(Cow::Borrowed(
                 "Token already on blacklist",
             )));
         }
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to blacklist token",
             )));
         }

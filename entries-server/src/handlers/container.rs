@@ -17,6 +17,7 @@ use actix_web::{web, HttpResponse};
 use ed25519_dalek as ed25519;
 use openssl::rsa::{Padding, Rsa};
 use prost::Message;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,10 +38,10 @@ pub async fn get(
     const INVALID_ID_MSG: &str = "One of the provided container access tokens had an invalid ID";
 
     if container_access_tokens.tokens.len() > env::CONF.max_container_fetch_count {
-        return Err(HttpErrorResponse::TooManyRequested(format!(
+        return Err(HttpErrorResponse::TooManyRequested(Cow::Owned(format!(
             "Cannot fetch more than {} containers at once",
             env::CONF.max_container_fetch_count,
-        )));
+        ))));
     }
 
     let mut tokens = HashMap::new();
@@ -49,7 +50,7 @@ pub async fn get(
 
     for token in container_access_tokens.tokens.iter() {
         let token = ContainerAccessToken::decode(token)
-            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(String::from(INVALID_ID_MSG)))?;
+            .map_err(|_| HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(INVALID_ID_MSG)))?;
 
         key_ids.push(token.claims.key_id);
         container_ids.push(token.claims.container_id);
@@ -75,13 +76,13 @@ pub async fn get(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from(INVALID_ID_MSG),
+                    Cow::Borrowed(INVALID_ID_MSG),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get container data",
                 )));
             }
@@ -90,7 +91,7 @@ pub async fn get(
 
     if public_keys.len() != tokens.len() {
         return Err(HttpErrorResponse::DoesNotExist(
-            String::from(INVALID_ID_MSG),
+            Cow::Borrowed(INVALID_ID_MSG),
             DoesNotExistType::Container,
         ));
     }
@@ -100,7 +101,7 @@ pub async fn get(
             Some(t) => t,
             None => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from(INVALID_ID_MSG),
+                    Cow::Borrowed(INVALID_ID_MSG),
                     DoesNotExistType::Container,
                 ))
             }
@@ -126,13 +127,13 @@ pub async fn get(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("One of the provided IDs did not match a container"),
+                    Cow::Borrowed("One of the provided IDs did not match a container"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get container data",
                 )));
             }
@@ -148,23 +149,23 @@ pub async fn create(
     _user_access_token: VerifiedToken<Access, FromHeader>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Container encrypted blob too large",
         )));
     }
 
     if container_data.user_public_container_key.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "User public key too large",
         )));
     }
 
     for category in container_data.categories.iter() {
         if category.encrypted_blob.len() > env::CONF.max_small_object_size {
-            return Err(HttpErrorResponse::InputTooLarge(format!(
+            return Err(HttpErrorResponse::InputTooLarge(Cow::Owned(format!(
                 "Category encrypted blob too large for category with temp ID {}",
                 category.temp_id,
-            )));
+            ))));
         }
     }
 
@@ -175,7 +176,7 @@ pub async fn create(
         HashSet::<i32>::from_iter(container_data.categories.iter().map(|c| c.temp_id));
 
     if temp_id_set.len() != container_data.categories.len() {
-        return Err(HttpErrorResponse::InvalidState(String::from(
+        return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
             "Multiple categories with the same ID",
         )));
     }
@@ -194,7 +195,7 @@ pub async fn create(
         Ok(b) => b,
         Err(e) => {
             log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(String::from(
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                 "Failed to create container",
             )));
         }
@@ -212,7 +213,7 @@ pub async fn edit(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Container encrypted blob too large",
         )));
     }
@@ -231,19 +232,19 @@ pub async fn edit(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate(String::from(
+                return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                     "Out of date version nonce",
                 )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container with ID matching token"),
+                    Cow::Borrowed("No container with ID matching token"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to edit container",
                 )));
             }
@@ -271,32 +272,32 @@ pub async fn invite_user(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if invitation_info.sender_public_key.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Sender public key too large",
         )));
     }
 
     if invitation_info.encryption_key_encrypted.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted encryption key too large",
         )));
     }
 
     if invitation_info.container_info_encrypted.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Container info encrypted too large",
         )));
     }
 
     if invitation_info.sender_info_encrypted.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Sender info encrypted too large",
         )));
     }
 
     if invitation_info.share_info_symmetric_key_encrypted.len() > env::CONF.max_encryption_key_size
     {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted symmetric key too large",
         )));
     }
@@ -304,11 +305,11 @@ pub async fn invite_user(
     if let Validity::Invalid(msg) =
         validators::validate_email_address(&invitation_info.recipient_user_email)
     {
-        return Err(HttpErrorResponse::IncorrectlyFormed(String::from(msg)));
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
     if invitation_info.recipient_user_email == user_access_token.0.user_email {
-        return Err(HttpErrorResponse::InvalidState(String::from(
+        return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
             "Inviter and recipient are the same",
         )));
     }
@@ -329,13 +330,13 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No user with given email"),
+                    Cow::Borrowed("No user with given email"),
                     DoesNotExistType::User,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get recipient user's public key",
                 )));
             }
@@ -353,7 +354,7 @@ pub async fn invite_user(
             Ok(k) => k,
             Err(_) => {
                 sender
-                    .send(Err(HttpErrorResponse::IncorrectlyFormed(String::from(
+                    .send(Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
                         "Recipient user's public key is incorrectly formatted",
                     ))))
                     .expect("Sending to channel failed");
@@ -371,7 +372,7 @@ pub async fn invite_user(
             Ok(s) => s,
             Err(_) => {
                 sender
-                    .send(Err(HttpErrorResponse::InternalError(String::from(
+                    .send(Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                         "Failed to encrypt accept key pair using recipient's public key",
                     ))))
                     .expect("Sending to channel failed");
@@ -447,13 +448,13 @@ pub async fn invite_user(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container or invite with ID matching token"),
+                    Cow::Borrowed("No container or invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to share container",
                 )));
             }
@@ -480,13 +481,13 @@ pub async fn retract_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No invitation with ID matching token"),
+                    Cow::Borrowed("No invitation with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get public container access key",
                 )));
             }
@@ -505,13 +506,13 @@ pub async fn retract_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No share invite with ID matching token"),
+                    Cow::Borrowed("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to delete invitation",
                 )));
             }
@@ -528,7 +529,7 @@ pub async fn accept_invitation(
     container_user_public_key: ProtoBuf<PublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if container_user_public_key.value.len() > env::CONF.max_encryption_key_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Public key too large",
         )));
     }
@@ -546,13 +547,13 @@ pub async fn accept_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No share invite with ID matching token"),
+                    Cow::Borrowed("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to accept invitation",
                 )));
             }
@@ -560,7 +561,7 @@ pub async fn accept_invitation(
     };
 
     if container_accept_key.expiration < SystemTime::now() {
-        return Err(HttpErrorResponse::OutOfDate(String::from(
+        return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
             "Invitation has expired",
         )));
     }
@@ -584,13 +585,13 @@ pub async fn accept_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No share invite with ID matching token"),
+                    Cow::Borrowed("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to accept invitation",
                 )));
             }
@@ -618,13 +619,13 @@ pub async fn decline_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No share invite with ID matching token"),
+                    Cow::Borrowed("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to decline invitation",
                 )));
             }
@@ -647,13 +648,13 @@ pub async fn decline_invitation(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No share invite with ID matching token"),
+                    Cow::Borrowed("No share invite with ID matching token"),
                     DoesNotExistType::Invitation,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to decline invitation",
                 )));
             }
@@ -680,7 +681,7 @@ pub async fn get_all_pending_invitations(
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to find invitations",
                 )));
             }
@@ -710,13 +711,13 @@ pub async fn leave_container(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container with ID matching token"),
+                    Cow::Borrowed("No container with ID matching token"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to remove association with container",
                 )));
             }
@@ -735,7 +736,7 @@ pub async fn create_entry(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted blob too large",
         )));
     }
@@ -762,7 +763,7 @@ pub async fn create_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("There was an ID mismatch for the container, entry, or category"),
+                    Cow::Borrowed("There was an ID mismatch for the container, entry, or category"),
                     DoesNotExistType::Entry,
                 ));
             }
@@ -770,13 +771,13 @@ pub async fn create_entry(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
             )) => {
-                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(String::from(
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(Cow::Borrowed(
                     "No category matching ID",
                 )))
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to create entry",
                 )));
             }
@@ -797,13 +798,13 @@ pub async fn create_entry_and_category(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_and_category_data.entry_encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Entry encrypted blob too large",
         )));
     }
 
     if entry_and_category_data.category_encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Category encrypted blob too large",
         )));
     }
@@ -824,13 +825,13 @@ pub async fn create_entry_and_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container with ID matching token"),
+                    Cow::Borrowed("No container with ID matching token"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to create entry",
                 )));
             }
@@ -849,7 +850,7 @@ pub async fn edit_entry(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if entry_data.encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted blob too large",
         )));
     }
@@ -878,13 +879,13 @@ pub async fn edit_entry(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate(String::from(
+                return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                     "Out of date version nonce",
                 )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("Entry not found"),
+                    Cow::Borrowed("Entry not found"),
                     DoesNotExistType::Entry,
                 ));
             }
@@ -892,13 +893,13 @@ pub async fn edit_entry(
                 diesel::result::DatabaseErrorKind::ForeignKeyViolation,
                 _,
             )) => {
-                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(String::from(
+                return Err(HttpErrorResponse::ForeignKeyDoesNotExist(Cow::Borrowed(
                     "No category matching ID",
                 )))
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to update entry",
                 )));
             }
@@ -928,13 +929,13 @@ pub async fn delete_entry(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("Entry not found"),
+                    Cow::Borrowed("Entry not found"),
                     DoesNotExistType::Entry,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to delete entry",
                 )));
             }
@@ -953,7 +954,7 @@ pub async fn create_category(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if category_data.value.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted blob too large",
         )));
     }
@@ -972,13 +973,13 @@ pub async fn create_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container with ID matching token"),
+                    Cow::Borrowed("No container with ID matching token"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to create category",
                 )));
             }
@@ -999,7 +1000,7 @@ pub async fn edit_category(
     verify_read_write_access(&container_access_token, &db_thread_pool).await?;
 
     if category_data.encrypted_blob.len() > env::CONF.max_small_object_size {
-        return Err(HttpErrorResponse::InputTooLarge(String::from(
+        return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
             "Encrypted blob too large",
         )));
     }
@@ -1021,19 +1022,19 @@ pub async fn edit_category(
         Ok(_) => (),
         Err(e) => match e {
             DaoError::OutOfDate => {
-                return Err(HttpErrorResponse::OutOfDate(String::from(
+                return Err(HttpErrorResponse::OutOfDate(Cow::Borrowed(
                     "Out of date version nonce",
                 )));
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("Category not found"),
+                    Cow::Borrowed("Category not found"),
                     DoesNotExistType::Category,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to update category",
                 )));
             }
@@ -1064,13 +1065,13 @@ pub async fn delete_category(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("Category not found"),
+                    Cow::Borrowed("Category not found"),
                     DoesNotExistType::Category,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to delete category",
                 )));
             }
@@ -1093,13 +1094,13 @@ async fn obtain_public_key(
         Err(e) => match e {
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 return Err(HttpErrorResponse::DoesNotExist(
-                    String::from("No container with ID matching token"),
+                    Cow::Borrowed("No container with ID matching token"),
                     DoesNotExistType::Container,
                 ));
             }
             _ => {
                 log::error!("{e}");
-                return Err(HttpErrorResponse::InternalError(String::from(
+                return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
                     "Failed to get public container access key",
                 )));
             }
@@ -1118,7 +1119,7 @@ async fn verify_read_write_access<F: TokenLocation>(
     container_access_token.0.verify(&public_key.public_key)?;
 
     if public_key.read_only {
-        return Err(HttpErrorResponse::ReadOnlyAccess(String::from(
+        return Err(HttpErrorResponse::ReadOnlyAccess(Cow::Borrowed(
             "User has read-only access to container",
         )));
     }

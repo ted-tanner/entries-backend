@@ -1,6 +1,7 @@
 use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
+use std::borrow::Cow;
 
 use crate::handlers::error::HttpErrorResponse;
 
@@ -18,7 +19,7 @@ impl FromRequest for AppVersion {
         let app_version = match req.headers().get("AppVersion") {
             Some(header) => header,
             None => {
-                return future::err(HttpErrorResponse::MissingHeader(String::from(
+                return future::err(HttpErrorResponse::MissingHeader(Cow::Borrowed(
                     NO_VERSION_HEADER_MESSAGE,
                 )))
             }
@@ -27,14 +28,14 @@ impl FromRequest for AppVersion {
         let app_version = match app_version.to_str() {
             Ok(v) => v,
             Err(_) => {
-                return future::err(HttpErrorResponse::IncorrectlyFormed(String::from(
+                return future::err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
                     NO_VERSION_HEADER_MESSAGE,
                 )))
             }
         };
 
         if app_version.len() > 24 {
-            return future::err(HttpErrorResponse::IncorrectlyFormed(String::from(
+            return future::err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
                 NO_VERSION_HEADER_MESSAGE,
             )));
         }
