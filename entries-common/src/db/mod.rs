@@ -2,6 +2,7 @@ use diesel_async::pooled_connection::bb8::Pool as AsyncPool;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::AsyncPgConnection;
 use std::fmt;
+use std::time::Duration;
 
 pub mod auth;
 pub mod container;
@@ -12,10 +13,15 @@ pub type DbAsyncPool = AsyncPool<AsyncPgConnection>;
 pub type DbAsyncConnection =
     bb8::PooledConnection<'static, AsyncDieselConnectionManager<AsyncPgConnection>>;
 
-pub async fn create_db_async_pool(database_uri: &str, max_db_connections: u32) -> DbAsyncPool {
+pub async fn create_db_async_pool(
+    database_uri: &str,
+    max_db_connections: u32,
+    idle_timeout: Duration,
+) -> DbAsyncPool {
     let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_uri);
     AsyncPool::builder()
         .max_size(max_db_connections)
+        .idle_timeout(Some(idle_timeout))
         .build(config)
         .await
         .expect("Failed to create async DB pool")
@@ -69,7 +75,7 @@ impl From<diesel::result::Error> for DaoError {
 #[cfg(test)]
 pub mod test_utils {
     use once_cell::sync::Lazy;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
     use uuid::Uuid;
 
     use diesel::{dsl, QueryDsl};
@@ -90,6 +96,7 @@ pub mod test_utils {
     const DB_PORT_VAR: &str = "ENTRIES_DB_PORT";
     const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
     const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
+    const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
 
     pub static DB_ASYNC_POOL: Lazy<DbAsyncPool> = Lazy::new(|| {
         let username = env_or_panic(DB_USERNAME_VAR);
@@ -99,6 +106,7 @@ pub mod test_utils {
         let db_name = env_or_panic(DB_NAME_VAR);
 
         let max_connections = env_or_parse(DB_MAX_CONNECTIONS_VAR, 48u32);
+        let idle_timeout = Duration::from_secs(env_or_parse(DB_IDLE_TIMEOUT_SECS_VAR, 30u64));
 
         let db_uri = format!(
             "postgres://{}:{}@{}:{}/{}",
@@ -106,7 +114,7 @@ pub mod test_utils {
         );
 
         // Use futures::executor::block_on which works within async contexts
-        futures::executor::block_on(create_db_async_pool(&db_uri, max_connections))
+        futures::executor::block_on(create_db_async_pool(&db_uri, max_connections, idle_timeout))
     });
 
     pub fn db_async_pool() -> &'static DbAsyncPool {

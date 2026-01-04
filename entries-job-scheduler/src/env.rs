@@ -213,6 +213,10 @@ pub mod testing {
         );
 
         // Use futures::executor::block_on which works within async contexts
-        futures::executor::block_on(create_db_async_pool(&db_uri, CONF.db_max_connections))
+        futures::executor::block_on(create_db_async_pool(
+            &db_uri,
+            CONF.db_max_connections,
+            CONF.db_idle_timeout,
+        ))
     });
 }

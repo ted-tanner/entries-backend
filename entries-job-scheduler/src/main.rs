@@ -30,7 +30,12 @@ fn main() {
         .build()
         .expect("Failed to launch asynchronous runtime")
         .block_on(async move {
-            let db_async_pool = create_db_async_pool(&db_uri, env::CONF.db_max_connections).await;
+            let db_async_pool = create_db_async_pool(
+                &db_uri,
+                env::CONF.db_max_connections,
+                env::CONF.db_idle_timeout,
+            )
+            .await;
             Logger::try_with_str(&env::CONF.log_level)
                 .expect(
                     "Invalid log level. Options: ERROR, WARN, INFO, DEBUG, TRACE. \

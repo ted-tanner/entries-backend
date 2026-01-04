@@ -104,7 +104,12 @@ async fn main() -> std::io::Result<()> {
         env::CONF.db_name,
     ));
 
-    let db_async_pool = create_db_async_pool(&db_uri, env::CONF.db_max_connections).await;
+    let db_async_pool = create_db_async_pool(
+        &db_uri,
+        env::CONF.db_max_connections,
+        env::CONF.db_idle_timeout,
+    )
+    .await;
 
     log::info!("Successfully connected to database");
 
