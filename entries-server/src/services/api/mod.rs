@@ -5,6 +5,7 @@ use crate::middleware::Limiter;
 
 mod auth;
 mod container;
+mod error_reporting;
 mod health;
 mod user;
 
@@ -108,6 +109,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
         scope("/api")
             .configure(|cfg| auth::configure(cfg, limiters.clone()))
             .configure(|cfg| container::configure(cfg, limiters.clone()))
+            .configure(error_reporting::configure)
             .configure(|cfg| user::configure(cfg, limiters))
             .configure(health::configure),
     );

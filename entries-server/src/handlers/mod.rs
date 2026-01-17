@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod container;
+pub mod error_reporting;
 pub mod health;
 pub mod user;
 

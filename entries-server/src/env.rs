@@ -124,6 +124,7 @@ const MAX_CONTAINER_FETCH_COUNT_VAR: &str = "ENTRIES_MAX_CONTAINER_FETCH_COUNT";
 const MAX_AUTH_STRING_LENGTH_VAR: &str = "ENTRIES_MAX_AUTH_STRING_LENGTH";
 
 const HEALTH_ENDPOINT_KEY_VAR: &str = "ENTRIES_HEALTH_ENDPOINT_KEY";
+const CLIENT_ERRORS_ENDPOINT_KEY_VAR: &str = "ENTRIES_CLIENT_ERRORS_ENDPOINT_KEY";
 
 const AUTH_STRING_AUTH_STRING_HASH_KEY_SIZE: usize = 32;
 const TOKEN_SIGNING_KEY_SIZE: usize = 64;
@@ -216,6 +217,7 @@ pub struct ConfigInner {
     pub max_auth_string_length: usize,
 
     pub health_endpoint_key: String,
+    pub client_errors_endpoint_key: String,
 
     #[zeroize(skip)]
     pub api_create_container_limiter_max_per_period: u64,
@@ -395,6 +397,7 @@ impl Config {
             max_auth_string_length: env_var_or(MAX_AUTH_STRING_LENGTH_VAR, 1024)?,
 
             health_endpoint_key: env_var(HEALTH_ENDPOINT_KEY_VAR)?,
+            client_errors_endpoint_key: env_var(CLIENT_ERRORS_ENDPOINT_KEY_VAR)?,
 
             api_create_container_limiter_max_per_period: env_var_or(
                 API_CREATE_CONTAINER_LIMITER_MAX_PER_PERIOD_VAR,
