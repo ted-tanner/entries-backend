@@ -13,7 +13,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .route(delete().to(user::init_delete).wrap(limiters.email)),
             )
             .service(
-                resource("/public_key")
+                resource("/public-key")
                     .route(
                         get()
                             .to(user::lookup_user_public_key)
@@ -32,7 +32,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                 ),
             )
             .service(
-                resource("/recovery_key")
+                resource("/recovery-key")
                     .route(put().to(user::change_recovery_key).wrap(limiters.password)),
             )
             .service(

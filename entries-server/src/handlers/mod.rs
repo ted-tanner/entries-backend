@@ -1033,7 +1033,7 @@ pub mod test_utils {
             AuthToken::sign_new(recipient_access_token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;

@@ -1,21 +1,24 @@
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder};
 use entries_common::db::DbAsyncPool;
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::env;
+
+#[derive(Deserialize)]
+pub struct HealthKeyQuery {
+    pub key: Option<String>,
+}
 
 pub async fn heartbeat() -> impl Responder {
     HttpResponse::Ok()
 }
 
-pub async fn health(db_async_pool: web::Data<DbAsyncPool>, req: HttpRequest) -> impl Responder {
-    let Some(key) = req.headers().get("Key") else {
-        return HttpResponse::Unauthorized().finish();
-    };
-
-    let correct_key = &env::CONF.health_endpoint_key;
-
-    if !keys_equal(key.as_bytes(), correct_key.as_bytes()) {
+pub async fn health(
+    db_async_pool: web::Data<DbAsyncPool>,
+    query: web::Query<HealthKeyQuery>,
+) -> impl Responder {
+    if !is_health_key_correct(query.key.as_deref()) {
         return HttpResponse::Unauthorized().finish();
     }
 
@@ -30,18 +33,29 @@ pub async fn health(db_async_pool: web::Data<DbAsyncPool>, req: HttpRequest) -> 
     HttpResponse::Ok().json(resp_body)
 }
 
-fn keys_equal(key1: &[u8], key2: &[u8]) -> bool {
-    if key1.len() != key2.len() {
+#[inline]
+fn is_health_key_correct(key: Option<&str>) -> bool {
+    let Some(key) = key else {
+        return false;
+    };
+
+    let correct_key = env::CONF.health_endpoint_key.as_bytes();
+    let key = key.as_bytes();
+
+    let mut keys_dont_match = 0u8;
+
+    if correct_key.len() != key.len() || key.is_empty() {
         return false;
     }
 
-    let mut keys_not_equal = 0;
-    for i in 0..key1.len() {
-        // This is safe because the lengths have already been checked and are equal
-        keys_not_equal |= unsafe { key1.get_unchecked(i) ^ key2.get_unchecked(i) };
+    // Do bitwise comparison to prevent timing attacks
+    for (i, correct_key_byte) in correct_key.iter().enumerate() {
+        unsafe {
+            keys_dont_match |= correct_key_byte ^ key.get_unchecked(i);
+        }
     }
 
-    keys_not_equal == 0
+    keys_dont_match == 0
 }
 
 #[cfg(test)]
@@ -72,8 +86,7 @@ mod tests {
         .await;
 
         let req = TestRequest::get()
-            .uri("/health")
-            .insert_header(("Key", env::CONF.health_endpoint_key.as_str()))
+            .uri(&format!("/health?key={}", env::CONF.health_endpoint_key))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -98,8 +111,7 @@ mod tests {
         .await;
 
         let req = TestRequest::get()
-            .uri("/health")
-            .insert_header(("Key", "invalid_key"))
+            .uri("/health?key=invalid_key")
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -130,25 +142,9 @@ mod tests {
         )
         .await;
 
-        let req = TestRequest::get()
-            .uri("/health")
-            .insert_header(("Key", "short"))
-            .to_request();
+        let req = TestRequest::get().uri("/health?key=short").to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn test_keys_equal() {
-        let key1 = b"test_key_123";
-        let key2 = b"test_key_123";
-        let key3 = b"test_key_456";
-        let key4 = b"test_key_12"; // shorter
-
-        assert!(keys_equal(key1, key2));
-        assert!(!keys_equal(key1, key3));
-        assert!(!keys_equal(key1, key4));
-        assert!(!keys_equal(key4, key1));
     }
 }

@@ -1104,7 +1104,7 @@ pub mod tests {
         let (user, access_token, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
-            .uri(&format!("/api/user/public_key?email={}", user.email))
+            .uri(&format!("/api/user/public-key?email={}", user.email))
             .insert_header(("AccessToken", access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1719,7 +1719,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/public_key")
+            .uri("/api/user/public-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(old_key_update.encode_to_vec())
@@ -1749,7 +1749,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/public_key")
+            .uri("/api/user/public-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(key_update.encode_to_vec())
@@ -1794,7 +1794,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/public_key")
+            .uri("/api/user/public-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(key_update.encode_to_vec())
@@ -2502,7 +2502,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2519,7 +2519,7 @@ pub mod tests {
         edit_recovery_key.otp = otp;
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2565,7 +2565,7 @@ pub mod tests {
         );
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2651,7 +2651,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2684,7 +2684,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2714,7 +2714,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2744,7 +2744,7 @@ pub mod tests {
         };
 
         let req = TestRequest::put()
-            .uri("/api/user/recovery_key")
+            .uri("/api/user/recovery-key")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
@@ -2964,7 +2964,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/container/entry_and_category")
+            .uri("/api/container/entry-and-category")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("ContainerAccessToken", container1_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))

@@ -28,7 +28,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .service(resource("/accept").route(put().to(container::accept_invitation)))
                     .service(resource("/decline").route(put().to(container::decline_invitation)))
                     .service(
-                        resource("/all_pending")
+                        resource("/all-pending")
                             .route(get().to(container::get_all_pending_invitations)),
                     ),
             )
@@ -41,7 +41,7 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     .route(delete().to(container::delete_entry)),
             )
             .service(
-                resource("/entry_and_category")
+                resource("/entry-and-category")
                     .route(post().to(container::create_entry_and_category))
                     .wrap(limiters.create_object.clone()),
             )

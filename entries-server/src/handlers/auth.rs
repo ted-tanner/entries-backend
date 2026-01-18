@@ -777,7 +777,7 @@ mod tests {
         // Real user
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 user.email
             ))
             .to_request();
@@ -796,7 +796,7 @@ mod tests {
 
         // Fake user
         let req = TestRequest::get()
-            .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
+            .uri("/api/auth/nonce-and-auth-string-params?email=fake@fakerson.com")
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -823,7 +823,7 @@ mod tests {
 
         // Should be the same nonce and salt, even for a fake user
         let req = TestRequest::get()
-            .uri("/api/auth/nonce_and_auth_string_params?email=fake@fakerson.com")
+            .uri("/api/auth/nonce-and-auth-string-params?email=fake@fakerson.com")
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -849,7 +849,7 @@ mod tests {
 
         // Different fake email should have a different nonce and salt
         let req = TestRequest::get()
-            .uri("/api/auth/nonce_and_auth_string_params?email=anotherfake@fake.com")
+            .uri("/api/auth/nonce-and-auth-string-params?email=anotherfake@fake.com")
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -950,7 +950,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -971,7 +971,7 @@ mod tests {
         credentials.auth_string.push(byte.wrapping_add(1));
 
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -981,7 +981,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -999,7 +999,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -1037,7 +1037,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -1055,7 +1055,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -1145,7 +1145,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -1163,7 +1163,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -1425,7 +1425,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1546,7 +1546,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1662,7 +1662,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1707,7 +1707,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1754,7 +1754,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1799,7 +1799,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();
@@ -1824,7 +1824,7 @@ mod tests {
                 100,
                 Duration::from_secs(1),
                 Duration::from_secs(10),
-                "POST /api/auth/recover_with_recovery_key",
+                "POST /api/auth/recover-with-recovery-key",
             ),
             ..Default::default()
         };
@@ -1862,7 +1862,7 @@ mod tests {
         let mut temp = recovery_key_data.clone();
         temp.new_auth_string = vec![0; env::CONF.max_auth_string_length + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1878,7 +1878,7 @@ mod tests {
         let mut temp = recovery_key_data.clone();
         temp.new_auth_string_hash_salt = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1895,7 +1895,7 @@ mod tests {
         temp.new_recovery_key_hash_salt_for_encryption =
             vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1912,7 +1912,7 @@ mod tests {
         temp.new_recovery_key_hash_salt_for_recovery_auth =
             vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1928,7 +1928,7 @@ mod tests {
         let mut temp = recovery_key_data.clone();
         temp.new_recovery_key_auth_hash = vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1945,7 +1945,7 @@ mod tests {
         temp.encryption_key_encrypted_with_new_password =
             vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -1962,7 +1962,7 @@ mod tests {
         temp.encryption_key_encrypted_with_new_recovery_key =
             vec![0; env::CONF.max_encryption_key_size + 1];
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(temp.encode_to_vec())
             .to_request();
@@ -2053,7 +2053,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -2071,7 +2071,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -2206,7 +2206,7 @@ mod tests {
 
         let req = TestRequest::get()
             .uri(&format!(
-                "/api/auth/nonce_and_auth_string_params?email={}",
+                "/api/auth/nonce-and-auth-string-params?email={}",
                 &new_user.email
             ))
             .to_request();
@@ -2225,7 +2225,7 @@ mod tests {
 
         // Attempt sign in - this should send a new verification email
         let req = TestRequest::post()
-            .uri("/api/auth/sign_in")
+            .uri("/api/auth/sign-in")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(credentials.encode_to_vec())
             .to_request();
@@ -2427,7 +2427,7 @@ mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/auth/recover_with_recovery_key")
+            .uri("/api/auth/recover-with-recovery-key")
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(recovery_key_data.encode_to_vec())
             .to_request();

@@ -8,19 +8,19 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
     cfg.service(
         scope("/auth")
             .service(
-                resource("/nonce_and_auth_string_params").route(
+                resource("/nonce-and-auth-string-params").route(
                     get()
                         .to(auth::obtain_nonce_and_auth_string_params)
                         .wrap(limiters.key_lookup),
                 ),
             )
             .service(
-                resource("/sign_in")
+                resource("/sign-in")
                     .route(post().to(auth::sign_in))
                     .wrap(limiters.password.clone()),
             )
             .service(
-                resource("/recover_with_recovery_key")
+                resource("/recover-with-recovery-key")
                     .route(post().to(auth::recover_with_recovery_key))
                     .wrap(limiters.recovery.clone()),
             )

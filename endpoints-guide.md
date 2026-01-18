@@ -25,10 +25,10 @@ All request/response bodies for the API (except HTML verification/deletion pages
 
 3) Sign in (begin)
 - Obtain per-user auth-string params and a nonce:
-  - GET `/api/auth/nonce_and_auth_string_params?email=<email>`
+  - GET `/api/auth/nonce-and-auth-string-params?email=<email>`
   - Response: `SigninNonceAndHashParams { auth_string_hash_salt, auth_string_hash_mem_cost_kib, auth_string_hash_threads, auth_string_hash_iterations, nonce }`
 - Compute client-side hash with the returned nonce, then request a sign-in token:
-  - POST `/api/auth/sign_in` with body `CredentialPair { email, auth_string, nonce }`
+  - POST `/api/auth/sign-in` with body `CredentialPair { email, auth_string, nonce }`
   - Response: `SigninToken { value }` and an email OTP is sent to the user.
 
 4) Verify OTP to get session tokens
@@ -58,8 +58,8 @@ This section gives a practical, step-by-step flow for sharing a container betwee
   - Recipient has a verified account with a registered RSA public key
 
 - Sender workflow
-  1) Fetch recipient’s public key
-     - GET `/api/user/public_key?email=<recipient>` (Headers: `AccessToken`)
+  1) Fetch recipient's public key
+     - GET `/api/user/public-key?email=<recipient>` (Headers: `AccessToken`)
      - Response: `UserPublicKey { id, value }` where `value` is the recipient’s RSA public key (DER)
   2) Prepare encrypted artifacts (client-defined schemas)
      - Encrypt the container encryption key with recipient’s RSA public key → `encryption_key_encrypted`
@@ -84,7 +84,7 @@ This section gives a practical, step-by-step flow for sharing a container betwee
 
 - Recipient workflow
   1) List pending invitations
-     - GET `/api/container/invitation/all_pending` (Headers: `AccessToken`)
+     - GET `/api/container/invitation/all-pending` (Headers: `AccessToken`)
      - Response: `ContainerShareInviteList { invites: [...] }`, where each invite contains:
        - `container_accept_key_encrypted`, `container_accept_key_id_encrypted`, `container_accept_key_info_encrypted`
        - `container_info_encrypted`, `sender_info_encrypted`, `share_info_symmetric_key_encrypted`
@@ -171,7 +171,7 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: 200 OK
 
 - Create entry and category atomically
-  - POST `/api/container/entry_and_category`
+  - POST `/api/container/entry-and-category`
   - Headers: `AccessToken`, `ContainerAccessToken`
   - Body: `EntryAndCategory { entry_encrypted_blob, entry_version_nonce, category_encrypted_blob, category_version_nonce }`
   - Response: 201 Created with `EntryIdAndCategoryId`
@@ -206,19 +206,19 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: 200 OK
 
 - List all pending invitations for the current user
-  - GET `/api/container/invitation/all_pending`
+  - GET `/api/container/invitation/all-pending`
   - Headers: `AccessToken`
   - Response: `ContainerShareInviteList { invites: [ContainerShareInvite] }`
 
 ## User profile and security
 
 - Lookup user public key
-  - GET `/api/user/public_key?email=<email>`
+  - GET `/api/user/public-key?email=<email>`
   - Headers: `AccessToken`
   - Response: `UserPublicKey { id, value }`
 
 - Rotate user public key
-  - PUT `/api/user/public_key`
+  - PUT `/api/user/public-key`
   - Headers: `AccessToken`
   - Body: `NewUserPublicKey { id, value, expected_previous_public_key_id }`
   - Response: 200 OK
@@ -241,7 +241,7 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: 200 OK
 
 - Change recovery key (requires AccessToken)
-  - PUT `/api/user/recovery_key`
+  - PUT `/api/user/recovery-key`
   - Headers: `AccessToken`
   - Body: `RecoveryKeyUpdate { otp, recovery_key_hash_salt_for_encryption, recovery_key_hash_salt_for_recovery_auth, recovery_key_hash_mem_cost_kib, recovery_key_hash_threads, recovery_key_hash_iterations, recovery_key_auth_hash, encrypted_encryption_key }`
   - Response: 200 OK
@@ -274,11 +274,11 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
 
 ## Authentication endpoints (detail)
 
-- GET `/api/auth/nonce_and_auth_string_params`
+- GET `/api/auth/nonce-and-auth-string-params`
   - Query: `email`
   - Response: `SigninNonceAndHashParams`
 
-- POST `/api/auth/sign_in`
+- POST `/api/auth/sign-in`
   - Body: `CredentialPair`
   - Response: `SigninToken`
 
@@ -295,7 +295,7 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Headers: `RefreshToken`
   - Response: `TokenPair`
 
-- POST `/api/auth/recover_with_recovery_key`
+- POST `/api/auth/recover-with-recovery-key`
   - Body: `RecoveryKeyAuthAndPasswordUpdate`
   - Response: 200 OK (updates password, optional email, and re-encrypted keys)
 
@@ -308,8 +308,21 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
 - GET `/heartbeat`
   - Response: 200 OK, empty body
 - GET `/health`
-  - Headers: `Key: <server-configured value>`
+  - Query: `key=<admin-api-key>` (required)
   - Response: JSON `{ db_thread_pool_state: { connections, idle_connections, max_connections } }`
+  - Note: **Admin-only endpoint**. Requires `ENTRIES_HEALTH_ENDPOINT_KEY` as the query parameter. Should be called infrequently as it queries database connection pool state.
+
+## Client error reporting
+
+- POST `/api/client-errors`
+  - Body: Plain text error message (max 128 bytes, truncated if longer)
+  - Response: 200 OK
+  - Note: No authentication required. Clients can report errors encountered during normal operation.
+
+- GET `/api/client-errors`
+  - Query: `key=<admin-api-key>` (required)
+  - Response: JSON array of `{ msg: string, timestamp_ms: u64 }` sorted by `timestamp_ms` descending
+  - Note: **Admin-only endpoint**. Requires `ENTRIES_CLIENT_ERRORS_ENDPOINT_KEY` as the query parameter. Should be called infrequently as it snapshots the entire error log buffer, which requires locking every shard in the buffer. Returns all available entries.
 
 ## Protobuf messages (selected)
 
@@ -330,7 +343,6 @@ Refer to `protobuf/schema.proto` for full definitions. Selected types used above
 - ContainerInviteSenderToken: Ed25519-signed token used by the inviter to retract an invitation.
 - ContainerAcceptToken: Ed25519-signed token used by the invitee to accept/decline an invitation.
 - Content-Type: application/protobuf for protobuf bodies.
-- Key: Health endpoint shared key for `/health`.
 
 ## Error model
 

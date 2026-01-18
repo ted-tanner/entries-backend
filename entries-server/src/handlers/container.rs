@@ -1512,7 +1512,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/container/entry_and_category")
+            .uri("/api/container/entry-and-category")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1771,7 +1771,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/container/entry_and_category")
+            .uri("/api/container/entry-and-category")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1794,7 +1794,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/container/entry_and_category")
+            .uri("/api/container/entry-and-category")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -1910,7 +1910,7 @@ pub mod tests {
         };
 
         let req = TestRequest::post()
-            .uri("/api/container/entry_and_category")
+            .uri("/api/container/entry-and-category")
             .insert_header(("AccessToken", access_token.as_str()))
             .insert_header(("ContainerAccessToken", container3_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
@@ -3871,7 +3871,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4383,7 +4383,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4523,7 +4523,7 @@ pub mod tests {
         let invite_id = InvitationId::decode(resp_body).unwrap();
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4585,7 +4585,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4643,7 +4643,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4732,7 +4732,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -4832,7 +4832,7 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         let req = TestRequest::get()
-            .uri("/api/container/invitation/all_pending")
+            .uri("/api/container/invitation/all-pending")
             .insert_header(("AccessToken", recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
