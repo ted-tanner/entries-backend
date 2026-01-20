@@ -57,7 +57,6 @@ mod tests {
     use crate::env;
 
     #[tokio::test]
-    #[ignore = "Needs async pool setup and sync pool removal"]
     async fn test_execute() {
         let user1_number = SecureRng::next_u128();
 

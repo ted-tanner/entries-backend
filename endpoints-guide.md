@@ -16,26 +16,29 @@ All request/response bodies for the API (except HTML verification/deletion pages
 1) Create user
 - Endpoint: POST `/api/user`
 - Body: `NewUser` (protobuf). Contains email, client-hashed auth string, hash params, recovery parameters, encrypted account key, initial user public RSA key id and value, and initial encrypted preferences and keystore blobs.
-- Response: 201 Created with `VerificationEmailSent { email_sent, email_token_lifetime_hours }`.
-- After this, a verification email is sent with a `UserCreationToken` link.
+- Response: 201 Created with `SigninToken { value }`.
+- After this, an OTP email is sent immediately to allow the user to complete sign-in and verify their account.
 
-2) Verify user email
-- Endpoint: GET `/api/user/verify?UserCreationToken=<token>`
-- Response: HTML 200 on success, or HTML error page for expired/invalid token.
+2) Verify OTP to get session tokens and verify user email
+- POST `/api/auth/otp/verify`
+- Headers: `SignInToken: <token from step 1>`
+- Body: `Otp { value }` (from email)
+- Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce, password_encryption_key_salt, password_encryption_key_mem_cost_kib, password_encryption_key_threads, password_encryption_key_iterations, encryption_key_encrypted_with_password }`
+- Successful OTP verification marks the account as verified.
 
-3) Sign in (begin)
+3) Sign in
 - Obtain per-user auth-string params and a nonce:
   - GET `/api/auth/nonce-and-auth-string-params?email=<email>`
   - Response: `SigninNonceAndHashParams { auth_string_hash_salt, auth_string_hash_mem_cost_kib, auth_string_hash_threads, auth_string_hash_iterations, nonce }`
 - Compute client-side hash with the returned nonce, then request a sign-in token:
   - POST `/api/auth/sign-in` with body `CredentialPair { email, auth_string, nonce }`
   - Response: `SigninToken { value }` and an email OTP is sent to the user.
+- Note: Unverified users can sign in; they will be auto-verified upon successful OTP verification (see step 2).
 
-4) Verify OTP to get session tokens
-- POST `/api/auth/otp/verify`
-- Headers: `SignInToken: <token from prior step>`
-- Body: `Otp { value }`
-- Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce, password_encryption_key_salt, password_encryption_key_mem_cost_kib, password_encryption_key_threads, password_encryption_key_iterations, encryption_key_encrypted_with_password }`
+4) Resend OTP during sign-in (if needed)
+- POST `/api/auth/otp/resend-signin-otp`
+- Headers: `SignInToken: <token from sign-in>`
+- Response: 200 OK (new OTP email is sent)
 
 5) Refresh tokens
 - POST `/api/auth/token/refresh`
@@ -54,7 +57,7 @@ This section gives a practical, step-by-step flow for sharing a container betwee
 
 - Prerequisites
   - Sender has an `AccessToken` and a read-write `ContainerAccessToken` for the container
-  - Sender knows the container’s encryption key (to share) and container id
+  - Sender knows the container's encryption key (to share) and container id
   - Recipient has a verified account with a registered RSA public key
 
 - Sender workflow
@@ -280,12 +283,16 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
 
 - POST `/api/auth/sign-in`
   - Body: `CredentialPair`
-  - Response: `SigninToken`
+  - Response: `SigninToken` (OTP email sent)
 
 - POST `/api/auth/otp/verify`
   - Headers: `SignInToken`
   - Body: `Otp`
-  - Response: `TokenPair`
+  - Response: `AuthenticatedSession` (includes `TokenPair` and user data; auto-verifies unverified accounts)
+
+- POST `/api/auth/otp/resend-signin-otp`
+  - Headers: `SignInToken`
+  - Response: 200 OK (new OTP email sent)
 
 - GET `/api/auth/otp`
   - Headers: `AccessToken`
@@ -324,15 +331,9 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: JSON array of `{ msg: string, timestamp_ms: u64 }` sorted by `timestamp_ms` descending
   - Note: **Admin-only endpoint**. Requires `ENTRIES_CLIENT_ERRORS_ENDPOINT_KEY` as the query parameter. Should be called infrequently as it snapshots the entire error log buffer, which requires locking every shard in the buffer. Returns all available entries.
 
-## Protobuf messages (selected)
+## Protobuf messages
 
-Refer to `protobuf/schema.proto` for full definitions. Selected types used above:
-- NewUser, NewUserPublicKey, UserPublicKey, VerificationEmailSent
-- SigninNonceAndHashParams, SigninToken, TokenPair, Otp
-- NewContainer, Container, ContainerList, ContainerAccessTokenList, ContainerIdAndEncryptionKey
-- EncryptedBlobUpdate, NewEncryptedBlob, EncryptedBlobAndCategoryId, EntryUpdate, EntryId, CategoryUpdate, CategoryId, EntryAndCategory, EntryIdAndCategoryId
-- UserInvitationToContainer, ContainerShareInvite, ContainerShareInviteList, InvitationId
-- EmailChangeRequest, RecoveryKeyAuthAndPasswordUpdate, RecoveryKeyUpdate, IsUserListedForDeletion
+Refer to `protobuf/schema.proto` for definitions.
 
 ## Headers summary
 

@@ -1,6 +1,5 @@
 use entries_common::db::{self, DaoError, DbAsyncPool};
-use entries_common::email::templates::UserVerificationMessage;
-use entries_common::email::{EmailMessage, EmailSender};
+use entries_common::email::EmailSender;
 use entries_common::messages::{
     AuthenticatedSession, CredentialPair, EmailQuery, RecoveryKeyAuthAndPasswordUpdate,
     SigninNonceAndHashParams, SigninToken,
@@ -233,50 +232,6 @@ pub async fn sign_in(
         }
     };
 
-    if !hash_and_status.is_user_verified {
-        let user_id = hash_and_status.user_id;
-        let user_email = &credentials.email;
-
-        // Send a new verification email
-        let user_creation_token_claims = NewAuthTokenClaims {
-            user_id,
-            user_email,
-            expiration: (hash_and_status.created_timestamp
-                + env::CONF.user_creation_token_lifetime)
-                .duration_since(UNIX_EPOCH)
-                .expect("System time should be after Unix Epoch")
-                .as_secs(),
-            token_type: AuthTokenType::UserCreation,
-        };
-
-        let user_creation_token =
-            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
-
-        let message = EmailMessage {
-            body: UserVerificationMessage::generate(
-                &env::CONF.user_verification_url,
-                &user_creation_token,
-                env::CONF.user_creation_token_lifetime,
-            ),
-            subject: "Verify your account",
-            from: env::CONF.email_from_address.clone(),
-            reply_to: env::CONF.email_reply_to_address.clone(),
-            destination: user_email,
-            is_html: true,
-        };
-
-        match smtp_thread_pool.send(message).await {
-            Ok(_) => (),
-            Err(e) => {
-                log::error!("Failed to send verification email during sign-in attempt: {e}");
-            }
-        }
-
-        return Err(HttpErrorResponse::PendingAction(Cow::Borrowed(
-            "User has not accepted verification email. A new verification email has been sent.",
-        )));
-    }
-
     let user_id = hash_and_status.user_id;
 
     handlers::verification::verify_auth_string(
@@ -322,6 +277,12 @@ pub async fn verify_otp_for_signin(
     let user_id = claims.user_id;
 
     handlers::verification::verify_otp(&otp.value, &claims.user_email, &db_async_pool).await?;
+
+    // Auto-verify user on first successful OTP
+    let user_dao = db::user::Dao::new(&db_async_pool);
+    if let Err(e) = user_dao.verify_user_creation(user_id).await {
+        log::error!("Failed to auto-verify user during OTP sign-in: {e}");
+    }
 
     let now = SystemTime::now();
 
@@ -388,6 +349,23 @@ pub async fn obtain_otp(
 ) -> Result<HttpResponse, HttpErrorResponse> {
     handlers::verification::generate_and_email_otp(
         &user_access_token.0.user_email,
+        db_async_pool.as_ref(),
+        smtp_thread_pool.as_ref(),
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn resend_signin_otp(
+    db_async_pool: web::Data<DbAsyncPool>,
+    smtp_thread_pool: web::Data<EmailSender>,
+    signin_token: UnverifiedToken<SignIn, FromHeader>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    let claims = signin_token.verify()?;
+
+    handlers::verification::generate_and_email_otp(
+        &claims.user_email,
         db_async_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -675,8 +653,12 @@ mod tests {
     use super::*;
     use actix_web::App;
 
-    use entries_common::messages::{ErrorType, NewUser, ServerErrorResponse};
+    use entries_common::messages::{ErrorType, NewUser, Otp as OtpMessage, ServerErrorResponse};
     use entries_common::models::{user::User, user_otp::UserOtp};
+    use entries_common::schema::user_otps as user_otp_fields;
+    use entries_common::schema::user_otps::dsl::user_otps as user_otps_dsl;
+    use entries_common::schema::users as user_fields;
+    use entries_common::schema::users::dsl::users as users_dsl;
     use entries_common::schema::{signin_nonces, user_otps, users};
     use entries_common::threadrand::SecureRng;
 
@@ -749,7 +731,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         let salt = gen_bytes(16);
         let nonce = i32::MAX;
@@ -1025,48 +1007,6 @@ mod tests {
                     .unwrap()
                     .as_secs()
         );
-
-        // User shouldn't be able to sign in again until they verify their email
-        diesel_async::RunQueryDsl::execute(
-            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
-                .set(users::is_verified.eq(false)),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/auth/nonce-and-auth-string-params?email={}",
-                &new_user.email
-            ))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
-
-        let credentials = CredentialPair {
-            email: new_user.email,
-            auth_string: Vec::from(auth_string.as_bytes()),
-            nonce: resp_body.nonce,
-        };
-
-        let req = TestRequest::post()
-            .uri("/api/auth/sign-in")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(credentials.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
-
-        assert_eq!(resp_err.err_type, ErrorType::PendingAction as i32);
     }
 
     #[actix_web::test]
@@ -1308,15 +1248,17 @@ mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
-        let old_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+        // After create_user completes, OTP is consumed, so no OTP exists
+        let otp_result = diesel_async::RunQueryDsl::get_result::<UserOtp>(
             user_otps::table.find(&user.email),
             &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
         )
-        .await
-        .unwrap();
+        .await;
+        assert!(otp_result.is_err()); // OTP should not exist after verification
 
+        // Request a new OTP
         let req = TestRequest::get()
             .uri("/api/auth/otp")
             .insert_header(("AccessToken", access_token))
@@ -1327,6 +1269,7 @@ mod tests {
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
 
+        // Now an OTP should exist
         let new_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
             user_otps::table.find(&user.email),
             &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
@@ -1336,7 +1279,7 @@ mod tests {
 
         let resp_body = String::from_utf8_lossy(&resp_body);
         assert!(!resp_body.contains(&new_otp.otp));
-        assert!(old_otp.otp != new_otp.otp);
+        assert!(!new_otp.otp.is_empty());
     }
 
     #[actix_web::test]
@@ -1351,7 +1294,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Simulate client-side hash (arbitrary params that the client uses)
         let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
@@ -1472,7 +1415,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Simulate client-side hash (arbitrary params that the client uses)
         let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
@@ -1577,7 +1520,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Simulate client-side hash (arbitrary params that the client uses)
         let recovery_key = format!("recovery_key_{}", SecureRng::next_u128());
@@ -1732,7 +1675,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
             recovery_key_hash_for_recovery_auth: gen_bytes(32),
@@ -1838,7 +1781,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         let recovery_key_data = RecoveryKeyAuthAndPasswordUpdate {
             recovery_key_hash_for_recovery_auth: gen_bytes(32),
@@ -1974,310 +1917,6 @@ mod tests {
         let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
-    }
-
-    #[actix_web::test]
-    async fn test_sign_in_fails_for_unverified_user() {
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
-                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
-        )
-        .await;
-
-        let user_number = SecureRng::next_u128();
-
-        let password = format!("password{user_number}");
-        let auth_string = argon2_kdf::Hasher::new()
-            .iterations(2)
-            .memory_cost_kib(128)
-            .threads(1)
-            .hash(password.as_bytes())
-            .unwrap();
-
-        let public_key_id = Uuid::now_v7();
-        let new_user = NewUser {
-            email: format!("test_user{}@test.com", &user_number),
-
-            auth_string: Vec::from(auth_string.as_bytes()),
-
-            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
-            auth_string_hash_mem_cost_kib: 128,
-            auth_string_hash_threads: 1,
-            auth_string_hash_iterations: 2,
-
-            password_encryption_key_salt: gen_bytes(10),
-            password_encryption_key_mem_cost_kib: 1024,
-            password_encryption_key_threads: 1,
-            password_encryption_key_iterations: 1,
-
-            recovery_key_hash_salt_for_encryption: gen_bytes(16),
-            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
-            recovery_key_hash_mem_cost_kib: 1024,
-            recovery_key_hash_threads: 1,
-            recovery_key_hash_iterations: 1,
-
-            recovery_key_auth_hash: gen_bytes(32),
-
-            encryption_key_encrypted_with_password: gen_bytes(10),
-            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
-
-            public_key_id: public_key_id.into(),
-            public_key: gen_bytes(10),
-
-            preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: SecureRng::next_i64(),
-            user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: SecureRng::next_i64(),
-        };
-
-        let req = TestRequest::post()
-            .uri("/api/user")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_user.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::CREATED);
-
-        // Ensure user is not verified (this should be the default state)
-        let user = diesel_async::RunQueryDsl::get_result::<User>(
-            users::table.filter(users::email.eq(&new_user.email)),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-        assert!(!user.is_verified);
-
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/auth/nonce-and-auth-string-params?email={}",
-                &new_user.email
-            ))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
-
-        let credentials = CredentialPair {
-            email: new_user.email,
-            auth_string: Vec::from(auth_string.as_bytes()),
-            nonce: resp_body.nonce,
-        };
-
-        let req = TestRequest::post()
-            .uri("/api/auth/sign-in")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(credentials.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
-
-        assert_eq!(resp_err.err_type, ErrorType::PendingAction as i32);
-        assert!(resp_err
-            .err_message
-            .contains("A new verification email has been sent"));
-
-        // Verify that a token created with the user's creation timestamp + lifetime would be valid
-        // This confirms the token expiration is based on creation timestamp, not current time
-        let user_creation_token_claims = NewAuthTokenClaims {
-            user_id: user.id,
-            user_email: &user.email,
-            expiration: (user.created_timestamp + env::CONF.user_creation_token_lifetime)
-                .duration_since(UNIX_EPOCH)
-                .expect("System time should be after Unix Epoch")
-                .as_secs(),
-            token_type: AuthTokenType::UserCreation,
-        };
-
-        let user_creation_token =
-            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
-
-        // Verify the token can be used to verify the user
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/user/verify?UserCreationToken={}",
-                user_creation_token
-            ))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        // Verify user is now verified
-        let verified_user = diesel_async::RunQueryDsl::get_result::<User>(
-            users::table.filter(users::email.eq(&user.email)),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-        assert!(verified_user.is_verified);
-    }
-
-    #[actix_web::test]
-    async fn test_sign_in_sends_verification_email_with_correct_expiration() {
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
-                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
-        )
-        .await;
-
-        let user_number = SecureRng::next_u128();
-
-        let password = format!("password{user_number}");
-        let auth_string = argon2_kdf::Hasher::new()
-            .iterations(2)
-            .memory_cost_kib(128)
-            .threads(1)
-            .hash(password.as_bytes())
-            .unwrap();
-
-        let public_key_id = Uuid::now_v7();
-        let new_user = NewUser {
-            email: format!("test_user{}@test.com", &user_number),
-
-            auth_string: Vec::from(auth_string.as_bytes()),
-
-            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
-            auth_string_hash_mem_cost_kib: 128,
-            auth_string_hash_threads: 1,
-            auth_string_hash_iterations: 2,
-
-            password_encryption_key_salt: gen_bytes(10),
-            password_encryption_key_mem_cost_kib: 1024,
-            password_encryption_key_threads: 1,
-            password_encryption_key_iterations: 1,
-
-            recovery_key_hash_salt_for_encryption: gen_bytes(16),
-            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
-            recovery_key_hash_mem_cost_kib: 1024,
-            recovery_key_hash_threads: 1,
-            recovery_key_hash_iterations: 1,
-
-            recovery_key_auth_hash: gen_bytes(32),
-
-            encryption_key_encrypted_with_password: gen_bytes(10),
-            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
-
-            public_key_id: public_key_id.into(),
-            public_key: gen_bytes(10),
-
-            preferences_encrypted: gen_bytes(10),
-            preferences_version_nonce: SecureRng::next_i64(),
-            user_keystore_encrypted: gen_bytes(10),
-            user_keystore_version_nonce: SecureRng::next_i64(),
-        };
-
-        let req = TestRequest::post()
-            .uri("/api/user")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_user.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::CREATED);
-
-        // Get the user and record their creation timestamp
-        let user = diesel_async::RunQueryDsl::get_result::<User>(
-            users::table.filter(users::email.eq(&new_user.email)),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-        assert!(!user.is_verified);
-
-        let creation_timestamp = user.created_timestamp;
-        let expected_expiration = creation_timestamp + env::CONF.user_creation_token_lifetime;
-
-        // Wait a short time to ensure current time has advanced
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/auth/nonce-and-auth-string-params?email={}",
-                &new_user.email
-            ))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
-
-        let credentials = CredentialPair {
-            email: user.email.clone(),
-            auth_string: Vec::from(auth_string.as_bytes()),
-            nonce: resp_body.nonce,
-        };
-
-        // Attempt sign in - this should send a new verification email
-        let req = TestRequest::post()
-            .uri("/api/auth/sign-in")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(credentials.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-
-        // Verify that the token expiration is based on creation timestamp, not current time
-        // Create a token with the expected expiration (creation_timestamp + lifetime)
-        let user_creation_token_claims = NewAuthTokenClaims {
-            user_id: user.id,
-            user_email: &user.email,
-            expiration: expected_expiration
-                .duration_since(UNIX_EPOCH)
-                .expect("System time should be after Unix Epoch")
-                .as_secs(),
-            token_type: AuthTokenType::UserCreation,
-        };
-
-        let user_creation_token =
-            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
-
-        // Verify the token is valid and can be used to verify the user
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/user/verify?UserCreationToken={}",
-                user_creation_token
-            ))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        // Verify that a token with expiration based on current time (not creation time) would be different
-        // This confirms we're using creation_timestamp, not SystemTime::now()
-        let now = SystemTime::now();
-        let wrong_expiration = (now + env::CONF.user_creation_token_lifetime)
-            .duration_since(UNIX_EPOCH)
-            .expect("System time should be after Unix Epoch")
-            .as_secs();
-
-        // The expected expiration should be less than or equal to the wrong expiration
-        // (since we waited after user creation, creation_timestamp + lifetime < now + lifetime)
-        let expected_expiration_secs = expected_expiration
-            .duration_since(UNIX_EPOCH)
-            .expect("System time should be after Unix Epoch")
-            .as_secs();
-
-        assert!(
-            expected_expiration_secs <= wrong_expiration,
-            "Token expiration should be based on creation timestamp, not current time"
-        );
     }
 
     #[actix_web::test]
@@ -2452,7 +2091,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Create a valid refresh token
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2507,7 +2146,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Create an expired refresh token
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2546,7 +2185,7 @@ mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
 
         // Create a valid refresh token
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2622,7 +2261,7 @@ mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Create a valid refresh token
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2682,8 +2321,8 @@ mod tests {
         )
         .await;
 
-        let (_, access_token1, _, _) = test_utils::create_user().await;
-        let (user2, _, _, _) = test_utils::create_user().await;
+        let (_, access_token1, _, _, _, _) = test_utils::create_user().await;
+        let (user2, _, _, _, _, _) = test_utils::create_user().await;
 
         // Create a refresh token for a different user
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2723,7 +2362,7 @@ mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Create a valid refresh token
         let refresh_token_claims = NewAuthTokenClaims {
@@ -2775,7 +2414,7 @@ mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::post()
             .uri("/api/auth/logout")
@@ -2789,5 +2428,277 @@ mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
         assert_eq!(resp_err.err_type, ErrorType::IncorrectCredential as i32);
+    }
+
+    #[actix_web::test]
+    async fn test_unverified_user_can_sign_in() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, auth_string, _, _) = test_utils::create_user().await;
+
+        // Manually set user to unverified
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users_dsl.find(user.id)).set(user_fields::is_verified.eq(false)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Get nonce
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce-and-auth-string-params?email={}",
+                user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let nonce_and_params = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        // Sign in with correct credentials (should succeed even though unverified)
+        let credentials = CredentialPair {
+            email: user.email.clone(),
+            nonce: nonce_and_params.nonce,
+            auth_string,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign-in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        // Should succeed and return signin token
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+        assert!(!signin_token.value.is_empty());
+    }
+
+    #[actix_web::test]
+    async fn test_otp_verification_auto_verifies_user() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, auth_string, _, _) = test_utils::create_user().await;
+
+        // Manually set user to unverified
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users_dsl.find(user.id)).set(user_fields::is_verified.eq(false)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Verify user is not verified initially
+        let user_initial = diesel_async::RunQueryDsl::first::<User>(
+            users_dsl.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert!(!user_initial.is_verified);
+
+        // Sign in again to get a fresh signin token (this should NOT verify the user)
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce-and-auth-string-params?email={}",
+                user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let nonce_and_params = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: user.email.clone(),
+            nonce: nonce_and_params.nonce,
+            auth_string,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign-in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let new_signin_token = SigninToken::decode(resp_body).unwrap();
+
+        // Verify user is STILL not verified after sign-in
+        let user_after_signin = diesel_async::RunQueryDsl::first::<User>(
+            users_dsl.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert!(!user_after_signin.is_verified);
+
+        // Get the OTP that was generated during sign-in
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps_dsl.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Try to verify with INVALID OTP (should fail and not verify user)
+        let invalid_otp = OtpMessage {
+            value: "000000".to_string(),
+        };
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("SignInToken", new_signin_token.value.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(invalid_otp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        // Should fail
+        assert_ne!(resp.status(), StatusCode::OK);
+
+        // Verify user is STILL not verified after invalid OTP
+        let user_after_invalid_otp = diesel_async::RunQueryDsl::first::<User>(
+            users_dsl.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert!(!user_after_invalid_otp.is_verified);
+
+        // Try to verify with INVALID signin token (should fail and not verify user)
+        let valid_otp = OtpMessage { value: otp.clone() };
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("SignInToken", "invalid_token_xyz"))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(valid_otp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        // Should fail
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Verify user is STILL not verified after invalid token
+        let user_after_invalid_token = diesel_async::RunQueryDsl::first::<User>(
+            users_dsl.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert!(!user_after_invalid_token.is_verified);
+
+        // Finally, verify with VALID signin token AND VALID OTP
+        let valid_otp = OtpMessage { value: otp };
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("SignInToken", new_signin_token.value.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(valid_otp.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify user is NOW verified after valid token + valid OTP
+        let user_final = diesel_async::RunQueryDsl::first::<User>(
+            users_dsl.find(user.id),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+        assert!(user_final.is_verified);
+    }
+
+    #[actix_web::test]
+    async fn test_resend_signin_otp() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, auth_string, _, _) = test_utils::create_user().await;
+
+        // Sign in again to get a fresh signin token and OTP
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce-and-auth-string-params?email={}",
+                user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let nonce_and_params = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: user.email.clone(),
+            nonce: nonce_and_params.nonce,
+            auth_string,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign-in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+
+        // Delete the OTP to simulate expiration
+        diesel_async::RunQueryDsl::execute(
+            diesel::delete(user_otps_dsl.find(&user.email)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Request a new OTP
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/resend-signin-otp")
+            .insert_header(("SignInToken", signin_token.value.as_str()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify a new OTP was created
+        let new_otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps_dsl.select(user_otp_fields::otp).find(&user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!new_otp.is_empty());
     }
 }

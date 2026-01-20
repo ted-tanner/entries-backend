@@ -53,15 +53,6 @@ impl Dao {
             .get_result::<(Uuid, bool, String, SystemTime)>(&mut conn)
             .await?;
 
-        if !is_user_verified {
-            return Ok(UserAuthStringHashAndStatus {
-                user_id,
-                is_user_verified,
-                auth_string_hash: String::new(),
-                created_timestamp,
-            });
-        }
-
         Ok(UserAuthStringHashAndStatus {
             user_id,
             is_user_verified,
@@ -400,53 +391,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs async pool setup"]
-    async fn auth_string_queries_respect_verification_status() {
-        let dao = dao();
-        let (user_id, data) = create_verified_user().await;
-
-        diesel_async::RunQueryDsl::execute(
-            dsl::update(users.find(user_id)).set(user_fields::is_verified.eq(false)),
-            &mut test_utils::db_async_conn().await,
-        )
-        .await
-        .unwrap();
-
-        let result = dao
-            .get_user_auth_string_hash_and_status(&data.email)
-            .await
-            .unwrap();
-        assert!(!result.is_user_verified);
-        assert!(result.auth_string_hash.is_empty());
-
-        diesel_async::RunQueryDsl::execute(
-            dsl::update(users.find(user_id)).set(user_fields::is_verified.eq(true)),
-            &mut test_utils::db_async_conn().await,
-        )
-        .await
-        .unwrap();
-
-        let verified_auth = dao
-            .get_user_auth_string_hash_and_status(&data.email)
-            .await
-            .unwrap();
-        assert!(verified_auth.is_user_verified);
-        assert_eq!(verified_auth.auth_string_hash, data.auth_string_hash);
-
-        let recovery = dao
-            .get_user_recovery_auth_string_hash_and_status(&data.email)
-            .await
-            .unwrap();
-        assert_eq!(
-            recovery.auth_string_hash,
-            data.recovery_key_auth_hash_rehashed_with_auth_string_params
-        );
-
-        test_utils::delete_user(user_id).await;
-    }
-
-    #[tokio::test]
-    #[ignore = "Needs async pool setup"]
     async fn blacklist_and_token_checks_work() {
         let dao = dao();
         let token_signature = test_utils::random_bytes(16);
@@ -477,7 +421,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs async pool setup"]
     async fn otp_lifecycle_and_expiration_cleanup() {
         let dao = dao();
         let (user_id, data) = create_verified_user().await;
@@ -517,7 +460,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs async pool setup"]
     async fn signin_nonce_and_hash_params_are_returned_and_refreshed() {
         let dao = dao();
         let (user_id, data) = create_verified_user().await;
@@ -563,7 +505,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs async pool setup"]
     async fn update_recovery_key_and_auth_string_and_email_updates_all_fields() {
         let dao = dao();
         let (user_id, data) = create_verified_user().await;

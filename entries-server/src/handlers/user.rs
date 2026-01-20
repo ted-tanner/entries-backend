@@ -1,5 +1,5 @@
 use entries_common::db::{self, DaoError, DbAsyncPool};
-use entries_common::email::templates::UserVerificationMessage;
+use entries_common::email::templates::UserDeletionConfirmationMessage;
 use entries_common::email::{EmailMessage, EmailSender};
 use entries_common::html::templates::{
     DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
@@ -10,7 +10,7 @@ use entries_common::html::templates::{
 use entries_common::messages::{
     AuthStringAndEncryptedPasswordUpdate, ContainerAccessTokenList, EmailChangeRequest, EmailQuery,
     EncryptedBlobUpdate, IsUserListedForDeletion, NewUser, NewUserPublicKey, RecoveryKeyUpdate,
-    UserPublicKey, VerificationEmailSent,
+    SigninToken, UserPublicKey, VerificationEmailSent,
 };
 use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenClaims};
 use entries_common::token::container_access_token::ContainerAccessToken;
@@ -309,48 +309,31 @@ pub async fn create(
         },
     };
 
-    let user_creation_token_claims = NewAuthTokenClaims {
+    // Return signin token and send OTP for immediate sign-in
+    let signin_token_claims = NewAuthTokenClaims {
         user_id,
         user_email: &user_data.email,
-        expiration: (SystemTime::now() + env::CONF.user_creation_token_lifetime)
+        expiration: (SystemTime::now() + env::CONF.signin_token_lifetime)
             .duration_since(UNIX_EPOCH)
             .expect("System time should be after Unix Epoch")
             .as_secs(),
-        token_type: AuthTokenType::UserCreation,
+        token_type: AuthTokenType::SignIn,
     };
 
-    let user_creation_token =
-        AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
+    let signin_token = AuthToken::sign_new(signin_token_claims, &env::CONF.token_signing_key);
 
-    let message = EmailMessage {
-        body: UserVerificationMessage::generate(
-            &env::CONF.user_verification_url,
-            &user_creation_token,
-            env::CONF.user_creation_token_lifetime,
-        ),
-        subject: "Verify your account",
-        from: env::CONF.email_from_address.clone(),
-        reply_to: env::CONF.email_reply_to_address.clone(),
-        destination: &user_data.email,
-        is_html: true,
+    handlers::verification::generate_and_email_otp(
+        &user_data.email,
+        db_async_pool.as_ref(),
+        smtp_thread_pool.as_ref(),
+    )
+    .await?;
+
+    let signin_token = SigninToken {
+        value: signin_token,
     };
 
-    match smtp_thread_pool.send(message).await {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{e}");
-            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
-                "Failed to send user verification token to user's email address",
-            )));
-        }
-    };
-
-    let resp_body = HttpResponse::Created().protobuf(VerificationEmailSent {
-        email_sent: true,
-        email_token_lifetime_hours: env::CONF.user_creation_token_lifetime.as_secs() / 3600,
-    })?;
-
-    Ok(resp_body)
+    Ok(HttpResponse::Created().protobuf(signin_token)?)
 }
 
 pub async fn verify_creation(
@@ -894,7 +877,7 @@ pub async fn init_delete(
         AuthToken::sign_new(user_deletion_token_claims, &env::CONF.token_signing_key);
 
     let message = EmailMessage {
-        body: UserVerificationMessage::generate(
+        body: UserDeletionConfirmationMessage::generate(
             &env::CONF.user_deletion_url,
             &user_deletion_token,
             env::CONF.user_deletion_token_lifetime,
@@ -1101,7 +1084,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri(&format!("/api/user/public-key?email={}", user.email))
@@ -1179,7 +1162,8 @@ pub mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
 
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
-        VerificationEmailSent::decode(resp_body).unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+        assert!(!signin_token.value.is_empty());
 
         let user = diesel_async::RunQueryDsl::first::<User>(
             users
@@ -1331,6 +1315,14 @@ pub mod tests {
 
         assert!(diesel_async::RunQueryDsl::get_result::<bool>(
             dsl::select(dsl::exists(signin_nonces.find(&new_user.email))),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
+        )
+        .await
+        .unwrap(),);
+
+        // Verify an OTP was generated for immediate sign-in
+        assert!(diesel_async::RunQueryDsl::get_result::<bool>(
+            dsl::select(dsl::exists(user_otps.find(&new_user.email))),
             &mut env::testing::DB_ASYNC_POOL.get().await.unwrap()
         )
         .await
@@ -1707,7 +1699,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let new_key_id = Uuid::now_v7();
         let new_key = [8; 30];
@@ -1785,7 +1777,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_update = NewUserPublicKey {
             id: (&Uuid::now_v7()).into(),
@@ -1820,7 +1812,8 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, preferences_version_nonce, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, preferences_version_nonce, _) =
+            test_utils::create_user().await;
 
         let updated_prefs_blob: Vec<_> = (0..32).map(|_| SecureRng::next_u8()).collect();
 
@@ -1908,7 +1901,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, preferences_version_nonce, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, preferences_version_nonce, _) = test_utils::create_user().await;
 
         let updated_prefs = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_user_preferences_size + 1],
@@ -1943,7 +1936,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, keystore_version_nonce) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, keystore_version_nonce) = test_utils::create_user().await;
 
         let updated_keystore_blob: Vec<_> = (0..32).map(|_| SecureRng::next_u8()).collect();
 
@@ -2037,7 +2030,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, keystore_version_nonce) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, keystore_version_nonce) = test_utils::create_user().await;
 
         let updated_keystore = EncryptedBlobUpdate {
             encrypted_blob: vec![0; env::CONF.max_keystore_size + 1],
@@ -2072,7 +2065,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -2295,7 +2288,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -2463,7 +2456,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -2619,7 +2612,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         // Make sure an OTP is generated
         let req = TestRequest::get()
@@ -2771,7 +2764,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let tokens = vec![String::from("test"); env::CONF.max_containers + 1];
 
@@ -2805,7 +2798,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no container tokens
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let container_access_tokens = ContainerAccessTokenList { tokens: Vec::new() };
 
@@ -2951,7 +2944,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let (container1, container1_token) = test_utils::create_container(&access_token).await;
         let (container2, container2_token) = test_utils::create_container(&access_token).await;
@@ -3351,7 +3344,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no container tokens
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let (container1, container1_token) = test_utils::create_container(&access_token).await;
         let (container2, container2_token) = test_utils::create_container(&access_token).await;
@@ -3608,8 +3601,8 @@ pub mod tests {
         .await;
 
         // Test init_delete with no container tokens
-        let (user1, user1_access_token, _, _) = test_utils::create_user().await;
-        let (user2, user2_access_token, _, _) = test_utils::create_user().await;
+        let (user1, user1_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (user2, user2_access_token, _, _, _, _) = test_utils::create_user().await;
 
         test_utils::gen_new_user_rsa_key(user1.id).await;
         let user2_rsa_key = test_utils::gen_new_user_rsa_key(user2.id).await;
@@ -4113,7 +4106,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no container tokens
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
@@ -4243,7 +4236,7 @@ pub mod tests {
         .await;
 
         // Test init_delete with no container tokens
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
@@ -4339,7 +4332,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
         let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
 
         // Hash a known auth string and update the user's auth string hash in the database
@@ -4402,7 +4395,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
         let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
 
         // Hash a known auth string and update the user's auth string hash in the database
@@ -4469,8 +4462,8 @@ pub mod tests {
         )
         .await;
 
-        let (user1, access_token1, _, _) = test_utils::create_user().await;
-        let (user2, _, _, _) = test_utils::create_user().await;
+        let (user1, access_token1, _, _, _, _) = test_utils::create_user().await;
+        let (user2, _, _, _, _, _) = test_utils::create_user().await;
 
         // Hash a known auth string and update user1's auth string hash in the database
         let known_auth_string = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -4536,7 +4529,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, access_token, _, _) = test_utils::create_user().await;
+        let (user, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let email_change_request = EmailChangeRequest {
             new_email: "invalid-email-format".to_string(),
@@ -4579,7 +4572,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
         let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
 
         let email_change_request = EmailChangeRequest {
@@ -4619,7 +4612,7 @@ pub mod tests {
         )
         .await;
 
-        let (user, _, _, _) = test_utils::create_user().await;
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
         let new_email = format!("new_email{}@test.com", SecureRng::next_u128());
 
         // Create an expired access token

@@ -31,7 +31,13 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                         .wrap(limiters.verify_otp),
                 ),
             )
-            .service(resource("/otp").route(get().to(auth::obtain_otp).wrap(limiters.email)))
+            .service(
+                resource("/otp").route(get().to(auth::obtain_otp).wrap(limiters.email.clone())),
+            )
+            .service(
+                resource("/otp/resend-signin-otp")
+                    .route(post().to(auth::resend_signin_otp).wrap(limiters.email)),
+            )
             .service(
                 resource("/token/refresh").route(
                     post()

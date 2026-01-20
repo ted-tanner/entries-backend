@@ -157,7 +157,9 @@ pub mod verification {
             }
         };
 
-        if !hash_and_status.is_user_verified {
+        // Only check verification status for recovery key auth, not for regular sign-in
+        // Unverified users can sign in and will be auto-verified upon OTP verification
+        if verify_using_recovery_key && !hash_and_status.is_user_verified {
             return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
                 "User is not verified",
             )));
@@ -214,15 +216,17 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_generate_and_email_otp_success() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
-            let old_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+            // After create_user completes, the OTP has been deleted (consumed during verification)
+            let otp_result = diesel_async::RunQueryDsl::get_result::<UserOtp>(
                 user_otps_table::table.find(&user.email),
                 &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
             )
-            .await
-            .unwrap();
+            .await;
+            assert!(otp_result.is_err());
 
+            // Generate a new OTP
             let result = generate_and_email_otp(
                 &user.email,
                 &env::testing::DB_ASYNC_POOL,
@@ -232,6 +236,7 @@ pub mod verification {
 
             assert!(result.is_ok());
 
+            // Now an OTP should exist
             let new_otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
                 user_otps_table::table.find(&user.email),
                 &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
@@ -239,12 +244,12 @@ pub mod verification {
             .await
             .unwrap();
 
-            assert_ne!(old_otp.otp, new_otp.otp);
+            assert!(!new_otp.otp.is_empty());
         }
 
         #[actix_web::test]
         async fn test_verify_otp_success() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             generate_and_email_otp(
                 &user.email,
@@ -277,7 +282,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_otp_invalid_otp() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let result = verify_otp("invalid_otp", &user.email, &env::testing::DB_ASYNC_POOL).await;
 
@@ -290,7 +295,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_otp_expired_otp() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             generate_and_email_otp(
                 &user.email,
@@ -327,7 +332,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_otp_too_long_input() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let long_otp = "a".repeat(9);
             let result = verify_otp(&long_otp, &user.email, &env::testing::DB_ASYNC_POOL).await;
@@ -341,7 +346,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_auth_string_success() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let auth_string = b"test_password";
             let auth_string_hash = argon2_kdf::Hasher::default()
@@ -376,7 +381,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_auth_string_invalid_password() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let result = verify_auth_string(
                 b"wrong_password",
@@ -395,7 +400,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_auth_string_unverified_user() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, auth_string, _, _) = test_utils::create_user().await;
 
             diesel_async::RunQueryDsl::execute(
                 diesel::update(users_table::table.find(user.id))
@@ -406,23 +411,22 @@ pub mod verification {
             .unwrap();
 
             let result = verify_auth_string(
-                b"test_password",
+                &auth_string,
                 &user.email,
                 false,
                 &env::testing::DB_ASYNC_POOL,
             )
             .await;
 
-            assert!(result.is_err());
-            match result.unwrap_err() {
-                HttpErrorResponse::InvalidState(_) => (),
-                _ => panic!("Expected InvalidState error for unverified user"),
-            }
+            assert!(
+                result.is_ok(),
+                "Unverified users should be allowed to sign in; they are auto-verified upon OTP verification"
+            );
         }
 
         #[actix_web::test]
         async fn test_verify_auth_string_with_recovery_key() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let recovery_key = b"test_recovery_key";
             let recovery_key_hash = argon2_kdf::Hasher::default()
@@ -459,7 +463,7 @@ pub mod verification {
 
         #[actix_web::test]
         async fn test_verify_auth_string_too_long_input() {
-            let (user, _, _, _) = test_utils::create_user().await;
+            let (user, _, _, _, _, _) = test_utils::create_user().await;
 
             let long_auth_string = vec![0u8; env::CONF.max_auth_string_length + 1];
             let result = verify_auth_string(
@@ -746,14 +750,16 @@ pub mod error {
 
 #[cfg(test)]
 pub mod test_utils {
-    use entries_common::db;
     use entries_common::messages::{
-        ContainerFrame, ContainerIdAndEncryptionKey, ContainerShareInviteList, NewContainer,
-        NewUser, PublicKey, UserInvitationToContainer,
+        AuthenticatedSession, ContainerFrame, ContainerIdAndEncryptionKey,
+        ContainerShareInviteList, NewContainer, NewUser, Otp as OtpMessage, PublicKey, SigninToken,
+        UserInvitationToContainer,
     };
     use entries_common::models::container::Container;
     use entries_common::models::user::User;
     use entries_common::schema::containers::dsl::containers;
+    use entries_common::schema::user_otps as user_otp_fields;
+    use entries_common::schema::user_otps::dsl::user_otps;
     use entries_common::schema::users as user_fields;
     use entries_common::schema::users::dsl::users;
     use entries_common::threadrand::SecureRng;
@@ -808,7 +814,7 @@ pub mod test_utils {
         b64_urlsafe.encode(&token_unencoded)
     }
 
-    pub async fn create_user() -> (User, String, i64, i64) {
+    pub async fn create_user() -> (User, String, String, Vec<u8>, i64, i64) {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
@@ -821,10 +827,11 @@ pub mod test_utils {
         let user_number = SecureRng::next_u128();
 
         let public_key_id = Uuid::now_v7();
+        let auth_string = gen_bytes(10);
         let new_user = NewUser {
             email: format!("test_user{}@test.com", &user_number),
 
-            auth_string: gen_bytes(10),
+            auth_string: auth_string.clone(),
 
             auth_string_hash_salt: gen_bytes(10),
             auth_string_hash_mem_cost_kib: 1024,
@@ -865,6 +872,9 @@ pub mod test_utils {
 
         assert_eq!(resp.status(), StatusCode::CREATED);
 
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let signin_token = SigninToken::decode(resp_body).unwrap();
+
         let user = diesel_async::RunQueryDsl::first::<User>(
             users
                 .filter(user_fields::email.eq(&new_user.email))
@@ -874,32 +884,34 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        let user_dao = db::user::Dao::new(&env::testing::DB_ASYNC_POOL);
-        user_dao.verify_user_creation(user.id).await.unwrap();
-
-        super::verification::generate_and_email_otp(
-            &user.email,
-            &env::testing::DB_ASYNC_POOL,
-            &env::testing::SMTP_THREAD_POOL,
+        // Get the OTP that was generated
+        let otp = diesel_async::RunQueryDsl::get_result::<String>(
+            user_otps.select(user_otp_fields::otp).find(&new_user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
         )
         .await
         .unwrap();
 
-        let access_token_claims = NewAuthTokenClaims {
-            user_id: user.id,
-            user_email: &user.email,
-            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            token_type: AuthTokenType::Access,
-        };
+        // Verify OTP to get access token (and auto-verify user)
+        let otp_message = OtpMessage { value: otp };
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("SignInToken", signin_token.value.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(otp_message.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
 
-        let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let authenticated_session = AuthenticatedSession::decode(resp_body).unwrap();
 
         (
             user,
-            access_token,
+            authenticated_session.tokens.access_token,
+            signin_token.value,
+            auth_string,
             new_user.preferences_version_nonce,
             new_user.user_keystore_version_nonce,
         )

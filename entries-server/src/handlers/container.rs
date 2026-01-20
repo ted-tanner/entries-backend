@@ -1189,7 +1189,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
@@ -1598,7 +1598,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let new_container = NewContainer {
             encrypted_blob: vec![0; env::CONF.max_small_object_size + 1],
@@ -1679,7 +1679,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
@@ -1760,7 +1760,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (_, container_token) = test_utils::create_container(&access_token).await;
 
         let new_entry_and_category = EntryAndCategory {
@@ -1822,7 +1822,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
@@ -1897,7 +1897,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (container1, container1_token) = test_utils::create_container(&access_token).await;
         let (container2, container2_token) = test_utils::create_container(&access_token).await;
         let (container3, container3_token) = test_utils::create_container(&access_token).await;
@@ -2060,7 +2060,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let container_access_tokens = ContainerAccessTokenList {
             tokens: vec![String::from("test"); env::CONF.max_container_fetch_count + 1],
@@ -2093,7 +2093,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
@@ -2256,7 +2256,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519_dalek::SigningKey::generate(SecureRng::get_ref());
         let public_key = key_pair.verifying_key().to_bytes().to_vec();
@@ -2407,7 +2407,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key = Vec::from(key_pair.verifying_key().to_bytes());
@@ -2561,7 +2561,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
 
         let key_pair1 = ed25519::SigningKey::generate(SecureRng::get_ref());
         let public_key1 = Vec::from(key_pair1.verifying_key().to_bytes());
@@ -2724,7 +2724,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (container, container_token) = test_utils::create_container(&access_token).await;
 
         let container_token_list = ContainerAccessTokenList {
@@ -2825,7 +2825,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (container, container_token) = test_utils::create_container(&access_token).await;
 
         let blob_update = EncryptedBlobUpdate {
@@ -2862,7 +2862,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (container, container_token) = test_utils::create_container(&access_token).await;
 
         let container_token_list = ContainerAccessTokenList {
@@ -3194,7 +3194,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (_, container_token) = test_utils::create_container(&access_token).await;
 
         let container_token_list = ContainerAccessTokenList {
@@ -3311,7 +3311,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (container, container_token) = test_utils::create_container(&access_token).await;
 
         let container_token_list = ContainerAccessTokenList {
@@ -3748,7 +3748,7 @@ pub mod tests {
         )
         .await;
 
-        let (_, access_token, _, _) = test_utils::create_user().await;
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
         let (_, container_token) = test_utils::create_container(&access_token).await;
 
         let container_token_list = ContainerAccessTokenList {
@@ -3837,8 +3837,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
@@ -4099,8 +4099,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, _, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, _, _, _, _, _) = test_utils::create_user().await;
         let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
         let invite_info = UserInvitationToContainer {
@@ -4301,8 +4301,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, _, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, _, _, _, _, _) = test_utils::create_user().await;
         let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
         let invite_info = UserInvitationToContainer {
@@ -4349,8 +4349,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
@@ -4465,8 +4465,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _, _, _) = test_utils::create_user().await;
         let (_, sender_container_token) = test_utils::create_container(&sender_access_token).await;
 
         let recipient_keypair = Rsa::generate(512).unwrap();
@@ -4609,8 +4609,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
         let (container, sender_container_token) =
@@ -4756,8 +4756,8 @@ pub mod tests {
         )
         .await;
 
-        let (_, sender_access_token, _, _) = test_utils::create_user().await;
-        let (recipient, recipient_access_token, _, _) = test_utils::create_user().await;
+        let (_, sender_access_token, _, _, _, _) = test_utils::create_user().await;
+        let (recipient, recipient_access_token, _, _, _, _) = test_utils::create_user().await;
 
         let recipient_private_key = test_utils::gen_new_user_rsa_key(recipient.id).await;
 
