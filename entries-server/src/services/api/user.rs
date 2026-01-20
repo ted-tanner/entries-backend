@@ -21,7 +21,6 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                     )
                     .route(put().to(user::rotate_user_public_key)),
             )
-            .service(resource("/verify").route(get().to(user::verify_creation)))
             .service(resource("/preferences").route(put().to(user::edit_preferences)))
             .service(resource("/keystore").route(put().to(user::edit_keystore)))
             .service(

@@ -21,7 +21,6 @@ pub trait RequestAuthTokenType {
 pub struct Access {}
 pub struct Refresh {}
 pub struct SignIn {}
-pub struct UserCreation {}
 pub struct UserDeletion {}
 
 impl RequestAuthTokenType for Access {
@@ -57,18 +56,6 @@ impl RequestAuthTokenType for SignIn {
     }
     fn token_lifetime() -> Duration {
         env::CONF.signin_token_lifetime
-    }
-}
-
-impl RequestAuthTokenType for UserCreation {
-    fn token_name() -> &'static str {
-        "UserCreationToken"
-    }
-    fn token_type() -> AuthTokenType {
-        AuthTokenType::UserCreation
-    }
-    fn token_lifetime() -> Duration {
-        env::CONF.user_creation_token_lifetime
     }
 }
 

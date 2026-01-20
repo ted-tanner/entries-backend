@@ -23,7 +23,6 @@ max_smtp_connections = 24
 smtp_idle_timeout_secs = 25
 
 [endpoints]
-user_verification_url = "http://127.0.0.1:9000/user/verify_creation"
 user_deletion_url = "http://127.0.0.1:9000/user/delete"
 
 # These need to be changed in production
@@ -38,7 +37,6 @@ amazon_ses_key = "[redacted]" # For the AWS us-west-2 region only
 access_token_lifetime_mins = 8
 refresh_token_lifetime_days = 28
 signin_token_lifetime_mins = 11
-user_creation_token_lifetime_days = 7
 user_deletion_token_lifetime_days = 3
 otp_lifetime_mins = 5
 

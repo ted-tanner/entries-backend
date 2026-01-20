@@ -4,8 +4,7 @@ use entries_common::email::{EmailMessage, EmailSender};
 use entries_common::html::templates::{
     DeleteUserAccountNotFoundPage, DeleteUserAlreadyScheduledPage, DeleteUserExpiredLinkPage,
     DeleteUserInternalErrorPage, DeleteUserInvalidLinkPage, DeleteUserLinkMissingTokenPage,
-    DeleteUserSuccessPage, VerifyUserExpiredLinkPage, VerifyUserInternalErrorPage,
-    VerifyUserInvalidLinkPage, VerifyUserLinkMissingTokenPage, VerifyUserSuccessPage,
+    DeleteUserSuccessPage,
 };
 use entries_common::messages::{
     AuthStringAndEncryptedPasswordUpdate, ContainerAccessTokenList, EmailChangeRequest, EmailQuery,
@@ -31,7 +30,7 @@ use uuid::Uuid;
 
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
-use crate::middleware::auth::{Access, UnverifiedToken, UserCreation, UserDeletion, VerifiedToken};
+use crate::middleware::auth::{Access, UnverifiedToken, UserDeletion, VerifiedToken};
 use crate::middleware::{FromHeader, FromQuery};
 
 pub async fn lookup_user_public_key(
@@ -334,45 +333,6 @@ pub async fn create(
     };
 
     Ok(HttpResponse::Created().protobuf(signin_token)?)
-}
-
-pub async fn verify_creation(
-    db_async_pool: web::Data<DbAsyncPool>,
-    user_creation_token: UnverifiedToken<UserCreation, FromQuery>,
-) -> Result<HttpResponse, HttpErrorResponse> {
-    let claims = match user_creation_token.verify() {
-        Ok(c) => c,
-        Err(TokenError::TokenExpired) => {
-            return Ok(HttpResponse::Unauthorized()
-                .content_type("text/html")
-                .body(VerifyUserExpiredLinkPage::generate()));
-        }
-        Err(TokenError::TokenMissing) => {
-            return Ok(HttpResponse::BadRequest()
-                .content_type("text/html")
-                .body(VerifyUserLinkMissingTokenPage::generate()));
-        }
-        Err(TokenError::WrongTokenType) | Err(TokenError::TokenInvalid) => {
-            return Ok(HttpResponse::Unauthorized()
-                .content_type("text/html")
-                .body(VerifyUserInvalidLinkPage::generate()));
-        }
-    };
-
-    let user_dao = db::user::Dao::new(&db_async_pool);
-    match user_dao.verify_user_creation(claims.user_id).await {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{e}");
-            return Ok(HttpResponse::InternalServerError()
-                .content_type("text/html")
-                .body(VerifyUserInternalErrorPage::generate()));
-        }
-    };
-
-    Ok(HttpResponse::Ok()
-        .content_type("text/html")
-        .body(VerifyUserSuccessPage::generate(&claims.user_email)))
 }
 
 pub async fn rotate_user_public_key(
@@ -1559,133 +1519,6 @@ pub mod tests {
         let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
 
         assert_eq!(resp_body.err_type, ErrorType::InputTooLarge as i32);
-    }
-
-    #[actix_web::test]
-    async fn test_verify_creation() {
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
-                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
-                .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
-        )
-        .await;
-
-        let user_number = SecureRng::next_u128();
-
-        let public_key_id = Uuid::now_v7();
-        let new_user = NewUser {
-            email: format!("test_user{}@test.com", &user_number),
-
-            auth_string: vec![8; 10],
-
-            auth_string_hash_salt: vec![8; 10],
-            auth_string_hash_mem_cost_kib: 1024,
-            auth_string_hash_threads: 1,
-            auth_string_hash_iterations: 2,
-
-            password_encryption_key_salt: vec![8; 10],
-            password_encryption_key_mem_cost_kib: 1024,
-            password_encryption_key_threads: 1,
-            password_encryption_key_iterations: 1,
-
-            recovery_key_hash_salt_for_encryption: vec![8; 16],
-            recovery_key_hash_salt_for_recovery_auth: vec![8; 16],
-            recovery_key_hash_mem_cost_kib: 1024,
-            recovery_key_hash_threads: 1,
-            recovery_key_hash_iterations: 1,
-
-            recovery_key_auth_hash: vec![8; 32],
-
-            encryption_key_encrypted_with_password: vec![8; 10],
-            encryption_key_encrypted_with_recovery_key: vec![8; 10],
-
-            public_key_id: public_key_id.into(),
-            public_key: vec![8; 10],
-
-            preferences_encrypted: vec![8; 10],
-            preferences_version_nonce: SecureRng::next_i64(),
-            user_keystore_encrypted: vec![8; 10],
-            user_keystore_version_nonce: SecureRng::next_i64(),
-        };
-
-        let req = TestRequest::post()
-            .uri("/api/user")
-            .insert_header(("Content-Type", "application/protobuf"))
-            .set_payload(new_user.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::CREATED);
-
-        let user = diesel_async::RunQueryDsl::first::<User>(
-            users
-                .filter(user_fields::email.eq(&new_user.email))
-                .into_boxed(),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-
-        assert!(!user.is_verified);
-
-        let user_creation_token_claims = NewAuthTokenClaims {
-            user_id: user.id,
-            user_email: &user.email,
-            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
-                .duration_since(UNIX_EPOCH)
-                .expect("System time should be after Unix Epoch")
-                .as_secs(),
-            token_type: AuthTokenType::UserCreation,
-        };
-
-        let user_creation_token =
-            AuthToken::sign_new(user_creation_token_claims, &env::CONF.token_signing_key);
-
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/user/verify?UserCreationToken={}",
-                &user_creation_token[..(user_creation_token.len() - 4)],
-            ))
-            .set_payload(new_user.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-
-        let user = diesel_async::RunQueryDsl::first::<User>(
-            users
-                .filter(user_fields::email.eq(&new_user.email))
-                .into_boxed(),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-
-        assert!(!user.is_verified);
-
-        let req = TestRequest::get()
-            .uri(&format!(
-                "/api/user/verify?UserCreationToken={}",
-                user_creation_token,
-            ))
-            .set_payload(new_user.encode_to_vec())
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let user = diesel_async::RunQueryDsl::first::<User>(
-            users
-                .filter(user_fields::email.eq(&new_user.email))
-                .into_boxed(),
-            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
-        )
-        .await
-        .unwrap();
-
-        assert!(user.is_verified);
     }
 
     #[actix_web::test]

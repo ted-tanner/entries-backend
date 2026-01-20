@@ -53,13 +53,11 @@ const SMTP_ADDRESS_VAR: &str = "ENTRIES_SMTP_ADDRESS";
 const MAX_SMTP_CONNECTIONS_VAR: &str = "ENTRIES_MAX_SMTP_CONNECTIONS";
 const SMTP_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_SMTP_IDLE_TIMEOUT_SECS";
 
-const USER_VERIFICATION_URL_VAR: &str = "ENTRIES_USER_VERIFICATION_URL";
 const USER_DELETION_URL_VAR: &str = "ENTRIES_USER_DELETION_URL";
 
 const ACCESS_TOKEN_LIFETIME_MINS_VAR: &str = "ENTRIES_ACCESS_TOKEN_LIFETIME_MINS";
 const REFRESH_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_REFRESH_TOKEN_LIFETIME_DAYS";
 const SIGNIN_TOKEN_LIFETIME_MINS_VAR: &str = "ENTRIES_SIGNIN_TOKEN_LIFETIME_MINS";
-const USER_CREATION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_CREATION_TOKEN_LIFETIME_DAYS";
 const USER_DELETION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_DELETION_TOKEN_LIFETIME_DAYS";
 const OTP_LIFETIME_MINS_VAR: &str = "ENTRIES_OTP_LIFETIME_MINS";
 const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
@@ -168,8 +166,6 @@ pub struct ConfigInner {
     pub smtp_idle_timeout: Duration,
 
     #[zeroize(skip)]
-    pub user_verification_url: String,
-    #[zeroize(skip)]
     pub user_deletion_url: String,
 
     #[zeroize(skip)]
@@ -178,8 +174,6 @@ pub struct ConfigInner {
     pub refresh_token_lifetime: Duration,
     #[zeroize(skip)]
     pub signin_token_lifetime: Duration,
-    #[zeroize(skip)]
-    pub user_creation_token_lifetime: Duration,
     #[zeroize(skip)]
     pub user_deletion_token_lifetime: Duration,
     #[zeroize(skip)]
@@ -354,7 +348,6 @@ impl Config {
             max_smtp_connections: env_var_or(MAX_SMTP_CONNECTIONS_VAR, 24)?,
             smtp_idle_timeout: Duration::from_secs(env_var_or(SMTP_IDLE_TIMEOUT_SECS_VAR, 60)?),
 
-            user_verification_url: env_var(USER_VERIFICATION_URL_VAR)?,
             user_deletion_url: env_var(USER_DELETION_URL_VAR)?,
 
             access_token_lifetime: Duration::from_secs(
@@ -365,9 +358,6 @@ impl Config {
             ),
             signin_token_lifetime: Duration::from_secs(
                 env_var_or(SIGNIN_TOKEN_LIFETIME_MINS_VAR, 30)? * 60,
-            ),
-            user_creation_token_lifetime: Duration::from_secs(
-                env_var_or(USER_CREATION_TOKEN_LIFETIME_DAYS_VAR, 7)? * 86400,
             ),
             user_deletion_token_lifetime: Duration::from_secs(
                 env_var_or(USER_DELETION_TOKEN_LIFETIME_DAYS_VAR, 7)? * 86400,

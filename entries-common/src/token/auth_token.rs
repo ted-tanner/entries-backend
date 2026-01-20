@@ -14,7 +14,6 @@ pub enum AuthTokenType {
     Access,
     Refresh,
     SignIn,
-    UserCreation,
     UserDeletion,
 }
 
@@ -27,7 +26,6 @@ impl std::convert::TryFrom<u8> for AuthTokenType {
             1 => Ok(AuthTokenType::Access),
             2 => Ok(AuthTokenType::Refresh),
             3 => Ok(AuthTokenType::SignIn),
-            4 => Ok(AuthTokenType::UserCreation),
             5 => Ok(AuthTokenType::UserDeletion),
             _ => Err(TokenError::WrongTokenType),
         }
@@ -41,7 +39,6 @@ impl std::convert::From<AuthTokenType> for u8 {
             AuthTokenType::Access => 1,
             AuthTokenType::Refresh => 2,
             AuthTokenType::SignIn => 3,
-            AuthTokenType::UserCreation => 4,
             AuthTokenType::UserDeletion => 5,
         }
     }
