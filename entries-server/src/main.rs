@@ -13,9 +13,8 @@ mod env;
 mod handlers;
 mod middleware;
 mod services;
-mod utils;
 
-use services::api::RouteLimiters;
+use services::api::RateLimiters;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -142,7 +141,7 @@ async fn main() -> std::io::Result<()> {
     let db_async_pool = Data::new(db_async_pool);
     let smtp_thread_pool = Data::new(smtp_thread_pool);
 
-    let limiters = RouteLimiters::default();
+    let limiters = RateLimiters::default();
 
     HttpServer::new(move || {
         let mut protobuf_config = ProtoBufConfig::default();

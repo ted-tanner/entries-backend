@@ -324,7 +324,9 @@ find . -name "*.rs" | xargs grep -n "TODO"
 
 ### Minimum Viable Product
 
-* Log something when rate limiting a request
+* Endpoint for uploading ALL data when creating an account (after using the app without an account for a while)
+  - All objects, with entries and categories
+  - user_keystore and user_prefs
 * Loosen up a tad on the create account limiting. Users may need multiple attempts and creating an account is one of the initial impressions a user receives.
 
 ### Do it later

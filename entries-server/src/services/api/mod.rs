@@ -1,7 +1,7 @@
 use actix_web::web::*;
 
 use crate::env::CONF;
-use crate::middleware::Limiter;
+use crate::middleware::{CircuitBreakerStrategy, FairUseStrategy, RateLimiter};
 
 mod auth;
 mod container;
@@ -10,107 +10,95 @@ mod health;
 mod user;
 
 #[derive(Clone)]
-pub struct RouteLimiters {
-    pub create_container: Limiter,
-    pub get_containers: Limiter,
-    pub container_invite: Limiter,
-    pub key_lookup: Limiter,
-    pub create_user: Limiter,
-    pub create_object: Limiter,
-    pub password: Limiter,
-    pub recovery: Limiter,
-    pub verify_otp: Limiter,
-    pub email: Limiter,
-    pub refresh_tokens: Limiter,
-    pub change_email: Limiter,
+pub struct RateLimiters {
+    pub create_fair_use: RateLimiter<FairUseStrategy, 16>,
+    pub read_fair_use: RateLimiter<FairUseStrategy, 16>,
+    pub modify_fair_use: RateLimiter<FairUseStrategy, 16>,
+    pub expensive_auth_fair_use: RateLimiter<FairUseStrategy, 16>,
+    pub light_auth_fair_use: RateLimiter<FairUseStrategy, 16>,
+
+    pub create_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 16>,
+    pub read_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 16>,
+    pub modify_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 16>,
+    pub expensive_auth_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 16>,
+    pub light_auth_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 16>,
 }
 
-impl Default for RouteLimiters {
+impl Default for RateLimiters {
     fn default() -> Self {
         Self {
-            create_container: Limiter::new(
-                CONF.api_create_container_limiter_max_per_period,
-                CONF.api_create_container_limiter_period,
+            create_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+                CONF.api_create_fair_use_limiter_max_per_period,
+                CONF.api_create_fair_use_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "create_container",
+                "create_fair_use",
             ),
-            get_containers: Limiter::new(
-                CONF.api_get_containers_limiter_max_per_period,
-                CONF.api_get_containers_limiter_period,
+            read_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+                CONF.api_read_fair_use_limiter_max_per_period,
+                CONF.api_read_fair_use_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "get_containers",
+                "read_fair_use",
             ),
-            container_invite: Limiter::new(
-                CONF.api_container_invite_limiter_max_per_period,
-                CONF.api_container_invite_limiter_period,
+            modify_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+                CONF.api_modify_fair_use_limiter_max_per_period,
+                CONF.api_modify_fair_use_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "container_invite",
+                "modify_fair_use",
             ),
-            key_lookup: Limiter::new(
-                CONF.api_key_lookup_limiter_max_per_period,
-                CONF.api_key_lookup_limiter_period,
+            expensive_auth_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+                CONF.api_expensive_auth_fair_use_limiter_max_per_period,
+                CONF.api_expensive_auth_fair_use_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "key_lookup",
+                "expensive_auth_fair_use",
             ),
-            create_user: Limiter::new(
-                CONF.api_create_user_limiter_max_per_period,
-                CONF.api_create_user_limiter_period,
+            light_auth_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+                CONF.api_light_auth_fair_use_limiter_max_per_period,
+                CONF.api_light_auth_fair_use_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "create_user",
+                "light_auth_fair_use",
             ),
-            create_object: Limiter::new(
-                CONF.api_create_object_limiter_max_per_period,
-                CONF.api_create_object_limiter_period,
+
+            create_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 16>::new(
+                CONF.api_create_circuit_breaker_limiter_max_per_period,
+                CONF.api_create_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "create_object",
+                "create_circuit_breaker",
             ),
-            password: Limiter::new(
-                CONF.api_password_limiter_max_per_period,
-                CONF.api_password_limiter_period,
+            read_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 16>::new(
+                CONF.api_read_circuit_breaker_limiter_max_per_period,
+                CONF.api_read_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "password",
+                "read_circuit_breaker",
             ),
-            recovery: Limiter::new(
-                CONF.api_recovery_limiter_max_per_period,
-                CONF.api_recovery_limiter_period,
+            modify_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 16>::new(
+                CONF.api_modify_circuit_breaker_limiter_max_per_period,
+                CONF.api_modify_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "recovery",
+                "modify_circuit_breaker",
             ),
-            verify_otp: Limiter::new(
-                CONF.api_verify_otp_limiter_max_per_period,
-                CONF.api_verify_otp_limiter_period,
+            expensive_auth_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 16>::new(
+                CONF.api_expensive_auth_circuit_breaker_limiter_max_per_period,
+                CONF.api_expensive_auth_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "verify_otp",
+                "expensive_auth_circuit_breaker",
             ),
-            email: Limiter::new(
-                CONF.api_email_limiter_max_per_period,
-                CONF.api_email_limiter_period,
+            light_auth_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 16>::new(
+                CONF.api_light_auth_circuit_breaker_limiter_max_per_period,
+                CONF.api_light_auth_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
-                "email",
-            ),
-            refresh_tokens: Limiter::new(
-                CONF.api_refresh_tokens_limiter_max_per_period,
-                CONF.api_refresh_tokens_limiter_period,
-                CONF.api_limiter_clear_frequency,
-                "refresh_tokens",
-            ),
-            change_email: Limiter::new(
-                CONF.api_change_email_limiter_max_per_period,
-                CONF.api_change_email_limiter_period,
-                CONF.api_limiter_clear_frequency,
-                "change_email",
+                "light_auth_circuit_breaker",
             ),
         }
     }
 }
 
-pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
+pub fn configure(cfg: &mut ServiceConfig, limiters: RateLimiters) {
     cfg.service(
         scope("/api")
             .configure(|cfg| auth::configure(cfg, limiters.clone()))
             .configure(|cfg| container::configure(cfg, limiters.clone()))
-            .configure(error_reporting::configure)
-            .configure(|cfg| user::configure(cfg, limiters))
-            .configure(health::configure),
+            .configure(|cfg| error_reporting::configure(cfg, limiters.clone()))
+            .configure(|cfg| user::configure(cfg, limiters.clone()))
+            .configure(|cfg| health::configure(cfg, limiters)),
     );
 }

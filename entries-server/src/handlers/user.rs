@@ -1030,8 +1030,8 @@ pub mod tests {
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::auth::RequestAuthTokenType;
-    use crate::middleware::Limiter;
-    use crate::services::api::RouteLimiters;
+    use crate::middleware::{FairUseStrategy, RateLimiter};
+    use crate::services::api::RateLimiters;
 
     #[actix_web::test]
     async fn test_lookup_user_public_key() {
@@ -1040,7 +1040,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1070,7 +1070,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1294,12 +1294,21 @@ pub mod tests {
     async fn test_create_user_fails_with_large_input() {
         let mut protobuf_config = ProtoBufConfig::default();
         protobuf_config.limit(env::CONF.protobuf_max_size);
-        let route_limiters = RouteLimiters {
-            create_user: Limiter::new(
+        let route_limiters = RateLimiters {
+            expensive_auth_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
                 15,
                 Duration::from_secs(1200),
                 Duration::from_secs(3600),
                 "POST /api/user",
+            ),
+            expensive_auth_circuit_breaker: RateLimiter::<
+                crate::middleware::CircuitBreakerStrategy,
+                16,
+            >::new(
+                10_000,
+                Duration::from_secs(1200),
+                Duration::from_secs(3600),
+                "POST /api/user (circuit_breaker)",
             ),
             ..Default::default()
         };
@@ -1528,7 +1537,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1606,7 +1615,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1641,7 +1650,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1730,7 +1739,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1765,7 +1774,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1859,7 +1868,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -1894,7 +1903,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2117,7 +2126,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(protobuf_config)
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2285,7 +2294,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2441,7 +2450,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2593,7 +2602,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2626,7 +2635,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -2773,7 +2782,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -3172,7 +3181,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -3429,7 +3438,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -3934,7 +3943,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4064,7 +4073,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4161,7 +4170,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4224,7 +4233,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4291,7 +4300,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4358,7 +4367,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4401,7 +4410,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -4441,7 +4450,7 @@ pub mod tests {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 

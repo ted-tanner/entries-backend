@@ -785,7 +785,7 @@ pub mod test_utils {
     use uuid::Uuid;
 
     use crate::env;
-    use crate::services::api::RouteLimiters;
+    use crate::services::api::RateLimiters;
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
         (0..count).map(|_| SecureRng::next_u8()).collect()
@@ -820,7 +820,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -937,7 +937,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 
@@ -995,7 +995,7 @@ pub mod test_utils {
                 .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
                 .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
                 .app_data(ProtoBufConfig::default())
-                .configure(|cfg| crate::services::api::configure(cfg, RouteLimiters::default())),
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
         )
         .await;
 

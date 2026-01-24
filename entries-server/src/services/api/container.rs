@@ -2,17 +2,31 @@ use actix_web::web::*;
 
 use crate::handlers::container;
 
-use super::RouteLimiters;
+use super::RateLimiters;
 
-pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
+pub fn configure(cfg: &mut ServiceConfig, limiters: RateLimiters) {
     cfg.service(
         scope("/container")
             .service(
                 resource("")
-                    .route(get().to(container::get))
-                    .wrap(limiters.get_containers)
-                    .route(put().to(container::edit))
-                    .route(post().to(container::create).wrap(limiters.create_container)),
+                    .route(
+                        get()
+                            .to(container::get)
+                            .wrap(limiters.read_fair_use.clone())
+                            .wrap(limiters.read_circuit_breaker.clone()),
+                    )
+                    .route(
+                        put()
+                            .to(container::edit)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    )
+                    .route(
+                        post()
+                            .to(container::create)
+                            .wrap(limiters.create_fair_use.clone())
+                            .wrap(limiters.create_circuit_breaker.clone()),
+                    ),
             )
             .service(
                 scope("/invitation")
@@ -21,36 +35,98 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
                             .route(
                                 post()
                                     .to(container::invite_user)
-                                    .wrap(limiters.container_invite),
+                                    .wrap(limiters.create_fair_use.clone())
+                                    .wrap(limiters.create_circuit_breaker.clone()),
                             )
-                            .route(delete().to(container::retract_invitation)),
+                            .route(
+                                delete()
+                                    .to(container::retract_invitation)
+                                    .wrap(limiters.modify_fair_use.clone())
+                                    .wrap(limiters.modify_circuit_breaker.clone()),
+                            ),
                     )
-                    .service(resource("/accept").route(put().to(container::accept_invitation)))
-                    .service(resource("/decline").route(put().to(container::decline_invitation)))
                     .service(
-                        resource("/all-pending")
-                            .route(get().to(container::get_all_pending_invitations)),
+                        resource("/accept").route(
+                            put()
+                                .to(container::accept_invitation)
+                                .wrap(limiters.modify_fair_use.clone())
+                                .wrap(limiters.modify_circuit_breaker.clone()),
+                        ),
+                    )
+                    .service(
+                        resource("/decline").route(
+                            put()
+                                .to(container::decline_invitation)
+                                .wrap(limiters.modify_fair_use.clone())
+                                .wrap(limiters.modify_circuit_breaker.clone()),
+                        ),
+                    )
+                    .service(
+                        resource("/all-pending").route(
+                            get()
+                                .to(container::get_all_pending_invitations)
+                                .wrap(limiters.read_fair_use.clone())
+                                .wrap(limiters.read_circuit_breaker.clone()),
+                        ),
                     ),
             )
-            .service(resource("/leave").route(delete().to(container::leave_container)))
             .service(
-                resource("/entry")
-                    .route(post().to(container::create_entry))
-                    .wrap(limiters.create_object.clone())
-                    .route(put().to(container::edit_entry))
-                    .route(delete().to(container::delete_entry)),
+                resource("/leave").route(
+                    delete()
+                        .to(container::leave_container)
+                        .wrap(limiters.modify_fair_use.clone())
+                        .wrap(limiters.modify_circuit_breaker.clone()),
+                ),
             )
             .service(
-                resource("/entry-and-category")
-                    .route(post().to(container::create_entry_and_category))
-                    .wrap(limiters.create_object.clone()),
+                resource("/entry")
+                    .route(
+                        post()
+                            .to(container::create_entry)
+                            .wrap(limiters.create_fair_use.clone())
+                            .wrap(limiters.create_circuit_breaker.clone()),
+                    )
+                    .route(
+                        put()
+                            .to(container::edit_entry)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    )
+                    .route(
+                        delete()
+                            .to(container::delete_entry)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    ),
+            )
+            .service(
+                resource("/entry-and-category").route(
+                    post()
+                        .to(container::create_entry_and_category)
+                        .wrap(limiters.create_fair_use.clone())
+                        .wrap(limiters.create_circuit_breaker.clone()),
+                ),
             )
             .service(
                 resource("/category")
-                    .route(post().to(container::create_category))
-                    .wrap(limiters.create_object)
-                    .route(put().to(container::edit_category))
-                    .route(delete().to(container::delete_category)),
+                    .route(
+                        post()
+                            .to(container::create_category)
+                            .wrap(limiters.create_fair_use.clone())
+                            .wrap(limiters.create_circuit_breaker.clone()),
+                    )
+                    .route(
+                        put()
+                            .to(container::edit_category)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    )
+                    .route(
+                        delete()
+                            .to(container::delete_category)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    ),
             ),
     );
 }

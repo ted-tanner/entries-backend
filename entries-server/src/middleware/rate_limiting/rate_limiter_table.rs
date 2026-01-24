@@ -22,9 +22,9 @@ pub fn init_start() {
 #[inline]
 pub fn instant_to_millis_u32(now: Instant) -> u32 {
     now.duration_since(
-        *START
-            .get()
-            .expect("utils::limiter_table::init_start() must be called first"),
+        *START.get().expect(
+            "middleware::rate_limiting::rate_limiter_table::init_start() must be called first",
+        ),
     )
     .as_millis() as u32
 }
@@ -35,7 +35,7 @@ pub struct LimiterEntry {
     pub first_access: AtomicU32, // milliseconds since process start
 }
 
-pub struct LimiterTable<K, H> {
+pub struct RateLimiterTable<K, H> {
     pub map: HashMap<K, LimiterEntry, H>,
     pub last_clear: Instant,
 }
@@ -49,7 +49,7 @@ pub enum CheckAndRecordResult {
     },
 }
 
-impl<K, H> LimiterTable<K, H>
+impl<K, H> RateLimiterTable<K, H>
 where
     H: BuildHasher + Default,
 {
@@ -61,13 +61,14 @@ where
     }
 }
 
-/// Create a leaked, `'static` set of 16 sharded tables.
-pub fn new_sharded_tables_16<K, H>() -> &'static [RwLock<LimiterTable<K, H>>; 16]
+/// Create a leaked, `'static` set of sharded tables.
+pub fn new_sharded_tables<K, H, const SHARDS: usize>(
+) -> &'static [RwLock<RateLimiterTable<K, H>>; SHARDS]
 where
     H: BuildHasher + Default,
 {
     Box::leak(Box::new(std::array::from_fn(|_| {
-        RwLock::new(LimiterTable::new())
+        RwLock::new(RateLimiterTable::new())
     })))
 }
 
@@ -76,7 +77,7 @@ where
 /// Returns `true` if the hit is allowed (and records it), or `false` if the key has exceeded
 /// `max_per_period` within `period`.
 pub async fn check_and_record<K: Eq + Hash, H: BuildHasher>(
-    shard: &RwLock<LimiterTable<K, H>>,
+    shard: &RwLock<RateLimiterTable<K, H>>,
     key: K,
     now: Instant,
     now_millis: u32,

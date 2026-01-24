@@ -2,9 +2,11 @@ pub mod app_version;
 pub mod auth;
 pub mod special_access_token;
 
-mod limiter;
+pub mod rate_limiting;
 
-pub use limiter::Limiter;
+pub use rate_limiting::{
+    CircuitBreaker as CircuitBreakerStrategy, FairUse as FairUseStrategy, RateLimiter,
+};
 
 use entries_common::token::TokenError;
 

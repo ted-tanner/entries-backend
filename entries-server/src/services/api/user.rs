@@ -2,46 +2,103 @@ use actix_web::web::*;
 
 use crate::handlers::user;
 
-use super::RouteLimiters;
+use super::RateLimiters;
 
-pub fn configure(cfg: &mut ServiceConfig, limiters: RouteLimiters) {
+pub fn configure(cfg: &mut ServiceConfig, limiters: RateLimiters) {
     cfg.service(
         scope("/user")
             .service(
                 resource("")
-                    .route(post().to(user::create).wrap(limiters.create_user))
-                    .route(delete().to(user::init_delete).wrap(limiters.email)),
+                    .route(
+                        post()
+                            .to(user::create)
+                            .wrap(limiters.expensive_auth_fair_use.clone())
+                            .wrap(limiters.expensive_auth_circuit_breaker.clone()),
+                    )
+                    .route(
+                        delete()
+                            .to(user::init_delete)
+                            .wrap(limiters.light_auth_fair_use.clone())
+                            .wrap(limiters.light_auth_circuit_breaker.clone()),
+                    ),
             )
             .service(
                 resource("/public-key")
                     .route(
                         get()
                             .to(user::lookup_user_public_key)
-                            .wrap(limiters.key_lookup),
+                            .wrap(limiters.read_fair_use.clone())
+                            .wrap(limiters.read_circuit_breaker.clone()),
                     )
-                    .route(put().to(user::rotate_user_public_key)),
+                    .route(
+                        put()
+                            .to(user::rotate_user_public_key)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    ),
             )
-            .service(resource("/preferences").route(put().to(user::edit_preferences)))
-            .service(resource("/keystore").route(put().to(user::edit_keystore)))
+            .service(
+                resource("/preferences").route(
+                    put()
+                        .to(user::edit_preferences)
+                        .wrap(limiters.modify_fair_use.clone())
+                        .wrap(limiters.modify_circuit_breaker.clone()),
+                ),
+            )
+            .service(
+                resource("/keystore").route(
+                    put()
+                        .to(user::edit_keystore)
+                        .wrap(limiters.modify_fair_use.clone())
+                        .wrap(limiters.modify_circuit_breaker.clone()),
+                ),
+            )
             .service(
                 resource("/password").route(
                     put()
                         .to(user::change_password)
-                        .wrap(limiters.password.clone()),
+                        .wrap(limiters.expensive_auth_fair_use.clone())
+                        .wrap(limiters.expensive_auth_circuit_breaker.clone()),
                 ),
             )
             .service(
-                resource("/recovery-key")
-                    .route(put().to(user::change_recovery_key).wrap(limiters.password)),
+                resource("/recovery-key").route(
+                    put()
+                        .to(user::change_recovery_key)
+                        .wrap(limiters.expensive_auth_fair_use.clone())
+                        .wrap(limiters.expensive_auth_circuit_breaker.clone()),
+                ),
             )
             .service(
-                resource("/email").route(put().to(user::change_email).wrap(limiters.change_email)),
+                resource("/email").route(
+                    put()
+                        .to(user::change_email)
+                        .wrap(limiters.light_auth_fair_use.clone())
+                        .wrap(limiters.light_auth_circuit_breaker.clone()),
+                ),
             )
             .service(
                 resource("/deletion")
-                    .route(get().to(user::is_listed_for_deletion))
-                    .route(delete().to(user::cancel_delete)),
+                    .route(
+                        get()
+                            .to(user::is_listed_for_deletion)
+                            .wrap(limiters.read_fair_use.clone())
+                            .wrap(limiters.read_circuit_breaker.clone()),
+                    )
+                    .route(
+                        delete()
+                            .to(user::cancel_delete)
+                            .wrap(limiters.modify_fair_use.clone())
+                            .wrap(limiters.modify_circuit_breaker.clone()),
+                    ),
             )
-            .service(resource("/deletion/verify").route(get().to(user::delete))),
+            .service(
+                resource("/deletion/verify").route(
+                    get()
+                        .to(user::delete)
+                        .wrap(limiters.light_auth_fair_use)
+                        .wrap(limiters.light_auth_circuit_breaker),
+                ),
+            ),
     );
 }
