@@ -199,30 +199,6 @@ where
     }
 }
 
-/// Rate limiter middleware that can be configured with different key generation strategies.
-///
-/// # Examples
-///
-/// ```no_run
-/// use entries_server::middleware::rate_limiting::{RateLimiter, FairUseStrategy, CircuitBreakerStrategy};
-/// use std::time::Duration;
-///
-/// // Fair use: limits by IP
-/// let fair_use = RateLimiter::<FairUseStrategy, 16>::new(
-///     100,
-///     Duration::from_secs(60),
-///     Duration::from_hours(24),
-///     "api_endpoint",
-/// );
-///
-/// // Circuit breaker: limits by subnet
-/// let circuit_breaker = RateLimiter::<CircuitBreakerStrategy, 16>::new(
-///     100,
-///     Duration::from_secs(60),
-///     Duration::from_hours(24),
-///     "api_endpoint",
-/// );
-/// ```
 impl<S, B, STRATEGY: RateLimiterStrategy, const SHARDS: usize> Transform<S, ServiceRequest>
     for RateLimiter<STRATEGY, SHARDS>
 where

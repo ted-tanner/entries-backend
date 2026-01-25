@@ -125,6 +125,8 @@ pub async fn check_and_record<K: Eq + Hash, H: BuildHasher>(
         if now.duration_since(table.last_clear) >= clear_frequency {
             // Clear the table every so often to prevent it from growing too large
             table.map.clear();
+            // shrink_to_fit() can be slow, but way faster after clear()
+            table.map.shrink_to_fit();
             table.last_clear = now;
         }
 
