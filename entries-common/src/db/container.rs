@@ -1,11 +1,15 @@
 use diesel::associations::GroupedBy;
 use diesel::{dsl, BelongingToDsl, BoolExpressionMethods, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::db::{DaoError, DbAsyncPool};
-use crate::messages::{Category as CategoryMessage, ContainerFrame, ContainerFrameCategory};
+use crate::messages::{
+    BulkUploadContainer, BulkUploadContainerFrame, BulkUploadContainerFrameList,
+    BulkUploadEntryFrame, Category as CategoryMessage, ContainerFrame, ContainerFrameCategory,
+};
 use crate::messages::{CategoryWithTempId, ContainerIdAndEncryptionKey};
 use crate::messages::{
     Container as ContainerMessage, ContainerList, EntryIdAndCategoryId, InvitationId,
@@ -32,6 +36,8 @@ use crate::schema::containers as container_fields;
 use crate::schema::containers::dsl::containers;
 use crate::schema::entries as entry_fields;
 use crate::schema::entries::dsl::entries;
+use crate::schema::user_flags as user_flags_fields;
+use crate::schema::user_flags::dsl::user_flags;
 
 pub struct Dao {
     db_async_pool: DbAsyncPool,
@@ -349,6 +355,169 @@ impl Dao {
             .await?;
 
         Ok(output_container)
+    }
+
+    pub async fn bulk_upload_containers(
+        &self,
+        user_id: Uuid,
+        containers_input: &[BulkUploadContainer],
+    ) -> Result<BulkUploadContainerFrameList, DaoError> {
+        let mut db_connection = self.db_async_pool.get().await?;
+
+        let containers_input = containers_input.to_vec();
+
+        let bulk_upload_frames = db_connection
+            .build_transaction()
+            .run::<_, DaoError, _>(|conn| {
+                Box::pin(async move {
+                    let updated_rows = dsl::update(
+                        user_flags
+                            .find(user_id)
+                            .filter(user_flags_fields::has_performed_bulk_upload.eq(false)),
+                    )
+                    .set(user_flags_fields::has_performed_bulk_upload.eq(true))
+                    .execute(conn)
+                    .await?;
+
+                    if updated_rows == 0 {
+                        return Err(DaoError::NotAllowed(
+                            "Bulk upload has already been performed by this user",
+                        ));
+                    }
+
+                    let mut output_containers = Vec::with_capacity(containers_input.len());
+                    let mut new_containers = Vec::with_capacity(containers_input.len());
+                    let mut new_container_access_keys = Vec::with_capacity(containers_input.len());
+                    let mut new_categories = Vec::new();
+                    let mut new_entries = Vec::new();
+
+                    for container in containers_input.iter() {
+                        let current_time = SystemTime::now();
+                        let container_id = Uuid::now_v7();
+                        let key_id = Uuid::now_v7();
+
+                        let new_container = NewContainer {
+                            id: container_id,
+                            encrypted_blob: &container.encrypted_blob,
+                            version_nonce: container.version_nonce,
+                            modified_timestamp: current_time,
+                        };
+
+                        let new_container_access_key = NewContainerAccessKey {
+                            key_id,
+                            container_id,
+                            public_key: &container.user_public_container_key,
+                            read_only: false,
+                        };
+
+                        let mut category_map = HashMap::with_capacity(container.categories.len());
+                        let mut container_categories =
+                            Vec::with_capacity(container.categories.len());
+                        let mut category_frames = Vec::with_capacity(container.categories.len());
+
+                        for category in container.categories.iter() {
+                            let category_id = Uuid::now_v7();
+                            category_map.insert(category.temp_id, category_id);
+
+                            let new_category = NewCategory {
+                                id: category_id,
+                                container_id,
+                                encrypted_blob: &category.encrypted_blob,
+                                version_nonce: category.version_nonce,
+                                modified_timestamp: current_time,
+                            };
+
+                            container_categories.push(new_category);
+                            category_frames.push(ContainerFrameCategory {
+                                temp_id: category.temp_id,
+                                real_id: category_id.into(),
+                            });
+                        }
+
+                        let mut container_entries = Vec::with_capacity(container.entries.len());
+                        let mut entry_frames = Vec::with_capacity(container.entries.len());
+
+                        for entry in container.entries.iter() {
+                            let entry_id = Uuid::now_v7();
+                            let category_id = match entry.category_temp_id {
+                                Some(temp_id) => match category_map.get(&temp_id) {
+                                    Some(id) => Some(*id),
+                                    None => {
+                                        return Err(DaoError::CannotRunQuery(
+                                            "Entry references unknown category temp ID",
+                                        ))
+                                    }
+                                },
+                                None => None,
+                            };
+
+                            let new_entry = NewEntry {
+                                id: entry_id,
+                                container_id,
+                                category_id,
+                                encrypted_blob: &entry.encrypted_blob,
+                                version_nonce: entry.version_nonce,
+                                modified_timestamp: current_time,
+                            };
+
+                            container_entries.push(new_entry);
+                            entry_frames.push(BulkUploadEntryFrame {
+                                temp_id: entry.temp_id,
+                                real_id: entry_id.into(),
+                                category_id: category_id.map(Into::into),
+                            });
+                        }
+
+                        new_containers.push(new_container);
+                        new_container_access_keys.push(new_container_access_key);
+                        new_categories.extend(container_categories);
+                        new_entries.extend(container_entries);
+
+                        output_containers.push(BulkUploadContainerFrame {
+                            access_key_id: key_id.into(),
+                            id: container_id.into(),
+                            category_ids: category_frames,
+                            entry_ids: entry_frames,
+                            modified_timestamp: current_time.try_into().unwrap_or_default(),
+                        });
+                    }
+
+                    if !new_containers.is_empty() {
+                        dsl::insert_into(containers)
+                            .values(&new_containers)
+                            .execute(conn)
+                            .await?;
+                    }
+
+                    if !new_container_access_keys.is_empty() {
+                        dsl::insert_into(container_access_keys)
+                            .values(&new_container_access_keys)
+                            .execute(conn)
+                            .await?;
+                    }
+
+                    if !new_categories.is_empty() {
+                        dsl::insert_into(categories)
+                            .values(&new_categories)
+                            .execute(conn)
+                            .await?;
+                    }
+
+                    if !new_entries.is_empty() {
+                        dsl::insert_into(entries)
+                            .values(&new_entries)
+                            .execute(conn)
+                            .await?;
+                    }
+
+                    Ok(BulkUploadContainerFrameList {
+                        containers: output_containers,
+                    })
+                })
+            })
+            .await?;
+
+        Ok(bulk_upload_frames)
     }
 
     pub async fn update_container(

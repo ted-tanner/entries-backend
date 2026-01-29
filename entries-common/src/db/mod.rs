@@ -33,6 +33,7 @@ pub enum DaoError {
     QueryFailure(diesel::result::Error),
     OutOfDate,
     CannotRunQuery(&'static str),
+    NotAllowed(&'static str),
     WontRunQuery, // This error indicates that the DAO refuses to run a query
 }
 
@@ -52,6 +53,9 @@ impl fmt::Display for DaoError {
             }
             DaoError::CannotRunQuery(msg) => {
                 write!(f, "DaoError: Cannot run query: {msg}")
+            }
+            DaoError::NotAllowed(msg) => {
+                write!(f, "DaoError: Not allowed: {msg}")
             }
             DaoError::WontRunQuery => {
                 write!(f, "DaoError: DAO will not run query")

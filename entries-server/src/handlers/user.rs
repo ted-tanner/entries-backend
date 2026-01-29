@@ -1295,7 +1295,7 @@ pub mod tests {
         let mut protobuf_config = ProtoBufConfig::default();
         protobuf_config.limit(env::CONF.protobuf_max_size);
         let route_limiters = RateLimiters {
-            expensive_auth_fair_use: RateLimiter::<FairUseStrategy, 16>::new(
+            expensive_auth_fair_use: RateLimiter::<FairUseStrategy, 32>::new(
                 15,
                 Duration::from_secs(1200),
                 Duration::from_secs(3600),
@@ -1303,7 +1303,7 @@ pub mod tests {
             ),
             expensive_auth_circuit_breaker: RateLimiter::<
                 crate::middleware::CircuitBreakerStrategy,
-                16,
+                32,
             >::new(
                 10_000,
                 Duration::from_secs(1200),

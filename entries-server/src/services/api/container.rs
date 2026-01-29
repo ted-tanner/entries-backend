@@ -79,6 +79,14 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RateLimiters) {
                 ),
             )
             .service(
+                resource("/bulk-upload").route(
+                    post()
+                        .to(container::bulk_upload_containers)
+                        .wrap(limiters.create_fair_use.clone())
+                        .wrap(limiters.create_circuit_breaker.clone()),
+                ),
+            )
+            .service(
                 resource("/entry")
                     .route(
                         post()

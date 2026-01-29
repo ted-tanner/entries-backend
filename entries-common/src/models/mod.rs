@@ -10,6 +10,7 @@ pub mod signin_nonce;
 pub mod user;
 pub mod user_deletion_request;
 pub mod user_deletion_request_container_key;
+pub mod user_flags;
 pub mod user_keystore;
 pub mod user_otp;
 pub mod user_preferences;

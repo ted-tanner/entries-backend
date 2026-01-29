@@ -73,6 +73,35 @@ pub struct AuthStringAndEncryptedPasswordUpdate {
     pub encrypted_encryption_key: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadContainer {
+    #[prost(bytes = "vec", required, tag = "1")]
+    pub encrypted_blob: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int64, required, tag = "2")]
+    pub version_nonce: i64,
+    #[prost(message, repeated, tag = "3")]
+    pub categories: ::prost::alloc::vec::Vec<CategoryWithTempId>,
+    #[prost(message, repeated, tag = "4")]
+    pub entries: ::prost::alloc::vec::Vec<BulkUploadEntry>,
+    #[prost(bytes = "vec", required, tag = "5")]
+    pub user_public_container_key: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadContainerList {
+    #[prost(message, repeated, tag = "1")]
+    pub containers: ::prost::alloc::vec::Vec<BulkUploadContainer>,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadEntry {
+    #[prost(int32, required, tag = "1")]
+    pub temp_id: i32,
+    #[prost(bytes = "vec", required, tag = "2")]
+    pub encrypted_blob: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int64, required, tag = "3")]
+    pub version_nonce: i64,
+    #[prost(int32, optional, tag = "4")]
+    pub category_temp_id: ::core::option::Option<i32>,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct ContainerAccessTokenList {
     #[prost(string, repeated, tag = "1")]
     pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
@@ -337,6 +366,33 @@ pub struct AcceptKeyInfo {
     pub read_only: bool,
     #[prost(uint64, required, tag = "2")]
     pub expiration: u64,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadContainerFrame {
+    #[prost(message, required, tag = "1")]
+    pub access_key_id: Uuid,
+    #[prost(message, required, tag = "2")]
+    pub id: Uuid,
+    #[prost(message, repeated, tag = "3")]
+    pub category_ids: ::prost::alloc::vec::Vec<ContainerFrameCategory>,
+    #[prost(message, repeated, tag = "4")]
+    pub entry_ids: ::prost::alloc::vec::Vec<BulkUploadEntryFrame>,
+    #[prost(message, required, tag = "5")]
+    pub modified_timestamp: Timestamp,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadContainerFrameList {
+    #[prost(message, repeated, tag = "1")]
+    pub containers: ::prost::alloc::vec::Vec<BulkUploadContainerFrame>,
+}
+#[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
+pub struct BulkUploadEntryFrame {
+    #[prost(int32, required, tag = "1")]
+    pub temp_id: i32,
+    #[prost(message, required, tag = "2")]
+    pub real_id: Uuid,
+    #[prost(message, optional, tag = "3")]
+    pub category_id: ::core::option::Option<Uuid>,
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct Container {

@@ -107,6 +107,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_flags (user_id) {
+        user_id -> Uuid,
+        has_performed_bulk_upload -> Bool,
+    }
+}
+
+diesel::table! {
     user_keystores (user_id) {
         user_id -> Uuid,
         encrypted_blob -> Bytea,
@@ -166,6 +173,7 @@ diesel::joinable!(entries -> categories (category_id));
 diesel::joinable!(entries -> containers (container_id));
 diesel::joinable!(user_deletion_request_container_keys -> users (user_id));
 diesel::joinable!(user_deletion_requests -> users (user_id));
+diesel::joinable!(user_flags -> users (user_id));
 diesel::joinable!(user_keystores -> users (user_id));
 diesel::joinable!(user_preferences -> users (user_id));
 
@@ -181,6 +189,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     signin_nonces,
     user_deletion_request_container_keys,
     user_deletion_requests,
+    user_flags,
     user_keystores,
     user_otps,
     user_preferences,

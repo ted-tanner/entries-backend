@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS signin_nonces CASCADE;
 DROP TABLE IF EXISTS user_backup_codes CASCADE;
 DROP TABLE IF EXISTS user_deletion_request_container_keys CASCADE;
 DROP TABLE IF EXISTS user_deletion_requests CASCADE;
+DROP TABLE IF EXISTS user_flags CASCADE;
 DROP TABLE IF EXISTS user_keystores CASCADE;
 DROP TABLE IF EXISTS user_otps CASCADE;
 DROP TABLE IF EXISTS user_preferences CASCADE;

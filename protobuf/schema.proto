@@ -103,6 +103,25 @@ message AuthStringAndEncryptedPasswordUpdate {
     required bytes encrypted_encryption_key = 12;
 }
 
+message BulkUploadContainer {
+    required bytes encrypted_blob = 1;
+    required int64 version_nonce = 2;
+    repeated CategoryWithTempId categories = 3;
+    repeated BulkUploadEntry entries = 4;
+    required bytes user_public_container_key = 5;
+}
+
+message BulkUploadContainerList {
+    repeated BulkUploadContainer containers = 1;
+}
+
+message BulkUploadEntry {
+    required int32 temp_id = 1;
+    required bytes encrypted_blob = 2;
+    required int64 version_nonce = 3;
+    optional int32 category_temp_id = 4;
+}
+
 message ContainerAccessTokenList {
     repeated string tokens = 1;
 }
@@ -287,6 +306,24 @@ message UserInvitationToContainer {
 message AcceptKeyInfo {
     required bool read_only = 1;
     required uint64 expiration = 2;
+}
+
+message BulkUploadContainerFrame {
+    required Uuid access_key_id = 1;
+    required Uuid id = 2;
+    repeated ContainerFrameCategory category_ids = 3;
+    repeated BulkUploadEntryFrame entry_ids = 4;
+    required Timestamp modified_timestamp = 5;
+}
+
+message BulkUploadContainerFrameList {
+    repeated BulkUploadContainerFrame containers = 1;
+}
+
+message BulkUploadEntryFrame {
+    required int32 temp_id = 1;
+    required Uuid real_id = 2;
+    optional Uuid category_id = 3;
 }
 
 message Container {

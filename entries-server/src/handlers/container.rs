@@ -1,7 +1,8 @@
 use entries_common::messages::{
-    AcceptKeyInfo, CategoryId, CategoryUpdate, ContainerAccessTokenList, ContainerList,
-    EncryptedBlobAndCategoryId, EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate,
-    NewContainer, NewEncryptedBlob, PublicKey, UserInvitationToContainer,
+    AcceptKeyInfo, BulkUploadContainerFrameList, BulkUploadContainerList, CategoryId,
+    CategoryUpdate, ContainerAccessTokenList, ContainerList, EncryptedBlobAndCategoryId,
+    EncryptedBlobUpdate, EntryAndCategory, EntryId, EntryUpdate, NewContainer, NewEncryptedBlob,
+    PublicKey, UserInvitationToContainer,
 };
 use entries_common::models::container_access_key::ContainerAccessKey;
 use entries_common::threadrand::SecureRng;
@@ -229,6 +230,112 @@ pub async fn create(
     };
 
     Ok(HttpResponse::Created().protobuf(new_container)?)
+}
+
+pub async fn bulk_upload_containers(
+    db_async_pool: web::Data<DbAsyncPool>,
+    user_access_token: VerifiedToken<Access, FromHeader>,
+    bulk_upload_data: ProtoBuf<BulkUploadContainerList>,
+) -> Result<HttpResponse, HttpErrorResponse> {
+    const MAX_BULK_CONTAINERS: usize = 100;
+
+    if bulk_upload_data.containers.is_empty() {
+        return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
+            "No containers provided",
+        )));
+    }
+
+    if bulk_upload_data.containers.len() > MAX_BULK_CONTAINERS {
+        return Err(HttpErrorResponse::TooManyRequested(Cow::Owned(format!(
+            "Too many containers for bulk upload. Maximum is {MAX_BULK_CONTAINERS}",
+            MAX_BULK_CONTAINERS = MAX_BULK_CONTAINERS,
+        ))));
+    }
+
+    for container in bulk_upload_data.containers.iter() {
+        if container.encrypted_blob.len() > env::CONF.max_small_object_size {
+            return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
+                "Container encrypted blob too large",
+            )));
+        }
+
+        if container.user_public_container_key.len() > env::CONF.max_encryption_key_size {
+            return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
+                "User public key too large",
+            )));
+        }
+
+        let mut category_temp_ids = HashSet::with_capacity(container.categories.len());
+        for category in container.categories.iter() {
+            if category.encrypted_blob.len() > env::CONF.max_small_object_size {
+                return Err(HttpErrorResponse::InputTooLarge(Cow::Owned(format!(
+                    "Category encrypted blob too large for category with temp ID {}",
+                    category.temp_id,
+                ))));
+            }
+
+            category_temp_ids.insert(category.temp_id);
+        }
+
+        if category_temp_ids.len() != container.categories.len() {
+            return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
+                "Multiple categories with the same ID",
+            )));
+        }
+
+        let mut entry_temp_ids = HashSet::with_capacity(container.entries.len());
+        for entry in container.entries.iter() {
+            if entry.encrypted_blob.len() > env::CONF.max_small_object_size {
+                return Err(HttpErrorResponse::InputTooLarge(Cow::Owned(format!(
+                    "Entry encrypted blob too large for entry with temp ID {}",
+                    entry.temp_id,
+                ))));
+            }
+
+            if !entry_temp_ids.insert(entry.temp_id) {
+                return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
+                    "Multiple entries with the same ID",
+                )));
+            }
+
+            if let Some(temp_id) = entry.category_temp_id {
+                if !category_temp_ids.contains(&temp_id) {
+                    return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(
+                        "Entry references missing category temp ID",
+                    )));
+                }
+            }
+        }
+    }
+
+    let container_dao = db::container::Dao::new(&db_async_pool);
+    let bulk_upload_frames = match container_dao
+        .bulk_upload_containers(user_access_token.0.user_id, &bulk_upload_data.containers)
+        .await
+    {
+        Ok(frames) => frames,
+        Err(DaoError::NotAllowed(msg)) => {
+            return Err(HttpErrorResponse::UserDisallowed(Cow::Borrowed(msg)))
+        }
+        Err(DaoError::QueryFailure(diesel::result::Error::NotFound)) => {
+            return Err(HttpErrorResponse::DoesNotExist(
+                Cow::Borrowed("User not found"),
+                DoesNotExistType::User,
+            ))
+        }
+        Err(e) => {
+            log::error!("{e}");
+            return Err(HttpErrorResponse::InternalError(Cow::Borrowed(
+                "Failed to bulk upload containers",
+            )));
+        }
+    };
+
+    Ok(
+        HttpResponse::Created().protobuf(BulkUploadContainerFrameList {
+            containers: bulk_upload_frames.containers,
+        })?,
+    )
 }
 
 pub async fn edit(
@@ -1144,7 +1251,10 @@ pub mod tests {
 
     use super::*;
 
-    use entries_common::messages::{CategoryWithTempId, ContainerFrame};
+    use entries_common::messages::{
+        BulkUploadContainer, BulkUploadContainerFrameList, BulkUploadContainerList,
+        BulkUploadEntry, CategoryWithTempId, ContainerFrame,
+    };
     use entries_common::messages::{
         ContainerIdAndEncryptionKey, ContainerList, ContainerShareInviteList, EntryIdAndCategoryId,
         ErrorType, InvitationId, ServerErrorResponse, Uuid as UuidMessage,
@@ -2046,6 +2156,156 @@ pub mod tests {
         let resp_err = ServerErrorResponse::decode(resp_body).unwrap();
 
         assert_eq!(resp_err.err_type, ErrorType::TooManyRequested as i32);
+    }
+
+    #[actix_rt::test]
+    async fn test_bulk_upload_containers() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
+
+        let bulk_upload = BulkUploadContainerList {
+            containers: vec![
+                BulkUploadContainer {
+                    encrypted_blob: gen_bytes(32),
+                    version_nonce: SecureRng::next_i64(),
+                    categories: vec![
+                        CategoryWithTempId {
+                            temp_id: 1,
+                            encrypted_blob: gen_bytes(16),
+                            version_nonce: SecureRng::next_i64(),
+                        },
+                        CategoryWithTempId {
+                            temp_id: 2,
+                            encrypted_blob: gen_bytes(24),
+                            version_nonce: SecureRng::next_i64(),
+                        },
+                    ],
+                    entries: vec![
+                        BulkUploadEntry {
+                            temp_id: 11,
+                            encrypted_blob: gen_bytes(12),
+                            version_nonce: SecureRng::next_i64(),
+                            category_temp_id: Some(1),
+                        },
+                        BulkUploadEntry {
+                            temp_id: 12,
+                            encrypted_blob: gen_bytes(12),
+                            version_nonce: SecureRng::next_i64(),
+                            category_temp_id: None,
+                        },
+                    ],
+                    user_public_container_key: gen_bytes(32),
+                },
+                BulkUploadContainer {
+                    encrypted_blob: gen_bytes(32),
+                    version_nonce: SecureRng::next_i64(),
+                    categories: vec![CategoryWithTempId {
+                        temp_id: 3,
+                        encrypted_blob: gen_bytes(20),
+                        version_nonce: SecureRng::next_i64(),
+                    }],
+                    entries: vec![BulkUploadEntry {
+                        temp_id: 21,
+                        encrypted_blob: gen_bytes(10),
+                        version_nonce: SecureRng::next_i64(),
+                        category_temp_id: Some(3),
+                    }],
+                    user_public_container_key: gen_bytes(32),
+                },
+            ],
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/bulk-upload")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(bulk_upload.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let bulk_upload_frames = BulkUploadContainerFrameList::decode(resp_body).unwrap();
+
+        assert_eq!(bulk_upload_frames.containers.len(), 2);
+
+        let first_container = &bulk_upload_frames.containers[0];
+        assert_eq!(first_container.category_ids.len(), 2);
+        assert_eq!(first_container.entry_ids.len(), 2);
+        assert!(first_container
+            .entry_ids
+            .iter()
+            .any(|entry| entry.temp_id == 11 && entry.category_id.is_some()));
+        assert!(first_container
+            .entry_ids
+            .iter()
+            .any(|entry| entry.temp_id == 12 && entry.category_id.is_none()));
+
+        let second_container = &bulk_upload_frames.containers[1];
+        assert_eq!(second_container.category_ids.len(), 1);
+        assert_eq!(second_container.entry_ids.len(), 1);
+        assert!(second_container
+            .entry_ids
+            .iter()
+            .any(|entry| entry.temp_id == 21 && entry.category_id.is_some()));
+    }
+
+    #[actix_rt::test]
+    async fn test_bulk_upload_containers_only_once() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let (_, access_token, _, _, _, _) = test_utils::create_user().await;
+
+        let bulk_upload = BulkUploadContainerList {
+            containers: vec![BulkUploadContainer {
+                encrypted_blob: gen_bytes(32),
+                version_nonce: SecureRng::next_i64(),
+                categories: Vec::new(),
+                entries: Vec::new(),
+                user_public_container_key: gen_bytes(32),
+            }],
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/container/bulk-upload")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(bulk_upload.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let req = TestRequest::post()
+            .uri("/api/container/bulk-upload")
+            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(bulk_upload.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = ServerErrorResponse::decode(resp_body).unwrap();
+
+        assert_eq!(resp_body.err_type, ErrorType::UserDisallowed as i32);
     }
 
     #[actix_rt::test]

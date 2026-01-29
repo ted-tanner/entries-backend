@@ -216,8 +216,6 @@ CREATE TABLE signin_nonces (
 
 CREATE INDEX idx_signin_nonces_user_email ON signin_nonces(user_email);
 
-
-
 CREATE TABLE user_deletion_requests (
     user_id UUID PRIMARY KEY,
     ready_for_deletion_time TIMESTAMP NOT NULL,
@@ -244,6 +242,15 @@ CREATE TABLE user_deletion_request_container_keys (
 
 CREATE INDEX idx_user_deletion_request_container_keys_user_id ON user_deletion_request_container_keys(user_id);
 CREATE INDEX idx_user_deletion_request_container_keys_delete_me_time ON user_deletion_request_container_keys(delete_me_time);
+
+CREATE TABLE user_flags (
+    user_id UUID PRIMARY KEY,
+    has_performed_bulk_upload BOOLEAN NOT NULL,
+
+    CONSTRAINT fk_user_flags_user_key FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_user_flags_user_id ON user_flags(user_id);
 
 CREATE TABLE user_keystores (
     user_id UUID PRIMARY KEY,

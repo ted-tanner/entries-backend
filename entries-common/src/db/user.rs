@@ -9,6 +9,7 @@ use crate::models::signin_nonce::NewSigninNonce;
 use crate::models::user::NewUser;
 use crate::models::user_deletion_request::{NewUserDeletionRequest, UserDeletionRequest};
 use crate::models::user_deletion_request_container_key::NewUserDeletionRequestContainerKey;
+use crate::models::user_flags::NewUserFlags;
 use crate::models::user_keystore::NewUserKeystore;
 use crate::models::user_preferences::NewUserPreferences;
 use crate::threadrand::SecureRng;
@@ -21,6 +22,7 @@ use crate::schema::user_deletion_request_container_keys as user_deletion_request
 use crate::schema::user_deletion_request_container_keys::dsl::user_deletion_request_container_keys;
 use crate::schema::user_deletion_requests as user_deletion_request_fields;
 use crate::schema::user_deletion_requests::dsl::user_deletion_requests;
+use crate::schema::user_flags::dsl::user_flags;
 use crate::schema::user_keystores as user_keystore_fields;
 use crate::schema::user_keystores::dsl::user_keystores;
 use crate::schema::user_preferences as user_preferences_fields;
@@ -132,6 +134,11 @@ impl Dao {
             encryption_key_encrypted_with_recovery_key,
         };
 
+        let new_user_flags = NewUserFlags {
+            user_id,
+            has_performed_bulk_upload: false,
+        };
+
         let new_user_preferences = NewUserPreferences {
             user_id,
             encrypted_blob: preferences_encrypted,
@@ -157,6 +164,11 @@ impl Dao {
                 Box::pin(async move {
                     dsl::insert_into(users)
                         .values(&new_user)
+                        .execute(conn)
+                        .await?;
+
+                    dsl::insert_into(user_flags)
+                        .values(&new_user_flags)
                         .execute(conn)
                         .await?;
 
