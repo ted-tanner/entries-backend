@@ -17,11 +17,15 @@ pub async fn create_db_async_pool(
     database_uri: &str,
     max_db_connections: u32,
     idle_timeout: Duration,
+    connection_timeout: Duration,
+    max_lifetime: Duration,
 ) -> DbAsyncPool {
     let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_uri);
     AsyncPool::builder()
         .max_size(max_db_connections)
         .idle_timeout(Some(idle_timeout))
+        .connection_timeout(connection_timeout)
+        .max_lifetime(Some(max_lifetime))
         .build(config)
         .await
         .expect("Failed to create async DB pool")
@@ -101,6 +105,8 @@ pub mod test_utils {
     const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
     const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
     const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
+    const DB_CONNECTION_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_CONNECTION_TIMEOUT_SECS";
+    const DB_MAX_LIFETIME_SECS_VAR: &str = "ENTRIES_DB_MAX_LIFETIME_SECS";
 
     pub static DB_ASYNC_POOL: Lazy<DbAsyncPool> = Lazy::new(|| {
         let username = env_or_panic(DB_USERNAME_VAR);
@@ -111,6 +117,9 @@ pub mod test_utils {
 
         let max_connections = env_or_parse(DB_MAX_CONNECTIONS_VAR, 48u32);
         let idle_timeout = Duration::from_secs(env_or_parse(DB_IDLE_TIMEOUT_SECS_VAR, 30u64));
+        let connection_timeout =
+            Duration::from_secs(env_or_parse(DB_CONNECTION_TIMEOUT_SECS_VAR, 30u64));
+        let max_lifetime = Duration::from_secs(env_or_parse(DB_MAX_LIFETIME_SECS_VAR, 300u64));
 
         let db_uri = format!(
             "postgres://{}:{}@{}:{}/{}",
@@ -118,7 +127,13 @@ pub mod test_utils {
         );
 
         // Use futures::executor::block_on which works within async contexts
-        futures::executor::block_on(create_db_async_pool(&db_uri, max_connections, idle_timeout))
+        futures::executor::block_on(create_db_async_pool(
+            &db_uri,
+            max_connections,
+            idle_timeout,
+            connection_timeout,
+            max_lifetime,
+        ))
     });
 
     pub fn db_async_pool() -> &'static DbAsyncPool {

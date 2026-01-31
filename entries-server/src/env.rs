@@ -29,6 +29,8 @@ const DB_PORT_VAR: &str = "ENTRIES_DB_PORT";
 const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
 const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
 const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
+const DB_CONNECTION_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_CONNECTION_TIMEOUT_SECS";
+const DB_MAX_LIFETIME_SECS_VAR: &str = "ENTRIES_DB_MAX_LIFETIME_SECS";
 
 const AUTH_STRING_HASH_KEY_VAR: &str = "ENTRIES_AUTH_STRING_HASH_KEY_B64";
 const TOKEN_SIGNING_KEY_VAR: &str = "ENTRIES_TOKEN_SIGNING_KEY_B64";
@@ -140,6 +142,10 @@ pub struct ConfigInner {
     pub db_max_connections: u32,
     #[zeroize(skip)]
     pub db_idle_timeout: Duration,
+    #[zeroize(skip)]
+    pub db_connection_timeout: Duration,
+    #[zeroize(skip)]
+    pub db_max_lifetime: Duration,
 
     pub auth_string_hash_key: [u8; AUTH_STRING_AUTH_STRING_HASH_KEY_SIZE],
     pub token_signing_key: [u8; TOKEN_SIGNING_KEY_SIZE],
@@ -314,6 +320,11 @@ impl Config {
             db_name: env_var(DB_NAME_VAR)?,
             db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
             db_idle_timeout: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
+            db_connection_timeout: Duration::from_secs(env_var_or(
+                DB_CONNECTION_TIMEOUT_SECS_VAR,
+                30,
+            )?),
+            db_max_lifetime: Duration::from_secs(env_var_or(DB_MAX_LIFETIME_SECS_VAR, 300)?),
 
             auth_string_hash_key,
             token_signing_key,
@@ -554,6 +565,8 @@ pub mod testing {
             &db_uri,
             CONF.db_max_connections,
             CONF.db_idle_timeout,
+            CONF.db_connection_timeout,
+            CONF.db_max_lifetime,
         ))
     });
 

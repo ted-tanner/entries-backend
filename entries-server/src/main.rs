@@ -107,6 +107,8 @@ async fn main() -> std::io::Result<()> {
         &db_uri,
         env::CONF.db_max_connections,
         env::CONF.db_idle_timeout,
+        env::CONF.db_connection_timeout,
+        env::CONF.db_max_lifetime,
     )
     .await;
 

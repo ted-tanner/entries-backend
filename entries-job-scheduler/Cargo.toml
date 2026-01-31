@@ -17,7 +17,7 @@ uuid = { version = "1.19.*", features = ["serde", "v7"] }
 zeroize = { version = "1.8.*", features = ["zeroize_derive"] }
 
 [dev-dependencies]
-diesel = { version = "2.3.*", features = ["postgres", "uuid", "r2d2"] }
+diesel = { version = "2.3.*", features = ["postgres", "uuid"] }
 diesel-async = { version = "0.7.*", features = ["postgres", "bb8"] }
 tokio = { version = "1.48.*", features = ["macros", "sync"] }
 rand = "0.8.*"

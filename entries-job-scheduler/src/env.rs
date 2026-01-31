@@ -13,6 +13,8 @@ const DB_PORT_VAR: &str = "ENTRIES_DB_PORT";
 const DB_NAME_VAR: &str = "ENTRIES_DB_NAME";
 const DB_MAX_CONNECTIONS_VAR: &str = "ENTRIES_DB_MAX_CONNECTIONS";
 const DB_IDLE_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_IDLE_TIMEOUT_SECS";
+const DB_CONNECTION_TIMEOUT_SECS_VAR: &str = "ENTRIES_DB_CONNECTION_TIMEOUT_SECS";
+const DB_MAX_LIFETIME_SECS_VAR: &str = "ENTRIES_DB_MAX_LIFETIME_SECS";
 
 const UPDATE_FREQUENCY_MS_VAR: &str = "ENTRIES_JOB_RUNNER_UPDATE_FREQUENCY_MS";
 const WORKER_THREADS_VAR: &str = "ENTRIES_JOB_RUNNER_WORKER_THREADS";
@@ -58,6 +60,10 @@ pub struct ConfigInner {
     pub db_max_connections: u32,
     #[zeroize(skip)]
     pub db_idle_timeout: Duration,
+    #[zeroize(skip)]
+    pub db_connection_timeout: Duration,
+    #[zeroize(skip)]
+    pub db_max_lifetime: Duration,
 
     #[zeroize(skip)]
     pub update_frequency: Duration,
@@ -111,6 +117,11 @@ impl Config {
             db_name: env_var(DB_NAME_VAR)?,
             db_max_connections: env_var_or(DB_MAX_CONNECTIONS_VAR, 48)?,
             db_idle_timeout: Duration::from_secs(env_var_or(DB_IDLE_TIMEOUT_SECS_VAR, 30)?),
+            db_connection_timeout: Duration::from_secs(env_var_or(
+                DB_CONNECTION_TIMEOUT_SECS_VAR,
+                30,
+            )?),
+            db_max_lifetime: Duration::from_secs(env_var_or(DB_MAX_LIFETIME_SECS_VAR, 300)?),
 
             update_frequency: Duration::from_millis(env_var_or(UPDATE_FREQUENCY_MS_VAR, 5)?),
             worker_threads: env_var_or(WORKER_THREADS_VAR, num_cpus::get())?,
@@ -217,6 +228,8 @@ pub mod testing {
             &db_uri,
             CONF.db_max_connections,
             CONF.db_idle_timeout,
+            CONF.db_connection_timeout,
+            CONF.db_max_lifetime,
         ))
     });
 }
