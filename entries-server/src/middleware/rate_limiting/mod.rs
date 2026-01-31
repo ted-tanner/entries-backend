@@ -87,13 +87,7 @@ impl<STRATEGY: RateLimiterStrategy, const SHARDS: usize> RateLimiter<STRATEGY, S
             panic!("RateLimiter period must be less than 14 days (due to u32 ms wraparound)");
         }
 
-        // Access CONF in a way that won't poison the Lazy if it fails
-        let warn_every_over_limit = if cfg!(test) {
-            // In tests, use a default value if CONF is not available
-            std::panic::catch_unwind(|| env::CONF.api_limiter_warn_every_over_limit).unwrap_or(0)
-        } else {
-            env::CONF.api_limiter_warn_every_over_limit
-        };
+        let warn_every_over_limit = env::CONF.api_limiter_warn_every_over_limit;
 
         rate_limit_table::init_start();
         let limiter_tables =
@@ -621,15 +615,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
 
-        // Skip test if configuration is not available (e.g., missing env vars)
-        let warn_every =
-            match std::panic::catch_unwind(|| crate::env::CONF.api_limiter_warn_every_over_limit) {
-                Ok(val) => val,
-                Err(_) => {
-                    eprintln!("Skipping test: configuration not available (missing env vars)");
-                    return;
-                }
-            };
+        let warn_every = crate::env::CONF.api_limiter_warn_every_over_limit;
         if warn_every == 0 {
             eprintln!("Skipping test: warn_every_over_limit is 0 (warnings disabled)");
             return;

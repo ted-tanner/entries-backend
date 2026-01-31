@@ -379,15 +379,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
 
-        // Skip test if configuration is not available (e.g., missing env vars)
-        let warn_every =
-            match std::panic::catch_unwind(|| crate::env::CONF.api_limiter_warn_every_over_limit) {
-                Ok(val) => val,
-                Err(_) => {
-                    eprintln!("Skipping test: configuration not available (missing env vars)");
-                    return;
-                }
-            };
+        let warn_every = crate::env::CONF.api_limiter_warn_every_over_limit;
         if warn_every == 0 {
             eprintln!("Skipping test: warn_every_over_limit is 0 (warnings disabled)");
             return;
