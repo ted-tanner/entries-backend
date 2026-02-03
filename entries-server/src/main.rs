@@ -18,7 +18,7 @@ use services::api::RateLimiters;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mut port = 9000u16;
+    let mut port = env::CONF.port;
 
     let mut args = std::env::args();
 
@@ -61,7 +61,7 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    let base_addr = format!("127.0.0.1:{}", &port);
+    let base_addr = format!("{}:{}", env::CONF.bind_address, &port);
 
     let _logger = Logger::try_with_str(&env::CONF.log_level)
         .expect(

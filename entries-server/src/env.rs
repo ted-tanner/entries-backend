@@ -64,6 +64,8 @@ const USER_DELETION_TOKEN_LIFETIME_DAYS_VAR: &str = "ENTRIES_USER_DELETION_TOKEN
 const OTP_LIFETIME_MINS_VAR: &str = "ENTRIES_OTP_LIFETIME_MINS";
 const USER_DELETION_DELAY_DAYS_VAR: &str = "ENTRIES_USER_DELETION_DELAY_DAYS";
 
+const BIND_ADDRESS_VAR: &str = "ENTRIES_BIND_ADDRESS";
+const PORT_VAR: &str = "ENTRIES_PORT";
 const ACTIX_WORKER_COUNT_VAR: &str = "ENTRIES_ACTIX_WORKER_COUNT";
 const LOG_LEVEL_VAR: &str = "ENTRIES_LOG_LEVEL";
 const PROTOBUF_MAX_SIZE_MB_VAR: &str = "ENTRIES_PROTOBUF_MAX_SIZE_MB";
@@ -197,6 +199,10 @@ pub struct ConfigInner {
     #[zeroize(skip)]
     pub signin_limiter_clear_frequency: Duration,
 
+    #[zeroize(skip)]
+    pub bind_address: String,
+    #[zeroize(skip)]
+    pub port: u16,
     #[zeroize(skip)]
     pub actix_worker_count: usize,
     #[zeroize(skip)]
@@ -386,6 +392,8 @@ impl Config {
                 env_var_or(SIGNIN_LIMITER_FREQUENCY_HOURS_VAR, 24)? * 3600,
             ),
 
+            bind_address: env_var_or(BIND_ADDRESS_VAR, String::from("127.0.0.1"))?,
+            port: env_var_or(PORT_VAR, 9000u16)?,
             actix_worker_count: env_var_or(ACTIX_WORKER_COUNT_VAR, num_cpus::get())?,
             log_level: env_var_or(LOG_LEVEL_VAR, String::from("info"))?,
             protobuf_max_size: env_var_or(PROTOBUF_MAX_SIZE_MB_VAR, 100)? * 1024 * 1024,
