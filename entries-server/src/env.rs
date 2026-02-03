@@ -116,6 +116,7 @@ const API_LIGHT_AUTH_CIRCUIT_BREAKER_LIMITER_PERIOD_SECS_VAR: &str =
 const API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR: &str = "ENTRIES_API_LIMITER_CLEAR_FREQUENCY_HOURS";
 
 const API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR: &str = "ENTRIES_API_LIMITER_WARN_EVERY_OVER_LIMIT";
+const RATE_LIMITER_USE_X_FORWARDED_FOR_VAR: &str = "ENTRIES_RATE_LIMITER_USE_X_FORWARDED_FOR";
 
 const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
@@ -269,6 +270,11 @@ pub struct ConfigInner {
     /// above the limit (per key/subnet). Set to 0 to disable.
     #[zeroize(skip)]
     pub api_limiter_warn_every_over_limit: u32,
+
+    /// Use X-Forwarded-For header for client IP (true when behind a proxy) or peer address
+    /// directly (false when not behind a proxy).
+    #[zeroize(skip)]
+    pub rate_limiter_use_x_forwarded_for: bool,
 }
 
 pub struct Config {
@@ -482,6 +488,10 @@ impl Config {
             api_limiter_warn_every_over_limit: env_var_or(
                 API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR,
                 50u32,
+            )?,
+            rate_limiter_use_x_forwarded_for: env_var_or(
+                RATE_LIMITER_USE_X_FORWARDED_FOR_VAR,
+                true,
             )?,
         };
 

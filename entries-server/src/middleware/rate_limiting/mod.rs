@@ -4,8 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Invariant: We're always behind a trusted proxy. If `X-Forwarded-For` is missing or malformed, we intentionally
-// do NOT rate limit.
+// When use_x_forwarded_for is true (behind a proxy): If `X-Forwarded-For` is missing or malformed,
+// we intentionally do NOT rate limit. When use_x_forwarded_for is false, we use the peer address.
 
 // ahash is a faster hash function than the one from the standard library, albeit with slightly poorer resistance
 // to HashDoS attacks. That should be okay as it still has some resistance and it is hard for an attacker to
@@ -51,6 +51,7 @@ pub struct RateLimiter<STRATEGY: RateLimiterStrategy, const SHARDS: usize> {
     pub(crate) period: Duration,
     pub(crate) clear_frequency: Duration,
     pub(crate) warn_every_over_limit: u32,
+    pub(crate) use_x_forwarded_for: bool,
     pub(crate) limiter_tables: &'static [RwLock<RateLimiterTable<u128, AHashRandomState>>; SHARDS],
     pub(crate) name: &'static str,
     _phantom: std::marker::PhantomData<STRATEGY>,
@@ -63,6 +64,7 @@ impl<STRATEGY: RateLimiterStrategy, const SHARDS: usize> Clone for RateLimiter<S
             period: self.period,
             clear_frequency: self.clear_frequency,
             warn_every_over_limit: self.warn_every_over_limit,
+            use_x_forwarded_for: self.use_x_forwarded_for,
             limiter_tables: self.limiter_tables,
             name: self.name,
             _phantom: std::marker::PhantomData,
@@ -88,6 +90,7 @@ impl<STRATEGY: RateLimiterStrategy, const SHARDS: usize> RateLimiter<STRATEGY, S
         }
 
         let warn_every_over_limit = env::CONF.api_limiter_warn_every_over_limit;
+        let use_x_forwarded_for = env::CONF.rate_limiter_use_x_forwarded_for;
 
         rate_limit_table::init_start();
         let limiter_tables =
@@ -98,6 +101,7 @@ impl<STRATEGY: RateLimiterStrategy, const SHARDS: usize> RateLimiter<STRATEGY, S
             period,
             clear_frequency,
             warn_every_over_limit,
+            use_x_forwarded_for,
             limiter_tables,
             name,
             _phantom: std::marker::PhantomData,
@@ -125,11 +129,14 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let ip = req
-            .headers()
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(client_ip_from_xff);
+        let ip = if self.limiter.use_x_forwarded_for {
+            req.headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(client_ip_from_xff)
+        } else {
+            req.peer_addr().map(|addr| addr.ip())
+        };
 
         let req_fut = self.service.call(req);
 
