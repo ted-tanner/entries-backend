@@ -1,6 +1,7 @@
 pub mod app_version;
 pub mod auth;
 pub mod client_type;
+pub mod cors;
 pub mod special_access_token;
 
 pub mod rate_limiting;

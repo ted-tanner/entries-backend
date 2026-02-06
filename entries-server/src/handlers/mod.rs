@@ -4,6 +4,9 @@ pub mod error_reporting;
 pub mod health;
 pub mod user;
 
+/// Value for Access-Control-Allow-Headers when using cookie-based browser auth.
+/// Must be kept in sync with BROWSER_CLIENT_HEADER.
+pub const CORS_ALLOWED_HEADERS_VALUE: &str = "content-type, x-client-is-browser";
 pub const BROWSER_CLIENT_HEADER: &str = "x-client-is-browser";
 
 pub mod verification {

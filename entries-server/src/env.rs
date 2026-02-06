@@ -120,6 +120,8 @@ const API_LIMITER_CLEAR_FREQUENCY_HOURS_VAR: &str = "ENTRIES_API_LIMITER_CLEAR_F
 const API_LIMITER_WARN_EVERY_OVER_LIMIT_VAR: &str = "ENTRIES_API_LIMITER_WARN_EVERY_OVER_LIMIT";
 const RATE_LIMITER_USE_X_FORWARDED_FOR_VAR: &str = "ENTRIES_RATE_LIMITER_USE_X_FORWARDED_FOR";
 
+const CORS_ALLOWED_ORIGINS_VAR: &str = "ENTRIES_CORS_ALLOWED_ORIGINS";
+
 const MAX_SMALL_OBJECT_SIZE_KB_VAR: &str = "ENTRIES_MAX_SMALL_OBJECT_SIZE_KB";
 const MAX_KEYSTORE_SIZE_KB_VAR: &str = "ENTRIES_MAX_KEYSTORE_SIZE_KB";
 const MAX_USER_PREFERENCES_SIZE_KB_VAR: &str = "ENTRIES_MAX_USER_PREFERENCES_SIZE_KB";
@@ -281,6 +283,10 @@ pub struct ConfigInner {
     /// directly (false when not behind a proxy).
     #[zeroize(skip)]
     pub rate_limiter_use_x_forwarded_for: bool,
+
+    /// Comma-separated list of allowed CORS origins. Empty list means CORS is disabled.
+    #[zeroize(skip)]
+    pub cors_allowed_origins: Vec<String>,
 }
 
 pub struct Config {
@@ -501,6 +507,19 @@ impl Config {
                 RATE_LIMITER_USE_X_FORWARDED_FOR_VAR,
                 true,
             )?,
+
+            cors_allowed_origins: {
+                let origins_str = std::env::var(CORS_ALLOWED_ORIGINS_VAR).unwrap_or_default();
+                if origins_str.is_empty() {
+                    Vec::new()
+                } else {
+                    origins_str
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                }
+            },
         };
 
         Ok(Config {
