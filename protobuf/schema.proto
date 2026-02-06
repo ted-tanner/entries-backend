@@ -416,7 +416,7 @@ message TokenPair {
 }
 
 message AuthenticatedSession {
-    required TokenPair tokens = 1;
+    optional TokenPair tokens = 1;
     required bytes preferences_encrypted = 2;
     required int64 preferences_version_nonce = 3;
     required bytes user_keystore_encrypted = 4;

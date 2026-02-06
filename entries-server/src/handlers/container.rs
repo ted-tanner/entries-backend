@@ -29,11 +29,11 @@ use crate::env;
 use crate::handlers::error::{DoesNotExistType, HttpErrorResponse};
 use crate::middleware::auth::{Access, VerifiedToken};
 use crate::middleware::special_access_token::SpecialAccessToken;
-use crate::middleware::{FromHeader, TokenLocation};
+use crate::middleware::{FromHeaderOrCookie, TokenLocation};
 
 pub async fn get(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str = "One of the provided container access tokens had an invalid ID";
@@ -173,7 +173,7 @@ pub async fn get(
 pub async fn create(
     db_async_pool: web::Data<DbAsyncPool>,
     container_data: ProtoBuf<NewContainer>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if container_data.encrypted_blob.len() > env::CONF.max_small_object_size {
         return Err(HttpErrorResponse::InputTooLarge(Cow::Borrowed(
@@ -234,7 +234,7 @@ pub async fn create(
 
 pub async fn bulk_upload_containers(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     bulk_upload_data: ProtoBuf<BulkUploadContainerList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const MAX_BULK_CONTAINERS: usize = 100;
@@ -310,7 +310,10 @@ pub async fn bulk_upload_containers(
 
     let container_dao = db::container::Dao::new(&db_async_pool);
     let bulk_upload_frames = match container_dao
-        .bulk_upload_containers(user_access_token.0.user_id, &bulk_upload_data.containers)
+        .bulk_upload_containers(
+            user_access_token.claims.user_id,
+            &bulk_upload_data.containers,
+        )
         .await
     {
         Ok(frames) => frames,
@@ -340,8 +343,8 @@ pub async fn bulk_upload_containers(
 
 pub async fn edit(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     container_data: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -398,8 +401,8 @@ pub struct AcceptKey {
 
 pub async fn invite_user(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     invitation_info: ProtoBuf<UserInvitationToContainer>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -441,7 +444,7 @@ pub async fn invite_user(
         return Err(HttpErrorResponse::IncorrectlyFormed(Cow::Borrowed(msg)));
     }
 
-    if invitation_info.recipient_user_email == user_access_token.0.user_email {
+    if invitation_info.recipient_user_email == user_access_token.claims.user_email {
         return Err(HttpErrorResponse::InvalidState(Cow::Borrowed(
             "Inviter and recipient are the same",
         )));
@@ -596,8 +599,8 @@ pub async fn invite_user(
 
 pub async fn retract_invitation(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    invite_sender_token: SpecialAccessToken<ContainerInviteSenderToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    invite_sender_token: SpecialAccessToken<ContainerInviteSenderToken, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let invitation_id = invite_sender_token.0.claims.invite_id;
 
@@ -648,8 +651,8 @@ pub async fn retract_invitation(
 
 pub async fn accept_invitation(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeaderOrCookie>,
     container_user_public_key: ProtoBuf<PublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if container_user_public_key.value.len() > env::CONF.max_encryption_key_size {
@@ -698,7 +701,7 @@ pub async fn accept_invitation(
             container_accept_key.container_id,
             container_accept_key.read_only,
             invite_id,
-            &user_access_token.0.user_email,
+            &user_access_token.claims.user_email,
             &container_user_public_key.value,
         )
         .await
@@ -725,8 +728,8 @@ pub async fn accept_invitation(
 
 pub async fn decline_invitation(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    accept_token: SpecialAccessToken<ContainerAcceptToken, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let key_id = accept_token.0.claims.key_id;
     let container_id = accept_token.0.claims.container_id;
@@ -757,7 +760,7 @@ pub async fn decline_invitation(
     accept_token.0.verify(&container_accept_key.public_key)?;
 
     match container_dao
-        .reject_invitation(invite_id, key_id, &user_access_token.0.user_email)
+        .reject_invitation(invite_id, key_id, &user_access_token.claims.user_email)
         .await
     {
         Ok(_) => (),
@@ -782,11 +785,11 @@ pub async fn decline_invitation(
 
 pub async fn get_all_pending_invitations(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let container_dao = db::container::Dao::new(&db_async_pool);
     let invites = match container_dao
-        .get_all_pending_invitations(&user_access_token.0.user_email)
+        .get_all_pending_invitations(&user_access_token.claims.user_email)
         .await
     {
         Ok(invites) => invites,
@@ -808,8 +811,8 @@ pub async fn get_all_pending_invitations(
 
 pub async fn leave_container(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_access(&container_access_token, &db_async_pool).await?;
 
@@ -840,8 +843,8 @@ pub async fn leave_container(
 
 pub async fn create_entry(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     entry_data: ProtoBuf<EncryptedBlobAndCategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -904,8 +907,8 @@ pub async fn create_entry(
 
 pub async fn create_entry_and_category(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     entry_and_category_data: ProtoBuf<EntryAndCategory>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -955,8 +958,8 @@ pub async fn create_entry_and_category(
 
 pub async fn edit_entry(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     entry_data: ProtoBuf<EntryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -1022,8 +1025,8 @@ pub async fn edit_entry(
 
 pub async fn delete_entry(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     entry_id: ProtoBuf<EntryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -1057,8 +1060,8 @@ pub async fn delete_entry(
 
 pub async fn create_category(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     category_data: ProtoBuf<NewEncryptedBlob>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -1102,8 +1105,8 @@ pub async fn create_category(
 
 pub async fn edit_category(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     category_data: ProtoBuf<CategoryUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;
@@ -1154,8 +1157,8 @@ pub async fn edit_category(
 
 pub async fn delete_category(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
-    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    container_access_token: SpecialAccessToken<ContainerAccessToken, FromHeaderOrCookie>,
     category_id: ProtoBuf<CategoryId>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     verify_read_write_access(&container_access_token, &db_async_pool).await?;

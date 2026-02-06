@@ -529,8 +529,8 @@ pub struct TokenPair {
 }
 #[derive(Zeroize, Clone, PartialEq, ::prost::Message)]
 pub struct AuthenticatedSession {
-    #[prost(message, required, tag = "1")]
-    pub tokens: TokenPair,
+    #[prost(message, optional, tag = "1")]
+    pub tokens: ::core::option::Option<TokenPair>,
     #[prost(bytes = "vec", required, tag = "2")]
     pub preferences_encrypted: ::prost::alloc::vec::Vec<u8>,
     #[prost(int64, required, tag = "3")]

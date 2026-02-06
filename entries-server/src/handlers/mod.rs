@@ -4,6 +4,8 @@ pub mod error_reporting;
 pub mod health;
 pub mod user;
 
+pub const BROWSER_CLIENT_HEADER: &str = "x-client-is-browser";
+
 pub mod verification {
     use entries_common::db::{self, DaoError, DbAsyncPool};
     use entries_common::email::{templates::OtpMessage, EmailMessage, EmailSender};
@@ -909,7 +911,12 @@ pub mod test_utils {
 
         (
             user,
-            authenticated_session.tokens.access_token,
+            authenticated_session
+                .tokens
+                .as_ref()
+                .unwrap()
+                .access_token
+                .clone(),
             signin_token.value,
             auth_string,
             new_user.preferences_version_nonce,

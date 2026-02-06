@@ -23,7 +23,7 @@ where
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         let token = into_actix_error_res(match L::get_from_request(req, T::token_name()) {
-            Some(t) => Ok(t),
+            Some(t) => Ok(t.value),
             None => Err(TokenError::TokenMissing),
         });
 
@@ -32,7 +32,7 @@ where
             Err(e) => return future::err(e),
         };
 
-        let decoded_token = into_actix_error_res(T::decode(token));
+        let decoded_token = into_actix_error_res(T::decode(token.as_ref()));
 
         let decoded_token = match decoded_token {
             Ok(t) => t,
@@ -64,7 +64,7 @@ mod tests {
         },
     };
 
-    use crate::middleware::{FromHeader, FromQuery};
+    use crate::middleware::{FromHeaderOrCookie, FromQuery};
 
     #[actix_web::test]
     async fn test_from_header() {
@@ -95,7 +95,7 @@ mod tests {
             .to_http_request();
 
         assert!(
-            SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -103,7 +103,7 @@ mod tests {
             .is_ok()
         );
         assert!(
-            SpecialAccessToken::<ContainerInviteSenderToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerInviteSenderToken, FromHeaderOrCookie>::from_request(
                 &req,
                 &mut Payload::None
             )
@@ -119,7 +119,7 @@ mod tests {
             .is_err()
         );
 
-        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -150,7 +150,7 @@ mod tests {
             .insert_header(("ContainerAccessToken", token.as_str()))
             .to_http_request();
 
-        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -180,7 +180,7 @@ mod tests {
             .insert_header(("ContainerAccessToken", token.as_str()))
             .to_http_request();
 
-        let t = SpecialAccessToken::<ContainerAccessToken, FromHeader>::from_request(
+        let t = SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
             &req,
             &mut Payload::None,
         )
@@ -232,7 +232,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            SpecialAccessToken::<ContainerInviteSenderToken, FromHeader>::from_request(
+            SpecialAccessToken::<ContainerInviteSenderToken, FromHeaderOrCookie>::from_request(
                 &req,
                 &mut Payload::None
             )

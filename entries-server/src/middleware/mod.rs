@@ -1,5 +1,6 @@
 pub mod app_version;
 pub mod auth;
+pub mod client_type;
 pub mod special_access_token;
 
 pub mod rate_limiting;
@@ -15,15 +16,20 @@ use std::borrow::Cow;
 
 use crate::handlers::error::HttpErrorResponse;
 
+pub struct ExtractedToken<'a> {
+    pub value: Cow<'a, str>,
+    pub from_cookie: bool,
+}
+
 pub trait TokenLocation {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str>;
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<ExtractedToken<'a>>;
 }
 
 pub struct FromQuery {}
-pub struct FromHeader {}
+pub struct FromHeaderOrCookie {}
 
 impl TokenLocation for FromQuery {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<ExtractedToken<'a>> {
         let query_string = req.query_string();
         let pos = query_string.find(key)?;
 
@@ -37,14 +43,28 @@ impl TokenLocation for FromQuery {
             None => query_string.len(),
         };
 
-        Some(&query_string[token_start..token_end])
+        Some(ExtractedToken {
+            value: Cow::Borrowed(&query_string[token_start..token_end]),
+            from_cookie: false,
+        })
     }
 }
 
-impl TokenLocation for FromHeader {
-    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<&'a str> {
-        let header = req.headers().get(key)?;
-        header.to_str().ok()
+impl TokenLocation for FromHeaderOrCookie {
+    fn get_from_request<'a>(req: &'a HttpRequest, key: &str) -> Option<ExtractedToken<'a>> {
+        if let Some(header) = req.headers().get(key) {
+            if let Ok(s) = header.to_str() {
+                return Some(ExtractedToken {
+                    value: Cow::Borrowed(s),
+                    from_cookie: false,
+                });
+            }
+        }
+
+        req.cookie(key).map(|c| ExtractedToken {
+            value: Cow::Owned(c.value().to_string()),
+            from_cookie: true,
+        })
     }
 }
 

@@ -31,11 +31,11 @@ use uuid::Uuid;
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, UnverifiedToken, UserDeletion, VerifiedToken};
-use crate::middleware::{FromHeader, FromQuery};
+use crate::middleware::{FromHeaderOrCookie, FromQuery};
 
 pub async fn lookup_user_public_key(
     db_async_pool: web::Data<DbAsyncPool>,
-    _user_access_token: VerifiedToken<Access, FromHeader>,
+    _user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     user_email: web::Query<EmailQuery>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_email = Arc::new(user_email);
@@ -337,7 +337,7 @@ pub async fn create(
 
 pub async fn rotate_user_public_key(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     new_key: ProtoBuf<NewUserPublicKey>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_key.value.len() > env::CONF.max_encryption_key_size {
@@ -352,7 +352,7 @@ pub async fn rotate_user_public_key(
     let user_dao = db::user::Dao::new(&db_async_pool);
     match user_dao
         .rotate_user_public_key(
-            user_access_token.0.user_id,
+            user_access_token.claims.user_id,
             new_key_id,
             &new_key.0.value,
             expected_previous_public_key_id,
@@ -378,7 +378,7 @@ pub async fn rotate_user_public_key(
 
 pub async fn edit_preferences(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     new_prefs: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_prefs.encrypted_blob.len() > env::CONF.max_user_preferences_size {
@@ -390,7 +390,7 @@ pub async fn edit_preferences(
     let user_dao = db::user::Dao::new(&db_async_pool);
     match user_dao
         .update_user_prefs(
-            user_access_token.0.user_id,
+            user_access_token.claims.user_id,
             &new_prefs.encrypted_blob,
             new_prefs.version_nonce,
             new_prefs.expected_previous_version_nonce,
@@ -418,7 +418,7 @@ pub async fn edit_preferences(
 
 pub async fn edit_keystore(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     new_keystore: ProtoBuf<EncryptedBlobUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_keystore.encrypted_blob.len() > env::CONF.max_keystore_size {
@@ -430,7 +430,7 @@ pub async fn edit_keystore(
     let user_dao = db::user::Dao::new(&db_async_pool);
     match user_dao
         .update_user_keystore(
-            user_access_token.0.user_id,
+            user_access_token.claims.user_id,
             &new_keystore.encrypted_blob,
             new_keystore.version_nonce,
             new_keystore.expected_previous_version_nonce,
@@ -561,7 +561,7 @@ pub async fn change_password(
 
 pub async fn change_recovery_key(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     new_recovery_key_data: ProtoBuf<RecoveryKeyUpdate>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if new_recovery_key_data
@@ -596,11 +596,11 @@ pub async fn change_recovery_key(
         )));
     }
 
-    let user_id = user_access_token.0.user_id;
+    let user_id = user_access_token.claims.user_id;
 
     handlers::verification::verify_otp(
         &new_recovery_key_data.otp,
-        &user_access_token.0.user_email,
+        &user_access_token.claims.user_email,
         &db_async_pool,
     )
     .await?;
@@ -673,7 +673,7 @@ pub async fn change_recovery_key(
 
 pub async fn change_email(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     email_change_data: ProtoBuf<EmailChangeRequest>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) =
@@ -684,7 +684,7 @@ pub async fn change_email(
 
     handlers::verification::verify_auth_string(
         &email_change_data.0.auth_string,
-        &user_access_token.0.user_email,
+        &user_access_token.claims.user_email,
         false,
         &db_async_pool,
     )
@@ -710,7 +710,7 @@ pub async fn change_email(
         )));
     }
 
-    let user_id = user_access_token.0.user_id;
+    let user_id = user_access_token.claims.user_id;
     match user_dao.update_email(user_id, &new_email).await {
         Ok(_) => (),
         Err(e) => {
@@ -727,7 +727,7 @@ pub async fn change_email(
 pub async fn init_delete(
     db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
     container_access_tokens: ProtoBuf<ContainerAccessTokenList>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     const INVALID_ID_MSG: &str =
@@ -799,7 +799,7 @@ pub async fn init_delete(
     let delete_me_time = deletion_token_expiration
         + Duration::from_secs(env::CONF.user_deletion_delay_days * 24 * 3600);
 
-    let user_id = user_access_token.0.user_id;
+    let user_id = user_access_token.claims.user_id;
 
     let user_dao = db::user::Dao::new(&db_async_pool);
     match user_dao
@@ -824,8 +824,8 @@ pub async fn init_delete(
     }
 
     let user_deletion_token_claims = NewAuthTokenClaims {
-        user_id: user_access_token.0.user_id,
-        user_email: &user_access_token.0.user_email,
+        user_id: user_access_token.claims.user_id,
+        user_email: &user_access_token.claims.user_email,
         expiration: (SystemTime::now() + env::CONF.user_deletion_token_lifetime)
             .duration_since(UNIX_EPOCH)
             .expect("System time should be after Unix Epoch")
@@ -845,7 +845,7 @@ pub async fn init_delete(
         subject: "Confirm the deletion of your Entries App account",
         from: env::CONF.email_from_address.clone(),
         reply_to: env::CONF.email_reply_to_address.clone(),
-        destination: &user_access_token.0.user_email,
+        destination: &user_access_token.claims.user_email,
         is_html: true,
     };
 
@@ -937,11 +937,11 @@ pub async fn delete(
 
 pub async fn is_listed_for_deletion(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_dao = db::user::Dao::new(&db_async_pool);
     let is_listed_for_deletion = match user_dao
-        .check_is_user_listed_for_deletion(user_access_token.0.user_id)
+        .check_is_user_listed_for_deletion(user_access_token.claims.user_id)
         .await
     {
         Ok(l) => l,
@@ -960,11 +960,11 @@ pub async fn is_listed_for_deletion(
 
 pub async fn cancel_delete(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let user_dao = db::user::Dao::new(&db_async_pool);
     match user_dao
-        .cancel_user_deletion(user_access_token.0.user_id)
+        .cancel_user_deletion(user_access_token.claims.user_id)
         .await
     {
         Ok(_) => (),

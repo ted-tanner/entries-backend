@@ -322,6 +322,19 @@ find . -name "*.rs" | xargs grep -n "TODO"
 * To prevent revealing which email addresses use our service in the endpoint for obtaining the auth string hashing parameters, we return phony data when a user is not found. This phony data needs to change infrequently to adequately mimic a user's nonce. This is done by seeding a random number generator with the number of days since the unix epoch and then hashing the random number with the email address from the request. The nonce is a masked-off portion of the hash. To prevent timing attacks, this hashing takes place with every request to this endpoint regardless of whether or not it will be used.
 
 
+### TODO
+
+* Need to support some web specific things for new web client (currently, the only client is mobile)
+  - Accept and send access/refresh tokens as cookies rather than headers when the client is web (secure, same-site strict, http-only, refresh token path is the refresh endpoint)
+    * The `FromHeader` trait should become `FromHeaderOrCookie`
+    * Sign-in should have a flag indicating cookie vs header auth
+    * Sign-in token should also be a cookie, but the path narrowed to the verify OTP endpoint or where sign-in token is used
+  - CORS (configure allowed sites in `env.rs` and the env vars, e.g. `sample.env`)
+  - CSRF
+    * Enforce CSRF on clients authenticating with a cookie rather than a header
+    * Need an endpoint to be able to request new CSRF token
+  - Tests for all of the above!
+
 ### Minimum Viable Product
 
 * Endpoint for uploading ALL data when creating an account (after using the app without an account for a while)

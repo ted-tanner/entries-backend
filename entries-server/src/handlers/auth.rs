@@ -9,6 +9,8 @@ use entries_common::token::auth_token::{AuthToken, AuthTokenType, NewAuthTokenCl
 use entries_common::validators::{self, Validity};
 
 use actix_protobuf::{ProtoBuf, ProtoBufResponseBuilder};
+use actix_web::cookie::time::Duration as CookieDuration;
+use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{web, HttpResponse};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -21,10 +23,38 @@ use tokio::sync::RwLock;
 use crate::env;
 use crate::handlers::{self, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, Refresh, SignIn, UnverifiedToken, VerifiedToken};
+use crate::middleware::client_type::ClientType;
 use crate::middleware::rate_limiting::rate_limiter_table as rate_limit_table;
 use crate::middleware::rate_limiting::rate_limiter_table::CheckAndRecordResult;
 use crate::middleware::rate_limiting::rate_limiter_table::RateLimiterTable;
-use crate::middleware::FromHeader;
+use crate::middleware::FromHeaderOrCookie;
+
+const ACCESS_TOKEN_COOKIE: &str = "AccessToken";
+const REFRESH_TOKEN_COOKIE: &str = "RefreshToken";
+const SIGNIN_TOKEN_COOKIE: &str = "SignInToken";
+
+fn auth_cookie(name: &str, value: &str, path: &str, max_age_secs: i64) -> Cookie<'static> {
+    Cookie::build(name, value)
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Strict)
+        .max_age(CookieDuration::seconds(max_age_secs))
+        .finish()
+        .into_owned()
+}
+
+fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
+    let mut c = Cookie::build(name, "")
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Strict)
+        .finish()
+        .into_owned();
+    c.make_removal();
+    c
+}
 
 // Use SipHash (std::collections::hash_map::RandomState) rather than the faster ahash for sign-in limiter
 // because email addresses are user-provided and need stronger HashDoS protection
@@ -172,6 +202,7 @@ fn seed_chacha12rng_from_u64(unix_day: u64) -> ChaCha12Rng {
 pub async fn sign_in(
     db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
+    client_type: ClientType,
     credentials: ProtoBuf<CredentialPair>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&credentials.0.email) {
@@ -267,12 +298,25 @@ pub async fn sign_in(
     )
     .await?;
 
-    Ok(HttpResponse::Ok().protobuf(signin_token)?)
+    let response = if client_type.is_browser() {
+        let max_age = env::CONF.signin_token_lifetime.as_secs() as i64;
+        let cookie = auth_cookie(
+            SIGNIN_TOKEN_COOKIE,
+            &signin_token.value,
+            "/api/auth/otp",
+            max_age,
+        );
+        HttpResponse::Ok().cookie(cookie).finish()
+    } else {
+        HttpResponse::Ok().protobuf(signin_token)?
+    };
+
+    Ok(response)
 }
 
 pub async fn verify_otp_for_signin(
     db_async_pool: web::Data<DbAsyncPool>,
-    signin_token: UnverifiedToken<SignIn, FromHeader>,
+    signin_token: UnverifiedToken<SignIn, FromHeaderOrCookie>,
     otp: ProtoBuf<OtpMessage>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
@@ -327,8 +371,8 @@ pub async fn verify_otp_for_signin(
             HttpErrorResponse::InternalError(Cow::Borrowed("Failed to get user data"))
         })?;
 
-    let authenticated_session = AuthenticatedSession {
-        tokens: token_pair,
+    let mut session = AuthenticatedSession {
+        tokens: None,
         preferences_encrypted: protected_data.preferences_encrypted,
         preferences_version_nonce: protected_data.preferences_version_nonce,
         user_keystore_encrypted: protected_data.user_keystore_encrypted,
@@ -341,16 +385,40 @@ pub async fn verify_otp_for_signin(
             .encryption_key_encrypted_with_password,
     };
 
-    Ok(HttpResponse::Ok().protobuf(authenticated_session)?)
+    let response = if signin_token.from_cookie {
+        let access_max_age = env::CONF.access_token_lifetime.as_secs() as i64;
+        let refresh_max_age = env::CONF.refresh_token_lifetime.as_secs() as i64;
+
+        HttpResponse::Ok()
+            .cookie(auth_cookie(
+                ACCESS_TOKEN_COOKIE,
+                &token_pair.access_token,
+                "/api",
+                access_max_age,
+            ))
+            .cookie(auth_cookie(
+                REFRESH_TOKEN_COOKIE,
+                &token_pair.refresh_token,
+                "/api/auth/token/refresh",
+                refresh_max_age,
+            ))
+            .cookie(remove_cookie(SIGNIN_TOKEN_COOKIE, "/api/auth/otp"))
+            .protobuf(session)?
+    } else {
+        session.tokens = Some(token_pair);
+        HttpResponse::Ok().protobuf(session)?
+    };
+
+    Ok(response)
 }
 
 pub async fn obtain_otp(
     db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     handlers::verification::generate_and_email_otp(
-        &user_access_token.0.user_email,
+        &user_access_token.claims.user_email,
         db_async_pool.as_ref(),
         smtp_thread_pool.as_ref(),
     )
@@ -362,7 +430,7 @@ pub async fn obtain_otp(
 pub async fn resend_signin_otp(
     db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
-    signin_token: UnverifiedToken<SignIn, FromHeader>,
+    signin_token: UnverifiedToken<SignIn, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let claims = signin_token.verify()?;
 
@@ -378,14 +446,14 @@ pub async fn resend_signin_otp(
 
 pub async fn refresh_tokens(
     db_async_pool: web::Data<DbAsyncPool>,
-    token: UnverifiedToken<Refresh, FromHeader>,
+    token: UnverifiedToken<Refresh, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let token_claims = token.verify()?;
     let token_expiration = token_claims.expiration;
 
     let auth_dao = db::auth::Dao::new(&db_async_pool);
     match auth_dao
-        .check_is_token_on_blacklist_and_blacklist(&token.0.signature, token_expiration)
+        .check_is_token_on_blacklist_and_blacklist(&token.decoded.signature, token_expiration)
         .await
     {
         Ok(false) => (),
@@ -428,13 +496,33 @@ pub async fn refresh_tokens(
 
     let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
 
-    let token_pair = TokenPair {
-        access_token,
-        refresh_token,
-        server_time: SystemTime::now().try_into()?,
+    let response = if token.from_cookie {
+        let access_max_age = env::CONF.access_token_lifetime.as_secs() as i64;
+        let refresh_max_age = env::CONF.refresh_token_lifetime.as_secs() as i64;
+        HttpResponse::Ok()
+            .cookie(auth_cookie(
+                ACCESS_TOKEN_COOKIE,
+                &access_token,
+                "/api",
+                access_max_age,
+            ))
+            .cookie(auth_cookie(
+                REFRESH_TOKEN_COOKIE,
+                &refresh_token,
+                "/api/auth/token/refresh",
+                refresh_max_age,
+            ))
+            .finish()
+    } else {
+        let token_pair = TokenPair {
+            access_token,
+            refresh_token,
+            server_time: SystemTime::now().try_into()?,
+        };
+        HttpResponse::Ok().protobuf(token_pair)?
     };
 
-    Ok(HttpResponse::Ok().protobuf(token_pair)?)
+    Ok(response)
 }
 
 pub async fn recover_with_recovery_key(
@@ -612,12 +700,12 @@ pub async fn recover_with_recovery_key(
 
 pub async fn logout(
     db_async_pool: web::Data<DbAsyncPool>,
-    user_access_token: VerifiedToken<Access, FromHeader>,
-    refresh_token: UnverifiedToken<Refresh, FromHeader>,
+    user_access_token: VerifiedToken<Access, FromHeaderOrCookie>,
+    refresh_token: UnverifiedToken<Refresh, FromHeaderOrCookie>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     let refresh_token_claims = refresh_token.verify()?;
 
-    if refresh_token_claims.user_id != user_access_token.0.user_id {
+    if refresh_token_claims.user_id != user_access_token.claims.user_id {
         return Err(HttpErrorResponse::UserDisallowed(Cow::Borrowed(
             "Refresh token does not belong to user.",
         )));
@@ -625,7 +713,10 @@ pub async fn logout(
 
     let auth_dao = db::auth::Dao::new(&db_async_pool);
     match auth_dao
-        .blacklist_token(&refresh_token.0.signature, refresh_token_claims.expiration)
+        .blacklist_token(
+            &refresh_token.decoded.signature,
+            refresh_token_claims.expiration,
+        )
         .await
     {
         Ok(_) => (),
@@ -645,7 +736,19 @@ pub async fn logout(
         }
     }
 
-    Ok(HttpResponse::Ok().finish())
+    let response = if refresh_token.from_cookie {
+        HttpResponse::Ok()
+            .cookie(remove_cookie(ACCESS_TOKEN_COOKIE, "/api"))
+            .cookie(remove_cookie(
+                REFRESH_TOKEN_COOKIE,
+                "/api/auth/token/refresh",
+            ))
+            .finish()
+    } else {
+        HttpResponse::Ok().finish()
+    };
+
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -666,6 +769,7 @@ mod tests {
 
     use actix_protobuf::ProtoBufConfig;
     use actix_web::body::to_bytes;
+    use actix_web::cookie::Cookie;
     use actix_web::http::StatusCode;
     use actix_web::test::{self, TestRequest};
     use actix_web::web::Data;
@@ -677,6 +781,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
+    use crate::handlers::BROWSER_CLIENT_HEADER;
     use crate::middleware::{FairUseStrategy, RateLimiter};
     use crate::services::api::RateLimiters;
 
@@ -1186,8 +1291,9 @@ mod tests {
         let resp_body = to_bytes(resp.into_body()).await.unwrap();
         let authenticated_session = AuthenticatedSession::decode(resp_body).unwrap();
 
-        let access_token = AuthToken::decode(&authenticated_session.tokens.access_token).unwrap();
-        let refresh_token = AuthToken::decode(&authenticated_session.tokens.refresh_token).unwrap();
+        let tokens = authenticated_session.tokens.as_ref().unwrap();
+        let access_token = AuthToken::decode(&tokens.access_token).unwrap();
+        let refresh_token = AuthToken::decode(&tokens.refresh_token).unwrap();
 
         assert!(matches!(
             access_token.claims.token_type,
@@ -2711,5 +2817,644 @@ mod tests {
         .unwrap();
 
         assert!(!new_otp.is_empty());
+    }
+
+    #[actix_web::test]
+    async fn test_sign_in_with_cookie_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let user_number = SecureRng::next_u128();
+
+        let password = format!("password{user_number}");
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(password.as_bytes())
+            .unwrap();
+
+        let public_key_id = Uuid::now_v7();
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
+            recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: SecureRng::next_i64(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+                .set(users::is_verified.eq(true)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce-and-auth-string-params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign-in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header((BROWSER_CLIENT_HEADER, "true"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Extract headers before consuming body - collect into Vec to avoid borrow issues
+        let cookies: Vec<String> = resp
+            .headers()
+            .get_all("set-cookie")
+            .filter_map(|h| h.to_str().ok().map(|s| s.to_string()))
+            .collect();
+
+        // Verify signin token is NOT in response body
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        assert!(
+            resp_body.is_empty(),
+            "Response body should be empty when using cookie auth, but got {} bytes",
+            resp_body.len()
+        );
+        let signin_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)));
+        assert!(signin_cookie.is_some(), "SignInToken cookie should be set");
+
+        // Verify cookie attributes
+        let cookie_str = signin_cookie.unwrap();
+        assert!(cookie_str.contains("HttpOnly"), "Cookie should be HttpOnly");
+        assert!(cookie_str.contains("Secure"), "Cookie should be Secure");
+        assert!(
+            cookie_str.contains("SameSite=Strict"),
+            "Cookie should be SameSite=Strict"
+        );
+        assert!(
+            cookie_str.contains("Path=/api/auth/otp"),
+            "Cookie path should be /api/auth/otp"
+        );
+
+        // Extract token value from cookie - handle tokens that contain '=' characters
+        // Format: CookieName=value; Path=...
+        let cookie_value = cookie_str
+            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap();
+        assert!(!cookie_value.is_empty(), "Cookie value should not be empty");
+
+        // Verify token is valid
+        let signin_token = AuthToken::decode(cookie_value.trim()).unwrap();
+        assert!(matches!(
+            signin_token.claims.token_type,
+            AuthTokenType::SignIn
+        ));
+        assert_eq!(signin_token.claims.user_email, new_user.email);
+    }
+
+    #[actix_web::test]
+    async fn test_verify_otp_with_cookie_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let user_number = SecureRng::next_u128();
+
+        let password = format!("password{user_number}");
+        let auth_string = argon2_kdf::Hasher::new()
+            .iterations(2)
+            .memory_cost_kib(128)
+            .threads(1)
+            .hash(password.as_bytes())
+            .unwrap();
+
+        let public_key_id = Uuid::now_v7();
+        let new_user = NewUser {
+            email: format!("test_user{}@test.com", &user_number),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            auth_string_hash_salt: Vec::from(auth_string.salt_bytes()),
+            auth_string_hash_mem_cost_kib: 128,
+            auth_string_hash_threads: 1,
+            auth_string_hash_iterations: 2,
+            password_encryption_key_salt: gen_bytes(10),
+            password_encryption_key_mem_cost_kib: 1024,
+            password_encryption_key_threads: 1,
+            password_encryption_key_iterations: 1,
+            recovery_key_hash_salt_for_encryption: gen_bytes(16),
+            recovery_key_hash_salt_for_recovery_auth: gen_bytes(16),
+            recovery_key_hash_mem_cost_kib: 1024,
+            recovery_key_hash_threads: 1,
+            recovery_key_hash_iterations: 1,
+            recovery_key_auth_hash: gen_bytes(32),
+            encryption_key_encrypted_with_password: gen_bytes(10),
+            encryption_key_encrypted_with_recovery_key: gen_bytes(10),
+            public_key_id: public_key_id.into(),
+            public_key: gen_bytes(10),
+            preferences_encrypted: gen_bytes(10),
+            preferences_version_nonce: SecureRng::next_i64(),
+            user_keystore_encrypted: gen_bytes(10),
+            user_keystore_version_nonce: SecureRng::next_i64(),
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/user")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .set_payload(new_user.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        diesel_async::RunQueryDsl::execute(
+            dsl::update(users::table.filter(users::email.eq(&new_user.email)))
+                .set(users::is_verified.eq(true)),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Get nonce
+        let req = TestRequest::get()
+            .uri(&format!(
+                "/api/auth/nonce-and-auth-string-params?email={}",
+                &new_user.email
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let resp_body = SigninNonceAndHashParams::decode(resp_body).unwrap();
+
+        // Sign in with cookie auth
+        let credentials = CredentialPair {
+            email: new_user.email.clone(),
+            auth_string: Vec::from(auth_string.as_bytes()),
+            nonce: resp_body.nonce,
+        };
+
+        let req = TestRequest::post()
+            .uri("/api/auth/sign-in")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .insert_header((BROWSER_CLIENT_HEADER, "true"))
+            .set_payload(credentials.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Extract signin token from cookie (extract headers before consuming body)
+        let cookies: Vec<_> = resp
+            .headers()
+            .get_all("set-cookie")
+            .filter_map(|h| h.to_str().ok())
+            .collect();
+        let signin_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)))
+            .unwrap();
+        // Extract token value - handle tokens that contain '=' characters
+        let signin_token_value = signin_cookie
+            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap()
+            .trim();
+
+        // Get OTP
+        let otp = diesel_async::RunQueryDsl::get_result::<UserOtp>(
+            user_otps::table.find(&new_user.email),
+            &mut env::testing::DB_ASYNC_POOL.get().await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let otp_msg = OtpMessage {
+            value: otp.otp.clone(),
+        };
+
+        // Verify OTP using cookie (not header) - cookie path must match the path it was set with
+        let req = TestRequest::post()
+            .uri("/api/auth/otp/verify")
+            .insert_header(("Content-Type", "application/protobuf"))
+            .cookie(
+                Cookie::build(SIGNIN_TOKEN_COOKIE, signin_token_value)
+                    .path("/api/auth/otp")
+                    .finish(),
+            )
+            .set_payload(otp_msg.encode_to_vec())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Extract headers before consuming body - collect into Vec to avoid borrow issues
+        let cookies: Vec<String> = resp
+            .headers()
+            .get_all("set-cookie")
+            .filter_map(|h| h.to_str().ok().map(|s| s.to_string()))
+            .collect();
+
+        // Verify tokens are NOT in response body
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        let authenticated_session = AuthenticatedSession::decode(resp_body).unwrap();
+        assert!(
+            authenticated_session.tokens.is_none(),
+            "Tokens should NOT be in response body when using cookie auth"
+        );
+
+        // Verify tokens ARE in cookies
+        let access_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)));
+        let refresh_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)));
+
+        assert!(access_cookie.is_some(), "AccessToken cookie should be set");
+        assert!(
+            refresh_cookie.is_some(),
+            "RefreshToken cookie should be set"
+        );
+
+        // Verify cookie attributes
+        let access_cookie_str = access_cookie.unwrap();
+        assert!(
+            access_cookie_str.contains("HttpOnly"),
+            "Access cookie should be HttpOnly"
+        );
+        assert!(
+            access_cookie_str.contains("Secure"),
+            "Access cookie should be Secure"
+        );
+        assert!(
+            access_cookie_str.contains("SameSite=Strict"),
+            "Access cookie should be SameSite=Strict"
+        );
+        assert!(
+            access_cookie_str.contains("Path=/api"),
+            "Access cookie path should be /api"
+        );
+
+        let refresh_cookie_str = refresh_cookie.unwrap();
+        assert!(
+            refresh_cookie_str.contains("HttpOnly"),
+            "Refresh cookie should be HttpOnly"
+        );
+        assert!(
+            refresh_cookie_str.contains("Secure"),
+            "Refresh cookie should be Secure"
+        );
+        assert!(
+            refresh_cookie_str.contains("SameSite=Strict"),
+            "Refresh cookie should be SameSite=Strict"
+        );
+        assert!(
+            refresh_cookie_str.contains("Path=/api/auth/token/refresh"),
+            "Refresh cookie path should be /api/auth/token/refresh"
+        );
+
+        // Verify signin token cookie is removed
+        let signin_cookie_removed = cookies.iter().find(|c| {
+            c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)) && c.contains("Max-Age=0")
+        });
+        assert!(
+            signin_cookie_removed.is_some(),
+            "SignInToken cookie should be removed"
+        );
+
+        // Extract and verify token values - handle tokens that contain '=' characters
+        let access_token_value = access_cookie_str
+            .strip_prefix(&format!("{}=", ACCESS_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap()
+            .trim();
+        let refresh_token_value = refresh_cookie_str
+            .strip_prefix(&format!("{}=", REFRESH_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap()
+            .trim();
+
+        let access_token = AuthToken::decode(access_token_value).unwrap();
+        let refresh_token = AuthToken::decode(refresh_token_value).unwrap();
+
+        assert!(matches!(
+            access_token.claims.token_type,
+            AuthTokenType::Access
+        ));
+        assert!(matches!(
+            refresh_token.claims.token_type,
+            AuthTokenType::Refresh
+        ));
+        assert_eq!(access_token.claims.user_email, new_user.email);
+        assert_eq!(refresh_token.claims.user_email, new_user.email);
+    }
+
+    #[actix_web::test]
+    async fn test_refresh_tokens_with_cookie_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
+
+        // Create a valid refresh token
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        // Refresh tokens using cookie (not header)
+        let req = TestRequest::post()
+            .uri("/api/auth/token/refresh")
+            .cookie(Cookie::build(REFRESH_TOKEN_COOKIE, refresh_token.as_str()).finish())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Extract headers before consuming body - collect into Vec to avoid borrow issues
+        let cookies: Vec<String> = resp
+            .headers()
+            .get_all("set-cookie")
+            .filter_map(|h| h.to_str().ok().map(|s| s.to_string()))
+            .collect();
+
+        // Verify tokens are NOT in response body
+        let resp_body = to_bytes(resp.into_body()).await.unwrap();
+        assert!(
+            resp_body.is_empty(),
+            "Response body should be empty when using cookie auth, but got {} bytes",
+            resp_body.len()
+        );
+
+        // Verify tokens ARE in cookies
+
+        let access_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)));
+        let refresh_cookie = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)));
+
+        assert!(access_cookie.is_some(), "AccessToken cookie should be set");
+        assert!(
+            refresh_cookie.is_some(),
+            "RefreshToken cookie should be set"
+        );
+
+        // Verify cookie attributes
+        let access_cookie_str = access_cookie.unwrap();
+        assert!(
+            access_cookie_str.contains("HttpOnly"),
+            "Access cookie should be HttpOnly"
+        );
+        assert!(
+            access_cookie_str.contains("Secure"),
+            "Access cookie should be Secure"
+        );
+        assert!(
+            access_cookie_str.contains("SameSite=Strict"),
+            "Access cookie should be SameSite=Strict"
+        );
+        assert!(
+            access_cookie_str.contains("Path=/api"),
+            "Access cookie path should be /api"
+        );
+
+        let refresh_cookie_str = refresh_cookie.unwrap();
+        assert!(
+            refresh_cookie_str.contains("HttpOnly"),
+            "Refresh cookie should be HttpOnly"
+        );
+        assert!(
+            refresh_cookie_str.contains("Secure"),
+            "Refresh cookie should be Secure"
+        );
+        assert!(
+            refresh_cookie_str.contains("SameSite=Strict"),
+            "Refresh cookie should be SameSite=Strict"
+        );
+        assert!(
+            refresh_cookie_str.contains("Path=/api/auth/token/refresh"),
+            "Refresh cookie path should be /api/auth/token/refresh"
+        );
+
+        // Extract and verify token values - handle tokens that contain '=' characters
+        let access_token_value = access_cookie_str
+            .strip_prefix(&format!("{}=", ACCESS_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap()
+            .trim();
+        let refresh_token_value = refresh_cookie_str
+            .strip_prefix(&format!("{}=", REFRESH_TOKEN_COOKIE))
+            .and_then(|s| s.split(';').next())
+            .unwrap()
+            .trim();
+
+        let access_token = AuthToken::decode(access_token_value).unwrap();
+        let new_refresh_token = AuthToken::decode(refresh_token_value).unwrap();
+
+        assert!(matches!(
+            access_token.claims.token_type,
+            AuthTokenType::Access
+        ));
+        assert!(matches!(
+            new_refresh_token.claims.token_type,
+            AuthTokenType::Refresh
+        ));
+        assert_eq!(access_token.claims.user_email, user.email);
+        assert_eq!(new_refresh_token.claims.user_email, user.email);
+        assert!(access_token.verify(&env::CONF.token_signing_key).is_ok());
+        assert!(new_refresh_token
+            .verify(&env::CONF.token_signing_key)
+            .is_ok());
+    }
+
+    #[actix_web::test]
+    async fn test_logout_with_cookie_auth() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
+
+        // Create valid tokens
+        let access_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Access,
+        };
+
+        let refresh_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.refresh_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Refresh,
+        };
+
+        let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
+        let refresh_token =
+            AuthToken::sign_new(refresh_token_claims.clone(), &env::CONF.token_signing_key);
+
+        // Logout using cookies (not headers)
+        let req = TestRequest::post()
+            .uri("/api/auth/logout")
+            .cookie(Cookie::build(ACCESS_TOKEN_COOKIE, access_token.as_str()).finish())
+            .cookie(Cookie::build(REFRESH_TOKEN_COOKIE, refresh_token.as_str()).finish())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify cookies are cleared (Max-Age=0)
+        let cookies: Vec<_> = resp
+            .headers()
+            .get_all("set-cookie")
+            .filter_map(|h| h.to_str().ok())
+            .collect();
+
+        let access_cookie_removed = cookies.iter().find(|c| {
+            c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)) && c.contains("Max-Age=0")
+        });
+        let refresh_cookie_removed = cookies.iter().find(|c| {
+            c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)) && c.contains("Max-Age=0")
+        });
+
+        assert!(
+            access_cookie_removed.is_some(),
+            "AccessToken cookie should be removed"
+        );
+        assert!(
+            refresh_cookie_removed.is_some(),
+            "RefreshToken cookie should be removed"
+        );
+
+        // Verify refresh token is blacklisted
+        let auth_dao = db::auth::Dao::new(&env::testing::DB_ASYNC_POOL);
+        let decoded_refresh_token = AuthToken::decode(&refresh_token).unwrap();
+        let is_blacklisted = auth_dao
+            .check_is_token_on_blacklist_and_blacklist(
+                &decoded_refresh_token.signature,
+                refresh_token_claims.expiration,
+            )
+            .await
+            .unwrap();
+        assert!(is_blacklisted);
+    }
+
+    #[actix_web::test]
+    async fn test_token_extraction_from_cookies() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .app_data(ProtoBufConfig::default())
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let (user, _, _, _, _, _) = test_utils::create_user().await;
+
+        // Create a valid access token
+        let access_token_claims = NewAuthTokenClaims {
+            user_id: user.id,
+            user_email: &user.email,
+            expiration: (SystemTime::now() + env::CONF.access_token_lifetime)
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            token_type: AuthTokenType::Access,
+        };
+
+        let access_token = AuthToken::sign_new(access_token_claims, &env::CONF.token_signing_key);
+
+        // Make a request using cookie (not header) - use obtain_otp endpoint as it requires auth
+        let req = TestRequest::get()
+            .uri("/api/auth/otp")
+            .cookie(Cookie::build(ACCESS_TOKEN_COOKIE, access_token.as_str()).finish())
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        // Should succeed - token was extracted from cookie
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
