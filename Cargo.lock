@@ -273,9 +273,9 @@ dependencies = [
 
 [[package]]
 name = "argon2-kdf"
-version = "1.6.2"
+version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf7b7646ca3d2b4fb8ee3de25882f1293c748510bc62ee0d2c3b4bb20524c8cf"
+checksum = "7f90421572f2a6e1c36b869f13c776a93c3c0ad2e9ac7698e1bccdab1e6ca04e"
 dependencies = [
  "base64",
  "bindgen",
@@ -326,9 +326,9 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.71.1"
+version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
 dependencies = [
  "bitflags",
  "cexpr",
