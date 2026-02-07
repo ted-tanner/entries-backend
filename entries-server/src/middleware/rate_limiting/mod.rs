@@ -4,8 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-// When use_x_forwarded_for is true (behind a proxy): If `X-Forwarded-For` is missing or malformed,
-// we intentionally do NOT rate limit. When use_x_forwarded_for is false, we use the peer address.
+// When use_x_forwarded_for is true (behind a proxy): Prefer `X-Forwarded-For`, fall back to peer
+// address if missing or malformed. When use_x_forwarded_for is false, we use the peer address.
 
 // ahash is a faster hash function than the one from the standard library, albeit with slightly poorer resistance
 // to HashDoS attacks. That should be okay as it still has some resistance and it is hard for an attacker to
@@ -134,6 +134,7 @@ where
                 .get("x-forwarded-for")
                 .and_then(|v| v.to_str().ok())
                 .and_then(client_ip_from_xff)
+                .or_else(|| req.peer_addr().map(|addr| addr.ip()))
         } else {
             req.peer_addr().map(|addr| addr.ip())
         };
@@ -149,7 +150,7 @@ where
 
         Box::pin(async move {
             let Some(ip_addr) = ip else {
-                // Do not rate limit if no usable X-Forwarded-For
+                // Do not rate limit when no IP is available (e.g. Unix socket, peer_addr is None)
                 return req_fut.await;
             };
 
@@ -724,6 +725,108 @@ mod tests {
                 warning
             );
         }
+    }
+
+    #[actix_web::test]
+    async fn fallback_to_peer_addr_when_xff_missing() {
+        // When use_x_forwarded_for is true (default), requests without X-Forwarded-For
+        // should fall back to peer_addr and still be rate limited.
+        let limiter = RateLimiter::<FairUse, 16>::new(
+            2,
+            Duration::from_millis(50),
+            Duration::from_millis(80),
+            "fallback_test",
+        );
+
+        let app = test::init_service(
+            App::new()
+                .wrap(limiter)
+                .service(web::resource("/").to(|| async { HttpResponse::Ok().body("ok") })),
+        )
+        .await;
+
+        let peer = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
+
+        // No X-Forwarded-For; should use peer_addr. First 2 requests ok, 3rd blocked.
+        let req = test::TestRequest::default().peer_addr(peer).to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(status, StatusCode::OK);
+
+        let req = test::TestRequest::default().peer_addr(peer).to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(status, StatusCode::OK);
+
+        let req = test::TestRequest::default().peer_addr(peer).to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(
+            status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "Third request without X-Forwarded-For should be rate limited via peer_addr fallback"
+        );
+    }
+
+    #[actix_web::test]
+    async fn fallback_to_peer_addr_when_xff_malformed() {
+        // When X-Forwarded-For is present but malformed, fall back to peer_addr.
+        let limiter = RateLimiter::<FairUse, 16>::new(
+            2,
+            Duration::from_millis(50),
+            Duration::from_millis(80),
+            "fallback_malformed_test",
+        );
+
+        let app = test::init_service(
+            App::new()
+                .wrap(limiter)
+                .service(web::resource("/").to(|| async { HttpResponse::Ok().body("ok") })),
+        )
+        .await;
+
+        let peer = std::net::SocketAddr::from(([192, 168, 1, 1], 8080));
+
+        // Malformed X-Forwarded-For; should fall back to peer_addr. First 2 ok, 3rd blocked.
+        let req = test::TestRequest::default()
+            .peer_addr(peer)
+            .append_header(("x-forwarded-for", "not-a-valid-ip"))
+            .to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(status, StatusCode::OK);
+
+        let req = test::TestRequest::default()
+            .peer_addr(peer)
+            .append_header(("x-forwarded-for", "not-a-valid-ip"))
+            .to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(status, StatusCode::OK);
+
+        let req = test::TestRequest::default()
+            .peer_addr(peer)
+            .append_header(("x-forwarded-for", "not-a-valid-ip"))
+            .to_request();
+        let status = match test::try_call_service(&app, req).await {
+            Ok(res) => res.status(),
+            Err(err) => err.as_response_error().status_code(),
+        };
+        assert_eq!(
+            status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "Third request with malformed X-Forwarded-For should be rate limited via peer_addr fallback"
+        );
     }
 
     #[actix_web::test]

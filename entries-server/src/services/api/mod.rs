@@ -22,6 +22,9 @@ pub struct RateLimiters {
     pub modify_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 32>,
     pub expensive_auth_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 32>,
     pub light_auth_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 32>,
+
+    pub error_report_fair_use: RateLimiter<FairUseStrategy, 32>,
+    pub error_report_circuit_breaker: RateLimiter<CircuitBreakerStrategy, 32>,
 }
 
 impl Default for RateLimiters {
@@ -87,6 +90,18 @@ impl Default for RateLimiters {
                 CONF.api_light_auth_circuit_breaker_limiter_period,
                 CONF.api_limiter_clear_frequency,
                 "light_auth_circuit_breaker",
+            ),
+            error_report_fair_use: RateLimiter::<FairUseStrategy, 32>::new(
+                CONF.error_report_fair_use_max_per_period,
+                CONF.error_report_fair_use_period,
+                CONF.api_limiter_clear_frequency,
+                "error_report_fair_use",
+            ),
+            error_report_circuit_breaker: RateLimiter::<CircuitBreakerStrategy, 32>::new(
+                CONF.error_report_circuit_breaker_max_per_period,
+                CONF.error_report_circuit_breaker_period,
+                CONF.api_limiter_clear_frequency,
+                "error_report_circuit_breaker",
             ),
         }
     }

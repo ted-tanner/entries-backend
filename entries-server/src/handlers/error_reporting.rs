@@ -14,8 +14,8 @@ use tokio::sync::Mutex;
 
 use crate::env;
 
-const CLIENT_ERR_LOG_LEN: usize = 4_096;
-const CLIENT_ERR_MSG_MAX_LEN: usize = 128;
+const CLIENT_ERR_LOG_LEN: usize = 8_192;
+const CLIENT_ERR_MSG_MAX_LEN: usize = 256;
 const CLIENT_ERR_LOG_LOCK_SHARD_COUNT: usize = 256;
 
 static CLIENT_ERROR_LOG_INDEX: AtomicUsize = AtomicUsize::new(0);
