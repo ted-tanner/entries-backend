@@ -74,8 +74,10 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let include_cors = ClientType::from_service_request(&req).is_browser()
-            && !self.allowed_origin_headers.is_empty();
+        let is_options = req.method() == actix_web::http::Method::OPTIONS;
+        let include_cors = is_options
+            || (ClientType::from_service_request(&req).is_browser()
+                && !self.allowed_origin_headers.is_empty());
 
         if !include_cors {
             let req_fut = self.service.call(req);
@@ -87,7 +89,6 @@ where
             .get(header::ORIGIN)
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string());
-        let is_options = req.method() == actix_web::http::Method::OPTIONS;
 
         let allowed_origin_header = origin.as_ref().and_then(|o| {
             self.allowed_origin_headers
@@ -235,6 +236,30 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn preflight_options_no_cors_headers_when_no_allowed_origins() {
+        let cors = CorsMiddleware::with_origins(vec![]);
+        let app = test::init_service(App::new().wrap(cors).route(
+            "/",
+            web::get().to(|| async { HttpResponse::Ok().body("ok") }),
+        ))
+        .await;
+
+        let req = test::TestRequest::default()
+            .method(Method::OPTIONS)
+            .uri("/")
+            .append_header((header::ORIGIN, "https://example.com"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none(),
+            "OPTIONS preflight should not add CORS headers when no origins configured"
+        );
+    }
+
+    #[actix_web::test]
     async fn cors_headers_on_actual_request_when_origin_allowed() {
         let cors = CorsMiddleware::with_origins(vec!["https://example.com"]);
         let app = test::init_service(App::new().wrap(cors).route(
@@ -300,7 +325,6 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://example.com"))
             .append_header((header::ACCESS_CONTROL_REQUEST_METHOD, "GET"))
             .to_request();
@@ -350,7 +374,6 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://evil.com"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -375,7 +398,6 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
