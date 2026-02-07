@@ -24,7 +24,7 @@ impl Token for ContainerInviteSenderToken {
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
-        "ContainerInviteSenderToken"
+        "x-container-invite-sender-token"
     }
 }
 

@@ -11,6 +11,34 @@ Zero-trust property: The server does not track which user can access which conta
 
 All request/response bodies for the API (except HTML deletion pages and JSON health) use Protocol Buffers encoded with `Content-Type: application/protobuf`.
 
+## Client types: browser vs mobile/API
+
+The server supports two client types:
+
+**Mobile/API clients** (native apps, scripts, Postman): Send auth tokens in headers only. No CORS. No CSRF. Use headers `x-access-token`, `x-refresh-token`, etc.
+
+**Browser clients** (web apps): May use either headers or cookies for auth. Must send `x-client-is-browser: true` (or `true` in any case) so the server applies CORS. When using cookie-based auth, CSRF protection applies to state-changing requests; see CSRF below.
+
+### CORS
+
+When `ENTRIES_CORS_ALLOWED_ORIGINS` is configured, the server adds CORS headers for:
+- Requests with `x-client-is-browser: true`, or
+- OPTIONS preflight requests
+
+For other requests, CORS headers are omitted. CORS is only relevant to browsers; non-browser clients ignore it.
+
+### CSRF
+
+When a request carries an auth cookie (`x-access-token`, `x-refresh-token`, `x-signin-token`) or a CSRF cookie, and the method is not safe (GET/HEAD/OPTIONS), the server requires a valid CSRF token. The token must appear in both:
+- Cookie: `x-csrf-token` (set by `GET /api/auth/csrf-token`)
+- Header: `x-csrf-token` (sent by the client)
+
+Header-only auth (no cookies) is not subject to CSRF. To obtain a CSRF token, call `GET /api/auth/csrf-token` before making state-changing requests.
+
+### Cookie-based auth
+
+For browser clients, the server can set access and refresh tokens as HttpOnly cookies. OTP verification and token refresh respond with `Set-Cookie` when the client indicates browser usage via `x-client-is-browser`. Credentials must be sent with `credentials: 'include'` (or equivalent) for cookie-based requests.
+
 ## Getting started: user lifecycle
 
 1) Create user
@@ -21,7 +49,7 @@ All request/response bodies for the API (except HTML deletion pages and JSON hea
 
 2) Verify OTP to get session tokens and verify user email
 - POST `/api/auth/otp/verify`
-- Headers: `SignInToken: <token from step 1>`
+- Headers: `x-signin-token: <token from step 1>`
 - Body: `Otp { value }` (from email)
 - Response: `AuthenticatedSession { tokens: TokenPair { access_token, refresh_token, server_time }, preferences_encrypted, preferences_version_nonce, user_keystore_encrypted, user_keystore_version_nonce, password_encryption_key_salt, password_encryption_key_mem_cost_kib, password_encryption_key_threads, password_encryption_key_iterations, encryption_key_encrypted_with_password }`
 - Successful OTP verification marks the account as verified.
@@ -37,17 +65,17 @@ All request/response bodies for the API (except HTML deletion pages and JSON hea
 
 4) Resend OTP during sign-in (if needed)
 - POST `/api/auth/otp/resend-signin-otp`
-- Headers: `SignInToken: <token from sign-in>`
+- Headers: `x-signin-token: <token from sign-in>`
 - Response: 200 OK (new OTP email is sent)
 
 5) Refresh tokens
 - POST `/api/auth/token/refresh`
-- Headers: `RefreshToken: <refresh_token>`
+- Headers: `x-refresh-token: <refresh_token>`
 - Response: `TokenPair { access_token, refresh_token, server_time }`
 
 6) Logout (blacklist refresh token)
 - POST `/api/auth/logout`
-- Headers: `AccessToken: <access_token>`, `RefreshToken: <refresh_token>`
+- Headers: `x-access-token: <access_token>`, `x-refresh-token: <refresh_token>`
 - Response: 200 OK
 
 
@@ -56,13 +84,13 @@ All request/response bodies for the API (except HTML deletion pages and JSON hea
 This section gives a practical, step-by-step flow for sharing a container between two verified users. The crypto formats for info blobs are client-defined; the server only stores opaque bytes and verifies tokens.
 
 - Prerequisites
-  - Sender has an `AccessToken` and a read-write `ContainerAccessToken` for the container
+  - Sender has an access token (`x-access-token`) and a read-write container access token (`x-container-access-token`) for the container
   - Sender knows the container's encryption key (to share) and container id
   - Recipient has a verified account with a registered RSA public key
 
 - Sender workflow
   1) Fetch recipient's public key
-     - GET `/api/user/public-key?email=<recipient>` (Headers: `AccessToken`)
+     - GET `/api/user/public-key?email=<recipient>` (Headers: `x-access-token`)
      - Response: `UserPublicKey { id, value }` where `value` is the recipient’s RSA public key (DER)
   2) Prepare encrypted artifacts (client-defined schemas)
      - Encrypt the container encryption key with recipient’s RSA public key → `encryption_key_encrypted`
@@ -72,7 +100,7 @@ This section gives a practical, step-by-step flow for sharing a container betwee
      - Encrypt the symmetric key with recipient’s RSA public key → `share_info_symmetric_key_encrypted`
   3) Create the invitation
      - POST `/api/container/invitation`
-       - Headers: `AccessToken`, `ContainerAccessToken`
+       - Headers: `x-access-token`, `x-container-access-token`
        - Body: `UserInvitationToContainer` with fields:
          - `recipient_user_email`: recipient email
          - `recipient_public_key_id_used_by_sender`: id from step 1
@@ -83,11 +111,11 @@ This section gives a practical, step-by-step flow for sharing a container betwee
      - Response: `InvitationId { value }`
   4) (Optional) Retract the invitation
      - Build `ContainerInviteSenderToken` claims `{ iid, exp }` and sign with the Ed25519 private key that matches `sender_public_key`
-     - DELETE `/api/container/invitation` with Headers: `AccessToken`, `ContainerInviteSenderToken`
+     - DELETE `/api/container/invitation` with Headers: `x-access-token`, `x-container-invite-sender-token`
 
 - Recipient workflow
   1) List pending invitations
-     - GET `/api/container/invitation/all-pending` (Headers: `AccessToken`)
+     - GET `/api/container/invitation/all-pending` (Headers: `x-access-token`)
      - Response: `ContainerShareInviteList { invites: [...] }`, where each invite contains:
        - `container_accept_key_encrypted`, `container_accept_key_id_encrypted`, `container_accept_key_info_encrypted`
        - `container_info_encrypted`, `sender_info_encrypted`, `share_info_symmetric_key_encrypted`
@@ -103,138 +131,138 @@ This section gives a practical, step-by-step flow for sharing a container betwee
      - Sign claims with the accept private key (Ed25519)
   4) Accept the invitation
      - PUT `/api/container/invitation/accept`
-       - Headers: `AccessToken`, `ContainerAcceptToken`
+       - Headers: `x-access-token`, `x-container-accept-token`
        - Body: `PublicKey { value }` with the recipient’s container user public key to attach
        - Response: `ContainerIdAndEncryptionKey { container_id, container_access_key_id, encryption_key_encrypted, read_only }`
      - Decrypt `encryption_key_encrypted` with RSA to obtain the container encryption key
   5) Or decline
-     - PUT `/api/container/invitation/decline` with Headers: `AccessToken`, `ContainerAcceptToken`
+     - PUT `/api/container/invitation/decline` with Headers: `x-access-token`, `x-container-accept-token`
 
 After acceptance, the recipient can generate their own `ContainerAccessToken` (see section above) using the newly attached container access key and start performing container operations.
 
 
 ## Containers, entries, and categories
 
-- All container operations require a user `AccessToken` header and, for container-scoped operations, a `ContainerAccessToken` proving access to that specific container. The server verifies the container token using the stored public key for the identified key id and container id. Some endpoints additionally enforce read-write access (not read-only).
+- All container operations require a user `x-access-token` header and, for container-scoped operations, a `x-container-access-token` proving access to that specific container. The server verifies the container token using the stored public key for the identified key id and container id. Some endpoints additionally enforce read-write access (not read-only).
 
 - List/get containers
   - GET `/api/container`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `ContainerAccessTokenList { tokens: [ContainerAccessToken] }`
   - Response: `ContainerList { containers: [Container] }`
 
 - Create container
   - POST `/api/container`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `NewContainer { encrypted_blob, version_nonce, categories: [CategoryWithTempId], user_public_container_key }`
   - Response: 201 Created with `Container`
 
 - Update container metadata
   - PUT `/api/container`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `EncryptedBlobUpdate { encrypted_blob, version_nonce, expected_previous_version_nonce }`
   - Response: 200 OK (requires non-read-only container access)
 
 ### Entries
 - Create entry
   - POST `/api/container/entry`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `EncryptedBlobAndCategoryId { encrypted_blob, version_nonce, category_id? }`
   - Response: 201 Created with `EntryId`
 
 - Edit entry
   - PUT `/api/container/entry`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `EntryUpdate { entry_id, encrypted_blob, version_nonce, expected_previous_version_nonce, category_id? }`
   - Response: 200 OK
 
 - Delete entry
   - DELETE `/api/container/entry`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `EntryId { value }`
   - Response: 200 OK
 
 ### Categories
 - Create category
   - POST `/api/container/category`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `NewEncryptedBlob { value, version_nonce }`
   - Response: 201 Created with `CategoryId`
 
 - Edit category
   - PUT `/api/container/category`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `CategoryUpdate { category_id, encrypted_blob, version_nonce, expected_previous_version_nonce }`
   - Response: 200 OK
 
 - Delete category
   - DELETE `/api/container/category`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `CategoryId { value }`
   - Response: 200 OK
 
 - Create entry and category atomically
   - POST `/api/container/entry-and-category`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Body: `EntryAndCategory { entry_encrypted_blob, entry_version_nonce, category_encrypted_blob, category_version_nonce }`
   - Response: 201 Created with `EntryIdAndCategoryId`
 
 - Leave container
   - DELETE `/api/container/leave`
-  - Headers: `AccessToken`, `ContainerAccessToken`
+  - Headers: `x-access-token`, `x-container-access-token`
   - Response: 200 OK (requires valid read access)
 
 ## Sharing containers
 
 - Invite user to container
   - POST `/api/container/invitation`
-  - Headers: `AccessToken`, `ContainerAccessToken` (must be non-read-only)
+  - Headers: `x-access-token`, `x-container-access-token` (must be non-read-only)
   - Body: `UserInvitationToContainer { recipient_user_email, recipient_public_key_id_used_by_sender, recipient_public_key_id_used_by_server, sender_public_key, encryption_key_encrypted, container_info_encrypted, sender_info_encrypted, share_info_symmetric_key_encrypted, expiration, read_only }`
   - Response: 200 OK with `InvitationId { value }`
 
 - Retract invitation
   - DELETE `/api/container/invitation`
-  - Headers: `AccessToken`, `ContainerInviteSenderToken`
+  - Headers: `x-access-token`, `x-container-invite-sender-token`
   - Response: 200 OK
 
 - Accept invitation
   - PUT `/api/container/invitation/accept`
-  - Headers: `AccessToken`, `ContainerAcceptToken`
+  - Headers: `x-access-token`, `x-container-accept-token`
   - Body: `PublicKey { value }` (recipient’s container user public key)
   - Response: `ContainerIdAndEncryptionKey { container_id, container_access_key_id, encryption_key_encrypted, read_only }`
 
 - Decline invitation
   - PUT `/api/container/invitation/decline`
-  - Headers: `AccessToken`, `ContainerAcceptToken`
+  - Headers: `x-access-token`, `x-container-accept-token`
   - Response: 200 OK
 
 - List all pending invitations for the current user
   - GET `/api/container/invitation/all-pending`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Response: `ContainerShareInviteList { invites: [ContainerShareInvite] }`
 
 ## User profile and security
 
 - Lookup user public key
   - GET `/api/user/public-key?email=<email>`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Response: `UserPublicKey { id, value }`
 
 - Rotate user public key
   - PUT `/api/user/public-key`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `NewUserPublicKey { id, value, expected_previous_public_key_id }`
   - Response: 200 OK
 
 - Edit user preferences
   - PUT `/api/user/preferences`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `EncryptedBlobUpdate`
   - Response: 200 OK
 
 - Edit user keystore
   - PUT `/api/user/keystore`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `EncryptedBlobUpdate`
   - Response: 200 OK
 
@@ -243,39 +271,42 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Body: `AuthStringAndEncryptedPasswordUpdate { user_email, otp, new_auth_string, auth_string_hash_salt, auth_string_hash_mem_cost_kib, auth_string_hash_threads, auth_string_hash_iterations, password_encryption_key_salt, password_encryption_key_mem_cost_kib, password_encryption_key_threads, password_encryption_key_iterations, encrypted_encryption_key }`
   - Response: 200 OK
 
-- Change recovery key (requires AccessToken)
+- Change recovery key (requires x-access-token)
   - PUT `/api/user/recovery-key`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `RecoveryKeyUpdate { otp, recovery_key_hash_salt_for_encryption, recovery_key_hash_salt_for_recovery_auth, recovery_key_hash_mem_cost_kib, recovery_key_hash_threads, recovery_key_hash_iterations, recovery_key_auth_hash, encrypted_encryption_key }`
   - Response: 200 OK
 
-- Change email (requires AccessToken)
+- Change email (requires x-access-token)
   - PUT `/api/user/email`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `EmailChangeRequest { new_email, auth_string }` (auth_string proves possession of password)
   - Response: 200 OK
 
 - Initiate account deletion (emails link)
   - DELETE `/api/user`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Body: `ContainerAccessTokenList { tokens }` for containers the user wants scheduled for key cleanup
   - Response: `VerificationEmailSent { email_sent, email_token_lifetime_hours }`
 
 - Confirm deletion (from emailed link)
-  - GET `/api/user/deletion/verify?UserDeletionToken=<token>`
+  - GET `/api/user/deletion/verify?x-user-deletion-token=<token>`
   - Response: HTML 200 or HTML error page
 
 - Check deletion status
   - GET `/api/user/deletion`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Response: `IsUserListedForDeletion { value }`
 
 - Cancel deletion
   - DELETE `/api/user/deletion`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Response: 200 OK
 
 ## Authentication endpoints (detail)
+
+- GET `/api/auth/csrf-token`
+  - Response: JSON `{ "csrf_token": "..." }` and sets `x-csrf-token` cookie. Used for CSRF protection when making state-changing requests with cookie auth. See CSRF section above.
 
 - GET `/api/auth/nonce-and-auth-string-params`
   - Query: `email`
@@ -286,20 +317,20 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: `SigninToken` (OTP email sent)
 
 - POST `/api/auth/otp/verify`
-  - Headers: `SignInToken`
+  - Headers: `x-signin-token`
   - Body: `Otp`
   - Response: `AuthenticatedSession` (includes `TokenPair` and user data; auto-verifies unverified accounts)
 
 - POST `/api/auth/otp/resend-signin-otp`
-  - Headers: `SignInToken`
+  - Headers: `x-signin-token`
   - Response: 200 OK (new OTP email sent)
 
 - GET `/api/auth/otp`
-  - Headers: `AccessToken`
+  - Headers: `x-access-token`
   - Response: 200 OK (sends OTP email; body is empty)
 
 - POST `/api/auth/token/refresh`
-  - Headers: `RefreshToken`
+  - Headers: `x-refresh-token`
   - Response: `TokenPair`
 
 - POST `/api/auth/recover-with-recovery-key`
@@ -307,7 +338,7 @@ After acceptance, the recipient can generate their own `ContainerAccessToken` (s
   - Response: 200 OK (updates password, optional email, and re-encrypted keys)
 
 - POST `/api/auth/logout`
-  - Headers: `AccessToken`, `RefreshToken`
+  - Headers: `x-access-token`, `x-refresh-token`
   - Response: 200 OK
 
 ## Health endpoints
@@ -337,13 +368,15 @@ Refer to `protobuf/schema.proto` for definitions.
 
 ## Headers summary
 
-- AccessToken: HMAC auth token (type Access) identifying the user; required for most authenticated endpoints.
-- RefreshToken: HMAC auth token (type Refresh) used only for refresh and logout.
-- SignInToken: HMAC auth token (type SignIn) used to verify OTP and obtain session tokens.
-- ContainerAccessToken: Ed25519-signed token proving access to a specific container key id and container id.
-- ContainerInviteSenderToken: Ed25519-signed token used by the inviter to retract an invitation.
-- ContainerAcceptToken: Ed25519-signed token used by the invitee to accept/decline an invitation.
-- Content-Type: application/protobuf for protobuf bodies.
+- `x-access-token`: HMAC auth token (type Access) identifying the user; required for most authenticated endpoints.
+- `x-refresh-token`: HMAC auth token (type Refresh) used only for refresh and logout.
+- `x-signin-token`: HMAC auth token (type SignIn) used to verify OTP and obtain session tokens.
+- `x-csrf-token`: CSRF token; required for state-changing requests when using cookie auth. Obtain from `GET /api/auth/csrf-token`.
+- `x-client-is-browser`: Set to `true` for browser clients to enable CORS and cookie-based auth behavior.
+- `x-container-access-token`: Ed25519-signed token proving access to a specific container key id and container id.
+- `x-container-invite-sender-token`: Ed25519-signed token used by the inviter to retract an invitation.
+- `x-container-accept-token`: Ed25519-signed token used by the invitee to accept/decline an invitation.
+- `Content-Type`: application/protobuf for protobuf bodies.
 
 ## Error model
 
@@ -364,10 +397,10 @@ The server does not mint container access tokens. Clients generate them using th
   2. Encode claims to UTF-8 bytes.
   3. Sign those bytes with your Ed25519 private key to get a 64-byte signature.
   4. Concatenate bytes: `claims_json_bytes || signature_bytes`.
-  5. Base64 URL-safe encode the concatenated bytes. Use the resulting string as the `ContainerAccessToken` header value.
+  5. Base64 URL-safe encode the concatenated bytes. Use the resulting string as the `x-container-access-token` header value.
 
 - Header usage
-  - Send on requests that operate on a container: `ContainerAccessToken: <token>`
+  - Send on requests that operate on a container: `x-container-access-token: <token>`
 
 - Rust example
 

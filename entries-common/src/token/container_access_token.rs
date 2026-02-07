@@ -26,7 +26,7 @@ impl Token for ContainerAccessToken {
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
-        "ContainerAccessToken"
+        "x-container-access-token"
     }
 }
 

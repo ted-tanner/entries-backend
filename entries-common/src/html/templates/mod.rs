@@ -23,7 +23,7 @@ impl DeleteUserExpiredLinkPage {
 
              <script>
                const urlQueries = new URLSearchParams(window.location.search);
-               const token = urlQueries.get('UserDeletionToken');
+               const token = urlQueries.get('x-user-deletion-token');
 
                if (token !== null) {
                  const decoded_token = atob(token);

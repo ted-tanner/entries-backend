@@ -776,8 +776,13 @@ pub mod test_utils {
     use diesel::{dsl, ExpressionMethods, QueryDsl};
     use ed25519_dalek as ed25519;
     use ed25519_dalek::Signer;
-    use entries_common::token::container_accept_token::ContainerAcceptTokenClaims;
-    use entries_common::token::container_access_token::ContainerAccessTokenClaims;
+    use entries_common::token::container_accept_token::{
+        ContainerAcceptToken, ContainerAcceptTokenClaims,
+    };
+    use entries_common::token::container_access_token::{
+        ContainerAccessToken, ContainerAccessTokenClaims,
+    };
+    use entries_common::token::Token;
     use openssl::pkey::Private;
     use openssl::rsa::{Padding, Rsa};
     use prost::Message;
@@ -1023,7 +1028,10 @@ pub mod test_utils {
         let req = TestRequest::post()
             .uri("/api/container/invitation")
             .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
-            .insert_header(("ContainerAccessToken", sender_container_access_token))
+            .insert_header((
+                ContainerAccessToken::token_name(),
+                sender_container_access_token,
+            ))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -1111,7 +1119,7 @@ pub mod test_utils {
 
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
-            .insert_header(("ContainerAcceptToken", accept_token))
+            .insert_header((ContainerAcceptToken::token_name(), accept_token))
             .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())

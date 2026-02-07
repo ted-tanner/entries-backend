@@ -28,7 +28,7 @@ impl Token for ContainerAcceptToken {
     type Verifier = Ed25519Verifier;
 
     fn token_name() -> &'static str {
-        "ContainerAcceptToken"
+        "x-container-accept-token"
     }
 }
 

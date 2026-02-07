@@ -771,7 +771,6 @@ fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
         .path(path)
         .http_only(true)
         .secure(true)
-        .same_site(SameSite::Lax)
         .finish()
         .into_owned();
     c.make_removal();

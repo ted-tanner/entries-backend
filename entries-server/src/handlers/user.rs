@@ -911,7 +911,7 @@ pub async fn delete(
             }
             DaoError::QueryFailure(diesel::result::Error::NotFound) => {
                 log::error!(
-                    "Failed to schedule user deletion after validating UserDeletionToken: {}",
+                    "Failed to schedule user deletion after validating x-user-deletion-token: {}",
                     e
                 );
                 return Ok(HttpResponse::BadRequest()
@@ -2801,7 +2801,10 @@ pub mod tests {
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
             .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
-            .insert_header(("ContainerAccessToken", container1_token.as_str()))
+            .insert_header((
+                ContainerAccessToken::token_name(),
+                container1_token.as_str(),
+            ))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
             .to_request();

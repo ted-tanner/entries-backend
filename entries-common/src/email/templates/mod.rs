@@ -32,7 +32,7 @@ impl OtpMessage {
 
 impl UserDeletionConfirmationMessage {
     pub fn generate(url: &str, token: &str, token_lifetime: Duration) -> String {
-        let link = format!("{}?UserDeletionToken={}", url, token);
+        let link = format!("{}?x-user-deletion-token={}", url, token);
 
         format!(
             "<html>

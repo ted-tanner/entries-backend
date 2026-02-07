@@ -91,7 +91,7 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("ContainerAccessToken", token.as_str()))
+            .insert_header((ContainerAccessToken::token_name(), token.as_str()))
             .to_http_request();
 
         assert!(
@@ -147,7 +147,7 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("ContainerAccessToken", token.as_str()))
+            .insert_header((ContainerAccessToken::token_name(), token.as_str()))
             .to_http_request();
 
         let t = SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
@@ -177,7 +177,7 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .insert_header(("ContainerAccessToken", token.as_str()))
+            .insert_header((ContainerAccessToken::token_name(), token.as_str()))
             .to_http_request();
 
         let t = SpecialAccessToken::<ContainerAccessToken, FromHeaderOrCookie>::from_request(
@@ -212,7 +212,11 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
+            .uri(&format!(
+                "/test?{}={}",
+                ContainerInviteSenderToken::token_name(),
+                &token
+            ))
             .to_http_request();
 
         assert!(
@@ -264,7 +268,11 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
+            .uri(&format!(
+                "/test?{}={}",
+                ContainerInviteSenderToken::token_name(),
+                &token
+            ))
             .to_http_request();
 
         let t = SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
@@ -293,7 +301,11 @@ mod tests {
         let token = b64_urlsafe.encode(token);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?ContainerInviteSenderToken={}", &token))
+            .uri(&format!(
+                "/test?{}={}",
+                ContainerInviteSenderToken::token_name(),
+                &token
+            ))
             .to_http_request();
 
         let t = SpecialAccessToken::<ContainerInviteSenderToken, FromQuery>::from_request(
