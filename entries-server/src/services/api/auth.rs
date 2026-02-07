@@ -8,6 +8,14 @@ pub fn configure(cfg: &mut ServiceConfig, limiters: RateLimiters) {
     cfg.service(
         scope("/auth")
             .service(
+                resource("/csrf-token").route(
+                    get()
+                        .to(auth::obtain_csrf_token)
+                        .wrap(limiters.light_auth_fair_use.clone())
+                        .wrap(limiters.light_auth_circuit_breaker.clone()),
+                ),
+            )
+            .service(
                 resource("/nonce-and-auth-string-params").route(
                     get()
                         .to(auth::obtain_nonce_and_auth_string_params)

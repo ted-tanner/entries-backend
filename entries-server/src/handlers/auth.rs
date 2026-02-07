@@ -27,34 +27,10 @@ use crate::middleware::client_type::ClientType;
 use crate::middleware::rate_limiting::rate_limiter_table as rate_limit_table;
 use crate::middleware::rate_limiting::rate_limiter_table::CheckAndRecordResult;
 use crate::middleware::rate_limiting::rate_limiter_table::RateLimiterTable;
-use crate::middleware::FromHeaderOrCookie;
-
-const ACCESS_TOKEN_COOKIE: &str = "AccessToken";
-const REFRESH_TOKEN_COOKIE: &str = "RefreshToken";
-const SIGNIN_TOKEN_COOKIE: &str = "SignInToken";
-
-fn auth_cookie(name: &str, value: &str, path: &str, max_age_secs: i64) -> Cookie<'static> {
-    Cookie::build(name, value)
-        .path(path)
-        .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Strict)
-        .max_age(CookieDuration::seconds(max_age_secs))
-        .finish()
-        .into_owned()
-}
-
-fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
-    let mut c = Cookie::build(name, "")
-        .path(path)
-        .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Strict)
-        .finish()
-        .into_owned();
-    c.make_removal();
-    c
-}
+use crate::middleware::{
+    FromHeaderOrCookie, ACCESS_TOKEN_NAME, CSRF_TOKEN_NAME, REFRESH_TOKEN_NAME, SIGNIN_TOKEN_NAME,
+};
+const CSRF_TOKEN_MAX_AGE_SECS: i64 = 86400; // 24 hours
 
 // Use SipHash (std::collections::hash_map::RandomState) rather than the faster ahash for sign-in limiter
 // because email addresses are user-provided and need stronger HashDoS protection
@@ -189,6 +165,15 @@ pub async fn obtain_nonce_and_auth_string_params(
     Ok(HttpResponse::Ok().protobuf(real_params)?)
 }
 
+pub async fn obtain_csrf_token() -> HttpResponse {
+    let token = crate::middleware::csrf::generate_csrf_token();
+    let body = serde_json::json!({ "csrf_token": token }).to_string();
+    HttpResponse::Ok()
+        .cookie(csrf_cookie(&token))
+        .content_type("application/json")
+        .body(body)
+}
+
 // TODO: This function is needed until ed25519-dalek moves to rand 0.9, at which point entries_common
 //       and entries_server can be updated to use rand 0.9 and rand_chacha can be updated to 0.9 that
 //       has seed_from_u64()
@@ -301,10 +286,11 @@ pub async fn sign_in(
     let response = if client_type.is_browser() {
         let max_age = env::CONF.signin_token_lifetime.as_secs() as i64;
         let cookie = auth_cookie(
-            SIGNIN_TOKEN_COOKIE,
+            SIGNIN_TOKEN_NAME,
             &signin_token.value,
             "/api/auth/otp",
             max_age,
+            SameSite::Strict,
         );
         HttpResponse::Ok().cookie(cookie).finish()
     } else {
@@ -391,18 +377,20 @@ pub async fn verify_otp_for_signin(
 
         HttpResponse::Ok()
             .cookie(auth_cookie(
-                ACCESS_TOKEN_COOKIE,
+                ACCESS_TOKEN_NAME,
                 &token_pair.access_token,
                 "/api",
                 access_max_age,
+                SameSite::Lax,
             ))
             .cookie(auth_cookie(
-                REFRESH_TOKEN_COOKIE,
+                REFRESH_TOKEN_NAME,
                 &token_pair.refresh_token,
                 "/api/auth/token/refresh",
                 refresh_max_age,
+                SameSite::Strict,
             ))
-            .cookie(remove_cookie(SIGNIN_TOKEN_COOKIE, "/api/auth/otp"))
+            .cookie(remove_cookie(SIGNIN_TOKEN_NAME, "/api/auth/otp"))
             .protobuf(session)?
     } else {
         session.tokens = Some(token_pair);
@@ -501,16 +489,18 @@ pub async fn refresh_tokens(
         let refresh_max_age = env::CONF.refresh_token_lifetime.as_secs() as i64;
         HttpResponse::Ok()
             .cookie(auth_cookie(
-                ACCESS_TOKEN_COOKIE,
+                ACCESS_TOKEN_NAME,
                 &access_token,
                 "/api",
                 access_max_age,
+                SameSite::Lax,
             ))
             .cookie(auth_cookie(
-                REFRESH_TOKEN_COOKIE,
+                REFRESH_TOKEN_NAME,
                 &refresh_token,
                 "/api/auth/token/refresh",
                 refresh_max_age,
+                SameSite::Strict,
             ))
             .finish()
     } else {
@@ -738,17 +728,54 @@ pub async fn logout(
 
     let response = if refresh_token.from_cookie {
         HttpResponse::Ok()
-            .cookie(remove_cookie(ACCESS_TOKEN_COOKIE, "/api"))
-            .cookie(remove_cookie(
-                REFRESH_TOKEN_COOKIE,
-                "/api/auth/token/refresh",
-            ))
+            .cookie(remove_cookie(ACCESS_TOKEN_NAME, "/api"))
+            .cookie(remove_cookie(REFRESH_TOKEN_NAME, "/api/auth/token/refresh"))
             .finish()
     } else {
         HttpResponse::Ok().finish()
     };
 
     Ok(response)
+}
+
+fn csrf_cookie(value: &str) -> Cookie<'static> {
+    Cookie::build(CSRF_TOKEN_NAME, value)
+        .path("/api")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::seconds(CSRF_TOKEN_MAX_AGE_SECS))
+        .finish()
+        .into_owned()
+}
+
+fn auth_cookie(
+    name: &str,
+    value: &str,
+    path: &str,
+    max_age_secs: i64,
+    same_site: SameSite,
+) -> Cookie<'static> {
+    Cookie::build(name, value)
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .same_site(same_site)
+        .max_age(CookieDuration::seconds(max_age_secs))
+        .finish()
+        .into_owned()
+}
+
+fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
+    let mut c = Cookie::build(name, "")
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .finish()
+        .into_owned();
+    c.make_removal();
+    c
 }
 
 #[cfg(test)]
@@ -781,7 +808,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::handlers::test_utils::{self, gen_bytes};
-    use crate::handlers::BROWSER_CLIENT_HEADER;
+    use crate::middleware::BROWSER_CLIENT_HEADER;
     use crate::middleware::{FairUseStrategy, RateLimiter};
     use crate::services::api::RateLimiters;
 
@@ -825,6 +852,37 @@ mod tests {
         assert!(limiter.allow_attempt(email.clone()).await);
         assert!(limiter.allow_attempt(email.clone()).await);
         assert!(!limiter.allow_attempt(email).await);
+    }
+
+    #[actix_web::test]
+    async fn test_obtain_csrf_token() {
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(env::testing::DB_ASYNC_POOL.clone()))
+                .app_data(Data::new(env::testing::SMTP_THREAD_POOL.clone()))
+                .configure(|cfg| crate::services::api::configure(cfg, RateLimiters::default())),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/api/auth/csrf-token")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        assert!(
+            resp.headers()
+                .get(actix_web::http::header::SET_COOKIE)
+                .is_some(),
+            "Response should set CSRF cookie"
+        );
+
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+        let token = json
+            .get("csrf_token")
+            .and_then(|v| v.as_str())
+            .expect("csrf_token in response");
+        assert!(!token.is_empty());
     }
 
     #[actix_web::test]
@@ -1246,7 +1304,7 @@ mod tests {
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
             .insert_header(("Content-Type", "application/protobuf"))
-            .insert_header(("SignInToken", bad_signin_token))
+            .insert_header((SIGNIN_TOKEN_NAME, bad_signin_token))
             .set_payload(otp_msg.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1256,7 +1314,7 @@ mod tests {
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
             .insert_header(("Content-Type", "application/protobuf"))
-            .insert_header(("SignInToken", signin_token.value.clone()))
+            .insert_header((SIGNIN_TOKEN_NAME, signin_token.value.clone()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1271,7 +1329,7 @@ mod tests {
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
             .insert_header(("Content-Type", "application/protobuf"))
-            .insert_header(("SignInToken", signin_token.value.clone()))
+            .insert_header((SIGNIN_TOKEN_NAME, signin_token.value.clone()))
             .set_payload(bad_otp_msg.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1281,7 +1339,7 @@ mod tests {
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
             .insert_header(("Content-Type", "application/protobuf"))
-            .insert_header(("SignInToken", signin_token.value))
+            .insert_header((SIGNIN_TOKEN_NAME, signin_token.value))
             .set_payload(otp_msg.encode_to_vec())
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -1369,7 +1427,7 @@ mod tests {
         // Request a new OTP
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .insert_header(("AccessToken", access_token))
+            .insert_header((ACCESS_TOKEN_NAME, access_token))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2226,7 +2284,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2280,7 +2338,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2332,7 +2390,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2356,7 +2414,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .insert_header(("RefreshToken", "invalid_token"))
+            .insert_header((REFRESH_TOKEN_NAME, "invalid_token"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2396,8 +2454,8 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/logout")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2416,7 +2474,7 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2456,8 +2514,8 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/logout")
-            .insert_header(("AccessToken", access_token1.as_str()))
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token1.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2508,8 +2566,8 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/logout")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("RefreshToken", refresh_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, refresh_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2535,8 +2593,8 @@ mod tests {
 
         let req = TestRequest::post()
             .uri("/api/auth/logout")
-            .insert_header(("AccessToken", access_token.as_str()))
-            .insert_header(("RefreshToken", "invalid_token"))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, "invalid_token"))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2686,7 +2744,7 @@ mod tests {
         };
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
-            .insert_header(("SignInToken", new_signin_token.value.as_str()))
+            .insert_header((SIGNIN_TOKEN_NAME, new_signin_token.value.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invalid_otp.encode_to_vec())
             .to_request();
@@ -2708,7 +2766,7 @@ mod tests {
         let valid_otp = OtpMessage { value: otp.clone() };
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
-            .insert_header(("SignInToken", "invalid_token_xyz"))
+            .insert_header((SIGNIN_TOKEN_NAME, "invalid_token_xyz"))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(valid_otp.encode_to_vec())
             .to_request();
@@ -2730,7 +2788,7 @@ mod tests {
         let valid_otp = OtpMessage { value: otp };
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
-            .insert_header(("SignInToken", new_signin_token.value.as_str()))
+            .insert_header((SIGNIN_TOKEN_NAME, new_signin_token.value.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(valid_otp.encode_to_vec())
             .to_request();
@@ -2802,7 +2860,7 @@ mod tests {
         // Request a new OTP
         let req = TestRequest::post()
             .uri("/api/auth/otp/resend-signin-otp")
-            .insert_header(("SignInToken", signin_token.value.as_str()))
+            .insert_header((SIGNIN_TOKEN_NAME, signin_token.value.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -2930,7 +2988,7 @@ mod tests {
         );
         let signin_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)));
+            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_NAME)));
         assert!(signin_cookie.is_some(), "SignInToken cookie should be set");
 
         // Verify cookie attributes
@@ -2949,7 +3007,7 @@ mod tests {
         // Extract token value from cookie - handle tokens that contain '=' characters
         // Format: CookieName=value; Path=...
         let cookie_value = cookie_str
-            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap();
         assert!(!cookie_value.is_empty(), "Cookie value should not be empty");
@@ -3065,11 +3123,11 @@ mod tests {
             .collect();
         let signin_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)))
+            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_NAME)))
             .unwrap();
         // Extract token value - handle tokens that contain '=' characters
         let signin_token_value = signin_cookie
-            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", SIGNIN_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap()
             .trim();
@@ -3091,7 +3149,7 @@ mod tests {
             .uri("/api/auth/otp/verify")
             .insert_header(("Content-Type", "application/protobuf"))
             .cookie(
-                Cookie::build(SIGNIN_TOKEN_COOKIE, signin_token_value)
+                Cookie::build(SIGNIN_TOKEN_NAME, signin_token_value)
                     .path("/api/auth/otp")
                     .finish(),
             )
@@ -3119,10 +3177,10 @@ mod tests {
         // Verify tokens ARE in cookies
         let access_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)));
+            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_NAME)));
         let refresh_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)));
+            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_NAME)));
 
         assert!(access_cookie.is_some(), "AccessToken cookie should be set");
         assert!(
@@ -3141,8 +3199,8 @@ mod tests {
             "Access cookie should be Secure"
         );
         assert!(
-            access_cookie_str.contains("SameSite=Strict"),
-            "Access cookie should be SameSite=Strict"
+            access_cookie_str.contains("SameSite=Lax"),
+            "Access cookie should be SameSite=Lax"
         );
         assert!(
             access_cookie_str.contains("Path=/api"),
@@ -3168,9 +3226,9 @@ mod tests {
         );
 
         // Verify signin token cookie is removed
-        let signin_cookie_removed = cookies.iter().find(|c| {
-            c.starts_with(&format!("{}=", SIGNIN_TOKEN_COOKIE)) && c.contains("Max-Age=0")
-        });
+        let signin_cookie_removed = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", SIGNIN_TOKEN_NAME)) && c.contains("Max-Age=0"));
         assert!(
             signin_cookie_removed.is_some(),
             "SignInToken cookie should be removed"
@@ -3178,12 +3236,12 @@ mod tests {
 
         // Extract and verify token values - handle tokens that contain '=' characters
         let access_token_value = access_cookie_str
-            .strip_prefix(&format!("{}=", ACCESS_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", ACCESS_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap()
             .trim();
         let refresh_token_value = refresh_cookie_str
-            .strip_prefix(&format!("{}=", REFRESH_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", REFRESH_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap()
             .trim();
@@ -3233,7 +3291,7 @@ mod tests {
         // Refresh tokens using cookie (not header)
         let req = TestRequest::post()
             .uri("/api/auth/token/refresh")
-            .cookie(Cookie::build(REFRESH_TOKEN_COOKIE, refresh_token.as_str()).finish())
+            .cookie(Cookie::build(REFRESH_TOKEN_NAME, refresh_token.as_str()).finish())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3258,10 +3316,10 @@ mod tests {
 
         let access_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)));
+            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_NAME)));
         let refresh_cookie = cookies
             .iter()
-            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)));
+            .find(|c| c.starts_with(&format!("{}=", REFRESH_TOKEN_NAME)));
 
         assert!(access_cookie.is_some(), "AccessToken cookie should be set");
         assert!(
@@ -3280,8 +3338,8 @@ mod tests {
             "Access cookie should be Secure"
         );
         assert!(
-            access_cookie_str.contains("SameSite=Strict"),
-            "Access cookie should be SameSite=Strict"
+            access_cookie_str.contains("SameSite=Lax"),
+            "Access cookie should be SameSite=Lax"
         );
         assert!(
             access_cookie_str.contains("Path=/api"),
@@ -3308,12 +3366,12 @@ mod tests {
 
         // Extract and verify token values - handle tokens that contain '=' characters
         let access_token_value = access_cookie_str
-            .strip_prefix(&format!("{}=", ACCESS_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", ACCESS_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap()
             .trim();
         let refresh_token_value = refresh_cookie_str
-            .strip_prefix(&format!("{}=", REFRESH_TOKEN_COOKIE))
+            .strip_prefix(&format!("{}=", REFRESH_TOKEN_NAME))
             .and_then(|s| s.split(';').next())
             .unwrap()
             .trim();
@@ -3378,8 +3436,8 @@ mod tests {
         // Logout using cookies (not headers)
         let req = TestRequest::post()
             .uri("/api/auth/logout")
-            .cookie(Cookie::build(ACCESS_TOKEN_COOKIE, access_token.as_str()).finish())
-            .cookie(Cookie::build(REFRESH_TOKEN_COOKIE, refresh_token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, access_token.as_str()).finish())
+            .cookie(Cookie::build(REFRESH_TOKEN_NAME, refresh_token.as_str()).finish())
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3392,11 +3450,11 @@ mod tests {
             .filter_map(|h| h.to_str().ok())
             .collect();
 
-        let access_cookie_removed = cookies.iter().find(|c| {
-            c.starts_with(&format!("{}=", ACCESS_TOKEN_COOKIE)) && c.contains("Max-Age=0")
-        });
+        let access_cookie_removed = cookies
+            .iter()
+            .find(|c| c.starts_with(&format!("{}=", ACCESS_TOKEN_NAME)) && c.contains("Max-Age=0"));
         let refresh_cookie_removed = cookies.iter().find(|c| {
-            c.starts_with(&format!("{}=", REFRESH_TOKEN_COOKIE)) && c.contains("Max-Age=0")
+            c.starts_with(&format!("{}=", REFRESH_TOKEN_NAME)) && c.contains("Max-Age=0")
         });
 
         assert!(
@@ -3450,7 +3508,7 @@ mod tests {
         // Make a request using cookie (not header) - use obtain_otp endpoint as it requires auth
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .cookie(Cookie::build(ACCESS_TOKEN_COOKIE, access_token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, access_token.as_str()).finish())
             .to_request();
         let resp = test::call_service(&app, req).await;
 

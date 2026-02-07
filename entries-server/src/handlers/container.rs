@@ -1289,6 +1289,7 @@ pub mod tests {
 
     use crate::env;
     use crate::handlers::test_utils::{self, gen_bytes, gen_container_token};
+    use crate::middleware::ACCESS_TOKEN_NAME;
     use crate::services::api::RateLimiters;
 
     #[actix_rt::test]
@@ -1327,7 +1328,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1366,7 +1367,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -1412,7 +1413,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
@@ -1434,7 +1435,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -1477,7 +1478,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -1499,7 +1500,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -1559,7 +1560,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry2.encode_to_vec())
@@ -1581,7 +1582,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -1626,7 +1627,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
@@ -1647,7 +1648,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -1733,7 +1734,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1766,7 +1767,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1810,7 +1811,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1846,7 +1847,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -1885,7 +1886,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
@@ -1908,7 +1909,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
@@ -1953,7 +1954,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1984,7 +1985,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
@@ -2024,7 +2025,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container3_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
@@ -2045,7 +2046,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2147,7 +2148,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2228,7 +2229,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/bulk-upload")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(bulk_upload.encode_to_vec())
             .to_request();
@@ -2287,7 +2288,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/bulk-upload")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(bulk_upload.encode_to_vec())
             .to_request();
@@ -2297,7 +2298,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/bulk-upload")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(bulk_upload.encode_to_vec())
             .to_request();
@@ -2331,7 +2332,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2374,7 +2375,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -2410,7 +2411,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -2425,7 +2426,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2465,7 +2466,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_id_message.encode_to_vec())
@@ -2480,7 +2481,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2537,7 +2538,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -2573,7 +2574,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -2588,7 +2589,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2621,7 +2622,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_id_message.encode_to_vec())
@@ -2636,7 +2637,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2695,7 +2696,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -2732,7 +2733,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry1.encode_to_vec())
@@ -2749,7 +2750,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry2.encode_to_vec())
@@ -2765,7 +2766,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2793,7 +2794,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -2842,7 +2843,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container1.encode_to_vec())
             .to_request();
@@ -2878,7 +2879,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_access_token1.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry1.encode_to_vec())
@@ -2903,7 +2904,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container2.encode_to_vec())
             .to_request();
@@ -2939,7 +2940,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2996,7 +2997,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3021,7 +3022,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
@@ -3043,7 +3044,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
@@ -3058,7 +3059,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3099,7 +3100,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
@@ -3134,7 +3135,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3158,7 +3159,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category1.encode_to_vec())
@@ -3181,7 +3182,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category2.encode_to_vec())
@@ -3205,7 +3206,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -3220,7 +3221,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3260,7 +3261,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3284,7 +3285,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3308,7 +3309,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3335,7 +3336,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3352,7 +3353,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3385,7 +3386,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3409,7 +3410,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3424,7 +3425,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3466,7 +3467,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3481,7 +3482,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
@@ -3505,7 +3506,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -3520,7 +3521,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3548,7 +3549,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(entry_update.encode_to_vec())
@@ -3583,7 +3584,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3607,7 +3608,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category1.encode_to_vec())
@@ -3630,7 +3631,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category2.encode_to_vec())
@@ -3654,7 +3655,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -3669,7 +3670,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3747,7 +3748,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -3770,7 +3771,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -3796,7 +3797,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -3811,7 +3812,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3891,7 +3892,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -3914,7 +3915,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -3929,7 +3930,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4020,7 +4021,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4035,7 +4036,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
@@ -4057,7 +4058,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4074,7 +4075,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(category_update.encode_to_vec())
@@ -4124,7 +4125,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4135,7 +4136,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4219,7 +4220,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
             .insert_header(("ContainerAcceptToken", bad_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -4230,7 +4231,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
             .insert_header(("ContainerAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -4258,7 +4259,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4272,7 +4273,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4297,7 +4298,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
@@ -4316,7 +4317,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(blob_update.encode_to_vec())
@@ -4331,7 +4332,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -4383,7 +4384,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.clone()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.clone()))
             .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4414,7 +4415,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.clone()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.clone()))
             .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4445,7 +4446,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.clone()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.clone()))
             .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4476,7 +4477,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.clone()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.clone()))
             .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4507,7 +4508,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.clone()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.clone()))
             .insert_header(("ContainerAccessToken", sender_container_token.clone()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4538,7 +4539,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4585,7 +4586,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4636,7 +4637,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4647,7 +4648,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4703,7 +4704,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
             .insert_header(("ContainerAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -4763,7 +4764,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4773,7 +4774,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4787,7 +4788,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4814,7 +4815,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
             .to_request();
@@ -4824,7 +4825,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header((
                 "ContainerInviteSenderToken",
                 sender_container_token.as_str(),
@@ -4838,7 +4839,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerInviteSenderToken", invite_sender_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4849,7 +4850,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4896,7 +4897,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -4907,7 +4908,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4975,7 +4976,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/decline")
             .insert_header(("ContainerAcceptToken", bad_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -4986,7 +4987,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/decline")
             .insert_header(("ContainerAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -4996,7 +4997,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -5035,7 +5036,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/category")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_category.encode_to_vec())
@@ -5059,7 +5060,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry.encode_to_vec())
@@ -5085,7 +5086,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -5096,7 +5097,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -5154,7 +5155,7 @@ pub mod tests {
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
             .insert_header(("ContainerAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
@@ -5183,7 +5184,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -5197,7 +5198,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -5218,7 +5219,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/leave")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("ContainerAccessToken", sender_container_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -5243,7 +5244,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -5257,7 +5258,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -5274,7 +5275,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/container/leave")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("ContainerAccessToken", recipient_container_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -5299,7 +5300,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", sender_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -5313,7 +5314,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();

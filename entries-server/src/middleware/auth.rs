@@ -25,7 +25,7 @@ pub struct UserDeletion {}
 
 impl RequestAuthTokenType for Access {
     fn token_name() -> &'static str {
-        "AccessToken"
+        super::ACCESS_TOKEN_NAME
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::Access
@@ -37,7 +37,7 @@ impl RequestAuthTokenType for Access {
 
 impl RequestAuthTokenType for Refresh {
     fn token_name() -> &'static str {
-        "RefreshToken"
+        super::REFRESH_TOKEN_NAME
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::Refresh
@@ -49,7 +49,7 @@ impl RequestAuthTokenType for Refresh {
 
 impl RequestAuthTokenType for SignIn {
     fn token_name() -> &'static str {
-        "SignInToken"
+        super::SIGNIN_TOKEN_NAME
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::SignIn
@@ -61,7 +61,7 @@ impl RequestAuthTokenType for SignIn {
 
 impl RequestAuthTokenType for UserDeletion {
     fn token_name() -> &'static str {
-        "UserDeletionToken"
+        super::USER_DELETION_TOKEN_NAME
     }
     fn token_type() -> AuthTokenType {
         AuthTokenType::UserDeletion
@@ -194,7 +194,9 @@ mod tests {
 
     use entries_common::token::auth_token::{AuthToken, NewAuthTokenClaims};
 
-    use crate::middleware::{FromHeaderOrCookie, FromQuery};
+    use crate::middleware::{
+        FromHeaderOrCookie, FromQuery, ACCESS_TOKEN_NAME, REFRESH_TOKEN_NAME, SIGNIN_TOKEN_NAME,
+    };
 
     #[actix_web::test]
     async fn test_verified_from_header() {
@@ -215,7 +217,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(VerifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -254,7 +256,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(VerifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -265,7 +267,7 @@ mod tests {
         .is_err());
 
         let req = TestRequest::default()
-            .insert_header(("RefreshToken", token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(VerifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -290,7 +292,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(VerifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -329,7 +331,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -364,7 +366,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -374,7 +376,7 @@ mod tests {
         );
 
         let req = TestRequest::default()
-            .uri(&format!("/test?RefreshToken={}", &token))
+            .uri(&format!("/test?{}={}", REFRESH_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -398,7 +400,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -435,7 +437,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(UnverifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -481,7 +483,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(UnverifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -500,7 +502,7 @@ mod tests {
         .is_err());
 
         let req = TestRequest::default()
-            .insert_header(("RefreshToken", token.as_str()))
+            .insert_header((REFRESH_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(UnverifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -525,7 +527,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .insert_header(("AccessToken", token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, token.as_str()))
             .to_http_request();
 
         assert!(UnverifiedToken::<Access, FromHeaderOrCookie>::from_request(
@@ -572,7 +574,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -614,7 +616,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -631,7 +633,7 @@ mod tests {
         );
 
         let req = TestRequest::default()
-            .uri(&format!("/test?RefreshToken={}", &token))
+            .uri(&format!("/test?{}={}", REFRESH_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -655,7 +657,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .uri(&format!("/test?AccessToken={}", &token))
+            .uri(&format!("/test?{}={}", ACCESS_TOKEN_NAME, &token))
             .to_http_request();
 
         assert!(
@@ -699,7 +701,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("AccessToken", token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let verified_token =
@@ -725,7 +727,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("RefreshToken", token.as_str()).finish())
+            .cookie(Cookie::build(REFRESH_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let verified_token =
@@ -750,7 +752,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("SignInToken", token.as_str()).finish())
+            .cookie(Cookie::build(SIGNIN_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let verified_token =
@@ -794,7 +796,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("AccessToken", token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let unverified_token =
@@ -819,7 +821,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("RefreshToken", token.as_str()).finish())
+            .cookie(Cookie::build(REFRESH_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let unverified_token =
@@ -844,7 +846,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("SignInToken", token.as_str()).finish())
+            .cookie(Cookie::build(SIGNIN_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         let unverified_token =
@@ -897,8 +899,8 @@ mod tests {
 
         // Request with both header and cookie - header should take precedence
         let req = TestRequest::default()
-            .insert_header(("AccessToken", header_token.as_str()))
-            .cookie(Cookie::build("AccessToken", cookie_token.as_str()).finish())
+            .insert_header((ACCESS_TOKEN_NAME, header_token.as_str()))
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, cookie_token.as_str()).finish())
             .to_http_request();
 
         let verified_token =
@@ -949,7 +951,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("AccessToken", token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         // Should fail verification because token type doesn't match
@@ -990,7 +992,7 @@ mod tests {
         let token = AuthToken::sign_new(token_claims, &env::CONF.token_signing_key);
 
         let req = TestRequest::default()
-            .cookie(Cookie::build("AccessToken", token.as_str()).finish())
+            .cookie(Cookie::build(ACCESS_TOKEN_NAME, token.as_str()).finish())
             .to_http_request();
 
         // Verified should fail because token is expired

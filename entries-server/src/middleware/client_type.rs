@@ -3,7 +3,7 @@ use actix_web::http::header::HeaderMap;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future::{ready, Ready};
 
-use crate::handlers::BROWSER_CLIENT_HEADER;
+use super::BROWSER_CLIENT_HEADER;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ClientType(bool);
@@ -41,7 +41,7 @@ mod tests {
     use actix_web::http::header::{HeaderMap, HeaderName, HeaderValue};
     use actix_web::{test, web, App, HttpResponse};
 
-    use crate::handlers::BROWSER_CLIENT_HEADER;
+    use crate::middleware::BROWSER_CLIENT_HEADER;
 
     fn header_map_with(header_value: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();

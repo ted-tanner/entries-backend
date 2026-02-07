@@ -2,9 +2,32 @@ pub mod app_version;
 pub mod auth;
 pub mod client_type;
 pub mod cors;
+pub mod csrf;
 pub mod special_access_token;
 
 pub mod rate_limiting;
+
+pub const ACCESS_TOKEN_NAME: &str = "x-access-token";
+pub const REFRESH_TOKEN_NAME: &str = "x-refresh-token";
+pub const SIGNIN_TOKEN_NAME: &str = "x-signin-token";
+pub const USER_DELETION_TOKEN_NAME: &str = "x-user-deletion-token";
+pub const CSRF_TOKEN_NAME: &str = "x-csrf-token";
+pub const BROWSER_CLIENT_HEADER: &str = "x-client-is-browser";
+
+use std::sync::OnceLock;
+
+static CORS_ALLOWED_HEADERS_VALUE: OnceLock<String> = OnceLock::new();
+
+pub fn cors_allowed_headers_value() -> &'static str {
+    CORS_ALLOWED_HEADERS_VALUE
+        .get_or_init(|| {
+            format!(
+                "content-type, {}, {}",
+                BROWSER_CLIENT_HEADER, CSRF_TOKEN_NAME,
+            )
+        })
+        .as_str()
+}
 
 pub use rate_limiting::{
     CircuitBreaker as CircuitBreakerStrategy, FairUse as FairUseStrategy, RateLimiter,

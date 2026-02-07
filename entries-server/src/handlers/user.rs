@@ -1030,7 +1030,7 @@ pub mod tests {
 
     use crate::handlers::test_utils::{self, gen_bytes};
     use crate::middleware::auth::RequestAuthTokenType;
-    use crate::middleware::{FairUseStrategy, RateLimiter};
+    use crate::middleware::{FairUseStrategy, RateLimiter, ACCESS_TOKEN_NAME};
     use crate::services::api::RateLimiters;
 
     #[actix_web::test]
@@ -1048,7 +1048,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri(&format!("/api/user/public-key?email={}", user.email))
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1554,7 +1554,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/public-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(old_key_update.encode_to_vec())
             .to_request();
@@ -1584,7 +1584,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/public-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(key_update.encode_to_vec())
             .to_request();
@@ -1629,7 +1629,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/public-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(key_update.encode_to_vec())
             .to_request();
@@ -1667,7 +1667,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/preferences")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_prefs.encode_to_vec())
             .to_request();
@@ -1704,7 +1704,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/preferences")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_prefs.encode_to_vec())
             .to_request();
@@ -1753,7 +1753,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/preferences")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_prefs.encode_to_vec())
             .to_request();
@@ -1790,7 +1790,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/keystore")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_keystore.encode_to_vec())
             .to_request();
@@ -1830,7 +1830,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/keystore")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_keystore.encode_to_vec())
             .to_request();
@@ -1882,7 +1882,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/keystore")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(updated_keystore.encode_to_vec())
             .to_request();
@@ -1912,7 +1912,7 @@ pub mod tests {
         // Make sure an OTP is generated
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -2135,7 +2135,7 @@ pub mod tests {
         // Make sure an OTP is generated
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -2303,7 +2303,7 @@ pub mod tests {
         // Make sure an OTP is generated
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -2338,7 +2338,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2401,7 +2401,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2459,7 +2459,7 @@ pub mod tests {
         // Make sure an OTP is generated
         let req = TestRequest::get()
             .uri("/api/auth/otp")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         test::call_service(&app, req).await;
 
@@ -2487,7 +2487,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2520,7 +2520,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2550,7 +2550,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2580,7 +2580,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/recovery-key")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(edit_recovery_key.encode_to_vec())
             .to_request();
@@ -2614,7 +2614,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2646,7 +2646,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -2800,7 +2800,7 @@ pub mod tests {
 
         let req = TestRequest::post()
             .uri("/api/container/entry-and-category")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("ContainerAccessToken", container1_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_entry_and_category.encode_to_vec())
@@ -2835,7 +2835,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -3227,7 +3227,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens_incorrect.encode_to_vec())
             .to_request();
@@ -3237,7 +3237,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -3486,7 +3486,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3500,7 +3500,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", user1_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user1_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -3595,8 +3595,8 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", user2_access_token.as_str()))
-            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3841,8 +3841,8 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/container")
-            .insert_header(("AccessToken", user2_access_token.as_str()))
-            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_token_list.encode_to_vec())
             .to_request();
@@ -3857,7 +3857,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", user2_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, user2_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -3952,7 +3952,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -3965,7 +3965,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -3984,7 +3984,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4028,7 +4028,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4039,7 +4039,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4056,7 +4056,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4082,7 +4082,7 @@ pub mod tests {
 
         let req = TestRequest::get()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4095,7 +4095,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(container_access_tokens.encode_to_vec())
             .to_request();
@@ -4147,7 +4147,7 @@ pub mod tests {
 
         let req = TestRequest::delete()
             .uri("/api/user/deletion")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -4206,7 +4206,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/email")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(email_change_request.encode_to_vec())
             .to_request();
@@ -4269,7 +4269,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/email")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(email_change_request.encode_to_vec())
             .to_request();
@@ -4336,7 +4336,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/email")
-            .insert_header(("AccessToken", access_token1.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token1.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(email_change_request.encode_to_vec())
             .to_request();
@@ -4380,7 +4380,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/email")
-            .insert_header(("AccessToken", access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(email_change_request.encode_to_vec())
             .to_request();
@@ -4478,7 +4478,7 @@ pub mod tests {
 
         let req = TestRequest::put()
             .uri("/api/user/email")
-            .insert_header(("AccessToken", expired_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, expired_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(email_change_request.encode_to_vec())
             .to_request();

@@ -331,7 +331,7 @@ find . -name "*.rs" | xargs grep -n "TODO"
     * Sign-in token should also be a cookie, but the path narrowed to the verify OTP endpoint or where sign-in token is used
   - CORS (configure allowed sites in `env.rs` and the env vars, e.g. `sample.env`)
   - CSRF
-    * Enforce CSRF on clients authenticating with a cookie rather than a header
+    * Enforce CSRF only on clients authenticating with a cookie rather than a header (see `ClientType`)
     * Need an endpoint to be able to request new CSRF token
   - Tests for all of the above!
 

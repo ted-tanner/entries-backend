@@ -8,7 +8,7 @@ use actix_web::{
 };
 use futures::future::LocalBoxFuture;
 
-use crate::{env, handlers::CORS_ALLOWED_HEADERS_VALUE, middleware::client_type::ClientType};
+use crate::{env, middleware::client_type::ClientType};
 
 /// CORS middleware that validates origins and sets appropriate headers.
 ///
@@ -108,7 +108,7 @@ where
                 ));
                 res.insert_header((
                     header::ACCESS_CONTROL_ALLOW_HEADERS,
-                    HeaderValue::from_static(CORS_ALLOWED_HEADERS_VALUE),
+                    HeaderValue::from_static(crate::middleware::cors_allowed_headers_value()),
                 ));
                 res.insert_header((
                     header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
@@ -195,7 +195,7 @@ mod tests {
         for value in ["1", "false", "0", "yes", ""] {
             let req = test::TestRequest::get()
                 .uri("/")
-                .append_header((crate::handlers::BROWSER_CLIENT_HEADER, value))
+                .append_header((crate::middleware::BROWSER_CLIENT_HEADER, value))
                 .append_header((header::ORIGIN, "https://example.com"))
                 .to_request();
             let resp = test::call_service(&app, req).await;
@@ -221,7 +221,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://example.com"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -245,7 +245,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://example.com"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -275,7 +275,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://evil.com"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -300,7 +300,7 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://example.com"))
             .append_header((header::ACCESS_CONTROL_REQUEST_METHOD, "GET"))
             .to_request();
@@ -322,7 +322,7 @@ mod tests {
             resp.headers()
                 .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
                 .and_then(|v| v.to_str().ok()),
-            Some(crate::handlers::CORS_ALLOWED_HEADERS_VALUE)
+            Some(crate::middleware::cors_allowed_headers_value())
         );
         assert_eq!(
             resp.headers()
@@ -350,7 +350,7 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .append_header((header::ORIGIN, "https://evil.com"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -375,7 +375,7 @@ mod tests {
         let req = test::TestRequest::default()
             .method(Method::OPTIONS)
             .uri("/")
-            .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+            .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
@@ -400,7 +400,7 @@ mod tests {
         for origin in ["https://example.com", "https://app.example.com"] {
             let req = test::TestRequest::get()
                 .uri("/")
-                .append_header((crate::handlers::BROWSER_CLIENT_HEADER, "true"))
+                .append_header((crate::middleware::BROWSER_CLIENT_HEADER, "true"))
                 .append_header((header::ORIGIN, origin))
                 .to_request();
             let resp = test::call_service(&app, req).await;

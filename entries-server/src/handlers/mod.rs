@@ -4,11 +4,6 @@ pub mod error_reporting;
 pub mod health;
 pub mod user;
 
-/// Value for Access-Control-Allow-Headers when using cookie-based browser auth.
-/// Must be kept in sync with BROWSER_CLIENT_HEADER.
-pub const CORS_ALLOWED_HEADERS_VALUE: &str = "content-type, x-client-is-browser";
-pub const BROWSER_CLIENT_HEADER: &str = "x-client-is-browser";
-
 pub mod verification {
     use entries_common::db::{self, DaoError, DbAsyncPool};
     use entries_common::email::{templates::OtpMessage, EmailMessage, EmailSender};
@@ -790,6 +785,7 @@ pub mod test_utils {
     use uuid::Uuid;
 
     use crate::env;
+    use crate::middleware::{ACCESS_TOKEN_NAME, SIGNIN_TOKEN_NAME};
     use crate::services::api::RateLimiters;
 
     pub fn gen_bytes(count: usize) -> Vec<u8> {
@@ -901,7 +897,7 @@ pub mod test_utils {
         let otp_message = OtpMessage { value: otp };
         let req = TestRequest::post()
             .uri("/api/auth/otp/verify")
-            .insert_header(("SignInToken", signin_token.value.as_str()))
+            .insert_header((SIGNIN_TOKEN_NAME, signin_token.value.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(otp_message.encode_to_vec())
             .to_request();
@@ -963,7 +959,7 @@ pub mod test_utils {
 
         let req = TestRequest::post()
             .uri("/api/container")
-            .insert_header(("AccessToken", access_token))
+            .insert_header((ACCESS_TOKEN_NAME, access_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(new_container.encode_to_vec())
             .to_request();
@@ -1026,7 +1022,7 @@ pub mod test_utils {
 
         let req = TestRequest::post()
             .uri("/api/container/invitation")
-            .insert_header(("AccessToken", sender_access_token))
+            .insert_header((ACCESS_TOKEN_NAME, sender_access_token))
             .insert_header(("ContainerAccessToken", sender_container_access_token))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(invite_info.encode_to_vec())
@@ -1056,7 +1052,7 @@ pub mod test_utils {
 
         let req = TestRequest::get()
             .uri("/api/container/invitation/all-pending")
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .to_request();
         let resp = test::call_service(&app, req).await;
 
@@ -1116,7 +1112,7 @@ pub mod test_utils {
         let req = TestRequest::put()
             .uri("/api/container/invitation/accept")
             .insert_header(("ContainerAcceptToken", accept_token))
-            .insert_header(("AccessToken", recipient_access_token.as_str()))
+            .insert_header((ACCESS_TOKEN_NAME, recipient_access_token.as_str()))
             .insert_header(("Content-Type", "application/protobuf"))
             .set_payload(access_public_key.encode_to_vec())
             .to_request();
