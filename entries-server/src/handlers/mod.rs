@@ -1,8 +1,39 @@
+use actix_web::cookie::time::Duration as CookieDuration;
+use actix_web::cookie::{Cookie, SameSite};
+
 pub mod auth;
 pub mod container;
 pub mod error_reporting;
 pub mod health;
 pub mod user;
+
+pub fn auth_cookie(
+    name: &str,
+    value: &str,
+    path: &str,
+    max_age_secs: i64,
+    same_site: SameSite,
+) -> Cookie<'static> {
+    Cookie::build(name, value)
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .same_site(same_site)
+        .max_age(CookieDuration::seconds(max_age_secs))
+        .finish()
+        .into_owned()
+}
+
+pub fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
+    let mut c = Cookie::build(name, "")
+        .path(path)
+        .http_only(true)
+        .secure(true)
+        .finish()
+        .into_owned();
+    c.make_removal();
+    c
+}
 
 pub mod verification {
     use entries_common::db::{self, DaoError, DbAsyncPool};

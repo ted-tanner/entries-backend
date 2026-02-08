@@ -285,7 +285,7 @@ pub async fn sign_in(
 
     let response = if client_type.is_browser() {
         let max_age = env::CONF.signin_token_lifetime.as_secs() as i64;
-        let cookie = auth_cookie(
+        let cookie = super::auth_cookie(
             SIGNIN_TOKEN_NAME,
             &signin_token.value,
             "/api/auth/otp",
@@ -376,21 +376,21 @@ pub async fn verify_otp_for_signin(
         let refresh_max_age = env::CONF.refresh_token_lifetime.as_secs() as i64;
 
         HttpResponse::Ok()
-            .cookie(auth_cookie(
+            .cookie(super::auth_cookie(
                 ACCESS_TOKEN_NAME,
                 &token_pair.access_token,
                 "/api",
                 access_max_age,
                 SameSite::Lax,
             ))
-            .cookie(auth_cookie(
+            .cookie(super::auth_cookie(
                 REFRESH_TOKEN_NAME,
                 &token_pair.refresh_token,
                 "/api/auth/token/refresh",
                 refresh_max_age,
                 SameSite::Strict,
             ))
-            .cookie(remove_cookie(SIGNIN_TOKEN_NAME, "/api/auth/otp"))
+            .cookie(super::remove_cookie(SIGNIN_TOKEN_NAME, "/api/auth/otp"))
             .protobuf(session)?
     } else {
         session.tokens = Some(token_pair);
@@ -488,14 +488,14 @@ pub async fn refresh_tokens(
         let access_max_age = env::CONF.access_token_lifetime.as_secs() as i64;
         let refresh_max_age = env::CONF.refresh_token_lifetime.as_secs() as i64;
         HttpResponse::Ok()
-            .cookie(auth_cookie(
+            .cookie(super::auth_cookie(
                 ACCESS_TOKEN_NAME,
                 &access_token,
                 "/api",
                 access_max_age,
                 SameSite::Lax,
             ))
-            .cookie(auth_cookie(
+            .cookie(super::auth_cookie(
                 REFRESH_TOKEN_NAME,
                 &refresh_token,
                 "/api/auth/token/refresh",
@@ -728,8 +728,11 @@ pub async fn logout(
 
     let response = if refresh_token.from_cookie {
         HttpResponse::Ok()
-            .cookie(remove_cookie(ACCESS_TOKEN_NAME, "/api"))
-            .cookie(remove_cookie(REFRESH_TOKEN_NAME, "/api/auth/token/refresh"))
+            .cookie(super::remove_cookie(ACCESS_TOKEN_NAME, "/api"))
+            .cookie(super::remove_cookie(
+                REFRESH_TOKEN_NAME,
+                "/api/auth/token/refresh",
+            ))
             .finish()
     } else {
         HttpResponse::Ok().finish()
@@ -747,34 +750,6 @@ fn csrf_cookie(value: &str) -> Cookie<'static> {
         .max_age(CookieDuration::seconds(CSRF_TOKEN_MAX_AGE_SECS))
         .finish()
         .into_owned()
-}
-
-fn auth_cookie(
-    name: &str,
-    value: &str,
-    path: &str,
-    max_age_secs: i64,
-    same_site: SameSite,
-) -> Cookie<'static> {
-    Cookie::build(name, value)
-        .path(path)
-        .http_only(true)
-        .secure(true)
-        .same_site(same_site)
-        .max_age(CookieDuration::seconds(max_age_secs))
-        .finish()
-        .into_owned()
-}
-
-fn remove_cookie(name: &str, path: &str) -> Cookie<'static> {
-    let mut c = Cookie::build(name, "")
-        .path(path)
-        .http_only(true)
-        .secure(true)
-        .finish()
-        .into_owned();
-    c.make_removal();
-    c
 }
 
 #[cfg(test)]

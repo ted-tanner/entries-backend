@@ -28,10 +28,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use actix_web::cookie::SameSite;
+
 use crate::env;
 use crate::handlers::{self, error::DoesNotExistType, error::HttpErrorResponse};
 use crate::middleware::auth::{Access, UnverifiedToken, UserDeletion, VerifiedToken};
-use crate::middleware::{FromHeaderOrCookie, FromQuery};
+use crate::middleware::client_type::ClientType;
+use crate::middleware::{FromHeaderOrCookie, FromQuery, SIGNIN_TOKEN_NAME};
 
 pub async fn lookup_user_public_key(
     db_async_pool: web::Data<DbAsyncPool>,
@@ -95,6 +98,7 @@ pub async fn lookup_user_public_key(
 pub async fn create(
     db_async_pool: web::Data<DbAsyncPool>,
     smtp_thread_pool: web::Data<EmailSender>,
+    client_type: ClientType,
     user_data: ProtoBuf<NewUser>,
 ) -> Result<HttpResponse, HttpErrorResponse> {
     if let Validity::Invalid(msg) = validators::validate_email_address(&user_data.0.email) {
@@ -332,7 +336,21 @@ pub async fn create(
         value: signin_token,
     };
 
-    Ok(HttpResponse::Created().protobuf(signin_token)?)
+    let response = if client_type.is_browser() {
+        let max_age = env::CONF.signin_token_lifetime.as_secs() as i64;
+        let cookie = super::auth_cookie(
+            SIGNIN_TOKEN_NAME,
+            &signin_token.value,
+            "/api/auth/otp",
+            max_age,
+            SameSite::Strict,
+        );
+        HttpResponse::Created().cookie(cookie).finish()
+    } else {
+        HttpResponse::Created().protobuf(signin_token)?
+    };
+
+    Ok(response)
 }
 
 pub async fn rotate_user_public_key(
