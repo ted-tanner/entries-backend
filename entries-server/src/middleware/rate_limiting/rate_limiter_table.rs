@@ -93,7 +93,6 @@ pub async fn check_and_record<K: Eq + Hash, H: BuildHasher>(
 
         if let Some(entry) = entry {
             let first_access_millis = entry.first_access.load(Ordering::Relaxed);
-            let count = entry.count.load(Ordering::Relaxed);
 
             if now_millis.wrapping_sub(first_access_millis) > period.as_millis() as u32 {
                 // Try to reset first_access and count. The race is acceptable. It is fine if
@@ -101,14 +100,16 @@ pub async fn check_and_record<K: Eq + Hash, H: BuildHasher>(
                 entry.first_access.store(now_millis, Ordering::Relaxed);
                 entry.count.store(1, Ordering::Relaxed);
                 Some(CheckAndRecordResult::Allowed)
-            } else if count >= max_per_period {
-                // Still record the blocked attempt so callers can warn periodically
-                // about sustained over-limit traffic.
-                let prev = entry.count.fetch_add(1, Ordering::Relaxed);
-                Some(CheckAndRecordResult::Blocked { count: prev + 1 })
             } else {
-                entry.count.fetch_add(1, Ordering::Relaxed);
-                Some(CheckAndRecordResult::Allowed)
+                // Increment first, then decide: avoids race where two requests both see
+                // count < limit and both return Allowed (would allow one extra request).
+                let prev = entry.count.fetch_add(1, Ordering::Relaxed);
+                let count = prev + 1;
+                if count <= max_per_period {
+                    Some(CheckAndRecordResult::Allowed)
+                } else {
+                    Some(CheckAndRecordResult::Blocked { count })
+                }
             }
         } else {
             None
